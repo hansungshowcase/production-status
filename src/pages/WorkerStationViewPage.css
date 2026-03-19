@@ -198,12 +198,12 @@
   margin-left: auto;
   background: none;
   border: none;
-  font-size: 16px;
+  font-size: 18px;
   color: #94a3b8;
   cursor: pointer;
   padding: 4px;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1111,17 +1111,18 @@
   }
 
   .station-view__worker-name {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .station-view__issue-noti {
-    padding: 5px 10px;
-    font-size: 11px;
+    padding: 6px 12px;
+    font-size: 12px;
+    min-height: 36px;
   }
 
   .station-view__dept-change-btn {
-    padding: 5px 10px;
-    font-size: 11px;
+    padding: 6px 12px;
+    font-size: 12px;
   }
 
   .factory-overview {
@@ -1143,25 +1144,49 @@
   }
 
   .factory-step__name {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .factory-step__count {
     font-size: 11px;
-    padding: 1px 5px;
+    padding: 2px 6px;
   }
 
   .station-view__section-title {
     padding: 10px 10px 0;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .station-view__summary {
     padding: 0 10px;
   }
 
+  .station-view__stat-num {
+    font-size: 16px;
+  }
+
+  .station-view__stat-label {
+    font-size: 11px;
+  }
+
   .station-view__body {
     padding: 10px 10px;
+  }
+
+  .station-view__client {
+    font-size: 14px;
+  }
+
+  .station-view__card-specs {
+    font-size: 12px;
+  }
+
+  .station-view__spec--due {
+    font-size: 13px;
+  }
+
+  .station-view__due-date {
+    font-size: 13px;
   }
 
   .station-view__card-actions {
@@ -1170,6 +1195,21 @@
 
   .station-view__action-btn {
     width: 100%;
+    font-size: 14px;
+    min-height: 48px;
+  }
+
+  .station-view__tag {
+    font-size: 11px;
+  }
+
+  .station-view__back-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .station-view__title {
+    font-size: 16px;
   }
 }
 
