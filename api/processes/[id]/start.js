@@ -53,30 +53,32 @@ export default cors(async function handler(req, res) {
   const now = new Date().toISOString();
   const workerName = actor || assigned_worker || '작업자';
 
-  await db.execute({
-    sql: `UPDATE processes SET status = 'in_progress', started_at = ?, started_by = ? WHERE id = ?`,
+  // Atomic update: only update if still 'waiting' (prevents double-click race condition)
+  const { rows: updateResult } = await db.execute({
+    sql: `UPDATE processes SET status = 'in_progress', started_at = ?, started_by = ? WHERE id = ? AND status = 'waiting' RETURNING id`,
     args: [work_date || now, workerName, id]
   });
+  if (updateResult.length === 0) {
+    return res.status(409).json({ error: { message: '이미 다른 작업자가 시작한 공정입니다.', status: 409 } });
+  }
 
   // Get order for activity feed
   const { rows: orderRows } = await db.execute({
     sql: 'SELECT * FROM orders WHERE id = ?',
     args: [process.order_id]
   });
-  if (orderRows.length === 0) {
-    return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
-  }
   const order = orderRows[0];
-
-  await db.execute({
-    sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-    args: [
-      process.order_id,
-      '공정시작',
-      `${order.client_name} - ${process.step_name} 공정이 시작되었습니다. (담당: ${workerName})`,
-      workerName
-    ]
-  });
+  if (order) {
+    await db.execute({
+      sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
+      args: [
+        process.order_id,
+        '공정시작',
+        `${order.client_name} - ${process.step_name} 공정이 시작되었습니다. (담당: ${workerName})`,
+        workerName
+      ]
+    });
+  }
 
   const { rows: updatedRows } = await db.execute({
     sql: 'SELECT * FROM processes WHERE id = ?',

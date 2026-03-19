@@ -88,7 +88,7 @@ async function handleUpdate(id, req, res) {
     return res.status(400).json({ error: { message: '수정할 필드가 없습니다.', status: 400 } });
   }
 
-  updates.push("updated_at = NOW()");
+  updates.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id);
 
   await db.execute({

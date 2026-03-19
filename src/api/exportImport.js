@@ -17,7 +17,18 @@ export async function downloadCsv(params = {}) {
   const queryStr = query.toString();
   const url = `${BASE_URL}/export/csv${queryStr ? '?' + queryStr : ''}`;
 
-  const response = await fetch(url);
+  let response;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('CSV 다운로드 시간이 초과되었습니다.');
+    }
+    throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해주세요.');
+  }
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -33,12 +44,13 @@ export async function downloadCsv(params = {}) {
   }
 
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
+  link.href = objectUrl;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 /**
@@ -47,13 +59,29 @@ export async function downloadCsv(params = {}) {
  * @returns {Promise<Object>} - { imported: N, errors: [] }
  */
 export async function uploadCsv(file) {
+  if (!file) {
+    throw new Error('업로드할 파일을 선택해주세요.');
+  }
+
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${BASE_URL}/import/csv`, {
-    method: 'POST',
-    body: formData,
-  });
+  let response;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    response = await fetch(`${BASE_URL}/import/csv`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('CSV 업로드 시간이 초과되었습니다.');
+    }
+    throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해주세요.');
+  }
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));

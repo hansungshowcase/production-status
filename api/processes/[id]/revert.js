@@ -38,35 +38,43 @@ export default cors(async function handler(req, res) {
     });
   }
 
-  // Revert status
+  // Atomic revert: only update if status still matches (prevents race condition)
   if (process.status === 'completed') {
-    await db.execute({
-      sql: "UPDATE processes SET status = 'in_progress', completed_at = NULL WHERE id = ?",
+    const { rows: updateResult } = await db.execute({
+      sql: "UPDATE processes SET status = 'in_progress', completed_at = NULL, completed_by = NULL, completed_date = NULL WHERE id = ? AND status = 'completed' RETURNING id",
       args: [id]
     });
+    if (updateResult.length === 0) {
+      return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
+    }
   } else if (process.status === 'in_progress') {
-    await db.execute({
-      sql: "UPDATE processes SET status = 'waiting', started_at = NULL, completed_at = NULL WHERE id = ?",
+    const { rows: updateResult } = await db.execute({
+      sql: "UPDATE processes SET status = 'waiting', started_at = NULL, started_by = NULL, completed_at = NULL WHERE id = ? AND status = 'in_progress' RETURNING id",
       args: [id]
     });
+    if (updateResult.length === 0) {
+      return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
+    }
   }
 
-  // Get order for activity feed
+  // Get order for activity feed (with null check)
   const { rows: orderRows } = await db.execute({
     sql: 'SELECT * FROM orders WHERE id = ?',
     args: [process.order_id]
   });
   const order = orderRows[0];
 
-  await db.execute({
-    sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-    args: [
-      process.order_id,
-      '공정되돌리기',
-      `${order.client_name} - ${process.step_name} 공정이 되돌려졌습니다.`,
-      actor || '작업자'
-    ]
-  });
+  if (order) {
+    await db.execute({
+      sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
+      args: [
+        process.order_id,
+        '공정되돌리기',
+        `${order.client_name} - ${process.step_name} 공정이 되돌려졌습니다.`,
+        actor || '작업자'
+      ]
+    });
+  }
 
   const { rows: updatedRows } = await db.execute({
     sql: 'SELECT * FROM processes WHERE id = ?',
