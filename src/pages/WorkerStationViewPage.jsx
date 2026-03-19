@@ -666,25 +666,28 @@ export default function WorkerStationViewPage() {
         </div>
       )}
 
-      {/* Result Toast */}
+      {/* 공정 완료 전환 애니메이션 */}
       {toast && toast.type === 'transition' && (
-        <div className="sv-toast sv-toast--transition" onClick={() => setToast(null)}>
-          <div className="sv-toast__transition-row">
-            <div className="sv-toast__transition-step sv-toast__transition-step--from">
-              <span className="sv-toast__transition-icon">{toast.fromIcon}</span>
-              <span className="sv-toast__transition-name">{toast.fromStep}</span>
-              <span className="sv-toast__transition-check">✓</span>
+        <div className="sv-transition-banner" onClick={() => setToast(null)}>
+          <div className="sv-transition-banner__client">{toast.client}</div>
+          <div className="sv-transition-banner__message">완료 처리합니다</div>
+          <div className="sv-transition-banner__flow">
+            <div className="sv-transition-banner__step sv-transition-banner__step--from">
+              <span className="sv-transition-banner__step-icon">{toast.fromIcon}</span>
+              <span className="sv-transition-banner__step-name">{toast.fromStep}</span>
+              <span className="sv-transition-banner__check">✓</span>
             </div>
-            <div className="sv-toast__transition-arrow">
-              <span className="sv-toast__transition-arrow-line" />
-              <span className="sv-toast__transition-arrow-head">▶</span>
+            <div className="sv-transition-banner__arrow">
+              <div className="sv-transition-banner__arrow-track">
+                <div className="sv-transition-banner__arrow-dot" />
+              </div>
+              <span className="sv-transition-banner__arrow-head">▶</span>
             </div>
-            <div className="sv-toast__transition-step sv-toast__transition-step--to">
-              <span className="sv-toast__transition-icon">{toast.toIcon}</span>
-              <span className="sv-toast__transition-name">{toast.toStep}</span>
+            <div className="sv-transition-banner__step sv-transition-banner__step--to">
+              <span className="sv-transition-banner__step-icon">{toast.toIcon}</span>
+              <span className="sv-transition-banner__step-name">{toast.toStep}</span>
             </div>
           </div>
-          <div className="sv-toast__transition-client">{toast.client}</div>
         </div>
       )}
       {toast && toast.type !== 'transition' && (

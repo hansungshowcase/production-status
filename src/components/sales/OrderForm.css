@@ -1,14 +1,14 @@
 .order-form-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.1);
+  background: transparent;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   z-index: 50;
-  backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity 0.2s ease;
+  padding: 20px;
 }
 
 .order-form-overlay.show {
@@ -17,21 +17,23 @@
 
 .order-form-container {
   background: var(--surface);
-  border-radius: 20px 20px 0 0;
+  border-radius: 20px;
   width: 100%;
   max-width: 600px;
-  max-height: 90vh;
+  max-height: 85vh;
   overflow-y: auto;
-  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.15);
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25), 0 8px 24px rgba(15, 23, 42, 0.1);
+  animation: ofPopIn 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-@keyframes slideUp {
+@keyframes ofPopIn {
   from {
-    transform: translateY(100%);
+    transform: scale(0.92);
+    opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

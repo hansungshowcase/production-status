@@ -233,11 +233,11 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.1);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 20px;
 }
 
 .confirm-modal {
@@ -313,16 +313,14 @@
   }
 
   .confirm-overlay {
-    padding: 16px;
-    padding-bottom: env(safe-area-inset-bottom, 16px);
-    align-items: flex-end;
+    padding: 20px;
+    align-items: center;
   }
 
   .confirm-modal {
     padding: 24px 20px;
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-    border-radius: 16px 16px 0 0;
-    max-width: 100%;
+    border-radius: 20px;
+    max-width: calc(100vw - 40px);
   }
 
   .confirm-modal h3 {
