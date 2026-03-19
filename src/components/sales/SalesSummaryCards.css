@@ -54,11 +54,11 @@
 
 /* ── Production ── */
 .sales-summary-card--production {
-  border-color: #93c5fd;
+  border-color: #7dd3fc;
   background: #f0f7ff;
 }
-.sales-summary-card--production .sales-summary-card__value { color: #1e40af; }
-.sales-summary-card--production .sales-summary-card__label { color: #2563eb; }
+.sales-summary-card--production .sales-summary-card__value { color: #0369a1; }
+.sales-summary-card--production .sales-summary-card__label { color: #0ea5e9; }
 
 /* ── Overdue ── */
 .sales-summary-card--overdue {
@@ -88,8 +88,8 @@
   background: #f8fafc;
 }
 .sales-summary-card--production.sales-summary-card--active {
-  border-color: #2563eb;
-  background: #eff6ff;
+  border-color: #0ea5e9;
+  background: #f0f9ff;
 }
 .sales-summary-card--overdue.sales-summary-card--active {
   border-color: #dc2626;

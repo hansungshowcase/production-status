@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProcessesByStep, startProcess, completeProcess } from '../api/processes';
-import { reportIssue } from '../api/issues';
+import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { getStats } from '../api/stats';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
@@ -44,6 +44,10 @@ export default function WorkerStationViewPage() {
   const [issueLoading, setIssueLoading] = useState(false);
   const [photoModal, setPhotoModal] = useState(null);
   const [transitionAnim, setTransitionAnim] = useState(null); // { fromStep, toStep, clientName }
+  const [issueAcknowledged, setIssueAcknowledged] = useState(false); // 이슈 확인 여부
+  const [issueListModal, setIssueListModal] = useState(null); // 이슈 목록 모달 { issues, loading }
+  const [resolvingId, setResolvingId] = useState(null);
+  const prevIssueCountRef = useRef(0);
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
   const nextSteps = PROCESS_STEPS.slice(currentStepIndex + 1, currentStepIndex + 3); // 다음 2개 공정
@@ -149,6 +153,40 @@ export default function WorkerStationViewPage() {
     }
   }
 
+  // ── 이슈 목록 모달 (상단 알림 클릭) ──
+  async function openIssueListModal() {
+    setIssueListModal({ issues: [], loading: true });
+    try {
+      const allIssues = await getIssues();
+      // 현재 공정의 주문에 해당하는 미해결 이슈만 필터
+      const orderIds = new Set(items.map(i => i.order_id));
+      const filtered = allIssues.filter(iss => orderIds.has(iss.order_id) && !iss.resolved_at);
+      // 거래처명 매핑
+      const orderNameMap = {};
+      items.forEach(i => { orderNameMap[i.order_id] = i.client_name; });
+      const enriched = filtered.map(iss => ({ ...iss, client_name: orderNameMap[iss.order_id] || '' }));
+      setIssueListModal({ issues: enriched, loading: false });
+    } catch {
+      setIssueListModal({ issues: [], loading: false });
+    }
+  }
+
+  async function handleResolveIssue(issueId) {
+    setResolvingId(issueId);
+    try {
+      await resolveIssue(issueId, workerName);
+      setIssueListModal(prev => ({
+        ...prev,
+        issues: prev.issues.filter(i => i.id !== issueId),
+      }));
+      await fetchData();
+    } catch {
+      alert('이슈 해결에 실패했습니다.');
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
   // ── Issue/Photo SMS handlers ──
   function openIssueModal(item) {
     setIssueModal({ item, step: 'select', issueType: null });
@@ -222,6 +260,13 @@ export default function WorkerStationViewPage() {
   const waitingItems = items.filter(i => i.status === 'waiting' || i.status === '대기');
   const progressItems = items.filter(i => i.status === 'in_progress' || i.status === '진행중');
   const overdueItems = items.filter(i => i.due_date && i.due_date < today);
+  const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
+
+  // 새 이슈 발생 시 확인 상태 리셋
+  if (totalOpenIssues > prevIssueCountRef.current) {
+    setIssueAcknowledged(false);
+  }
+  prevIssueCountRef.current = totalOpenIssues;
 
   const sorted = [...items].sort((a, b) => {
     const aOverdue = a.due_date && a.due_date < today ? -1 : 0;
@@ -256,30 +301,41 @@ export default function WorkerStationViewPage() {
   return (
     <div className="station-view">
       <div className="station-view__header">
-        <div className="station-view__header-left">
+        <div className="station-view__header-top">
           <button
             className="station-view__back-btn"
             onClick={() => navigate('/')}
+            aria-label="홈으로"
           >
-            &larr;
+            &#8592;
           </button>
-          <h1 className="station-view__title">
-            {icon} {decodedStep}
-          </h1>
-        </div>
-        <div className="station-view__badge-bar">
-          <span className="station-view__badge station-view__badge--worker">
-            👷 {workerName}
-          </span>
-          <button
-            className="station-view__dept-change-btn"
-            onClick={() => {
-              sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
-              navigate('/worker/select', { state: { redirectTo: '/worker/station', deptChangeOnly: true } });
-            }}
-          >
-            부서변경
-          </button>
+          <div className="station-view__header-center">
+            <h1 className="station-view__title">
+              <span className="station-view__title-icon">{icon}</span>
+              {decodedStep}
+            </h1>
+            <span className="station-view__worker-name">👷 {workerName}</span>
+          </div>
+          <div className="station-view__header-right">
+            {totalOpenIssues > 0 && (
+              <button
+                className={`station-view__issue-noti${issueAcknowledged ? ' station-view__issue-noti--ack' : ''}`}
+                onClick={openIssueListModal}
+              >
+                {!issueAcknowledged && <span className="station-view__issue-noti-pulse" />}
+                이슈 {totalOpenIssues}
+              </button>
+            )}
+            <button
+              className="station-view__dept-change-btn"
+              onClick={() => {
+                sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
+                navigate('/worker/select', { state: { redirectTo: '/worker/station', deptChangeOnly: true } });
+              }}
+            >
+              부서변경
+            </button>
+          </div>
         </div>
       </div>
 
@@ -716,7 +772,7 @@ export default function WorkerStationViewPage() {
                       }}
                     >
                       <div style={{
-                        width: 38, height: 38, borderRadius: 10, background: '#2563eb',
+                        width: 38, height: 38, borderRadius: 10, background: '#0ea5e9',
                         color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontWeight: 800, fontSize: 15, flexShrink: 0,
                       }}>{c.name.charAt(0)}</div>
@@ -724,7 +780,7 @@ export default function WorkerStationViewPage() {
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name} ({c.role})</div>
                         <div style={{ fontSize: 12, color: '#94a3b8' }}>{c.phone}</div>
                       </div>
-                      <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 700 }}>📩 문자</span>
+                      <span style={{ fontSize: 13, color: '#0ea5e9', fontWeight: 700 }}>📩 문자</span>
                     </button>
                   ))}
                 </div>
@@ -773,6 +829,63 @@ export default function WorkerStationViewPage() {
             </div>
             <div className="sv-confirm__actions" style={{ marginTop: 12 }}>
               <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => setPhotoModal(null)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Issue List Modal (상단 이슈 알림 클릭) ── */}
+      {issueListModal && (
+        <div className="sv-confirm-overlay" onClick={() => { setIssueListModal(null); setIssueAcknowledged(true); }}>
+          <div className="sv-issue-list-modal" onClick={e => e.stopPropagation()}>
+            <div className="sv-issue-list__header">
+              <span className="sv-issue-list__header-icon">⚠️</span>
+              <h2 className="sv-issue-list__title">미해결 이슈</h2>
+              <span className="sv-issue-list__count">{issueListModal.issues.length}건</span>
+            </div>
+
+            {issueListModal.loading ? (
+              <div className="sv-issue-list__loading">불러오는 중...</div>
+            ) : issueListModal.issues.length === 0 ? (
+              <div className="sv-issue-list__empty">미해결 이슈가 없습니다</div>
+            ) : (
+              <div className="sv-issue-list__body">
+                {issueListModal.issues.map(iss => {
+                  const typeInfo = ISSUE_TYPES.find(t => t.value === iss.issue_type) || { icon: '📝', label: iss.issue_type, color: '#64748b' };
+                  const reportedTime = iss.reported_at ? new Date(iss.reported_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                  return (
+                    <div key={iss.id} className="sv-issue-list__item">
+                      <div className="sv-issue-list__item-top">
+                        <span className="sv-issue-list__item-icon" style={{ color: typeInfo.color }}>{typeInfo.icon}</span>
+                        <div className="sv-issue-list__item-info">
+                          <span className="sv-issue-list__item-client">{iss.client_name || '-'}</span>
+                          <span className="sv-issue-list__item-type" style={{ color: typeInfo.color }}>{typeInfo.label}</span>
+                        </div>
+                        <span className="sv-issue-list__item-time">{reportedTime}</span>
+                      </div>
+                      {iss.description && (
+                        <div className="sv-issue-list__item-desc">{iss.description}</div>
+                      )}
+                      {iss.reported_by && (
+                        <div className="sv-issue-list__item-reporter">보고: {iss.reported_by}</div>
+                      )}
+                      <button
+                        className="sv-issue-list__resolve-btn"
+                        onClick={() => handleResolveIssue(iss.id)}
+                        disabled={resolvingId === iss.id}
+                      >
+                        {resolvingId === iss.id ? '처리중...' : '확인 (해결)'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="sv-issue-list__footer">
+              <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => { setIssueListModal(null); setIssueAcknowledged(true); }}>
+                닫기
+              </button>
             </div>
           </div>
         </div>

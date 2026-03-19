@@ -140,7 +140,7 @@ body {
 .logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #4f46e5 100%);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
@@ -148,7 +148,7 @@ body {
   color: white;
   font-weight: 900;
   font-size: 14px;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35), 0 1px 3px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 2px 10px rgba(14, 165, 233, 0.35), 0 1px 3px rgba(79, 70, 229, 0.2);
 }
 
 .app-title {
@@ -181,7 +181,7 @@ body {
 
 .profile-icon:hover {
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.08);
 }
 
 .profile-icon:active {
@@ -254,13 +254,13 @@ body {
 }
 
 .btn-start {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
   color: white;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3), 0 1px 2px rgba(29, 78, 216, 0.2);
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3), 0 1px 2px rgba(2, 132, 199, 0.2);
 }
 
 .btn-start:hover {
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4), 0 2px 4px rgba(29, 78, 216, 0.25);
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.4), 0 2px 4px rgba(2, 132, 199, 0.25);
 }
 
 .btn-complete {
@@ -460,7 +460,7 @@ body {
   background: var(--blue);
   color: white;
   border-color: var(--blue);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
 }
 
 .sales-filter-btn:active {
@@ -568,6 +568,42 @@ input, select, textarea {
   will-change: transform;
   transform: translateZ(0);
   backface-visibility: hidden;
+}
+
+/* ── Mobile Header Bar ── */
+.mobile-header-bar {
+  background: linear-gradient(135deg, var(--blue, #0ea5e9) 0%, #0284c7 100%);
+  color: #ffffff;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
+  letter-spacing: -0.3px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  animation: mobileHeaderSlideDown 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+.mobile-header-bar--visible {
+  display: block;
+}
+
+@keyframes mobileHeaderSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-header-bar {
+    display: none !important;
+  }
 }
 
 /* Desktop & Responsive overrides loaded via @import at top */

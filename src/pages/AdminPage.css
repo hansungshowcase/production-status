@@ -6,7 +6,7 @@
   max-width: 100%;
   margin: 0 auto;
   width: 100%;
-  background: var(--bg, #f0f4ff);
+  background: var(--bg, #f0f9ff);
 }
 
 .admin-header {

@@ -44,19 +44,19 @@
   border: 1px solid var(--border, #d0d9e8);
   border-radius: 8px;
   font-size: 14px;
-  background: var(--bg, #f0f4ff);
+  background: var(--bg, #f0f9ff);
   color: var(--text, #0f172a);
   outline: none;
 }
 
 .export-filter-row select:focus {
-  border-color: var(--blue, #2563eb);
+  border-color: var(--blue, #0ea5e9);
 }
 
 .export-download-btn {
   width: 100%;
   padding: 12px;
-  background: var(--blue, #2563eb);
+  background: var(--blue, #0ea5e9);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -71,7 +71,7 @@
 }
 
 .export-download-btn:hover {
-  background: #1d4ed8;
+  background: #0284c7;
 }
 
 .export-download-btn:disabled {

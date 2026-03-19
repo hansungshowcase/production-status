@@ -223,7 +223,7 @@
 
 .order-track-card.otc-expanded {
   border: 2px solid var(--blue);
-  box-shadow: var(--shadow), 0 0 0 3px rgba(37, 99, 235, 0.08);
+  box-shadow: var(--shadow), 0 0 0 3px rgba(14, 165, 233, 0.08);
 }
 
 .otc-expand-icon {

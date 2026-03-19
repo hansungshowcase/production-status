@@ -9,7 +9,7 @@
 
 .task-card.active-task {
   border: 2px solid var(--blue);
-  box-shadow: var(--shadow-lg), 0 0 0 3px rgba(37, 99, 235, 0.1);
+  box-shadow: var(--shadow-lg), 0 0 0 3px rgba(14, 165, 233, 0.1);
 }
 
 .task-card.completed-task {

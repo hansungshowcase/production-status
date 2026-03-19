@@ -3,7 +3,7 @@
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
-  background: #f0f4ff;
+  background: #f0f9ff;
 }
 
 .wsp-content {
@@ -17,7 +17,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: #f0f4ff;
+  background: #f0f9ff;
   padding: 12px 0 8px;
 }
 

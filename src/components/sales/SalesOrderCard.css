@@ -43,7 +43,7 @@
 }
 
 .sales-order-card__current-step--active {
-  color: #1e40af;
+  color: #0369a1;
 }
 
 .sales-order-card__current-step--waiting {
@@ -143,7 +143,7 @@
 
 .sales-order-card__progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  background: linear-gradient(90deg, #0ea5e9, #38bdf8);
   border-radius: 4px;
   transition: width 0.4s ease;
   min-width: 4px;
@@ -184,9 +184,9 @@
 }
 
 .soc-chain__step--active {
-  color: #2563eb;
+  color: #0ea5e9;
   font-weight: 700;
-  background: #dbeafe;
+  background: #e0f2fe;
   padding: 1px 6px;
   border-radius: 4px;
 }
@@ -227,7 +227,7 @@
 .sales-order-card__detail {
   border-top: 1px solid #d0d9e8;
   padding: 14px 16px;
-  background: #f0f4ff;
+  background: #f0f9ff;
 }
 
 .sales-order-card__detail-title {
@@ -295,7 +295,7 @@
 }
 
 .sales-order-card__process-dot--current {
-  background: #2563eb;
+  background: #0ea5e9;
 }
 
 .sales-order-card__process-dot--pending {
@@ -318,7 +318,7 @@
 }
 
 .sales-order-card__process-status--current {
-  color: #2563eb;
+  color: #0ea5e9;
   font-weight: 600;
 }
 
@@ -407,4 +407,47 @@
   .sales-order-card {
     margin: 0 24px 16px;
   }
+}
+
+/* Delete */
+.sales-order-card__delete-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #fee2e2;
+}
+
+.sales-order-card__delete-btn {
+  padding: 8px 16px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fff;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.sales-order-card__delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sales-order-card__delete-warn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.sales-order-card__delete-btn--yes {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+
+.sales-order-card__delete-btn--no {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #e2e8f0;
 }

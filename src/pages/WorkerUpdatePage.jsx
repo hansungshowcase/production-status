@@ -21,7 +21,7 @@ const ISSUE_TYPES = [
   { key: '자재부족', label: '자재 부족/지연', bg: '#fffbeb', color: '#d97706' },
   { key: '불량발생', label: '불량 발생', bg: '#fef2f2', color: '#dc2626' },
   { key: '설비고장', label: '설비 고장', bg: '#f5f3ff', color: '#7c3aed' },
-  { key: '기타', label: '기타', bg: '#f0f4ff', color: '#666' },
+  { key: '기타', label: '기타', bg: '#f0f9ff', color: '#666' },
 ];
 
 export default function WorkerUpdatePage() {

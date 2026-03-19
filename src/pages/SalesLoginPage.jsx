@@ -35,7 +35,7 @@ export default function SalesLoginPage() {
         <div className="sl-page__brand">
           <div className="sl-page__logo">
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-              <rect width="32" height="32" rx="8" fill="#2563eb"/>
+              <rect width="32" height="32" rx="8" fill="#0ea5e9"/>
               <path d="M8 16h6m4 0h6M16 8v6m0 4v6" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
             </svg>
           </div>

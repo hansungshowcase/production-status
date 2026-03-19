@@ -25,13 +25,13 @@
   text-align: center;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
-  background: var(--bg, #f0f4ff);
+  background: var(--bg, #f0f9ff);
   margin-bottom: 16px;
 }
 
 .import-dropzone.drag-over {
-  border-color: var(--blue, #2563eb);
-  background: #eff6ff;
+  border-color: var(--blue, #0ea5e9);
+  background: #f0f9ff;
 }
 
 .import-dropzone-icon {
@@ -45,7 +45,7 @@
 }
 
 .import-dropzone-text strong {
-  color: var(--blue, #2563eb);
+  color: var(--blue, #0ea5e9);
 }
 
 .import-file-info {
@@ -90,7 +90,7 @@
 }
 
 .import-preview th {
-  background: var(--bg, #f0f4ff);
+  background: var(--bg, #f0f9ff);
   font-weight: 600;
   color: var(--text-secondary, #64748b);
 }

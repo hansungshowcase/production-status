@@ -19,6 +19,19 @@ const OrderEntryPage = lazy(() => import('./pages/OrderEntryPage'));
 const SalesLoginPage = lazy(() => import('./pages/SalesLoginPage'));
 const SalesMyPage = lazy(() => import('./pages/SalesMyPage'));
 
+function MobileHeaderBar() {
+  const location = useLocation();
+  const isWorker = location.pathname.startsWith('/worker');
+
+  if (!isWorker) return null;
+
+  return (
+    <div className="mobile-header-bar mobile-header-bar--visible">
+      한성쇼케이스 생산 현황
+    </div>
+  );
+}
+
 function AnimatedPage({ children }) {
   const location = useLocation();
 
@@ -81,6 +94,7 @@ export default function App() {
   return (
     <BrowserRouter>
       {!appReady && <SplashScreen />}
+      <MobileHeaderBar />
       <OfflineBanner show={isOffline} />
       <InstallPrompt />
       <Suspense fallback={<PageLoader />}>

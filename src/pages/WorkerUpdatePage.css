@@ -3,7 +3,7 @@
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
-  background: #f0f4ff;
+  background: #f0f9ff;
 }
 
 .wup-content {
@@ -64,7 +64,7 @@
 .wup-detail-tag {
   font-size: 12px;
   color: #666;
-  background: #f0f4ff;
+  background: #f0f9ff;
   padding: 3px 10px;
   border-radius: 8px;
 }
@@ -95,8 +95,8 @@
 }
 
 .wup-photo-btn {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #f0f9ff;
+  color: #0ea5e9;
 }
 
 .wup-issue-btn {
@@ -149,12 +149,12 @@
 }
 
 .wup-modal-cancel {
-  background: #f0f4ff;
+  background: #f0f9ff;
   color: #666;
 }
 
 .wup-modal-confirm {
-  background: #2563eb;
+  background: #0ea5e9;
   color: #fff;
 }
 

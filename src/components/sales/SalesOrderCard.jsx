@@ -3,8 +3,9 @@ import { PROCESS_STEPS } from '../../constants';
 import { formatDueStatus } from '../../utils/dateUtils';
 import './SalesOrderCard.css';
 
-export default function SalesOrderCard({ order }) {
+export default function SalesOrderCard({ order, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const processes = order.processes || [];
   const stepStatusMap = {};
@@ -248,6 +249,36 @@ export default function SalesOrderCard({ order }) {
               </div>
             )}
           </div>
+
+          {/* 삭제 버튼 */}
+          {onDelete && (
+            <div className="sales-order-card__delete-section">
+              {!confirmDelete ? (
+                <button
+                  className="sales-order-card__delete-btn"
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                >
+                  삭제
+                </button>
+              ) : (
+                <div className="sales-order-card__delete-confirm">
+                  <span className="sales-order-card__delete-warn">정말 삭제하시겠습니까?</span>
+                  <button
+                    className="sales-order-card__delete-btn sales-order-card__delete-btn--yes"
+                    onClick={(e) => { e.stopPropagation(); onDelete(order); }}
+                  >
+                    삭제
+                  </button>
+                  <button
+                    className="sales-order-card__delete-btn sales-order-card__delete-btn--no"
+                    onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+                  >
+                    취소
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 공정 상세 */}
           <div className="sales-order-card__detail-title" style={{ marginTop: 14 }}>공정 상세</div>

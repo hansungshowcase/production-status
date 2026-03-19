@@ -59,6 +59,7 @@ export default function OrderEntryPage() {
     if (!validate()) return;
 
     setSubmitting(true);
+    let success = false;
     try {
       const payload = {
         order_date: form.order_date || todayStr(),
@@ -79,26 +80,26 @@ export default function OrderEntryPage() {
       };
 
       const created = await createOrder(payload);
-      // 첫 번째 공정(도면설계) 자동 시작
+      success = true;
+
+      // 도면설계 자동 시작 (실패해도 이동에 영향 없음)
       const processes = created.processes || [];
       const firstProcess = processes.find(p => p.step_name === '도면설계');
       if (firstProcess) {
-        try {
-          await startProcess(firstProcess.id, {
-            assigned_worker: payload.sales_person || '시스템',
-            assigned_team: '도면설계',
-            actor: payload.sales_person || '시스템',
-          });
-        } catch (e) {
-          console.warn('도면설계 자동시작 실패:', e);
-        }
+        startProcess(firstProcess.id, {
+          assigned_worker: payload.sales_person || '시스템',
+          assigned_team: '도면설계',
+          actor: payload.sales_person || '시스템',
+        }).catch(() => {});
       }
-      setShowSuccess(true);
-      setToast({ visible: true, message: '작업이 등록되었습니다 (도면설계 자동시작)' });
     } catch (err) {
       setToast({ visible: true, message: err.message || '작업 등록에 실패했습니다' });
-    } finally {
       setSubmitting(false);
+    }
+
+    // 주문 생성 성공하면 무조건 도면설계로 이동
+    if (success) {
+      navigate('/worker/station/' + encodeURIComponent('도면설계'));
     }
   };
 
@@ -112,6 +113,33 @@ export default function OrderEntryPage() {
     navigate('/sales');
   };
 
+  // ── 이미지 리사이즈 (모바일 고해상도 대응, Vercel 4.5MB 제한) ──
+  const resizeImage = (file, maxWidth = 1600) => {
+    return new Promise((resolve) => {
+      // 이미 작은 파일은 그대로
+      if (file.size < 1024 * 1024) { resolve(file); return; }
+
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' })),
+          'image/jpeg',
+          0.85
+        );
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  };
+
   // ── OCR 사진 인식 ──
   const processOcrFile = async (file) => {
     if (!file) return;
@@ -120,8 +148,9 @@ export default function OrderEntryPage() {
     setToast({ visible: true, message: '작업지시서를 인식하는 중...' });
 
     try {
+      const resized = await resizeImage(file);
       const formData = new FormData();
-      formData.append('image', file);
+      formData.append('image', resized);
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
@@ -252,7 +281,7 @@ export default function OrderEntryPage() {
         </div>
         <div className="order-entry__hero-wave">
           <svg viewBox="0 0 1440 60" preserveAspectRatio="none">
-            <path d="M0,60 L0,20 Q360,0 720,20 Q1080,40 1440,20 L1440,60 Z" fill="var(--bg, #f0f4ff)" />
+            <path d="M0,60 L0,20 Q360,0 720,20 Q1080,40 1440,20 L1440,60 Z" fill="var(--bg, #f0f9ff)" />
           </svg>
         </div>
       </header>

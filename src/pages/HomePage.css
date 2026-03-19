@@ -31,7 +31,7 @@
 .home-logo-icon {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  background: linear-gradient(135deg, #0ea5e9 0%, #4f46e5 100%);
   border-radius: 14px;
   display: flex;
   align-items: center;
@@ -39,7 +39,7 @@
   color: white;
   font-weight: 900;
   font-size: 18px;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35), 0 1px 3px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 2px 10px rgba(14, 165, 233, 0.35), 0 1px 3px rgba(79, 70, 229, 0.2);
 }
 
 .home-title {
@@ -75,7 +75,7 @@
 
 .home-search-input-wrap:focus-within {
   border-color: var(--blue);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
 }
 
 .home-search-icon {
@@ -250,14 +250,14 @@
   padding: 36px 28px 32px;
   border-radius: var(--radius-2xl);
   /* Premium gradient */
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 50%, #06b6d4 100%);
+  background: linear-gradient(135deg, #0369a1 0%, #38bdf8 50%, #06b6d4 100%);
   border: none;
   cursor: pointer;
   position: relative;
   overflow: hidden;
   font-family: inherit;
   text-align: center;
-  box-shadow: 0 8px 32px rgba(37, 99, 235, 0.35), 0 2px 8px rgba(6, 182, 212, 0.15);
+  box-shadow: 0 8px 32px rgba(14, 165, 233, 0.35), 0 2px 8px rgba(6, 182, 212, 0.15);
   transition: transform 0.25s var(--ease-spring), box-shadow 0.25s var(--ease-smooth);
   margin-bottom: 10px;
 }
@@ -288,12 +288,12 @@
 
 .home-hero-order:hover {
   transform: translateY(-4px);
-  box-shadow: 0 16px 48px rgba(37, 99, 235, 0.45), 0 4px 12px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 16px 48px rgba(14, 165, 233, 0.45), 0 4px 12px rgba(6, 182, 212, 0.2);
 }
 
 .home-hero-order:active {
   transform: scale(0.98);
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.3);
 }
 
 .home-hero-order__badge {
@@ -340,7 +340,7 @@
   align-items: center;
   gap: 6px;
   background: #ffffff;
-  color: #1e40af;
+  color: #0369a1;
   font-size: 14px;
   font-weight: 800;
   padding: 11px 26px;
@@ -350,7 +350,7 @@
 }
 
 .home-hero-order:hover .home-hero-order__cta {
-  background: #eff6ff;
+  background: #f0f9ff;
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }
 
@@ -406,12 +406,12 @@
 }
 
 .home-card-worker {
-  border-color: rgba(37, 99, 235, 0.12);
+  border-color: rgba(14, 165, 233, 0.12);
 }
 
 .home-card-worker:hover {
-  border-color: rgba(37, 99, 235, 0.3);
-  box-shadow: var(--shadow-xl), 0 0 0 3px rgba(37, 99, 235, 0.06);
+  border-color: rgba(14, 165, 233, 0.3);
+  box-shadow: var(--shadow-xl), 0 0 0 3px rgba(14, 165, 233, 0.06);
 }
 
 .home-card-sales {

@@ -41,7 +41,7 @@
 }
 
 .error-state-retry:hover {
-  background-color: var(--blue-hover, #2563eb);
+  background-color: var(--blue-hover, #0ea5e9);
 }
 
 /* Responsive */

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import SalesSummaryCards from '../components/sales/SalesSummaryCards';
 import SalesOrderCard from '../components/sales/SalesOrderCard';
 import SearchBar from '../components/common/SearchBar';
-import { getOrders } from '../api/orders';
+import { getOrders, deleteOrder } from '../api/orders';
 import { getFeed } from '../api/feed';
 import { formatDueStatus } from '../utils/dateUtils';
 import useWebSocket from '../hooks/useWebSocket';
@@ -178,6 +178,15 @@ export default function SalesMyPage() {
     setSearchQuery('');
   }
 
+  async function handleDeleteOrder(order) {
+    try {
+      await deleteOrder(order.id);
+      setOrders(prev => prev.filter(o => o.id !== order.id));
+    } catch (err) {
+      alert('삭제 실패: ' + (err.message || ''));
+    }
+  }
+
   return (
     <div className="sales-my-page">
       {/* ── Header ── */}
@@ -331,7 +340,7 @@ export default function SalesMyPage() {
           ) : (
             <div className="sales-my-page__order-list">
               {filtered.map((order, idx) => (
-                <SalesOrderCard key={order.id || idx} order={order} />
+                <SalesOrderCard key={order.id || idx} order={order} onDelete={handleDeleteOrder} />
               ))}
             </div>
           )}
@@ -351,8 +360,8 @@ export default function SalesMyPage() {
               {feedItems.map((item, idx) => {
                 const d = new Date(item.created_at);
                 const time = `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-                const colorMap = { '공정시작': '#2563eb', '공정완료': '#059669', '이슈등록': '#dc2626', '이슈해결': '#059669', '주문등록': '#7c3aed', '출고완료': '#d97706' };
-                const bgMap = { '공정시작': '#dbeafe', '공정완료': '#d1fae5', '이슈등록': '#fee2e2', '이슈해결': '#d1fae5', '주문등록': '#ede9fe', '출고완료': '#fef3c7' };
+                const colorMap = { '공정시작': '#0ea5e9', '공정완료': '#059669', '이슈등록': '#dc2626', '이슈해결': '#059669', '주문등록': '#7c3aed', '출고완료': '#d97706' };
+                const bgMap = { '공정시작': '#e0f2fe', '공정완료': '#d1fae5', '이슈등록': '#fee2e2', '이슈해결': '#d1fae5', '주문등록': '#ede9fe', '출고완료': '#fef3c7' };
                 const iconMap = { '공정시작': '▶', '공정완료': '✓', '이슈등록': '!', '이슈해결': '✓', '주문등록': '+', '출고완료': '📦' };
                 const color = colorMap[item.action_type] || '#64748b';
                 const bg = bgMap[item.action_type] || '#f1f5f9';

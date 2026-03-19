@@ -35,7 +35,7 @@ export const STEP_ICONS = {
 export const DEPT_ICONS = STEP_ICONS;
 
 export const SALES_PERSONS = [
-  { name: '신은철', role: '영업 담당', color: '#2563eb' },
+  { name: '신은철', role: '영업 담당', color: '#0ea5e9' },
   { name: '이시아', role: '영업 담당', color: '#0891b2' },
 ];
 

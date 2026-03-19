@@ -1,7 +1,7 @@
 .station-page {
   min-height: 100vh;
   min-height: 100dvh;
-  background: #f0f4ff;
+  background: #f0f9ff;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -19,7 +19,7 @@
 .station-page__home-btn {
   background: #ffffff;
   border: 1px solid #d0d9e8;
-  color: #2563eb;
+  color: #0ea5e9;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -32,7 +32,7 @@
 
 .station-page__home-btn:hover {
   background: #eef2ff;
-  border-color: #2563eb;
+  border-color: #0ea5e9;
 }
 
 .station-page__worker-bar {
@@ -56,10 +56,10 @@
 }
 
 .station-page__change-worker-btn {
-  background: #f0f4ff;
-  border: 1px solid #2563eb;
+  background: #f0f9ff;
+  border: 1px solid #0ea5e9;
   border-radius: 8px;
-  color: #2563eb;
+  color: #0ea5e9;
   font-size: 13px;
   font-weight: 500;
   padding: 6px 12px;
@@ -68,7 +68,7 @@
 }
 
 .station-page__change-worker-btn:hover {
-  background: #dbeafe;
+  background: #e0f2fe;
 }
 
 .station-page__title {
@@ -95,8 +95,8 @@
 }
 
 .station-page__last-pick:hover {
-  border-color: #2563eb;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+  border-color: #0ea5e9;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
 }
 
 .station-page__last-pick-label {
@@ -108,13 +108,13 @@
 .station-page__last-pick-name {
   font-size: 18px;
   font-weight: 600;
-  color: #2563eb;
+  color: #0ea5e9;
 }
 
 .station-page__last-pick-arrow {
   margin-left: auto;
   font-size: 20px;
-  color: #2563eb;
+  color: #0ea5e9;
 }
 
 .station-page__grid {
@@ -141,14 +141,14 @@
 }
 
 .station-page__btn:hover {
-  border-color: #2563eb;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  border-color: #0ea5e9;
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.15);
   transform: translateY(-2px);
 }
 
 .station-page__btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.1);
+  box-shadow: 0 1px 4px rgba(14, 165, 233, 0.1);
 }
 
 .station-page__btn-icon {

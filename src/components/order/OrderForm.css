@@ -70,8 +70,8 @@
 }
 
 .of__input:focus {
-  border-color: var(--blue, #2563eb);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  border-color: var(--blue, #0ea5e9);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
 }
 
 .of__input--error {
