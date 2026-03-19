@@ -1,5 +1,7 @@
 .worker-greeting {
   padding: 20px 20px 16px;
+  position: relative;
+  z-index: 1;
 }
 
 .greeting-text {

@@ -18,7 +18,7 @@
   gap: 8px;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
   flex-wrap: wrap;
 }
 
@@ -213,7 +213,7 @@
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
   overflow: hidden;
-  z-index: 50;
+  z-index: 200;
   animation: salesDropdownIn 0.15s ease;
 }
 
@@ -709,20 +709,9 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* FAB: safe-area 대응 */
+  /* FAB: 모바일에서는 숨기고 상단 헤더 버튼 사용 */
   .sales-my-page__fab {
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    right: 16px;
-    height: 52px;
-    padding: 0 18px 0 14px;
-  }
-
-  .sales-my-page__fab-icon {
-    font-size: 22px;
-  }
-
-  .sales-my-page__fab-label {
-    font-size: 13px;
+    display: none;
   }
 
   .sales-my-page__order-list {
@@ -733,12 +722,8 @@
 /* ─── Tiny phones (< 480px) ──────────────────────────── */
 
 @media (max-width: 479px) {
-  .sales-my-page__new-order-btn-label {
-    display: none;
-  }
-
   .sales-my-page__new-order-btn {
-    padding: 8px 12px;
+    padding: 8px 14px;
   }
 
   .sales-my-page__title {

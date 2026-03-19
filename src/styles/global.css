@@ -55,8 +55,8 @@ body {
 .app-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  flex: 1;
+  min-height: 0;
   max-width: 100%;
   margin: 0 auto;
   width: 100%;
@@ -610,9 +610,9 @@ input, select, textarea {
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 4px;
-  font-size: 12px;
-  font-weight: 800;
-  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 900;
+  color: #1e293b;
   padding: 10px 16px;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
   background: transparent;

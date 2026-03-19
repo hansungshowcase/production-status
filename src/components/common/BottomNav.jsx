@@ -4,7 +4,6 @@ import './BottomNav.css';
 
 const workerNavItems = [
   { icon: '📋', label: '작업현황' },
-  { icon: '📊', label: '통계' },
   { icon: '🏠', label: '홈', action: 'home' },
 ];
 
