@@ -226,7 +226,7 @@ export default function SalesMyPage() {
             >
               <span className="sales-my-page__person-btn-icon" aria-hidden="true">👤</span>
               <span className="sales-my-page__person-btn-label">
-                {isViewingOther ? viewingPerson : '다른 담당자'}
+                {isViewingOther ? viewingPerson : '담당자 변경'}
               </span>
               <span className="sales-my-page__person-btn-caret" aria-hidden="true">
                 {dropdownOpen ? '▲' : '▼'}
