@@ -1,29 +1,36 @@
 // For multipart form data parsing in Vercel serverless
 export async function parseMultipart(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', chunk => chunks.push(chunk));
-    req.on('end', () => {
-      const buffer = Buffer.concat(chunks);
-      // Parse multipart boundary
-      const contentType = req.headers['content-type'] || '';
-      const boundaryMatch = contentType.match(/boundary=(.+)/);
-      if (!boundaryMatch) {
-        reject(new Error('No boundary found'));
-        return;
-      }
-      const boundary = boundaryMatch[1];
-      const parts = parseMultipartBuffer(buffer, boundary);
-      resolve(parts);
+  // Vercel serverless: body may already be a Buffer or need streaming
+  let buffer;
+  if (req.body && Buffer.isBuffer(req.body)) {
+    buffer = req.body;
+  } else if (req.body && typeof req.body === 'string') {
+    buffer = Buffer.from(req.body, 'binary');
+  } else {
+    // Fallback: stream approach
+    buffer = await new Promise((resolve, reject) => {
+      const chunks = [];
+      req.on('data', chunk => chunks.push(chunk));
+      req.on('end', () => resolve(Buffer.concat(chunks)));
+      req.on('error', reject);
     });
-    req.on('error', reject);
-  });
+  }
+
+  const contentType = req.headers['content-type'] || '';
+  const boundaryMatch = contentType.match(/boundary=(.+?)(?:;|$)/);
+  if (!boundaryMatch) {
+    throw new Error('No boundary found');
+  }
+  const boundary = boundaryMatch[1].trim();
+  return parseMultipartBuffer(buffer, boundary);
 }
 
 function parseMultipartBuffer(buffer, boundary) {
   const parts = [];
   const boundaryBuffer = Buffer.from('--' + boundary);
-  let start = buffer.indexOf(boundaryBuffer) + boundaryBuffer.length + 2; // skip \r\n
+  let start = buffer.indexOf(boundaryBuffer);
+  if (start === -1) return parts;
+  start += boundaryBuffer.length + 2; // skip \r\n
 
   while (true) {
     const end = buffer.indexOf(boundaryBuffer, start);

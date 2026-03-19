@@ -246,7 +246,6 @@ export default function OrderEntryPage() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={handleOcrUpload}
             style={{ display: 'none' }}
           />
