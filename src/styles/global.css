@@ -610,12 +610,12 @@ input, select, textarea {
 .app-footer-brand {
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 3px;
-  font-size: 11px;
-  font-weight: 600;
+  letter-spacing: 4px;
+  font-size: 12px;
+  font-weight: 800;
   color: #94a3b8;
-  padding: 20px 16px;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  padding: 10px 16px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
   background: transparent;
   user-select: none;
   -webkit-user-select: none;

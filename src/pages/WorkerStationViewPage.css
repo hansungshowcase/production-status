@@ -19,8 +19,38 @@
 .station-view__header-top {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 16px 6px;
   gap: 10px;
+}
+
+.station-view__header-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 10px;
+}
+
+.station-view__header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.station-view__action-chip {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.station-view__action-chip:active {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .station-view__back-btn {
@@ -53,6 +83,7 @@
 }
 
 .station-view__title {
+  flex: 1;
   font-size: 18px;
   font-weight: 800;
   color: #ffffff;

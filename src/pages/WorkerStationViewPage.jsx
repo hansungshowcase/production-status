@@ -309,25 +309,25 @@ export default function WorkerStationViewPage() {
           >
             &#8592;
           </button>
-          <div className="station-view__header-center">
-            <h1 className="station-view__title">
-              <span className="station-view__title-icon">{icon}</span>
-              {decodedStep}
-            </h1>
-            <span className="station-view__worker-name">👷 {workerName}</span>
-          </div>
-          <div className="station-view__header-right">
-            {totalOpenIssues > 0 && (
-              <button
-                className={`station-view__issue-noti${issueAcknowledged ? ' station-view__issue-noti--ack' : ''}`}
-                onClick={openIssueListModal}
-              >
-                {!issueAcknowledged && <span className="station-view__issue-noti-pulse" />}
-                이슈 {totalOpenIssues}
-              </button>
-            )}
+          <h1 className="station-view__title">
+            <span className="station-view__title-icon">{icon}</span>
+            {decodedStep}
+          </h1>
+          {totalOpenIssues > 0 && (
             <button
-              className="station-view__dept-change-btn"
+              className={`station-view__issue-noti${issueAcknowledged ? ' station-view__issue-noti--ack' : ''}`}
+              onClick={openIssueListModal}
+            >
+              {!issueAcknowledged && <span className="station-view__issue-noti-pulse" />}
+              이슈 {totalOpenIssues}
+            </button>
+          )}
+        </div>
+        <div className="station-view__header-sub">
+          <span className="station-view__worker-name">👷 {workerName}</span>
+          <div className="station-view__header-actions">
+            <button
+              className="station-view__action-chip"
               onClick={() => {
                 sessionStorage.removeItem(WORKER_STORAGE_KEY);
                 sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
@@ -337,7 +337,7 @@ export default function WorkerStationViewPage() {
               작업자 변경
             </button>
             <button
-              className="station-view__dept-change-btn"
+              className="station-view__action-chip"
               onClick={() => {
                 sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
                 navigate('/worker/select', { state: { redirectTo: '/worker/station', deptChangeOnly: true } });
