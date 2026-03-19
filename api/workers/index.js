@@ -60,13 +60,13 @@ async function handlePost(req, res) {
   }
 
   const result = await db.execute({
-    sql: 'INSERT INTO workers (name, department) VALUES (?, ?)',
+    sql: 'INSERT INTO workers (name, department) VALUES (?, ?) RETURNING id',
     args: [name, department],
   });
 
   const workerResult = await db.execute({
     sql: 'SELECT * FROM workers WHERE id = ?',
-    args: [Number(result.lastInsertRowid)],
+    args: [Number(result.rows[0].id)],
   });
 
   return res.status(201).json(workerResult.rows[0]);

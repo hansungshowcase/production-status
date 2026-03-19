@@ -82,7 +82,7 @@ async function handlePost(req, res) {
 
   const result = await db.execute({
     sql: `INSERT INTO photos (order_id, process_id, file_path, uploaded_by)
-          VALUES (?, ?, ?, ?)`,
+          VALUES (?, ?, ?, ?) RETURNING id`,
     args: [order_id, process_id || null, blob.url, uploaded_by || null],
   });
 
@@ -99,7 +99,7 @@ async function handlePost(req, res) {
 
   const photoResult = await db.execute({
     sql: 'SELECT * FROM photos WHERE id = ?',
-    args: [Number(result.lastInsertRowid)],
+    args: [Number(result.rows[0].id)],
   });
 
   return res.status(201).json(photoResult.rows[0]);

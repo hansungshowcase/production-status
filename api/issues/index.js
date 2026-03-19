@@ -60,7 +60,7 @@ async function handlePost(req, res) {
 
   const result = await db.execute({
     sql: `INSERT INTO issues (order_id, process_id, issue_type, description, reported_by)
-          VALUES (?, ?, ?, ?, ?)`,
+          VALUES (?, ?, ?, ?, ?) RETURNING id`,
     args: [order_id, process_id || null, issue_type, description || null, reported_by || null],
   });
 
@@ -77,7 +77,7 @@ async function handlePost(req, res) {
 
   const issueResult = await db.execute({
     sql: 'SELECT * FROM issues WHERE id = ?',
-    args: [Number(result.lastInsertRowid)],
+    args: [Number(result.rows[0].id)],
   });
 
   return res.status(201).json(issueResult.rows[0]);

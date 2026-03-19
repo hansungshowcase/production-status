@@ -152,7 +152,7 @@ export default cors(async function handler(req, res) {
           order_date, due_date, sales_person, client_name, ship_date,
           product_type, door_type, width, depth, height,
           quantity, color, notes, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         args: [
           get('order_date'), get('due_date'), get('sales_person'), clientName,
           get('ship_date'), get('product_type'), get('door_type'),
@@ -164,7 +164,7 @@ export default cors(async function handler(req, res) {
         ],
       });
 
-      const orderId = Number(orderResult.lastInsertRowid);
+      const orderId = Number(orderResult.rows[0].id);
 
       for (const step of STEPS) {
         await db.execute({

@@ -19,7 +19,7 @@ export default cors(async function handler(req, res) {
   const today = new Date().toISOString().slice(0, 10);
 
   await db.execute({
-    sql: `UPDATE orders SET status = 'shipped', ship_date = ?, updated_at = datetime('now', 'localtime') WHERE id = ?`,
+    sql: `UPDATE orders SET status = 'shipped', ship_date = ?, updated_at = NOW() WHERE id = ?`,
     args: [today, id],
   });
 

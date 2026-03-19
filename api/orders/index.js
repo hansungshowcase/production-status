@@ -174,7 +174,7 @@ async function handlePost(req, res) {
         quantity, color, phone, notes, remarks, etc_notes,
         sale_amount, lead_source, balance,
         ship_scheduled_date, sms_sent, safe_delivery, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id`,
       args: [
         order_date || null, due_date || null, sales_person || null, client_name,
         product_type || null, door_type || null, design || null,
@@ -185,7 +185,7 @@ async function handlePost(req, res) {
         ship_scheduled_date || null, sms_sent || null, safe_delivery || 0,
       ],
     });
-    const orderId = Number(orderResult.lastInsertRowid);
+    const orderId = Number(orderResult.rows[0].id);
 
     for (const step of STEPS) {
       await tx.execute({
@@ -219,7 +219,7 @@ async function handlePost(req, res) {
 
     return res.status(201).json(created);
   } catch (err) {
-    if (err.message && err.message.includes('UNIQUE constraint')) {
+    if (err.message && (err.message.includes('UNIQUE constraint') || err.message.includes('duplicate key'))) {
       return res.status(409).json({ error: { message: '이미 존재하는 주문입니다.', status: 409 } });
     }
     throw err;
