@@ -7,7 +7,7 @@ import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
 import './WorkerStationViewPage.css';
 
-const REFRESH_INTERVAL = 15000;
+const REFRESH_INTERVAL = 5000;
 
 const CONTACTS = [
   { name: '박상규', role: '공장장', phone: '010-9322-3904' },
@@ -86,10 +86,23 @@ export default function WorkerStationViewPage() {
     setLoading(true);
     fetchData();
     timerRef.current = setInterval(fetchData, REFRESH_INTERVAL);
-    return () => clearInterval(timerRef.current);
+    return () => {
+      clearInterval(timerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, [fetchData]);
 
+  // 모달 하나 열면 나머지 전부 닫기
+  function closeAllModals() {
+    setConfirmTarget(null);
+    setIssueModal(null);
+    setPhotoModal(null);
+    setIssueListModal(null);
+  }
+
   function requestComplete(processId) {
+    if (actionLoading) return; // 처리 중 연타 방지
+    closeAllModals();
     const item = items.find(i => i.process_id === processId);
     const clientName = item?.client_name || '거래처';
     const status = item?.status || item?.process_status || 'waiting';
@@ -97,7 +110,7 @@ export default function WorkerStationViewPage() {
   }
 
   async function executeComplete(selectedNextStep) {
-    if (!confirmTarget) return;
+    if (!confirmTarget || actionLoading) return; // 이중 실행 방지
     const { processId, clientName, status, orderId } = confirmTarget;
     setConfirmTarget(null);
     setActionLoading(processId);
@@ -155,6 +168,13 @@ export default function WorkerStationViewPage() {
 
   // ── 이슈 목록 모달 (상단 알림 클릭) ──
   async function openIssueListModal() {
+    // 이미 열려있으면 닫기 (토글)
+    if (issueListModal) {
+      setIssueListModal(null);
+      setIssueAcknowledged(true);
+      return;
+    }
+    closeAllModals();
     setIssueListModal({ issues: [], loading: true });
     try {
       const allIssues = await getIssues();
@@ -189,6 +209,7 @@ export default function WorkerStationViewPage() {
 
   // ── Issue/Photo SMS handlers ──
   function openIssueModal(item) {
+    closeAllModals();
     setIssueModal({ item, step: 'select', issueType: null });
     setIssueDesc('');
   }
@@ -642,19 +663,21 @@ export default function WorkerStationViewPage() {
                 <button
                   className="station-view__action-btn station-view__action-btn--complete"
                   onClick={() => requestComplete(item.process_id)}
-                  disabled={isActioning}
+                  disabled={isActioning || !!actionLoading}
                 >
                   {isActioning ? '처리중...' : '작업 완료'}
                 </button>
                 <button
                   className="station-view__action-btn station-view__action-btn--issue"
                   onClick={() => openIssueModal(item)}
+                  disabled={!!actionLoading}
                 >
                   이슈
                 </button>
                 <button
                   className="station-view__action-btn station-view__action-btn--photo"
-                  onClick={() => setPhotoModal(item)}
+                  onClick={() => { closeAllModals(); setPhotoModal(item); }}
+                  disabled={!!actionLoading}
                 >
                   사진
                 </button>
