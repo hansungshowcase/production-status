@@ -1943,3 +1943,137 @@
   color: #0ea5e9;
   flex-shrink: 0;
 }
+
+/* ── Transition Banner (공정 완료 전환 애니메이션) ── */
+.sv-transition-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #075985 0%, #0369a1 50%, #0ea5e9 100%);
+  color: #ffffff;
+  padding: 20px 16px 28px;
+  z-index: 2000;
+  animation: sv-banner-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+@keyframes sv-banner-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sv-transition-banner__client {
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 4px;
+  letter-spacing: -0.3px;
+}
+
+.sv-transition-banner__message {
+  font-size: 13px;
+  text-align: center;
+  opacity: 0.8;
+  margin-bottom: 16px;
+}
+
+.sv-transition-banner__flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.sv-transition-banner__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 72px;
+}
+
+.sv-transition-banner__step-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.sv-transition-banner__step-name {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sv-transition-banner__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 700;
+  animation: sv-check-pop 0.3s ease 0.3s both;
+}
+
+@keyframes sv-check-pop {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.sv-transition-banner__step--from {
+  opacity: 0.7;
+}
+
+.sv-transition-banner__step--to {
+  animation: sv-step-glow 0.5s ease 0.6s both;
+}
+
+@keyframes sv-step-glow {
+  from { opacity: 0.5; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.sv-transition-banner__arrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sv-transition-banner__arrow-track {
+  width: 48px;
+  height: 3px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.sv-transition-banner__arrow-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 100%;
+  background: #ffffff;
+  border-radius: 2px;
+  animation: sv-arrow-move 0.8s ease-in-out 0.2s infinite;
+}
+
+@keyframes sv-arrow-move {
+  0% { left: -16px; }
+  100% { left: 48px; }
+}
+
+.sv-transition-banner__arrow-head {
+  font-size: 16px;
+  opacity: 0.9;
+  animation: sv-arrow-pulse 0.8s ease-in-out 0.2s infinite;
+}
+
+@keyframes sv-arrow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
