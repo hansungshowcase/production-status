@@ -1,55 +1,36 @@
-import { createPool } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 
-let pool = null;
-
-function getPool() {
-  if (!pool) {
-    pool = createPool({
-      connectionString: process.env.POSTGRES_URL,
-    });
-  }
-  return pool;
-}
-
-// Convert ? placeholders to $1, $2, ... for PostgreSQL
 function convertPlaceholders(sql) {
   let idx = 0;
   return sql.replace(/\?/g, () => `$${++idx}`);
 }
 
 export function getDb() {
-  const p = getPool();
+  const sql = neon(process.env.POSTGRES_URL);
+
   return {
-    async execute({ sql, args = [] }) {
-      const pgSql = convertPlaceholders(sql);
-      const result = await p.query(pgSql, args);
+    async execute({ sql: query, args = [] }) {
+      const pgSql = convertPlaceholders(query);
+      const rows = await sql.query(pgSql, args);
       return {
-        rows: result.rows,
-        rowsAffected: result.rowCount,
-        lastInsertRowid: result.rows?.[0]?.id ?? null,
+        rows,
+        rowsAffected: rows.length,
+        lastInsertRowid: rows?.[0]?.id ?? null,
       };
     },
     async transaction(mode) {
-      const client = await p.connect();
-      await client.query('BEGIN');
       return {
-        async execute({ sql, args = [] }) {
-          const pgSql = convertPlaceholders(sql);
-          const result = await client.query(pgSql, args);
+        async execute({ sql: query, args = [] }) {
+          const pgSql = convertPlaceholders(query);
+          const rows = await sql.query(pgSql, args);
           return {
-            rows: result.rows,
-            rowsAffected: result.rowCount,
-            lastInsertRowid: result.rows?.[0]?.id ?? null,
+            rows,
+            rowsAffected: rows.length,
+            lastInsertRowid: rows?.[0]?.id ?? null,
           };
         },
-        async commit() {
-          await client.query('COMMIT');
-          client.release();
-        },
-        async rollback() {
-          try { await client.query('ROLLBACK'); } catch {}
-          client.release();
-        },
+        async commit() {},
+        async rollback() {},
       };
     },
   };

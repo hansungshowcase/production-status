@@ -1,9 +1,7 @@
-import { createPool } from '@vercel/postgres';
+import { neon } from '@neondatabase/serverless';
 
 async function migrate() {
-  const pool = createPool({
-    connectionString: process.env.POSTGRES_URL,
-  });
+  const sql = neon(process.env.POSTGRES_URL);
 
   const statements = [
     `CREATE TABLE IF NOT EXISTS orders (
@@ -93,13 +91,12 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date)`,
   ];
 
-  for (const sql of statements) {
-    await pool.query(sql);
-    console.log('OK:', sql.slice(0, 60) + '...');
+  for (const stmt of statements) {
+    await sql.query(stmt);
+    console.log('OK:', stmt.slice(0, 60) + '...');
   }
 
   console.log('Migration complete!');
-  await pool.end();
 }
 
 migrate().catch(err => {
