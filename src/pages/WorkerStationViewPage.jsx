@@ -616,6 +616,148 @@ export default function WorkerStationViewPage() {
                 </button>
               </div>
 
+              {/* ── Inline: Confirm Panel ── */}
+              {confirmTarget && confirmTarget.processId === item.process_id && (
+                <div className="sv-inline-panel" onClick={(e) => e.stopPropagation()}>
+                  <div className="sv-inline-panel__header">
+                    <span>✅</span>
+                    <strong>{confirmTarget.clientName}</strong>
+                    <span className="sv-inline-panel__sub">
+                      {isLastStep ? '이 공정을 완료하시겠습니까?' : '다음 공정으로 넘기겠습니까?'}
+                    </span>
+                  </div>
+                  {!isLastStep && nextSteps.length > 0 && (
+                    <div className="sv-inline-panel__next-steps">
+                      {nextSteps.map((step, idx) => (
+                        <button
+                          key={step}
+                          className={`sv-inline-panel__next-btn${idx === 0 ? ' sv-inline-panel__next-btn--primary' : ''}`}
+                          onClick={() => executeComplete(step)}
+                        >
+                          {STEP_ICONS[step] || ''} {step}
+                          {idx > 0 && <span className="sv-inline-panel__skip-hint">건너뛰기</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="sv-inline-panel__actions">
+                    {isLastStep && (
+                      <button className="sv-inline-panel__btn sv-inline-panel__btn--ok" onClick={() => executeComplete(null)}>완료</button>
+                    )}
+                    <button className="sv-inline-panel__btn sv-inline-panel__btn--cancel" onClick={() => setConfirmTarget(null)}>취소</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Inline: Issue Panel ── */}
+              {issueModal && issueModal.item.process_id === item.process_id && (
+                <div className="sv-inline-panel" onClick={(e) => e.stopPropagation()}>
+                  {issueModal.step === 'select' && (
+                    <>
+                      <div className="sv-inline-panel__header">
+                        <span>⚠️</span>
+                        <strong>이슈 유형 선택</strong>
+                        <span className="sv-inline-panel__sub">{issueModal.item.client_name} · {decodedStep}</span>
+                      </div>
+                      <div className="sv-inline-panel__issue-grid">
+                        {ISSUE_TYPES.map(t => (
+                          <button
+                            key={t.value}
+                            className="sv-inline-panel__issue-type-btn"
+                            onClick={() => selectIssueType(t.value)}
+                            style={{ borderColor: `${t.color}30`, background: `${t.color}08` }}
+                          >
+                            <span style={{ fontSize: 22 }}>{t.icon}</span>
+                            <span style={{ color: t.color, fontWeight: 600, fontSize: 13 }}>{t.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="sv-inline-panel__actions">
+                        <button className="sv-inline-panel__btn sv-inline-panel__btn--cancel" onClick={() => setIssueModal(null)}>취소</button>
+                      </div>
+                    </>
+                  )}
+                  {issueModal.step === 'confirm' && (
+                    <>
+                      <div className="sv-inline-panel__header">
+                        <span>⚠️</span>
+                        <strong>{ISSUE_TYPES.find(t => t.value === issueModal.issueType)?.label}</strong>
+                        <span className="sv-inline-panel__sub">{issueModal.item.client_name} · {decodedStep}</span>
+                      </div>
+                      <textarea
+                        className="sv-inline-panel__textarea"
+                        placeholder="상세 내용을 입력하세요 (선택)"
+                        value={issueDesc}
+                        onChange={e => setIssueDesc(e.target.value)}
+                        rows={3}
+                      />
+                      <div className="sv-inline-panel__actions">
+                        <button className="sv-inline-panel__btn sv-inline-panel__btn--cancel" onClick={() => setIssueModal(prev => ({ ...prev, step: 'select' }))} disabled={issueLoading}>뒤로</button>
+                        <button className="sv-inline-panel__btn sv-inline-panel__btn--ok" onClick={submitIssue} disabled={issueLoading}>
+                          {issueLoading ? '보고중...' : '이슈 보고'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {issueModal.step === 'sms' && (
+                    <>
+                      <div className="sv-inline-panel__header">
+                        <span>✅</span>
+                        <strong>이슈 보고 완료</strong>
+                        <span className="sv-inline-panel__sub">담당자에게 문자를 보내세요</span>
+                      </div>
+                      <div className="sv-inline-panel__sms-preview">
+                        <strong>{issueModal.item.client_name}</strong> · {decodedStep}<br />
+                        이슈: {issueModal.issueType}
+                        {issueDesc && <><br />내용: {issueDesc}</>}
+                      </div>
+                      <div className="sv-inline-panel__contacts">
+                        {CONTACTS.map(c => (
+                          <button key={c.name} className="sv-inline-panel__contact-btn" onClick={() => sendIssueSms(c.phone, issueModal.item, issueModal.issueType)}>
+                            <div className="sv-inline-panel__contact-avatar" style={{ background: '#0ea5e9' }}>{c.name.charAt(0)}</div>
+                            <div className="sv-inline-panel__contact-info">
+                              <div className="sv-inline-panel__contact-name">{c.name} ({c.role})</div>
+                              <div className="sv-inline-panel__contact-phone">{c.phone}</div>
+                            </div>
+                            <span className="sv-inline-panel__contact-action">📩 문자</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="sv-inline-panel__actions">
+                        <button className="sv-inline-panel__btn sv-inline-panel__btn--cancel" onClick={() => setIssueModal(null)}>닫기</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── Inline: Photo Panel ── */}
+              {photoModal && photoModal.process_id === item.process_id && (
+                <div className="sv-inline-panel" onClick={(e) => e.stopPropagation()}>
+                  <div className="sv-inline-panel__header">
+                    <span>📷</span>
+                    <strong>사진 전송</strong>
+                    <span className="sv-inline-panel__sub">{photoModal.client_name} · {decodedStep}</span>
+                  </div>
+                  <div className="sv-inline-panel__sms-preview">담당자에게 작업 사진을 문자로 보내세요</div>
+                  <div className="sv-inline-panel__contacts">
+                    {CONTACTS.map(c => (
+                      <button key={c.name} className="sv-inline-panel__contact-btn" onClick={() => sendPhotoSms(c.phone, photoModal)}>
+                        <div className="sv-inline-panel__contact-avatar" style={{ background: '#059669' }}>{c.name.charAt(0)}</div>
+                        <div className="sv-inline-panel__contact-info">
+                          <div className="sv-inline-panel__contact-name">{c.name} ({c.role})</div>
+                          <div className="sv-inline-panel__contact-phone">{c.phone}</div>
+                        </div>
+                        <span className="sv-inline-panel__contact-action">📩 문자</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="sv-inline-panel__actions">
+                    <button className="sv-inline-panel__btn sv-inline-panel__btn--cancel" onClick={() => setPhotoModal(null)}>닫기</button>
+                  </div>
+                </div>
+              )}
+
               {/* Expand hint */}
               <div className="station-view__expand-hint">
                 {isExpanded ? '접기 ▲' : '상세보기 ▼'}
@@ -624,47 +766,6 @@ export default function WorkerStationViewPage() {
           );
         })}
       </div>
-
-      {/* Confirm Modal */}
-      {confirmTarget && (
-        <div className="sv-confirm-overlay" onClick={() => setConfirmTarget(null)}>
-          <div className="sv-confirm" onClick={(e) => e.stopPropagation()}>
-            <div className="sv-confirm__icon">✅</div>
-            <div className="sv-confirm__title">
-              {confirmTarget.clientName}
-            </div>
-            <div className="sv-confirm__detail">
-              {isLastStep
-                ? '이 공정을 완료하시겠습니까?'
-                : '다음 공정으로 넘기겠습니까?'}
-            </div>
-            {!isLastStep && nextSteps.length > 0 && (
-              <div className="sv-confirm__next-steps">
-                {nextSteps.map((step, idx) => (
-                  <button
-                    key={step}
-                    className={`sv-confirm__next-btn${idx === 0 ? ' sv-confirm__next-btn--primary' : ''}`}
-                    onClick={() => executeComplete(step)}
-                  >
-                    {STEP_ICONS[step] || ''} {step}
-                    {idx > 0 && <span className="sv-confirm__skip-hint">건너뛰기</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="sv-confirm__actions">
-              {isLastStep && (
-                <button className="sv-confirm__btn sv-confirm__btn--ok" onClick={() => executeComplete(null)}>
-                  완료
-                </button>
-              )}
-              <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => setConfirmTarget(null)}>
-                취소
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 공정 완료 전환 애니메이션 */}
       {toast && toast.type === 'transition' && (
@@ -704,146 +805,6 @@ export default function WorkerStationViewPage() {
           </div>
         </div>
       )}
-      {/* 전환 애니메이션 제거 - 토스트로 대체 */}
-
-      {/* ── Issue Modal ── */}
-      {issueModal && (
-        <div className="sv-confirm-overlay" onClick={() => !issueLoading && setIssueModal(null)}>
-          <div className="sv-confirm" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
-            {issueModal.step === 'select' && (
-              <>
-                <div className="sv-confirm__icon">⚠️</div>
-                <div className="sv-confirm__title">이슈 유형 선택</div>
-                <div className="sv-confirm__detail">{issueModal.item.client_name} · {decodedStep}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '16px 0' }}>
-                  {ISSUE_TYPES.map(t => (
-                    <button
-                      key={t.value}
-                      onClick={() => selectIssueType(t.value)}
-                      style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        padding: '14px 8px', border: `2px solid ${t.color}20`, borderRadius: 12,
-                        background: `${t.color}08`, cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, fontWeight: 600,
-                      }}
-                    >
-                      <span style={{ fontSize: 24 }}>{t.icon}</span>
-                      <span style={{ color: t.color }}>{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="sv-confirm__actions">
-                  <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => setIssueModal(null)}>취소</button>
-                </div>
-              </>
-            )}
-            {issueModal.step === 'confirm' && (
-              <>
-                <div className="sv-confirm__icon">⚠️</div>
-                <div className="sv-confirm__title">{ISSUE_TYPES.find(t => t.value === issueModal.issueType)?.label}</div>
-                <div className="sv-confirm__detail">{issueModal.item.client_name} · {decodedStep}</div>
-                <textarea
-                  placeholder="상세 내용을 입력하세요 (선택)"
-                  value={issueDesc}
-                  onChange={e => setIssueDesc(e.target.value)}
-                  rows={3}
-                  style={{
-                    width: '100%', padding: 12, border: '1.5px solid #e2e8f0', borderRadius: 10,
-                    fontFamily: 'inherit', fontSize: 14, resize: 'vertical', margin: '12px 0',
-                    boxSizing: 'border-box',
-                  }}
-                />
-                <div className="sv-confirm__actions">
-                  <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => setIssueModal(prev => ({ ...prev, step: 'select' }))} disabled={issueLoading}>뒤로</button>
-                  <button className="sv-confirm__btn sv-confirm__btn--ok" onClick={submitIssue} disabled={issueLoading}>
-                    {issueLoading ? '보고중...' : '이슈 보고'}
-                  </button>
-                </div>
-              </>
-            )}
-            {issueModal.step === 'sms' && (
-              <>
-                <div className="sv-confirm__icon">✅</div>
-                <div className="sv-confirm__title">이슈 보고 완료</div>
-                <div className="sv-confirm__detail">담당자에게 문자를 보내세요</div>
-                <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, margin: '12px 0', fontSize: 13, color: '#334155', lineHeight: 1.5 }}>
-                  <strong>{issueModal.item.client_name}</strong> · {decodedStep}<br />
-                  이슈: {issueModal.issueType}
-                  {issueDesc && <><br />내용: {issueDesc}</>}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {CONTACTS.map(c => (
-                    <button
-                      key={c.name}
-                      onClick={() => sendIssueSms(c.phone, issueModal.item, issueModal.issueType)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-                        border: '1.5px solid #e2e8f0', borderRadius: 12, background: '#fff',
-                        cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left',
-                      }}
-                    >
-                      <div style={{
-                        width: 38, height: 38, borderRadius: 10, background: '#0ea5e9',
-                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontWeight: 800, fontSize: 15, flexShrink: 0,
-                      }}>{c.name.charAt(0)}</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name} ({c.role})</div>
-                        <div style={{ fontSize: 12, color: '#94a3b8' }}>{c.phone}</div>
-                      </div>
-                      <span style={{ fontSize: 13, color: '#0ea5e9', fontWeight: 700 }}>📩 문자</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="sv-confirm__actions" style={{ marginTop: 12 }}>
-                  <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => setIssueModal(null)}>닫기</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Photo Modal ── */}
-      {photoModal && (
-        <div className="sv-confirm-overlay" onClick={() => setPhotoModal(null)}>
-          <div className="sv-confirm" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
-            <div className="sv-confirm__icon">📷</div>
-            <div className="sv-confirm__title">사진 전송</div>
-            <div className="sv-confirm__detail">{photoModal.client_name} · {decodedStep}</div>
-            <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, margin: '12px 0', fontSize: 13, color: '#334155' }}>
-              담당자에게 작업 사진을 문자로 보내세요
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {CONTACTS.map(c => (
-                <button
-                  key={c.name}
-                  onClick={() => sendPhotoSms(c.phone, photoModal)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-                    border: '1.5px solid #e2e8f0', borderRadius: 12, background: '#fff',
-                    cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left',
-                  }}
-                >
-                  <div style={{
-                    width: 38, height: 38, borderRadius: 10, background: '#059669',
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 800, fontSize: 15, flexShrink: 0,
-                  }}>{c.name.charAt(0)}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{c.name} ({c.role})</div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{c.phone}</div>
-                  </div>
-                  <span style={{ fontSize: 13, color: '#059669', fontWeight: 700 }}>📩 문자</span>
-                </button>
-              ))}
-            </div>
-            <div className="sv-confirm__actions" style={{ marginTop: 12 }}>
-              <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => setPhotoModal(null)}>닫기</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Issue List Modal (상단 이슈 알림 클릭) ── */}
       {issueListModal && (
         <div className="sv-confirm-overlay" onClick={() => { setIssueListModal(null); setIssueAcknowledged(true); }}>

@@ -1729,3 +1729,217 @@
   padding: 12px 16px 16px;
   border-top: 1px solid #f1f5f9;
 }
+
+/* ── Inline Panel (카드 내부 팝업) ── */
+.sv-inline-panel {
+  margin-top: 12px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+  animation: sv-inline-expand 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes sv-inline-expand {
+  from { opacity: 0; max-height: 0; transform: scaleY(0.8); transform-origin: top; }
+  to { opacity: 1; max-height: 600px; transform: scaleY(1); transform-origin: top; }
+}
+
+.sv-inline-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+
+.sv-inline-panel__header strong {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.sv-inline-panel__sub {
+  font-size: 13px;
+  color: #64748b;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.sv-inline-panel__next-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sv-inline-panel__next-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 44px;
+}
+
+.sv-inline-panel__next-btn--primary {
+  background: #0ea5e9;
+  color: #fff;
+  border-color: #0ea5e9;
+}
+
+.sv-inline-panel__next-btn:active {
+  transform: scale(0.97);
+}
+
+.sv-inline-panel__skip-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: auto;
+}
+
+.sv-inline-panel__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.sv-inline-panel__btn {
+  flex: 1;
+  padding: 11px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sv-inline-panel__btn:active {
+  transform: scale(0.96);
+}
+
+.sv-inline-panel__btn--ok {
+  background: #0ea5e9;
+  color: #fff;
+}
+
+.sv-inline-panel__btn--cancel {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.sv-inline-panel__issue-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sv-inline-panel__issue-type-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border: 2px solid;
+  border-radius: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
+}
+
+.sv-inline-panel__issue-type-btn:active {
+  transform: scale(0.95);
+}
+
+.sv-inline-panel__textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.sv-inline-panel__sms-preview {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+  border: 1px solid #e2e8f0;
+}
+
+.sv-inline-panel__contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sv-inline-panel__contact-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+}
+
+.sv-inline-panel__contact-btn:active {
+  transform: scale(0.97);
+}
+
+.sv-inline-panel__contact-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.sv-inline-panel__contact-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sv-inline-panel__contact-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.sv-inline-panel__contact-phone {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.sv-inline-panel__contact-action {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0ea5e9;
+  flex-shrink: 0;
+}
