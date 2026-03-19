@@ -619,11 +619,48 @@ export default function WorkerStationViewPage() {
               {/* ── Popup: Confirm ── */}
               {confirmTarget && confirmTarget.processId === item.process_id && (
                 <div className="sv-card-popup" onClick={(e) => e.stopPropagation()}>
-                  <div className="sv-card-popup__icon">✅</div>
                   <div className="sv-card-popup__title">{confirmTarget.clientName}</div>
-                  <div className="sv-card-popup__desc">
-                    {isLastStep ? '이 공정을 완료하시겠습니까?' : '다음 공정으로 넘기겠습니까?'}
-                  </div>
+                  {isLastStep ? (
+                    <>
+                      <div className="sv-card-popup__desc">최종 공정을 완료하시겠습니까?</div>
+                      <div className="sv-card-popup__flow">
+                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
+                          <span className="sv-card-popup__flow-icon">{icon}</span>
+                          <span className="sv-card-popup__flow-name">{decodedStep}</span>
+                        </div>
+                        <div className="sv-card-popup__flow-arrow">
+                          <div className="sv-card-popup__flow-arrow-track">
+                            <div className="sv-card-popup__flow-arrow-dot" />
+                          </div>
+                          <span className="sv-card-popup__flow-arrow-head">▶</span>
+                        </div>
+                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--done">
+                          <span className="sv-card-popup__flow-icon">🏁</span>
+                          <span className="sv-card-popup__flow-name">완료</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="sv-card-popup__desc">다음 공정으로 넘기겠습니까?</div>
+                      <div className="sv-card-popup__flow">
+                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
+                          <span className="sv-card-popup__flow-icon">{icon}</span>
+                          <span className="sv-card-popup__flow-name">{decodedStep}</span>
+                        </div>
+                        <div className="sv-card-popup__flow-arrow">
+                          <div className="sv-card-popup__flow-arrow-track">
+                            <div className="sv-card-popup__flow-arrow-dot" />
+                          </div>
+                          <span className="sv-card-popup__flow-arrow-head">▶</span>
+                        </div>
+                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--to">
+                          <span className="sv-card-popup__flow-icon">{STEP_ICONS[nextSteps[0]] || ''}</span>
+                          <span className="sv-card-popup__flow-name">{nextSteps[0]}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                   {!isLastStep && nextSteps.length > 0 && (
                     <div className="sv-card-popup__next-steps">
                       {nextSteps.map((step, idx) => (
