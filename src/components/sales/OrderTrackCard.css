@@ -1,0 +1,337 @@
+.order-track-card {
+  margin: 0 20px 14px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.otc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.otc-order {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.otc-product {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.otc-client {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.otc-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.otc-spec {
+  font-size: 11px;
+  color: var(--text-mid);
+  background: var(--surface2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.otc-due {
+  text-align: right;
+}
+
+.otc-due-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.otc-due-date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.otc-due-date.urgent {
+  color: var(--red);
+}
+
+.otc-due-date.normal {
+  color: var(--text);
+}
+
+.photo-attached {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--purple-light);
+  color: var(--purple);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.order-alert {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--red-light);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--red);
+  font-weight: 600;
+}
+
+.last-updated {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.updated-by {
+  background: var(--surface2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* Responsive grid */
+.order-grid {
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .order-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    padding: 0 20px;
+  }
+
+  .order-track-card {
+    margin: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .order-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+}
+
+/* Desktop-only hover */
+@media (hover: hover) {
+  .order-track-card:hover {
+    box-shadow: 0 4px 12px rgba(15,23,42,0.1);
+  }
+}
+
+/* Mobile */
+@media (max-width: 767px) {
+  .order-track-card {
+    margin: 0 8px 10px;
+    padding: 14px 12px;
+  }
+
+  .otc-product {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 55vw;
+  }
+
+  .otc-client {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 50vw;
+  }
+
+  .otc-order {
+    font-size: 12px;
+  }
+
+  .otc-spec {
+    font-size: 10px;
+  }
+
+  .otc-action-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .otc-due-date {
+    font-size: 13px;
+  }
+
+  .otc-header {
+    gap: 8px;
+  }
+
+  .otc-details {
+    padding: 8px 10px;
+  }
+
+  .otc-detail-row {
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .otc-detail-value {
+    max-width: 55vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .otc-current-step {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .photo-attached {
+    font-size: 10px;
+  }
+}
+
+/* Touch active state */
+.order-track-card:active {
+  transform: scale(0.98);
+  transition: transform 0.15s ease;
+}
+
+.order-track-card.otc-expanded {
+  border: 2px solid var(--blue);
+  box-shadow: var(--shadow), 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.otc-expand-icon {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--text-dim);
+  transition: transform 0.3s ease;
+}
+
+.otc-expand-icon.otc-expanded {
+  transform: rotate(180deg);
+}
+
+/* Action buttons */
+.otc-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.otc-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.otc-action-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.otc-edit-btn {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.otc-edit-btn:active {
+  background: var(--blue);
+  color: white;
+}
+
+.otc-delete-btn {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.otc-delete-btn:active {
+  background: var(--red);
+  color: white;
+}
+
+/* Detail rows */
+.otc-details {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.otc-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 12px;
+}
+
+.otc-detail-label {
+  color: var(--text-dim);
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.otc-detail-value {
+  color: var(--text);
+  text-align: right;
+  word-break: break-all;
+}
+
+/* Current step indicator */
+.otc-current-step {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.otc-step-progress {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.otc-step-waiting {
+  background: var(--surface2);
+  color: var(--text-mid);
+}
+
+.otc-step-done {
+  background: var(--green-light);
+  color: var(--green);
+}

@@ -1,0 +1,664 @@
+/* ============================================
+   SalesPage - Production Status Dashboard
+   Full-width dashboard layout for PC
+   ============================================ */
+
+/* Override global container constraints for dashboard */
+.sales-dashboard-page .app-content,
+.sales-dashboard-page.app-content {
+  max-width: 100%;
+  padding: 8px 0;
+}
+
+/* ── 2-column layout: 주문(좌) + 피드(우) ── */
+.sales-layout {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0;
+}
+
+.sales-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.sales-sidebar {
+  flex-shrink: 0;
+}
+
+/* 태블릿: 피드를 우측으로 */
+@media (min-width: 768px) {
+  .sales-layout {
+    flex-direction: row;
+    gap: 12px;
+    padding: 0 12px;
+  }
+
+  .sales-sidebar {
+    width: 300px;
+    order: 2;
+  }
+
+  .sales-main {
+    order: 1;
+  }
+}
+
+/* 데스크톱: 사이드바 넓게 */
+@media (min-width: 1024px) {
+  .sales-layout {
+    gap: 16px;
+    padding: 0 16px;
+  }
+
+  .sales-sidebar {
+    width: 340px;
+  }
+}
+
+/* 와이드 데스크톱 */
+@media (min-width: 1440px) {
+  .sales-layout {
+    gap: 20px;
+    padding: 0 24px;
+  }
+
+  .sales-sidebar {
+    width: 380px;
+  }
+}
+
+/* === Summary Stats Bar === */
+.dashboard-stats {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stat-card {
+  flex: 1;
+  min-width: 100px;
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  text-align: center;
+  cursor: default;
+}
+
+.stat-card-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.stat-card-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text);
+}
+
+.stat-card-value.blue { color: var(--blue); }
+.stat-card-value.green { color: var(--green); }
+.stat-card-value.orange { color: var(--orange); }
+.stat-card-value.red { color: var(--red); }
+
+.stat-card.highlight-orange {
+  border: 1.5px solid var(--orange);
+  background: var(--orange-light);
+}
+
+.stat-card.highlight-red {
+  border: 1.5px solid var(--red);
+  background: var(--red-light);
+}
+
+/* === Process Pipeline Overview === */
+.pipeline-overview {
+  margin: 0 16px 12px;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+
+.pipeline-overview-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.pipeline-steps-row {
+  display: flex;
+  gap: 4px;
+}
+
+.pipeline-step-cell {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+
+.pipeline-step-bar {
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: white;
+  background: var(--blue);
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.pipeline-step-bar.has-orders {
+  opacity: 1;
+}
+
+.pipeline-step-bar.step-0 { background: #6366f1; }
+.pipeline-step-bar.step-1 { background: #2563eb; }
+.pipeline-step-bar.step-2 { background: #0891b2; }
+.pipeline-step-bar.step-3 { background: #059669; }
+.pipeline-step-bar.step-4 { background: #d97706; }
+.pipeline-step-bar.step-5 { background: #ea580c; }
+.pipeline-step-bar.step-6 { background: #dc2626; }
+.pipeline-step-bar.step-7 { background: #16a34a; }
+
+.pipeline-step-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* === Orders Table === */
+.orders-table-wrap {
+  margin: 0 16px 16px;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.orders-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.orders-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.orders-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface2);
+  padding: 10px 10px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  white-space: nowrap;
+  border-bottom: 1.5px solid var(--border);
+  user-select: none;
+}
+
+.orders-table thead th:first-child {
+  padding-left: 14px;
+  width: 36px;
+  text-align: center;
+}
+
+.orders-table tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.orders-table tbody tr:nth-child(even) {
+  background: rgba(0,0,0, 0.015);
+}
+
+.orders-table tbody tr:hover {
+  background: var(--blue-light);
+}
+
+.orders-table tbody tr.row-overdue {
+  background: var(--red-light);
+}
+
+.orders-table tbody tr.row-overdue:hover {
+  background: #fee2e2;
+}
+
+.orders-table tbody tr.row-due-soon {
+  background: var(--orange-light);
+}
+
+.orders-table tbody tr.row-shipped {
+  opacity: 0.65;
+}
+
+.orders-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.orders-table tbody td:first-child {
+  padding-left: 14px;
+  text-align: center;
+}
+
+/* Status dot */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.status-dot.dot-shipped { background: var(--green); }
+.status-dot.dot-in-progress { background: var(--blue); }
+.status-dot.dot-overdue { background: var(--red); animation: pulse-dot 1.5s infinite; }
+.status-dot.dot-due-soon { background: var(--orange); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Mini progress bar in table */
+.mini-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini-progress-bar {
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--blue);
+  transition: width 0.3s ease;
+}
+
+.mini-progress-fill.complete {
+  background: var(--green);
+}
+
+.mini-progress-text {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+  min-width: 30px;
+}
+
+/* Table action buttons */
+.tbl-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.tbl-action-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.tbl-edit-btn {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.tbl-edit-btn:hover {
+  background: var(--blue);
+  color: white;
+}
+
+.tbl-delete-btn {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.tbl-delete-btn:hover {
+  background: var(--red);
+  color: white;
+}
+
+/* Expanded row detail */
+.expanded-detail {
+  background: var(--surface2) !important;
+}
+
+.expanded-detail td {
+  padding: 0 !important;
+  border-bottom: 2px solid var(--blue) !important;
+}
+
+.expanded-inner {
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 24px;
+}
+
+.expanded-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  grid-column: 1 / -1;
+}
+
+.expanded-field {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.expanded-field-label {
+  color: var(--text-dim);
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.expanded-field-value {
+  color: var(--text);
+}
+
+.expanded-processes {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.expanded-process-chip {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.expanded-process-chip.proc-completed {
+  background: var(--green-light);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.expanded-process-chip.proc-in-progress {
+  background: var(--blue-light);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+.expanded-notes {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--text-mid);
+  background: var(--surface);
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+/* === Section header with add button === */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px 8px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.section-header__add-btn {
+  background: linear-gradient(135deg, #2563eb, #0891b2);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.section-header__add-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+.section-header__add-btn:active {
+  transform: scale(0.97);
+}
+
+/* === Dashboard section header === */
+.dashboard-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px 6px;
+}
+
+.dashboard-section-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.dashboard-order-count {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Filter bar inside dashboard */
+.dashboard-filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+
+/* === Mobile responsive === */
+@media (max-width: 767px) {
+  .dashboard-stats {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .stat-card {
+    min-width: 80px;
+    padding: 10px 8px;
+  }
+
+  .stat-card-value {
+    font-size: 18px;
+  }
+
+  .pipeline-overview {
+    margin: 0 12px 10px;
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .pipeline-steps-row {
+    min-width: 480px;
+  }
+
+  .orders-table-wrap {
+    margin: 0 12px 12px;
+  }
+
+  .expanded-inner {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* === Desktop full-width dashboard === */
+@media (min-width: 768px) {
+  /* Stats cards spread across full width */
+  .dashboard-stats {
+    padding: 16px 16px;
+    gap: 12px;
+    flex-wrap: nowrap;
+  }
+
+  .stat-card {
+    flex: 1;
+    min-width: 0;
+    padding: 14px 16px;
+  }
+
+  .stat-card-value {
+    font-size: 24px;
+  }
+
+  /* Pipeline fills full width with minimal margins */
+  .pipeline-overview {
+    margin: 0 8px 12px;
+    border-radius: 10px;
+  }
+
+  /* Table fills entire screen width */
+  .orders-table-wrap {
+    margin: 0 8px 16px;
+    border-radius: 10px;
+  }
+
+  .orders-table {
+    font-size: 13px;
+    min-width: unset;
+    width: 100%;
+  }
+
+  /* Section headers minimal padding */
+  .dashboard-section-header {
+    padding: 8px 12px 6px;
+  }
+
+  .dashboard-filter-bar {
+    padding: 0 12px 10px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard-stats {
+    padding: 16px 16px;
+    gap: 14px;
+  }
+
+  .stat-card {
+    padding: 16px 20px;
+  }
+
+  .stat-card-value {
+    font-size: 28px;
+  }
+
+  .pipeline-overview {
+    margin: 0 8px 16px;
+  }
+
+  .orders-table-wrap {
+    margin: 0 8px 20px;
+  }
+
+  .orders-table {
+    font-size: 14px;
+    min-width: unset;
+  }
+
+  .expanded-inner {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px 32px;
+  }
+}
+
+/* Wide desktop: even more spread */
+@media (min-width: 1440px) {
+  .stat-card {
+    padding: 18px 24px;
+  }
+
+  .stat-card-value {
+    font-size: 32px;
+  }
+
+  .orders-table {
+    font-size: 14px;
+  }
+
+  .expanded-inner {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px 40px;
+  }
+}
+
+/* Due date column styling */
+.due-date-cell {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.due-date-cell.overdue {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.due-date-cell.due-soon {
+  color: var(--orange);
+  font-weight: 600;
+}
+
+.due-date-cell.shipped {
+  color: var(--green);
+}
+
+/* Empty state within table */
+.table-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-dim);
+  font-size: 14px;
+}

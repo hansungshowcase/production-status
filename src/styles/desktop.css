@@ -1,0 +1,146 @@
+/* =============================================
+   Desktop Overrides - PC 전체화면 레이아웃
+   Premium White+Blue Design
+   ============================================= */
+
+/* Base resets for full-screen layout */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Remove phone-frame / mockup styling if present */
+.phone-mockup,
+.phone-frame,
+.device-frame,
+.mobile-frame {
+  all: unset;
+  display: contents;
+}
+
+/* App container: full screen, no constraints */
+.app-container {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 !important;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* App content area */
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Headers: full width */
+.app-header {
+  width: 100%;
+  border-radius: 0;
+}
+
+/* =============================================
+   Desktop-specific enhancements (1024px+)
+   ============================================= */
+@media (min-width: 1024px) {
+  .app-content {
+    padding: 0 24px 24px;
+  }
+
+  /* Section headers get more breathing room */
+  .section-header {
+    padding: 28px 32px 16px;
+  }
+
+  .app-header {
+    padding: 18px 32px 16px;
+  }
+
+  /* Multi-column grid for card lists */
+  .order-list,
+  .task-list,
+  .feed-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    padding: 0 32px;
+  }
+
+  /* Stats row can spread out */
+  .stats-row,
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    padding: 0 32px;
+  }
+
+  /* Pipeline visualization gets more space */
+  .pipeline-container,
+  .process-steps {
+    padding: 0 32px;
+  }
+}
+
+/* =============================================
+   Wide desktop (1440px+)
+   ============================================= */
+@media (min-width: 1440px) {
+  .order-list,
+  .task-list,
+  .feed-list {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    padding: 0 48px;
+  }
+
+  .stats-row,
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    padding: 0 48px;
+  }
+
+  .section-header {
+    padding: 32px 48px 16px;
+  }
+
+  .app-header {
+    padding: 18px 48px 16px;
+  }
+
+  .app-content {
+    padding: 0 24px 32px;
+  }
+
+  .pipeline-container,
+  .process-steps {
+    padding: 0 48px;
+  }
+}
+
+/* Bottom nav: full width, fixed at bottom */
+.bottom-nav,
+.nav-bar,
+.tab-bar {
+  width: 100%;
+  border-radius: 0;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+}

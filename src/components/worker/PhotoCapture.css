@@ -1,0 +1,129 @@
+.photo-capture {
+  display: inline-flex;
+  align-items: center;
+}
+
+.photo-input-hidden {
+  display: none;
+}
+
+.photo-capture-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--purple-light);
+  color: var(--purple);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.photo-capture-btn:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+.photo-btn-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.photo-preview-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.photo-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-clear-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--red);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  min-width: 44px;
+  min-height: 44px;
+  /* visual size is 28px but touch target is 44px via min-width/height */
+}
+
+.photo-uploading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-upload-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: photoSpin 0.7s linear infinite;
+}
+
+@keyframes photoSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .photo-capture-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .photo-preview-wrap {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 767px) {
+  .photo-capture {
+    width: 100%;
+  }
+}
+
+@media (min-width: 768px) {
+  .photo-capture-btn {
+    padding: 10px 18px;
+    font-size: 14px;
+  }
+
+  .photo-preview-wrap {
+    width: 52px;
+    height: 52px;
+  }
+}

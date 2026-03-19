@@ -1,0 +1,25 @@
+.worker-greeting {
+  padding: 20px 20px 16px;
+}
+
+.greeting-text {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.5px;
+  line-height: 1.4;
+}
+
+.greeting-text span {
+  color: var(--blue);
+}
+
+@media (min-width: 1024px) {
+  .worker-greeting {
+    padding: 28px 20px 20px;
+  }
+
+  .greeting-text {
+    font-size: 26px;
+  }
+}

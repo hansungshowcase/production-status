@@ -1,0 +1,167 @@
+.pipeline-detail {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.pd-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-mid);
+  margin-bottom: 12px;
+}
+
+.pd-timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+.pd-step {
+  display: flex;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.pd-step-line-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.pd-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.pd-dot.pd-status-completed {
+  background: var(--green-light);
+}
+
+.pd-dot.pd-status-progress {
+  background: var(--blue-light);
+  animation: pdPulse 2s infinite;
+}
+
+.pd-dot.pd-status-waiting {
+  background: var(--surface2);
+}
+
+.pd-dot-icon {
+  font-size: 12px;
+}
+
+.pd-connector {
+  width: 2px;
+  flex: 1;
+  background: var(--border);
+  min-height: 16px;
+}
+
+.pd-step-content {
+  flex: 1;
+  padding-bottom: 12px;
+}
+
+.pd-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.pd-step-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pd-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.pd-badge.pd-status-completed {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.pd-badge.pd-status-progress {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.pd-badge.pd-status-waiting {
+  background: var(--surface2);
+  color: var(--text-dim);
+}
+
+.pd-step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pd-worker {
+  font-size: 12px;
+  color: var(--text-mid);
+  font-weight: 500;
+}
+
+.pd-time {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-dim);
+}
+
+@keyframes pdPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0); }
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .pipeline-detail {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .pd-step-name {
+    font-size: 13px;
+  }
+
+  .pd-step {
+    min-height: 48px;
+  }
+}
+
+@media (min-width: 768px) {
+  .pd-step-name {
+    font-size: 15px;
+  }
+
+  .pd-dot {
+    width: 32px;
+    height: 32px;
+  }
+
+  .pd-worker {
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pd-step-meta {
+    gap: 12px;
+  }
+}

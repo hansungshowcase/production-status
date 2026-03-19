@@ -1,0 +1,182 @@
+.tablet-worker-page {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.tablet-worker-left {
+  width: 30%;
+  min-width: 300px;
+  max-width: 420px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.tablet-worker-right {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Auto-refresh indicator */
+.tablet-refresh-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.tablet-refresh-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.tablet-refresh-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-mid);
+  cursor: pointer;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.tablet-refresh-btn:active {
+  transform: scale(0.95);
+}
+
+/* Loading overlay */
+.tablet-loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  font-size: 20px;
+  color: var(--text-mid);
+  z-index: 100;
+}
+
+/* Landscape hint */
+.tablet-landscape-hint {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tablet-landscape-hint-icon {
+  font-size: 48px;
+}
+
+/* ─── Responsive ──────────────────────────────────────── */
+
+/* Mobile (portrait): stack panels vertically, hide right panel
+   behind a navigation paradigm — show only the left (list) panel
+   by default; the right panel overlays when an order is selected. */
+@media (max-width: 767px) {
+  .tablet-worker-page {
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .tablet-worker-left {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    flex-shrink: 0;
+  }
+
+  .tablet-worker-right {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .tablet-refresh-bar {
+    padding: 10px 16px;
+    font-size: 12px;
+  }
+
+  .tablet-refresh-btn {
+    padding: 8px 16px;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .tablet-refresh-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .tablet-landscape-hint-icon {
+    font-size: 40px;
+  }
+}
+
+/* Tablet portrait (768-1023): slightly wider left panel */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .tablet-worker-left {
+    width: 38%;
+    min-width: 280px;
+    max-width: 380px;
+  }
+
+  .tablet-refresh-bar {
+    padding: 10px 18px;
+  }
+
+  .tablet-refresh-btn {
+    padding: 8px 16px;
+    min-height: 44px;
+  }
+}
+
+/* Desktop (1024px+): original side-by-side layout, wider proportions */
+@media (min-width: 1024px) {
+  .tablet-worker-left {
+    width: 32%;
+    min-width: 320px;
+    max-width: 480px;
+  }
+
+  .tablet-refresh-bar {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .tablet-refresh-btn {
+    padding: 8px 18px;
+    font-size: 14px;
+  }
+}
+
+/* Wide (1440px+): constrain left panel max width */
+@media (min-width: 1440px) {
+  .tablet-worker-left {
+    width: 28%;
+    max-width: 520px;
+  }
+}

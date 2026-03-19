@@ -1,0 +1,168 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.modal-overlay.show {
+  opacity: 1;
+}
+
+.modal-box {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 300px;
+  max-width: calc(100vw - 40px);
+  text-align: center;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.25), 0 8px 24px rgba(15, 23, 42, 0.1);
+  animation: modalScaleIn 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes modalScaleIn {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.modal-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.modal-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 13px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.1s cubic-bezier(0.32, 0.72, 0, 1),
+              opacity 0.15s;
+}
+
+.modal-btn:active {
+  transform: scale(0.96);
+}
+
+.modal-btn-cancel {
+  background: var(--surface2);
+  color: var(--text-mid);
+}
+
+.modal-btn-confirm {
+  background: var(--blue);
+  color: white;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.modal-btn-confirm.green {
+  background: var(--green);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.issue-options {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.issue-btn {
+  padding: 12px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  transition: transform 0.1s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.issue-btn:active {
+  transform: scale(0.97);
+}
+
+@media (min-width: 768px) {
+  .modal-box {
+    width: 400px;
+  }
+}
+
+/* Mobile: Bottom sheet style - native iOS-like */
+@media (max-width: 767px) {
+  .modal-overlay {
+    align-items: flex-end;
+    justify-content: stretch;
+  }
+
+  .modal-box {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    max-width: 100%;
+    width: 100%;
+    border-radius: 24px 24px 0 0;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: translateY(100%);
+    animation: sheet-slide-up 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+    padding: 20px 24px calc(20px + env(safe-area-inset-bottom, 16px));
+    box-shadow: 0 -16px 48px rgba(15, 23, 42, 0.15);
+    overscroll-behavior: contain;
+  }
+
+  /* Drag handle - iOS style */
+  .modal-box::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 5px;
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 3px;
+    margin: 4px auto 16px;
+    flex-shrink: 0;
+  }
+
+  .modal-box::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

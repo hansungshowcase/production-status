@@ -1,0 +1,95 @@
+.step-filter-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  scroll-snap-type: x mandatory;
+}
+
+.step-filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.step-filter-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 8px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 2px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+  color: var(--text-mid);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: transform 0.1s ease;
+  white-space: nowrap;
+  scroll-snap-align: start;
+}
+
+.step-filter-btn:active {
+  transform: scale(0.95);
+}
+
+.step-filter-btn--active {
+  background: var(--blue);
+  color: #fff;
+  border-color: var(--blue);
+}
+
+.step-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.12);
+  color: inherit;
+}
+
+.step-filter-btn--active .step-filter-badge {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .step-filter-bar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .step-filter-btn {
+    min-height: 40px;
+    padding: 6px 14px;
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 768px) {
+  .step-filter-bar {
+    padding: 10px 16px;
+    gap: 10px;
+  }
+
+  .step-filter-btn {
+    min-height: 48px;
+    padding: 10px 22px;
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .step-filter-btn {
+    padding: 10px 24px;
+  }
+}

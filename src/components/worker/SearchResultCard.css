@@ -1,0 +1,164 @@
+.search-result-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border-left: 4px solid transparent;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-result-card:active {
+  transform: scale(0.98);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.search-result-card.src-overdue {
+  border-left-color: #dc2626;
+}
+
+.search-result-card.src-due-soon {
+  border-left-color: #d97706;
+}
+
+.src-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.src-client {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.src-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+.src-badge-red {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.src-badge-orange {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.src-spec {
+  font-size: 14px;
+  color: #475569;
+  margin-bottom: 4px;
+}
+
+.src-details {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.src-detail-item {
+  font-size: 12px;
+  color: #94a3b8;
+  background: #f0f4ff;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.src-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.src-status {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.src-status-done {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.src-status-progress {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.src-status-waiting {
+  background: #f0f4ff;
+  color: #94a3b8;
+}
+
+.src-due {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .search-result-card {
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+
+  .src-client {
+    font-size: 14px;
+  }
+
+  .src-spec {
+    font-size: 13px;
+  }
+
+  .src-details {
+    gap: 6px;
+  }
+}
+
+@media (min-width: 768px) {
+  .search-result-card {
+    padding: 16px 20px;
+    border-radius: 14px;
+  }
+
+  .src-client {
+    font-size: 16px;
+  }
+
+  .src-spec {
+    font-size: 15px;
+  }
+
+  .src-status {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .src-details {
+    gap: 12px;
+  }
+
+  .src-detail-item {
+    font-size: 13px;
+  }
+}

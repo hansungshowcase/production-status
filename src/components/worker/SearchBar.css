@@ -1,0 +1,93 @@
+.search-bar {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 2px solid #d0d9e8;
+  border-radius: 12px;
+  padding: 0 12px;
+  height: 48px;
+  transition: border-color 0.2s;
+}
+
+.search-bar:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.search-bar-icon {
+  flex-shrink: 0;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.search-bar-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 16px;
+  font-family: 'Noto Sans KR', sans-serif;
+  background: transparent;
+  color: #0f172a;
+  height: 100%;
+  min-width: 0;
+}
+
+.search-bar-input::placeholder {
+  color: #94a3b8;
+}
+
+.search-bar-clear {
+  flex-shrink: 0;
+  background: #d0d9e8;
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0;
+  margin-left: 8px;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.search-bar-clear:active {
+  background: #c4d0e0;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .search-bar {
+    height: 48px;
+    border-radius: 10px;
+  }
+
+  .search-bar-input {
+    font-size: 16px; /* prevents iOS zoom */
+  }
+}
+
+@media (min-width: 768px) {
+  .search-bar {
+    height: 52px;
+    padding: 0 16px;
+    border-radius: 14px;
+  }
+
+  .search-bar-input {
+    font-size: 17px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .search-bar {
+    height: 56px;
+  }
+}

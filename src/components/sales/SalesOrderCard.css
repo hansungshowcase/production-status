@@ -1,0 +1,410 @@
+.sales-order-card {
+  background: #ffffff;
+  border: 1px solid #d0d9e8;
+  border-radius: 14px;
+  margin: 0 16px 12px;
+  overflow: hidden;
+  transition: box-shadow 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+
+.sales-order-card:hover {
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.sales-order-card--overdue {
+  border-color: #fca5a5;
+  border-width: 2px;
+}
+
+/* Header */
+.sales-order-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+}
+
+.sales-order-card__header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sales-order-card__client {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.sales-order-card__current-step {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sales-order-card__current-step--active {
+  color: #1e40af;
+}
+
+.sales-order-card__current-step--waiting {
+  color: #64748b;
+}
+
+.sales-order-card__current-step--done {
+  color: #059669;
+}
+
+.sales-order-card__current-status {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.sales-order-card__badge-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sales-order-card__due-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.sales-order-card__shipped-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: #d1fae5;
+  color: #059669;
+}
+
+/* Info — labeled items */
+.sales-order-card__info {
+  padding: 0 16px 10px;
+  font-size: 13px;
+  color: #475569;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sales-order-card__info-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sales-order-card__info-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+.sales-order-card__info-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #334155;
+}
+
+/* Progress bar */
+.sales-order-card__progress {
+  padding: 0 16px 12px;
+}
+
+.sales-order-card__progress-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sales-order-card__progress-text {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 800;
+  color: #475569;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sales-order-card__progress-bar {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sales-order-card__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  min-width: 4px;
+}
+
+.sales-order-card__progress-fill--done {
+  background: linear-gradient(90deg, #059669, #10b981);
+}
+
+.sales-order-card__current-worker {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 8px;
+  border-radius: 6px;
+}
+
+/* Step chain with arrows */
+.sales-order-card__step-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 16px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.soc-chain__step {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.soc-chain__step--done {
+  color: #059669;
+  font-weight: 700;
+}
+
+.soc-chain__step--active {
+  color: #2563eb;
+  font-weight: 700;
+  background: #dbeafe;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.soc-chain__step--waiting {
+  color: #b0b8c8;
+}
+
+.soc-chain__arrow {
+  color: #cbd5e1;
+  font-size: 11px;
+  margin: 0 1px;
+}
+
+.soc-chain__worker {
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 2px;
+  opacity: 0.85;
+}
+
+.soc-chain__count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Worker name in process detail */
+.sales-order-card__process-worker {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Expanded detail */
+.sales-order-card__detail {
+  border-top: 1px solid #d0d9e8;
+  padding: 14px 16px;
+  background: #f0f4ff;
+}
+
+.sales-order-card__detail-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 10px;
+}
+
+/* Detail grid — order info */
+.sales-order-card__detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+}
+
+.sales-order-card__detail-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.sales-order-card__detail-item--full {
+  grid-column: 1 / -1;
+}
+
+.sales-order-card__detail-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  min-width: 40px;
+  flex-shrink: 0;
+}
+
+.sales-order-card__detail-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  word-break: break-word;
+}
+
+.sales-order-card__process-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sales-order-card__process-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sales-order-card__process-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sales-order-card__process-dot--done {
+  background: #059669;
+}
+
+.sales-order-card__process-dot--current {
+  background: #2563eb;
+}
+
+.sales-order-card__process-dot--pending {
+  background: #c4d0e0;
+}
+
+.sales-order-card__process-name {
+  color: #475569;
+  font-weight: 500;
+}
+
+.sales-order-card__process-status {
+  margin-left: auto;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.sales-order-card__process-status--done {
+  color: #059669;
+}
+
+.sales-order-card__process-status--current {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .sales-order-card {
+    margin: 0 8px 10px;
+  }
+
+  .sales-order-card__header {
+    padding: 12px 12px 6px;
+    min-height: 44px;
+  }
+
+  .sales-order-card__info {
+    padding: 0 12px 8px;
+    font-size: 12px;
+  }
+
+  .sales-order-card__step-chain {
+    padding: 6px 12px 12px;
+    font-size: 11px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .sales-order-card__step-chain::-webkit-scrollbar {
+    display: none;
+  }
+
+  .soc-chain__step {
+    flex-shrink: 0;
+  }
+
+  .sales-order-card__due-badge,
+  .sales-order-card__shipped-badge {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .sales-order-card__detail {
+    padding: 12px;
+  }
+
+  .sales-order-card__process-item {
+    min-height: 44px;
+  }
+
+  .sales-order-card__process-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 768px) {
+  .sales-order-card {
+    margin: 0 20px 14px;
+  }
+
+  .sales-order-card__client {
+    font-size: 18px;
+  }
+
+  .sales-order-card__current-step {
+    font-size: 14px;
+  }
+
+  .sales-order-card__info {
+    font-size: 14px;
+  }
+
+  .sales-order-card__info-value {
+    font-size: 14px;
+  }
+
+  .sales-order-card__step-chain {
+    font-size: 13px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sales-order-card {
+    margin: 0 24px 16px;
+  }
+}

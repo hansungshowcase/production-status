@@ -1,0 +1,284 @@
+.order-form-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.order-form-overlay.show {
+  opacity: 1;
+}
+
+.order-form-container {
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.15);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.order-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.order-form-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.order-form-close {
+  background: var(--surface2);
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-mid);
+}
+
+.order-form-body {
+  padding: 16px 24px 24px;
+}
+
+.form-section {
+  margin-bottom: 20px;
+}
+
+.form-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-mid);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.form-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-group.full {
+  flex: 1 1 100%;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+
+.form-label .required {
+  color: var(--red);
+  margin-left: 2px;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--surface);
+  color: var(--text);
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.dimension-inputs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.dimension-inputs .form-input {
+  flex: 1;
+  text-align: center;
+  padding: 10px 6px;
+}
+
+.dimension-x {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.form-btn {
+  flex: 1;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.form-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.form-btn-cancel {
+  background: var(--surface2);
+  color: var(--text-mid);
+}
+
+.form-btn-submit {
+  background: var(--blue);
+  color: white;
+}
+
+.color-input-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.color-input-wrapper .form-select {
+  flex: 1;
+}
+
+.color-input-wrapper .form-input {
+  flex: 1;
+}
+
+/* FAB — extended pill with label */
+.fab-button {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  height: 56px;
+  padding: 0 22px 0 16px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+  color: white;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.42), 0 2px 6px rgba(15,23,42,0.10);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 40;
+  font-family: inherit;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.fab-button__icon {
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.fab-button__label {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
+.fab-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(37, 99, 235, 0.50), 0 3px 8px rgba(15,23,42,0.12);
+}
+
+.fab-button:active {
+  transform: scale(0.97);
+}
+
+@media (min-width: 768px) {
+  .order-form-container {
+    border-radius: 20px;
+    max-height: 85vh;
+    margin-bottom: 0;
+  }
+
+  .order-form-overlay {
+    align-items: center;
+  }
+
+  .fab-button {
+    bottom: 90px;
+    right: 32px;
+    height: 60px;
+    padding: 0 26px 0 20px;
+    border-radius: 30px;
+  }
+
+  .fab-button__icon {
+    font-size: 28px;
+  }
+
+  .fab-button__label {
+    font-size: 15px;
+  }
+}

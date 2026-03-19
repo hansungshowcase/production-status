@@ -1,0 +1,126 @@
+/* Tablet-optimized styles */
+
+/* Prevent zoom on double-tap */
+html {
+  touch-action: manipulation;
+}
+
+/* Tablet base: landscape orientation preferred */
+@media (min-width: 768px) {
+  .tablet-page {
+    font-size: 18px;
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  .tablet-page * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* No hover effects on tablet */
+  .tablet-page button:hover,
+  .tablet-page a:hover {
+    opacity: 1;
+  }
+
+  /* Focus on tap */
+  .tablet-page button:active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease;
+  }
+
+  /* Typography */
+  .tablet-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .tablet-body {
+    font-size: 18px;
+    color: var(--text);
+  }
+
+  .tablet-label {
+    font-size: 14px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Large touch targets */
+  .tablet-btn {
+    min-height: 60px;
+    min-width: 120px;
+    padding: 14px 28px;
+    font-size: 18px;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+
+  .tablet-btn:active {
+    transform: scale(0.96);
+  }
+
+  .tablet-btn--blue {
+    background: var(--blue);
+    color: #fff;
+  }
+
+  .tablet-btn--green {
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tablet-btn--purple {
+    background: var(--purple);
+    color: #fff;
+  }
+
+  .tablet-btn--red {
+    background: var(--red);
+    color: #fff;
+  }
+
+  .tablet-btn--outline {
+    background: transparent;
+    border: 2px solid var(--border);
+    color: var(--text-mid);
+  }
+
+  .tablet-btn:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+}
+
+/* Landscape lock hint */
+@media (orientation: portrait) and (max-width: 1024px) {
+  .tablet-landscape-hint {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    text-align: center;
+    padding: 40px;
+  }
+}
+
+@media (orientation: landscape), (min-width: 1025px) {
+  .tablet-landscape-hint {
+    display: none;
+  }
+}

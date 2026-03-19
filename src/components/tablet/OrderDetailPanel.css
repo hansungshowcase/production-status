@@ -1,0 +1,377 @@
+.order-detail-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.order-detail-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 20px;
+}
+
+/* Order info section */
+.order-detail-info {
+  padding: 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-detail-client {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.order-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.order-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.order-detail-field-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.order-detail-field-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Pipeline */
+.order-detail-pipeline {
+  padding: 20px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-detail-pipeline h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-mid);
+  margin: 0 0 14px 0;
+}
+
+.pipeline-steps {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pipeline-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.pipeline-step-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  border: 3px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+}
+
+.pipeline-step--done .pipeline-step-dot {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+
+.pipeline-step--active .pipeline-step-dot {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--blue-light);
+}
+
+.pipeline-step--waiting .pipeline-step-dot {
+  border-color: var(--border);
+  background: var(--surface2);
+  color: var(--text-dim);
+}
+
+.pipeline-step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.pipeline-step--done .pipeline-step-label {
+  color: var(--green);
+}
+
+.pipeline-step--active .pipeline-step-label {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.pipeline-connector {
+  flex: 0.4;
+  height: 3px;
+  background: var(--border);
+  margin-bottom: 22px;
+}
+
+.pipeline-connector--done {
+  background: var(--green);
+}
+
+/* Process status */
+.order-detail-status {
+  padding: 16px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-detail-status-info {
+  font-size: 16px;
+  color: var(--text-mid);
+}
+
+.order-detail-status-info strong {
+  color: var(--text);
+}
+
+/* Action buttons */
+.order-detail-actions {
+  padding: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-detail-actions .tablet-btn {
+  flex: 1;
+  min-width: 160px;
+}
+
+/* Process timeline */
+.order-detail-timeline {
+  padding: 20px 24px;
+}
+
+.order-detail-timeline h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-mid);
+  margin: 0 0 12px 0;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-item:last-child {
+  border-bottom: none;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.timeline-dot--active {
+  background: var(--blue);
+}
+
+.timeline-content {
+  flex: 1;
+}
+
+.timeline-step {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.timeline-detail {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Confirmation modal */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.confirm-modal {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 32px;
+  max-width: 460px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.confirm-modal h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 12px 0;
+}
+
+.confirm-modal p {
+  font-size: 17px;
+  color: var(--text-mid);
+  margin: 0 0 28px 0;
+}
+
+.confirm-modal-buttons {
+  display: flex;
+  gap: 16px;
+}
+
+.confirm-modal-buttons .tablet-btn {
+  min-height: 44px;
+}
+
+.confirm-modal-buttons .tablet-btn {
+  flex: 1;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .order-detail-info {
+    padding: 16px;
+  }
+
+  .order-detail-client {
+    font-size: 20px;
+  }
+
+  .order-detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .order-detail-field-value {
+    font-size: 15px;
+  }
+
+  .order-detail-pipeline {
+    padding: 14px 16px;
+  }
+
+  .order-detail-actions {
+    padding: 16px;
+    gap: 10px;
+  }
+
+  .order-detail-actions .tablet-btn {
+    min-width: unset;
+  }
+
+  .order-detail-timeline {
+    padding: 14px 16px;
+  }
+
+  .confirm-overlay {
+    padding: 16px;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+    align-items: flex-end;
+  }
+
+  .confirm-modal {
+    padding: 24px 20px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    border-radius: 16px 16px 0 0;
+    max-width: 100%;
+  }
+
+  .confirm-modal h3 {
+    font-size: 18px;
+  }
+
+  .confirm-modal p {
+    font-size: 15px;
+  }
+
+  .pipeline-step-dot {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .pipeline-step-label {
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 768px) {
+  .order-detail-info {
+    padding: 28px;
+  }
+
+  .order-detail-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .order-detail-pipeline {
+    padding: 24px 28px;
+  }
+
+  .order-detail-actions {
+    padding: 28px;
+  }
+
+  .order-detail-timeline {
+    padding: 24px 28px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .order-detail-client {
+    font-size: 30px;
+  }
+
+  .order-detail-field-value {
+    font-size: 20px;
+  }
+}

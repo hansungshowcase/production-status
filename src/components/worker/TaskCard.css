@@ -1,0 +1,193 @@
+.task-card {
+  margin: 0 20px 12px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: all 0.3s;
+}
+
+.task-card.active-task {
+  border: 2px solid var(--blue);
+  box-shadow: var(--shadow-lg), 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.task-card.completed-task {
+  border: 2px solid var(--green);
+}
+
+.task-top {
+  padding: 16px 18px;
+}
+
+.task-order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.order-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.task-status {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+
+.status-waiting {
+  background: var(--orange-light);
+  color: var(--orange);
+}
+
+.status-progress {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.status-done {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.task-product {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.task-client {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.task-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.task-spec {
+  font-size: 11px;
+  color: var(--text-mid);
+  background: var(--surface2);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.task-progress {
+  padding: 0 18px;
+}
+
+.progress-steps {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.p-step {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface2);
+  transition: background 0.4s;
+}
+
+.p-step.done {
+  background: var(--green);
+}
+
+.p-step.current {
+  background: var(--blue);
+  animation: stepPulse 2s infinite;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding-bottom: 12px;
+}
+
+.task-actions {
+  border-top: 1px solid var(--border);
+  padding: 14px 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.task-actions > button {
+  min-height: 44px;
+}
+
+/* Responsive grid */
+.task-grid {
+  padding: 0;
+}
+
+@media (min-width: 768px) {
+  .task-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    padding: 0 20px;
+  }
+
+  .task-card {
+    margin: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .task-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+}
+
+/* Desktop-only hover */
+@media (hover: hover) {
+  .task-card:hover {
+    box-shadow: 0 4px 12px rgba(15,23,42,0.1);
+  }
+}
+
+/* Touch active state */
+.task-card:active {
+  transform: scale(0.98);
+  transition: transform 0.15s ease;
+}
+
+/* Mobile: action buttons stack, progress steps scroll */
+@media (max-width: 400px) {
+  .task-actions {
+    flex-direction: column;
+  }
+
+  .task-actions > button {
+    width: 100%;
+  }
+
+  .progress-steps {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .p-step {
+    min-width: 20px;
+    flex-shrink: 0;
+  }
+}

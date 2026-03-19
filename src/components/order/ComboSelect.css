@@ -1,0 +1,158 @@
+.combo-select {
+  position: relative;
+}
+
+.combo-select__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.combo-select__chip {
+  padding: 5px 12px;
+  border: 1px solid var(--border, #d0d9e8);
+  border-radius: 16px;
+  background: var(--surface, #ffffff);
+  font-size: 12px;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: var(--text, #0f172a);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.combo-select__chip:hover {
+  border-color: var(--blue, #2563eb);
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.combo-select__chip--active {
+  background: var(--blue, #2563eb);
+  color: #fff;
+  border-color: var(--blue, #2563eb);
+}
+
+.combo-select__chip--active:hover {
+  background: #1d4ed8;
+}
+
+.combo-select__input-wrap {
+  position: relative;
+}
+
+.combo-select__input {
+  width: 100%;
+  padding: 10px 36px 10px 12px;
+  border: 1px solid var(--border, #d0d9e8);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: var(--text, #0f172a);
+  background: var(--surface, #ffffff);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  min-height: 44px;
+}
+
+.combo-select__input:focus {
+  border-color: var(--blue, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.combo-select__input--error {
+  border-color: var(--red, #dc2626);
+}
+
+.combo-select__input--error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.combo-select__clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.combo-select__clear:hover {
+  color: var(--text, #0f172a);
+}
+
+.combo-select__dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #d0d9e8);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.combo-select__option {
+  padding: 8px 12px;
+  font-size: 14px;
+  color: var(--text, #0f172a);
+  cursor: pointer;
+  transition: background 0.1s;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.combo-select__option:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.combo-select__option--selected {
+  color: var(--blue, #2563eb);
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 767px) {
+  .combo-select__chip {
+    font-size: 13px;
+    padding: 6px 14px;
+  }
+
+  .combo-select__input {
+    font-size: 16px; /* prevents iOS zoom */
+    padding: 12px 36px 12px 12px;
+  }
+
+  .combo-select__dropdown {
+    max-height: min(240px, 50vh);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (min-width: 1024px) {
+  .combo-select__dropdown {
+    max-height: 280px;
+  }
+}
