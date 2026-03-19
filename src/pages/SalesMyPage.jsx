@@ -52,7 +52,6 @@ export default function SalesMyPage() {
   const [viewingPerson, setViewingPerson] = useState(null); // null = viewing own orders
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const dropdownRef = useRef(null);
   const intervalRef = useRef(null);
 
   const activePerson = viewingPerson || mySalesPerson;
@@ -65,18 +64,7 @@ export default function SalesMyPage() {
     }
   }, [mySalesPerson, navigate]);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClick(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false);
-      }
-    }
-    if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClick);
-    }
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [dropdownOpen]);
+  // 드롭다운 닫기는 오버레이 onClick으로 처리
 
   const fetchOrders = useCallback(async () => {
     if (!activePerson) return;
@@ -218,7 +206,7 @@ export default function SalesMyPage() {
 
         <div className="sales-my-page__header-right">
           {/* 다른 담당자 보기 */}
-          <div className="sales-my-page__person-picker" ref={dropdownRef}>
+          <div className="sales-my-page__person-picker">
             <button
               className={`sales-my-page__person-btn${isViewingOther ? ' sales-my-page__person-btn--active' : ''}`}
               onClick={() => setDropdownOpen((v) => !v)}
