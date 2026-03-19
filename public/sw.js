@@ -1,4 +1,4 @@
-const CACHE_VERSION = 23;
+const CACHE_VERSION = 24;
 const CACHE_NAME = `hansung-showcase-v${CACHE_VERSION}`;
 const RUNTIME_CACHE = 'hansung-runtime-v2';
 
@@ -46,7 +46,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets (JS, CSS, images, fonts): Stale-while-revalidate
+  // JS/CSS with hash in filename (Vite build output): Network-first
+  // Prevents stale cached chunks from causing white screen after deploy
+  if (isHashedAsset(url.pathname)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  // Other static assets (images, fonts): Stale-while-revalidate
   if (isStaticAsset(url.pathname)) {
     event.respondWith(staleWhileRevalidate(request));
     return;
@@ -96,9 +103,14 @@ async function staleWhileRevalidate(request) {
   return cached || fetchPromise;
 }
 
-// Check if request is a static asset
+// Vite hashed assets (e.g., index-gqID3pyv.js, styles-Ab3Cd.css)
+function isHashedAsset(pathname) {
+  return /\/assets\/.*-[a-zA-Z0-9_-]{6,}\.(js|css)(\?.*)?$/i.test(pathname);
+}
+
+// Check if request is a static asset (non-hashed)
 function isStaticAsset(pathname) {
-  return /\.(js|css|png|jpg|jpeg|svg|gif|webp|woff2?|ttf|eot|ico)(\?.*)?$/i.test(pathname);
+  return /\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf|eot|ico)(\?.*)?$/i.test(pathname);
 }
 
 // Background sync for offline actions

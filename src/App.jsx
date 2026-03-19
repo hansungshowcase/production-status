@@ -4,6 +4,7 @@ import OfflineBanner from './components/common/OfflineBanner';
 import InstallPrompt from './components/common/InstallPrompt';
 import PageLoader from './components/common/PageLoader';
 import SplashScreen from './components/common/SplashScreen';
+import ChunkErrorBoundary from './components/common/ChunkErrorBoundary';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const WorkerPage = lazy(() => import('./pages/WorkerPage'));
@@ -97,9 +98,11 @@ export default function App() {
       <MobileHeaderBar />
       <OfflineBanner show={isOffline} />
       <InstallPrompt />
-      <Suspense fallback={<PageLoader />}>
-        <AppRoutes />
-      </Suspense>
+      <ChunkErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <AppRoutes />
+        </Suspense>
+      </ChunkErrorBoundary>
       <footer className="app-footer-brand">HANSUNG SHOWCASE</footer>
     </BrowserRouter>
   );
