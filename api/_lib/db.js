@@ -5,8 +5,14 @@ function convertPlaceholders(sql) {
   return sql.replace(/\?/g, () => `$${++idx}`);
 }
 
+// Module-level connection cache (reused across requests in the same serverless instance)
+let cachedSql = null;
+
 export function getDb() {
-  const sql = neon(process.env.POSTGRES_URL);
+  if (!cachedSql) {
+    cachedSql = neon(process.env.POSTGRES_URL);
+  }
+  const sql = cachedSql;
 
   return {
     async execute({ sql: query, args = [] }) {

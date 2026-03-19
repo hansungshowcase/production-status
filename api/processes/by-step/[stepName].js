@@ -15,67 +15,68 @@ export default cors(async function handler(req, res) {
     });
   }
 
-  const db = getDb();
-  const stepIndex = STEPS.indexOf(stepName);
-
-  // Main query
-  const { rows } = await db.execute({
-    sql: `SELECT p.id AS process_id, p.step_name, p.status AS process_status,
-           p.started_at, p.completed_at, p.started_by, p.completed_by,
-           o.id AS order_id, o.client_name, o.product_type, o.door_type,
-           o.width, o.depth, o.height, o.color, o.due_date, o.sales_person,
-           o.order_date, o.quantity, o.design, o.notes, o.remarks,
-           (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id AND p2.status = 'completed') AS completed_steps,
-           (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id) AS total_steps,
-           (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues
-    FROM processes p
-    JOIN orders o ON o.id = p.order_id
-    WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
-      AND o.status = 'in_production'
-    ORDER BY o.due_date ASC`,
-    args: [stepName]
-  });
-
-  // Filter: only include processes where all previous steps are completed
-  let filtered = rows;
-  if (stepIndex > 0) {
+  try {
+    const db = getDb();
+    const stepIndex = STEPS.indexOf(stepName);
     const prevSteps = STEPS.slice(0, stepIndex);
-    const results = [];
-    for (const row of rows) {
+
+    // Single query: main data + previous steps filter (NOT EXISTS)
+    const args = [stepName];
+    let filterClause = '';
+    if (prevSteps.length > 0) {
       const placeholders = prevSteps.map(() => '?').join(',');
-      const check = await db.execute({
-        sql: `SELECT COUNT(*) AS cnt FROM processes WHERE order_id = ? AND step_name IN (${placeholders}) AND status != 'completed'`,
-        args: [row.order_id, ...prevSteps]
+      filterClause = `AND NOT EXISTS (SELECT 1 FROM processes p3 WHERE p3.order_id = p.order_id AND p3.step_name IN (${placeholders}) AND p3.status != 'completed')`;
+      args.push(...prevSteps);
+    }
+
+    const { rows } = await db.execute({
+      sql: `SELECT p.id AS process_id, p.step_name, p.status AS process_status,
+             p.started_at, p.completed_at, p.started_by, p.completed_by,
+             o.id AS order_id, o.client_name, o.product_type, o.door_type,
+             o.width, o.depth, o.height, o.color, o.due_date, o.sales_person,
+             o.order_date, o.created_at, o.quantity, o.design, o.notes, o.remarks,
+             (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id AND p2.status = 'completed') AS completed_steps,
+             (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id) AS total_steps,
+             (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues
+      FROM processes p
+      JOIN orders o ON o.id = p.order_id
+      WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
+        AND o.status = 'in_production'
+        ${filterClause}
+      ORDER BY o.id DESC`,
+      args
+    });
+
+    // Batch fetch step history (1 query instead of N)
+    if (prevSteps.length > 0 && rows.length > 0) {
+      const orderIds = rows.map(r => r.order_id);
+      const orderPlaceholders = orderIds.map(() => '?').join(',');
+      const stepPlaceholders = prevSteps.map(() => '?').join(',');
+      const historyResult = await db.execute({
+        sql: `SELECT order_id, step_name, completed_by, completed_at FROM processes WHERE order_id IN (${orderPlaceholders}) AND step_name IN (${stepPlaceholders}) AND status = 'completed' ORDER BY id ASC`,
+        args: [...orderIds, ...prevSteps]
       });
-      if (Number(check.rows[0].cnt) === 0) {
-        results.push(row);
+
+      const historyMap = {};
+      for (const h of historyResult.rows) {
+        if (!historyMap[h.order_id]) historyMap[h.order_id] = [];
+        historyMap[h.order_id].push({
+          step_name: h.step_name,
+          completed_by: h.completed_by || null,
+          completed_at: h.completed_at || null,
+        });
       }
-    }
-    filtered = results;
-  }
 
-  // Attach all previous steps completion history
-  const prevStepNames = STEPS.slice(0, stepIndex);
-  const result = [];
-  for (const row of filtered) {
-    if (prevStepNames.length === 0) {
-      result.push({ ...row, step_history: [] });
-      continue;
+      return res.json(rows.map(row => ({
+        ...row,
+        step_history: historyMap[row.order_id] || [],
+      })));
     }
-    const placeholders = prevStepNames.map(() => '?').join(',');
-    const history = await db.execute({
-      sql: `SELECT step_name, completed_by, completed_at FROM processes WHERE order_id = ? AND step_name IN (${placeholders}) AND status = 'completed' ORDER BY id ASC`,
-      args: [row.order_id, ...prevStepNames]
-    });
-    result.push({
-      ...row,
-      step_history: history.rows.map(h => ({
-        step_name: h.step_name,
-        completed_by: h.completed_by || null,
-        completed_at: h.completed_at || null,
-      })),
-    });
-  }
 
-  res.json(result);
+    // stepIndex 0 (도면설계) or no results — no history needed
+    res.json(rows.map(row => ({ ...row, step_history: [] })));
+  } catch (err) {
+    console.error('by-step error:', err);
+    res.status(500).json({ error: { message: '공정 데이터 조회에 실패했습니다.', status: 500 } });
+  }
 });

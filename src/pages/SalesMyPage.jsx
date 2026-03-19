@@ -10,7 +10,7 @@ import useWebSocket from '../hooks/useWebSocket';
 import './SalesMyPage.css';
 
 const LS_KEY = 'sales_last_person';
-const REFRESH_INTERVAL = 30000; // 30 seconds
+const REFRESH_INTERVAL = 5000; // 5 seconds
 
 const SALES_PERSONS = ['신은철', '이시아'];
 

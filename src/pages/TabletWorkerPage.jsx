@@ -6,7 +6,7 @@ import { startProcess, completeProcess } from '../api/processes';
 import '../../src/styles/tablet.css';
 import './TabletWorkerPage.css';
 
-const REFRESH_INTERVAL = 30000; // 30 seconds
+const REFRESH_INTERVAL = 5000; // 5 seconds
 
 export default function TabletWorkerPage() {
   const [orders, setOrders] = useState([]);
