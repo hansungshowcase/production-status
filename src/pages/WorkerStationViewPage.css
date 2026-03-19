@@ -1241,33 +1241,29 @@
 .sv-confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: sv-fade-in 0.15s ease;
-}
-
-@keyframes sv-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  pointer-events: auto;
+  padding: 20px;
 }
 
 .sv-confirm {
   background: #ffffff;
   border-radius: 20px;
-  padding: 32px 28px 24px;
-  width: 90%;
-  max-width: 340px;
+  padding: 24px 20px 28px;
+  width: 100%;
+  max-width: 500px;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-  animation: sv-slide-up 0.2s ease;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.15);
+  animation: sv-pop-in 0.25s ease;
 }
 
-@keyframes sv-slide-up {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+@keyframes sv-pop-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .sv-confirm__icon {
@@ -1587,14 +1583,14 @@
 /* ── Issue List Modal ── */
 .sv-issue-list-modal {
   background: #ffffff;
-  border-radius: 20px;
-  width: 92%;
-  max-width: 420px;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 500px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-  animation: sv-slide-up 0.25s ease;
+  box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.15);
+  animation: sv-sheet-up 0.25s ease;
   overflow: hidden;
 }
 
