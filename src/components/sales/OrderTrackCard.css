@@ -41,6 +41,7 @@
 
 .otc-spec {
   font-size: 11px;
+  /* base size kept at 11px */
   color: var(--text-mid);
   background: var(--surface2);
   padding: 2px 8px;
@@ -78,6 +79,7 @@
   background: var(--purple-light);
   color: var(--purple);
   font-size: 11px;
+  /* base size kept at 11px */
   font-weight: 600;
   padding: 3px 8px;
   border-radius: 6px;
@@ -172,7 +174,7 @@
   }
 
   .otc-spec {
-    font-size: 10px;
+    font-size: 11px;
   }
 
   .otc-action-btn {
@@ -211,7 +213,7 @@
   }
 
   .photo-attached {
-    font-size: 10px;
+    font-size: 11px;
   }
 }
 
@@ -253,6 +255,8 @@
 .otc-action-btn {
   width: 30px;
   height: 30px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 8px;
   border: none;
   cursor: pointer;

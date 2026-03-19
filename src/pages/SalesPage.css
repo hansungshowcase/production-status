@@ -325,6 +325,8 @@
 .tbl-action-btn {
   width: 26px;
   height: 26px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 6px;
   border: none;
   cursor: pointer;

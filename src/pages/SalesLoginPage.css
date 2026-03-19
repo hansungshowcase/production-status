@@ -121,6 +121,7 @@
   text-align: center;
   line-height: 1.5;
   font-weight: 400;
+  word-break: keep-all;
 }
 
 /* ── Quick re-login ── */

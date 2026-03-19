@@ -1,12 +1,12 @@
 .order-form-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: flex-end;
   justify-content: center;
   z-index: 50;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity 0.2s ease;
 }

@@ -122,7 +122,7 @@
   }
   .sales-summary-card__icon { font-size: 16px; }
   .sales-summary-card__value { font-size: 22px; }
-  .sales-summary-card__label { font-size: 10px; }
+  .sales-summary-card__label { font-size: 11px; }
 }
 
 @media (max-width: 359px) {

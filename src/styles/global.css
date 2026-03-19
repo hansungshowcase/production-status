@@ -512,9 +512,9 @@ input, select, textarea {
 
 /* ── Modal overlay - glassmorphism ── */
 .modal-overlay {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .modal-content {
@@ -604,6 +604,21 @@ input, select, textarea {
   .mobile-header-bar {
     display: none !important;
   }
+}
+
+/* ── App Footer Brand ── */
+.app-footer-brand {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 20px 16px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Desktop & Responsive overrides loaded via @import at top */

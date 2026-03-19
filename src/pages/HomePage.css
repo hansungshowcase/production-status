@@ -333,6 +333,7 @@
   color: rgba(255,255,255,0.85);
   line-height: 1.65;
   margin-bottom: 22px;
+  word-break: keep-all;
 }
 
 .home-hero-order__cta {
@@ -440,6 +441,7 @@
   font-size: 13px;
   color: var(--text-mid);
   line-height: 1.7;
+  word-break: keep-all;
 }
 
 .home-card-arrow {

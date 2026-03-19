@@ -129,6 +129,7 @@
   color: rgba(255,255,255,0.8);
   margin: 0;
   font-weight: 500;
+  word-break: keep-all;
 }
 
 .order-entry__hero-wave {
@@ -325,8 +326,8 @@
   }
 
   .order-entry__back {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
     font-size: 18px;
   }
@@ -498,7 +499,7 @@
 .ocr-confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.1);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -574,7 +575,8 @@
   padding: 8px 12px;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 16px;
+  min-height: 44px;
   font-family: inherit;
   background: #f8fafc;
   transition: border-color 0.15s;
@@ -609,6 +611,7 @@
 .ocr-confirm__btn {
   flex: 1;
   padding: 12px;
+  min-height: 48px;
   border: none;
   border-radius: 10px;
   font-size: 15px;

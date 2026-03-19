@@ -100,6 +100,7 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
         <AppRoutes />
       </Suspense>
+      <footer className="app-footer-brand">HANSUNG SHOWCASE</footer>
     </BrowserRouter>
   );
 }

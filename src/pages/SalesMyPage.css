@@ -194,6 +194,7 @@
   max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sales-my-page__person-btn-caret {
@@ -329,7 +330,7 @@
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s;
-  min-height: 40px;
+  min-height: 44px;
   flex-shrink: 0;
 }
 
@@ -384,7 +385,7 @@
   white-space: nowrap;
   flex-shrink: 0;
   transition: all 0.15s;
-  min-height: 34px;
+  min-height: 44px;
 }
 
 .sales-my-page__category-chip:hover {
@@ -764,7 +765,7 @@
 
   .sales-my-page__feed-time {
     min-width: 48px;
-    font-size: 9px;
+    font-size: 10px;
   }
 
   .sales-my-page__feed-icon {
@@ -791,8 +792,8 @@
   }
 
   .sales-my-page__back-btn {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 40px;
+    min-height: 40px;
     padding: 2px 4px;
     font-size: 18px;
   }

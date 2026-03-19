@@ -43,7 +43,7 @@ export default function WorkerStationViewPage() {
   const [issueDesc, setIssueDesc] = useState('');
   const [issueLoading, setIssueLoading] = useState(false);
   const [photoModal, setPhotoModal] = useState(null);
-  const [transitionAnim, setTransitionAnim] = useState(null); // { fromStep, toStep, clientName }
+  // transitionAnim 제거됨 (검은화면 없이 토스트로 대체)
   const [issueAcknowledged, setIssueAcknowledged] = useState(false); // 이슈 확인 여부
   const [issueListModal, setIssueListModal] = useState(null); // 이슈 목록 모달 { issues, loading }
   const [resolvingId, setResolvingId] = useState(null);
@@ -131,21 +131,21 @@ export default function WorkerStationViewPage() {
         }
       }
 
-      // 전환 애니메이션 표시
+      // 화살표 모션 토스트 표시 (검은화면 없이)
       const nextStep = selectedNextStep || (currentStepIndex < PROCESS_STEPS.length - 1 ? PROCESS_STEPS[currentStepIndex + 1] : null);
-      if (nextStep) {
-        setTransitionAnim({ fromStep: decodedStep, toStep: nextStep, clientName });
-        setTimeout(() => setTransitionAnim(null), 2200);
-      }
-
-      // 완료 애니메이션 시작
       setCompletedIds(prev => new Set([...prev, processId]));
-      showResultToast('complete', clientName);
-      // 애니메이션 후 데이터 갱신
+      if (nextStep) {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setToast({ type: 'transition', client: clientName, fromStep: decodedStep, toStep: nextStep, fromIcon: STEP_ICONS[decodedStep] || '', toIcon: STEP_ICONS[nextStep] || '' });
+        toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+      } else {
+        showResultToast('complete', clientName);
+      }
+      // 즉시 데이터 갱신
       setTimeout(async () => {
         await fetchData();
         setCompletedIds(prev => { const next = new Set(prev); next.delete(processId); return next; });
-      }, 600);
+      }, 400);
     } catch (err) {
       alert('공정 완료에 실패했습니다.');
     } finally {
@@ -326,6 +326,16 @@ export default function WorkerStationViewPage() {
                 이슈 {totalOpenIssues}
               </button>
             )}
+            <button
+              className="station-view__dept-change-btn"
+              onClick={() => {
+                sessionStorage.removeItem(WORKER_STORAGE_KEY);
+                sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
+                navigate('/worker/select', { state: { redirectTo: '/worker/station' } });
+              }}
+            >
+              작업자 변경
+            </button>
             <button
               className="station-view__dept-change-btn"
               onClick={() => {
@@ -657,7 +667,27 @@ export default function WorkerStationViewPage() {
       )}
 
       {/* Result Toast */}
-      {toast && (
+      {toast && toast.type === 'transition' && (
+        <div className="sv-toast sv-toast--transition" onClick={() => setToast(null)}>
+          <div className="sv-toast__transition-row">
+            <div className="sv-toast__transition-step sv-toast__transition-step--from">
+              <span className="sv-toast__transition-icon">{toast.fromIcon}</span>
+              <span className="sv-toast__transition-name">{toast.fromStep}</span>
+              <span className="sv-toast__transition-check">✓</span>
+            </div>
+            <div className="sv-toast__transition-arrow">
+              <span className="sv-toast__transition-arrow-line" />
+              <span className="sv-toast__transition-arrow-head">▶</span>
+            </div>
+            <div className="sv-toast__transition-step sv-toast__transition-step--to">
+              <span className="sv-toast__transition-icon">{toast.toIcon}</span>
+              <span className="sv-toast__transition-name">{toast.toStep}</span>
+            </div>
+          </div>
+          <div className="sv-toast__transition-client">{toast.client}</div>
+        </div>
+      )}
+      {toast && toast.type !== 'transition' && (
         <div className={`sv-toast sv-toast--${toast.type}`} onClick={() => setToast(null)}>
           <div className="sv-toast__icon">✅</div>
           <div className="sv-toast__body">
@@ -671,30 +701,7 @@ export default function WorkerStationViewPage() {
           </div>
         </div>
       )}
-      {/* ── Step Transition Animation ── */}
-      {transitionAnim && (
-        <div className="sv-transition-overlay">
-          <div className="sv-transition">
-            <div className="sv-transition__client">{transitionAnim.clientName}</div>
-            <div className="sv-transition__steps">
-              <div className="sv-transition__step sv-transition__step--from">
-                <span className="sv-transition__step-icon">{STEP_ICONS[transitionAnim.fromStep] || ''}</span>
-                <span className="sv-transition__step-name">{transitionAnim.fromStep}</span>
-                <span className="sv-transition__check">✓</span>
-              </div>
-              <div className="sv-transition__arrow">
-                <div className="sv-transition__arrow-line" />
-                <div className="sv-transition__arrow-head">▶</div>
-              </div>
-              <div className="sv-transition__step sv-transition__step--to">
-                <span className="sv-transition__step-icon">{STEP_ICONS[transitionAnim.toStep] || ''}</span>
-                <span className="sv-transition__step-name">{transitionAnim.toStep}</span>
-              </div>
-            </div>
-            <div className="sv-transition__label">다음 공정으로 이동</div>
-          </div>
-        </div>
-      )}
+      {/* 전환 애니메이션 제거 - 토스트로 대체 */}
 
       {/* ── Issue Modal ── */}
       {issueModal && (

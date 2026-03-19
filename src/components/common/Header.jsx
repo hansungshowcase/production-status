@@ -58,8 +58,8 @@ export default function Header({ subtitle, profileEmoji, wsConnected, onBack, wo
               }}
               title="작업자 변경"
             >
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '80px' }}>{workerName}</span>
-              <span style={{ fontSize: '10px', opacity: 0.6 }}>변경</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100px', whiteSpace: 'nowrap', display: 'inline-block' }}>{workerName}</span>
+              <span style={{ fontSize: '11px', opacity: 0.6 }}>변경</span>
             </button>
           )}
           <div className="profile-icon">{profileEmoji}</div>
