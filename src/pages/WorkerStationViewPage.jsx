@@ -290,10 +290,12 @@ export default function WorkerStationViewPage() {
   prevIssueCountRef.current = totalOpenIssues;
 
   const sorted = [...items].sort((a, b) => {
-    const aOverdue = a.due_date && a.due_date < today ? -1 : 0;
-    const bOverdue = b.due_date && b.due_date < today ? -1 : 0;
-    if (aOverdue !== bOverdue) return aOverdue - bOverdue;
-    return (a.due_date || '').localeCompare(b.due_date || '');
+    // 납기초과 건은 항상 상단
+    const aOverdue = a.due_date && a.due_date < today ? 1 : 0;
+    const bOverdue = b.due_date && b.due_date < today ? 1 : 0;
+    if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+    // 나머지는 최신 등록순 (order_id 큰 것이 위)
+    return (b.order_id || 0) - (a.order_id || 0);
   });
 
   function getDday(dueDate) {
@@ -444,10 +446,11 @@ export default function WorkerStationViewPage() {
             {PROCESS_STEPS.map((step) => {
               const stepStat = (factoryStats.by_step || []).find(s => s.step_name === step);
               const isCurrent = step === decodedStep;
-              const actionable = stepStat?.actionable || 0;
-              const p = stepStat?.in_progress || 0;
-              const c = stepStat?.completed || 0;
-              const total = (stepStat?.waiting || 0) + p + c;
+              const w = Number(stepStat?.waiting) || 0;
+              const p = Number(stepStat?.in_progress) || 0;
+              const c = Number(stepStat?.completed) || 0;
+              const total = w + p + c;
+              const actionable = w + p;
               const donePct = total > 0 ? Math.round((c / total) * 100) : 0;
 
               return (
@@ -464,8 +467,8 @@ export default function WorkerStationViewPage() {
                     <div className="factory-step__bar-fill" style={{ width: `${donePct}%` }} />
                   </div>
                   <div className="factory-step__counts">
-                    {actionable > 0 && <span className="factory-step__count factory-step__count--waiting">{actionable}</span>}
-                    <span className="factory-step__count factory-step__count--done">{c}/{total}</span>
+                    {actionable > 0 && <span className="factory-step__count factory-step__count--waiting">잔여 {actionable}</span>}
+                    <span className="factory-step__count factory-step__count--done">완료 {c}/{total}</span>
                   </div>
                 </div>
               );
@@ -583,6 +586,12 @@ export default function WorkerStationViewPage() {
                         {dday.label}
                       </span>
                     )}
+                  </span>
+                )}
+                {item.created_at && (
+                  <span className="station-view__spec">
+                    <span className="station-view__spec-icon">🕐</span>
+                    등록 {new Date(item.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>
