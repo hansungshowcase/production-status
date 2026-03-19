@@ -368,7 +368,7 @@ export default function OrderEntryPage() {
 
       {/* ── OCR 결과 확인 모달 ── */}
       {ocrResult && (
-        <div className="ocr-confirm-overlay" onClick={handleOcrCancel}>
+        <div className="ocr-confirm-overlay">
           <div className="ocr-confirm" onClick={(e) => e.stopPropagation()}>
             <div className="ocr-confirm__header">
               <h2 className="ocr-confirm__title">📷 인식 결과 확인</h2>

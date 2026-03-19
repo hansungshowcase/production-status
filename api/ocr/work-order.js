@@ -8,15 +8,18 @@ export const config = {
   },
 };
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 const PROMPT = `이 이미지는 냉장쇼케이스 제조업체의 작업지시서입니다.
 이미지에서 다음 정보를 추출해서 JSON으로 반환하세요.
 반드시 아래 필드명을 사용하세요. 값이 없으면 null로 반환하세요.
 숫자 필드(width, depth, height, quantity)는 반드시 숫자만 반환하세요.
+날짜는 반드시 YYYY-MM-DD 형식으로 반환하세요. 연도가 불분명하면 ${CURRENT_YEAR}년으로 설정하세요.
 
 {
   "client_name": "발주처/거래처명",
-  "order_date": "발주일 (YYYY-MM-DD 형식)",
-  "due_date": "납기일 (YYYY-MM-DD 형식)",
+  "order_date": "발주일 (YYYY-MM-DD 형식, 연도 불분명시 ${CURRENT_YEAR})",
+  "due_date": "납기일 (YYYY-MM-DD 형식, 연도 불분명시 ${CURRENT_YEAR})",
   "phone": "연락처/전화번호",
   "sales_person": "담당자/영업담당",
   "product_type": "품명/사양 (제과/정육/반찬/꽃/와인/오픈/진열/마카롱/샌드위치/음료/밧트/토핑/양념육/유럽형/주류 중 하나)",
@@ -36,7 +39,13 @@ export default cors(async function handler(req, res) {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
 
-  const parts = await parseMultipart(req);
+  let parts;
+  try {
+    parts = await parseMultipart(req);
+  } catch (parseErr) {
+    console.error('Multipart parse error:', parseErr);
+    return res.status(400).json({ error: { message: '이미지 파싱 실패: ' + parseErr.message, status: 400 } });
+  }
   const filePart = getFilePart(parts, 'image');
 
   if (!filePart) {
@@ -52,10 +61,18 @@ export default cors(async function handler(req, res) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
+    // Determine mime type: use parsed content type, or guess from filename, or default to jpeg
+    let mimeType = filePart.contentType || 'image/jpeg';
+    if (mimeType === 'application/octet-stream' || !mimeType.startsWith('image/')) {
+      const ext = (filePart.filename || '').split('.').pop()?.toLowerCase();
+      const extMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif' };
+      mimeType = extMap[ext] || 'image/jpeg';
+    }
+
     const imagePart = {
       inlineData: {
         data: filePart.data.toString('base64'),
-        mimeType: filePart.contentType || 'image/jpeg',
+        mimeType,
       },
     };
 
@@ -75,6 +92,17 @@ export default cors(async function handler(req, res) {
     if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
     if (parsed.height) parsed.height = parseInt(String(parsed.height).replace(/[^0-9]/g, ''), 10) || null;
     if (parsed.quantity) parsed.quantity = parseInt(String(parsed.quantity).replace(/[^0-9]/g, ''), 10) || null;
+
+    // Normalize date fields - 과거 연도면 현재 연도로 교체
+    const thisYear = String(CURRENT_YEAR);
+    ['order_date', 'due_date'].forEach(field => {
+      if (parsed[field] && typeof parsed[field] === 'string') {
+        const m = parsed[field].match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m && parseInt(m[1]) < CURRENT_YEAR) {
+          parsed[field] = thisYear + '-' + m[2] + '-' + m[3];
+        }
+      }
+    });
 
     return res.json({ success: true, data: parsed });
   } catch (err) {
