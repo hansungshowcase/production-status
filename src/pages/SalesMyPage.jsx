@@ -232,28 +232,6 @@ export default function SalesMyPage() {
                 {dropdownOpen ? '▲' : '▼'}
               </span>
             </button>
-
-            {dropdownOpen && (
-              <div className="sales-my-page__person-dropdown">
-                <div className="sales-my-page__person-dropdown-header">담당자 선택</div>
-                {SALES_PERSONS.map((person) => {
-                  const isMe = person === mySalesPerson;
-                  const isSelected = person === activePerson;
-                  return (
-                    <button
-                      key={person}
-                      className={`sales-my-page__person-option${isSelected ? ' sales-my-page__person-option--selected' : ''}`}
-                      onClick={() => handleSelectPerson(person)}
-                    >
-                      <span className="sales-my-page__person-option-name">{person}</span>
-                      {isMe && (
-                        <span className="sales-my-page__person-option-tag">나</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
           {/* 내 주문으로 돌아가기 */}
@@ -278,6 +256,31 @@ export default function SalesMyPage() {
           <span className="sales-my-page__refresh-info">30초 자동갱신</span>
         </div>
       </div>
+
+      {/* ── 담당자 드롭다운 (헤더 밖에 렌더링) ── */}
+      {dropdownOpen && (
+        <div className="sales-my-page__person-dropdown-overlay" onClick={() => setDropdownOpen(false)}>
+          <div className="sales-my-page__person-dropdown" onClick={(e) => e.stopPropagation()}>
+            <div className="sales-my-page__person-dropdown-header">담당자 선택</div>
+            {SALES_PERSONS.map((person) => {
+              const isMe = person === mySalesPerson;
+              const isSelected = person === activePerson;
+              return (
+                <button
+                  key={person}
+                  className={`sales-my-page__person-option${isSelected ? ' sales-my-page__person-option--selected' : ''}`}
+                  onClick={() => handleSelectPerson(person)}
+                >
+                  <span className="sales-my-page__person-option-name">{person}</span>
+                  {isMe && (
+                    <span className="sales-my-page__person-option-tag">나</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Search ── */}
       <div style={{ padding: '12px 20px 0' }}>
