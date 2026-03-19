@@ -579,9 +579,8 @@ input, select, textarea {
   font-weight: 700;
   padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
   letter-spacing: -0.3px;
-  position: sticky;
-  top: 0;
-  z-index: 200;
+  position: relative;
+  z-index: 5;
   animation: mobileHeaderSlideDown 0.4s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
