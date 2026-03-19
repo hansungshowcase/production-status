@@ -144,6 +144,143 @@
   50% { opacity: 0.6; }
 }
 
+.station-view__issue-noti-wrap {
+  position: relative;
+}
+
+/* ── Issue Dropdown (버튼 바로 아래 팝업) ── */
+.sv-issue-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  max-height: 60vh;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(15, 23, 42, 0.2);
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: sv-dropdown-in 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes sv-dropdown-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sv-issue-dropdown__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 15px;
+}
+
+.sv-issue-dropdown__header strong {
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.sv-issue-dropdown__count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #dc2626;
+  background: #fee2e2;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.sv-issue-dropdown__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sv-issue-dropdown__empty {
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.sv-issue-dropdown__body {
+  overflow-y: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sv-issue-dropdown__item {
+  background: #fffbfb;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.sv-issue-dropdown__item-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.sv-issue-dropdown__item-top strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.sv-issue-dropdown__time {
+  margin-left: auto;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.sv-issue-dropdown__desc {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.sv-issue-dropdown__resolve {
+  width: 100%;
+  padding: 9px;
+  min-height: 40px;
+  border-radius: 10px;
+  border: none;
+  background: #059669;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sv-issue-dropdown__resolve:active {
+  transform: scale(0.97);
+}
+
+.sv-issue-dropdown__resolve:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @keyframes issue-pulse {
   0% { opacity: 0.5; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.3); }
@@ -597,6 +734,25 @@
 }
 
 .station-view__spec-icon {
+  font-size: 14px;
+}
+
+.station-view__spec--due {
+  font-weight: 800;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.station-view__due-label {
+  font-weight: 700;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.station-view__due-date {
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: #0f172a;
   font-size: 14px;
 }
 

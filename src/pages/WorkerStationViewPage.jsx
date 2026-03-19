@@ -314,13 +314,56 @@ export default function WorkerStationViewPage() {
             {decodedStep}
           </h1>
           {totalOpenIssues > 0 && (
-            <button
-              className={`station-view__issue-noti${issueAcknowledged ? ' station-view__issue-noti--ack' : ''}`}
-              onClick={openIssueListModal}
-            >
-              {!issueAcknowledged && <span className="station-view__issue-noti-pulse" />}
-              이슈 {totalOpenIssues}
-            </button>
+            <div className="station-view__issue-noti-wrap">
+              <button
+                className={`station-view__issue-noti${issueAcknowledged ? ' station-view__issue-noti--ack' : ''}`}
+                onClick={openIssueListModal}
+              >
+                {!issueAcknowledged && <span className="station-view__issue-noti-pulse" />}
+                이슈 {totalOpenIssues}
+              </button>
+              {/* 이슈 목록 - 버튼 바로 아래에 팝업 */}
+              {issueListModal && (
+                <div className="sv-issue-dropdown" onClick={e => e.stopPropagation()}>
+                  <div className="sv-issue-dropdown__header">
+                    <span>⚠️</span>
+                    <strong>미해결 이슈</strong>
+                    <span className="sv-issue-dropdown__count">{issueListModal.issues.length}건</span>
+                    <button className="sv-issue-dropdown__close" onClick={() => { setIssueListModal(null); setIssueAcknowledged(true); }}>✕</button>
+                  </div>
+                  {issueListModal.loading ? (
+                    <div className="sv-issue-dropdown__empty">불러오는 중...</div>
+                  ) : issueListModal.issues.length === 0 ? (
+                    <div className="sv-issue-dropdown__empty">미해결 이슈가 없습니다</div>
+                  ) : (
+                    <div className="sv-issue-dropdown__body">
+                      {issueListModal.issues.map(iss => {
+                        const typeInfo = ISSUE_TYPES.find(t => t.value === iss.issue_type) || { icon: '📝', label: iss.issue_type, color: '#64748b' };
+                        const reportedTime = iss.reported_at ? new Date(iss.reported_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                        return (
+                          <div key={iss.id} className="sv-issue-dropdown__item">
+                            <div className="sv-issue-dropdown__item-top">
+                              <span style={{ color: typeInfo.color }}>{typeInfo.icon}</span>
+                              <strong>{iss.client_name || '-'}</strong>
+                              <span style={{ color: typeInfo.color, fontSize: 12 }}>{typeInfo.label}</span>
+                              <span className="sv-issue-dropdown__time">{reportedTime}</span>
+                            </div>
+                            {iss.description && <div className="sv-issue-dropdown__desc">{iss.description}</div>}
+                            <button
+                              className="sv-issue-dropdown__resolve"
+                              onClick={() => handleResolveIssue(iss.id)}
+                              disabled={resolvingId === iss.id}
+                            >
+                              {resolvingId === iss.id ? '처리중...' : '✓ 해결'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
         <div className="station-view__header-sub">
@@ -510,9 +553,10 @@ export default function WorkerStationViewPage() {
                   </span>
                 )}
                 {item.due_date && (
-                  <span className="station-view__spec">
+                  <span className="station-view__spec station-view__spec--due">
                     <span className="station-view__spec-icon">📅</span>
-                    {item.due_date}
+                    <span className="station-view__due-label">납기일 :</span>
+                    <strong className="station-view__due-date">{item.due_date}</strong>
                     {dday && (
                       <span className={`station-view__dday station-view__dday--${dday.cls}`}>
                         {dday.label}
@@ -832,62 +876,7 @@ export default function WorkerStationViewPage() {
           </div>
         </div>
       )}
-      {/* ── Issue List Modal (상단 이슈 알림 클릭) ── */}
-      {issueListModal && (
-        <div className="sv-confirm-overlay" onClick={() => { setIssueListModal(null); setIssueAcknowledged(true); }}>
-          <div className="sv-issue-list-modal" onClick={e => e.stopPropagation()}>
-            <div className="sv-issue-list__header">
-              <span className="sv-issue-list__header-icon">⚠️</span>
-              <h2 className="sv-issue-list__title">미해결 이슈</h2>
-              <span className="sv-issue-list__count">{issueListModal.issues.length}건</span>
-            </div>
-
-            {issueListModal.loading ? (
-              <div className="sv-issue-list__loading">불러오는 중...</div>
-            ) : issueListModal.issues.length === 0 ? (
-              <div className="sv-issue-list__empty">미해결 이슈가 없습니다</div>
-            ) : (
-              <div className="sv-issue-list__body">
-                {issueListModal.issues.map(iss => {
-                  const typeInfo = ISSUE_TYPES.find(t => t.value === iss.issue_type) || { icon: '📝', label: iss.issue_type, color: '#64748b' };
-                  const reportedTime = iss.reported_at ? new Date(iss.reported_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-                  return (
-                    <div key={iss.id} className="sv-issue-list__item">
-                      <div className="sv-issue-list__item-top">
-                        <span className="sv-issue-list__item-icon" style={{ color: typeInfo.color }}>{typeInfo.icon}</span>
-                        <div className="sv-issue-list__item-info">
-                          <span className="sv-issue-list__item-client">{iss.client_name || '-'}</span>
-                          <span className="sv-issue-list__item-type" style={{ color: typeInfo.color }}>{typeInfo.label}</span>
-                        </div>
-                        <span className="sv-issue-list__item-time">{reportedTime}</span>
-                      </div>
-                      {iss.description && (
-                        <div className="sv-issue-list__item-desc">{iss.description}</div>
-                      )}
-                      {iss.reported_by && (
-                        <div className="sv-issue-list__item-reporter">보고: {iss.reported_by}</div>
-                      )}
-                      <button
-                        className="sv-issue-list__resolve-btn"
-                        onClick={() => handleResolveIssue(iss.id)}
-                        disabled={resolvingId === iss.id}
-                      >
-                        {resolvingId === iss.id ? '처리중...' : '확인 (해결)'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="sv-issue-list__footer">
-              <button className="sv-confirm__btn sv-confirm__btn--cancel" onClick={() => { setIssueListModal(null); setIssueAcknowledged(true); }}>
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 이슈 목록은 상단 버튼 옆 드롭다운으로 이동됨 */}
     </div>
   );
 }
