@@ -672,6 +672,7 @@
 .station-view__th--spec { width: 110px; flex-shrink: 0; }
 .station-view__th--due { width: 80px; flex-shrink: 0; }
 .station-view__th--progress { width: 65px; flex-shrink: 0; }
+.station-view__th--steps { display: none; }
 .station-view__th--actions { width: 110px; flex-shrink: 0; text-align: center; }
 
 /* ── Order row (sheet style) ── */
@@ -798,6 +799,39 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Step dots (PC only) */
+.station-view__row-steps {
+  display: none;
+}
+
+.station-view__step-dot {
+  font-size: 12px;
+  opacity: 0.2;
+  transition: opacity 0.2s;
+  cursor: default;
+}
+
+.station-view__step-dot--done {
+  opacity: 1;
+}
+
+.station-view__step-dot--current {
+  opacity: 1;
+  position: relative;
+}
+
+.station-view__step-dot--current::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #0ea5e9;
 }
 
 /* Mini progress bar */
@@ -1640,6 +1674,19 @@
   .station-view__th--client { width: 100px; }
   .station-view__th--spec { width: 130px; }
   .station-view__th--due { width: 100px; }
+
+  /* PC: show step dots */
+  .station-view__row-steps {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .station-view__th--steps {
+    display: block;
+    flex-shrink: 0;
+  }
 
   /* PC: bigger buttons, full text */
   .station-view__btn-text--pc { display: inline; }
