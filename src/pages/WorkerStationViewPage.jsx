@@ -431,14 +431,16 @@ export default function WorkerStationViewPage() {
               >
                 ⚠️ 이슈보고
               </button>
-              {issueSelectOpen && items.length > 0 && (
+              {issueSelectOpen && (
                 <div className="station-view__issue-select" onClick={e => e.stopPropagation()}>
                   <div className="station-view__issue-select-header">
                     <strong>이슈보고할 제품 선택</strong>
                     <button className="station-view__issue-select-close" onClick={() => setIssueSelectOpen(false)}>✕</button>
                   </div>
                   <div className="station-view__issue-select-list">
-                    {items.map(item => (
+                    {items.length === 0 ? (
+                      <div style={{ padding: '20px 14px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>현재 작업 항목이 없습니다</div>
+                    ) : items.map(item => (
                       <button
                         key={item.process_id}
                         className="station-view__issue-select-item"
@@ -468,7 +470,11 @@ export default function WorkerStationViewPage() {
       {factoryStats && (
         <div className="factory-overview">
           <div className="factory-overview__header">
-            <h2 className="factory-overview__title">전체 <strong>{factoryStats.total_orders}</strong></h2>
+            <h2 className="factory-overview__title">
+              <span className="factory-overview__total-label">주문</span>
+              <span className="factory-overview__total-num">{factoryStats.total_orders}</span>
+              <span className="factory-overview__total-sub">생산 {factoryStats.in_production} · 출고 {factoryStats.shipped}</span>
+            </h2>
             <div className="factory-overview__global">
               {(factoryStats.by_step || []).map(s => {
                 const a = Number(s.actionable) || 0;

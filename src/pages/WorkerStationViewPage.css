@@ -450,6 +450,28 @@
   font-weight: 700;
   color: #0f172a;
   margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.factory-overview__total-label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.factory-overview__total-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.factory-overview__total-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 .factory-overview__global {
@@ -856,14 +878,12 @@
 
 /* Row cells */
 .station-view__row-client {
-  width: 80px;
+  min-width: 60px;
   flex-shrink: 0;
   font-size: 13px;
   font-weight: 700;
   color: #0f172a;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   padding-left: 8px;
   position: relative;
 }
@@ -1626,7 +1646,7 @@
   }
 
   .station-view__row-client {
-    width: 64px;
+    min-width: 50px;
     font-size: 12px;
     padding-left: 6px;
   }
@@ -1860,7 +1880,7 @@
 
   /* PC: issue popup wider */
   .sv-card-popup {
-    min-width: 400px;
+    width: 420px;
   }
 }
 
@@ -2897,23 +2917,25 @@
 
 /* ── Card Popup (카드 위에 뜨는 팝업 창) ── */
 .sv-card-popup {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 200;
   background: #ffffff;
-  border-radius: 14px;
-  padding: 20px 16px;
+  border-radius: 16px;
+  padding: 24px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  box-shadow: 0 8px 40px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 12px 48px rgba(15, 23, 42, 0.25);
   animation: sv-popup-in 0.2s cubic-bezier(0.32, 0.72, 0, 1);
   overflow-y: auto;
+  max-height: 85vh;
+  width: 360px;
+  max-width: calc(100vw - 32px);
 }
 
 @keyframes sv-popup-in {
