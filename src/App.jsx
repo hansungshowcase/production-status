@@ -103,7 +103,7 @@ export default function App() {
           <AppRoutes />
         </Suspense>
       </ChunkErrorBoundary>
-      <footer className="app-footer-brand">HANSUNG SHOWCASE</footer>
+      <footer className="app-footer-brand">잘 만든 제품은 고객의 삶을 바꿉니다.</footer>
     </BrowserRouter>
   );
 }
