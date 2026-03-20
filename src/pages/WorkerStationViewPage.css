@@ -559,18 +559,18 @@
 
 /* Section title */
 .station-view__section-title {
-  font-size: 16px;
+  font-size: 13px;
   font-weight: 700;
   color: #0f172a;
-  padding: 16px 20px 0;
+  padding: 10px 12px 0;
 }
 
 /* Summary Stats Bar */
 .station-view__summary {
   display: flex;
   gap: 0;
-  padding: 0 20px;
-  margin: 16px 0 0;
+  padding: 0 12px;
+  margin: 8px 0 0;
 }
 
 .station-view__stat {
@@ -578,7 +578,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 14px 8px;
+  padding: 8px 4px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
 }
@@ -596,7 +596,7 @@
 }
 
 .station-view__stat-num {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   line-height: 1;
@@ -621,7 +621,7 @@
 
 /* Body */
 .station-view__body {
-  padding: 16px 20px;
+  padding: 10px 12px;
   max-width: 100%;
   margin: 0 auto;
 }
@@ -640,30 +640,30 @@
 
 .station-view__empty {
   text-align: center;
-  padding: 80px 20px;
-  font-size: 18px;
+  padding: 40px 16px;
+  font-size: 14px;
   color: #888;
 }
 
-/* Order card */
+/* Order card — horizontal row layout */
 .station-view__card {
   position: relative;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 12px;
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
   transition: box-shadow 0.15s, border-color 0.15s;
   cursor: pointer;
 }
 
 .station-view__card:hover {
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 .station-view__card--active {
   border-color: #7dd3fc;
-  border-left: 4px solid #0ea5e9;
+  border-left: 3px solid #0ea5e9;
 }
 
 .station-view__card--overdue {
@@ -673,6 +673,110 @@
 
 .station-view__card--overdue.station-view__card--active {
   border-left-color: #dc2626;
+}
+
+/* Row 1: client + tags + status */
+.station-view__card-row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.station-view__card-row1-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.station-view__card-row1-right {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Row 2: info + progress + actions */
+.station-view__card-row2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.station-view__card-info {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #64748b;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.station-view__info-item {
+  white-space: nowrap;
+}
+
+.station-view__info-item--due {
+  font-weight: 700;
+  color: #334155;
+}
+
+/* Mini progress bar */
+.station-view__card-progress-mini {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.station-view__progress-bar-mini {
+  width: 40px;
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.station-view__progress-fill-mini {
+  display: block;
+  height: 100%;
+  background: #0ea5e9;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.station-view__progress-fill-mini--done {
+  background: #059669;
+}
+
+.station-view__progress-text-mini {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+/* Inline actions (row 2) */
+.station-view__card-actions-inline {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.station-view__card-actions-inline .station-view__action-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  min-width: unset;
+  min-height: 30px;
+  border-radius: 6px;
+}
+
+/* Hide desktop actions by default — show only on larger screens */
+.station-view__card-actions--desktop {
+  display: none;
 }
 
 .station-view__card--completing {
@@ -701,9 +805,10 @@
 }
 
 .station-view__client {
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 700;
   color: #0f172a;
+  white-space: nowrap;
 }
 
 .station-view__sales-person {
@@ -721,11 +826,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
-  padding: 6px 14px;
-  margin: 0 14px 6px;
+  padding: 4px 10px;
+  margin: 4px 0;
   background: #f8fafc;
-  border-radius: 8px;
+  border-radius: 6px;
   border-left: 3px solid #0ea5e9;
+  font-size: 11px;
 }
 
 .station-view__history-item {
@@ -748,19 +854,19 @@
 }
 
 .station-view__overdue-tag {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
   color: #dc2626;
   background: #fee2e2;
-  padding: 2px 8px;
-  border-radius: 8px;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .station-view__step-status {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
 }
 
 .station-view__step-status--waiting {
@@ -782,10 +888,10 @@
 }
 
 .station-view__tag {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .station-view__tag--product {
@@ -955,15 +1061,15 @@
 .station-view__issue-alert {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 4px;
+  padding: 4px 8px;
   background: #fff7ed;
   border: 1px solid #fed7aa;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 11px;
   font-weight: 600;
   color: #c2410c;
-  margin-bottom: 10px;
+  margin-top: 6px;
 }
 
 .station-view__issue-alert::before {
@@ -972,21 +1078,21 @@
 
 /* Expanded detail */
 .station-view__card-detail {
-  margin: 10px 0;
-  padding: 12px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
   background: #f8fafc;
-  border-radius: 10px;
+  border-radius: 6px;
   border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .station-view__detail-row {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .station-view__detail-label {
@@ -1085,128 +1191,57 @@
 
 /* Responsive */
 @media (max-width: 767px) {
-  .factory-overview {
-    margin: 12px 14px 0;
-    padding: 12px;
-  }
-
-  .factory-overview__steps--grid {
-    display: none;
-  }
-
-  .factory-overview__steps--compact {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-
-  .station-view__section-title {
-    padding: 12px 14px 0;
-    font-size: 14px;
-  }
-
+  /* Header */
   .station-view__header-top {
-    padding: 10px 12px;
+    padding: 6px 12px 4px;
   }
 
   .station-view__title {
-    font-size: 16px;
-  }
-
-  .station-view__title-icon {
-    font-size: 20px;
-  }
-
-  .station-view__summary {
-    padding: 0 14px;
-    margin-top: 12px;
-  }
-
-  .station-view__stat {
-    padding: 10px 6px;
-  }
-
-  .station-view__stat-num {
-    font-size: 18px;
-  }
-
-  .station-view__body {
-    padding: 12px 14px;
-  }
-
-  .station-view__card {
-    padding: 14px;
-    margin-bottom: 10px;
-    border-radius: 12px;
-  }
-
-  .station-view__client {
     font-size: 15px;
   }
 
-  .station-view__card-specs {
-    gap: 4px 12px;
-    font-size: 12px;
+  .station-view__title-icon {
+    font-size: 17px;
   }
 
-  .station-view__action-btn {
-    padding: 12px 16px;
-    font-size: 14px;
-    min-height: 48px;
-    min-width: 70px;
+  .station-view__header-sub {
+    padding: 0 12px 6px;
   }
 
-  .station-view__action-btn--revert {
-    padding: 10px 12px;
-    font-size: 12px;
-    min-height: 44px;
-  }
-
-  .station-view__card-actions {
-    gap: 6px;
-  }
-
-}
-
-@media (max-width: 480px) {
-  .station-view__header-top {
-    padding: 10px;
-    gap: 8px;
+  .station-view__action-chip {
+    padding: 4px 10px;
+    min-height: 28px;
+    font-size: 11px;
   }
 
   .station-view__back-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    font-size: 16px;
-  }
-
-  .station-view__title {
+    width: 34px;
+    height: 34px;
     font-size: 15px;
-  }
-
-  .station-view__title-icon {
-    font-size: 18px;
+    border-radius: 8px;
   }
 
   .station-view__worker-name {
+    font-size: 11px;
+  }
+
+  /* Factory overview */
+  .factory-overview {
+    margin: 8px 10px 0;
+    padding: 10px;
+  }
+
+  .factory-overview__header {
+    margin-bottom: 8px;
+  }
+
+  .factory-overview__title {
     font-size: 13px;
   }
 
-  .station-view__issue-noti {
-    padding: 6px 12px;
-    font-size: 12px;
-    min-height: 36px;
-  }
-
-  .station-view__dept-change-btn {
-    padding: 6px 12px;
-    font-size: 12px;
-  }
-
-  .factory-overview {
-    margin: 10px 10px 0;
-    padding: 10px;
+  .factory-overview__global {
+    font-size: 11px;
+    gap: 8px;
   }
 
   .factory-overview__steps--grid {
@@ -1219,13 +1254,19 @@
     gap: 0;
   }
 
+  /* Summary stats */
   .station-view__section-title {
-    padding: 10px 10px 0;
-    font-size: 14px;
+    padding: 10px 12px 0;
+    font-size: 13px;
   }
 
   .station-view__summary {
-    padding: 0 10px;
+    padding: 0 12px;
+    margin-top: 8px;
+  }
+
+  .station-view__stat {
+    padding: 8px 4px;
   }
 
   .station-view__stat-num {
@@ -1233,27 +1274,241 @@
   }
 
   .station-view__stat-label {
-    font-size: 11px;
+    font-size: 10px;
+    margin-top: 2px;
   }
 
+  /* Order cards */
   .station-view__body {
-    padding: 10px 10px;
+    padding: 8px 10px;
+  }
+
+  .station-view__card {
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 10px;
   }
 
   .station-view__client {
     font-size: 14px;
   }
 
+  .station-view__card-top {
+    margin-bottom: 6px;
+  }
+
+  .station-view__card-tags {
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+
+  .station-view__tag {
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+
   .station-view__card-specs {
+    gap: 4px 10px;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .station-view__spec-icon {
     font-size: 12px;
   }
 
   .station-view__spec--due {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .station-view__due-date {
+    font-size: 12px;
+  }
+
+  .station-view__due-label {
+    font-size: 11px;
+  }
+
+  .station-view__step-status {
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+
+  .station-view__overdue-tag {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  /* Progress bar */
+  .station-view__progress {
+    margin-bottom: 8px;
+  }
+
+  .station-view__progress-steps-hint {
+    font-size: 9px;
+  }
+
+  .station-view__progress-label {
+    font-size: 10px;
+  }
+
+  .station-view__progress-text {
+    font-size: 10px;
+  }
+
+  /* Actions */
+  .station-view__action-btn {
+    padding: 8px 12px;
     font-size: 13px;
+    min-height: 40px;
+    min-width: 60px;
+    border-radius: 8px;
+  }
+
+  .station-view__card-actions {
+    gap: 6px;
+  }
+
+  /* Step history */
+  .station-view__step-history {
+    padding: 4px 10px;
+    margin: 0 0 4px;
+  }
+
+  .station-view__history-item {
+    font-size: 11px;
+  }
+
+  /* D-day badge */
+  .station-view__dday {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  /* Card detail (expanded) */
+  .station-view__card-detail {
+    margin: 6px 0;
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .station-view__detail-row {
+    font-size: 12px;
+  }
+
+  /* Issue alert */
+  .station-view__issue-alert {
+    padding: 6px 10px;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  /* Empty state */
+  .station-view__empty {
+    padding: 40px 16px;
+    font-size: 14px;
+  }
+
+  .station-view__loading,
+  .station-view__error {
+    padding: 30px 16px;
+    font-size: 14px;
+  }
+
+}
+
+@media (max-width: 480px) {
+  .station-view__header-top {
+    padding: 4px 10px 3px;
+    gap: 6px;
+  }
+
+  .station-view__back-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+    border-radius: 7px;
+  }
+
+  .station-view__title {
+    font-size: 14px;
+  }
+
+  .station-view__title-icon {
+    font-size: 15px;
+  }
+
+  .station-view__worker-name {
+    font-size: 10px;
+  }
+
+  .station-view__issue-noti {
+    padding: 4px 10px;
+    font-size: 11px;
+    min-height: 30px;
+  }
+
+  .station-view__dept-change-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  .factory-overview {
+    margin: 6px 8px 0;
+    padding: 8px;
+  }
+
+  .factory-overview__steps--grid {
+    display: none;
+  }
+
+  .factory-overview__steps--compact {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .station-view__section-title {
+    padding: 8px 10px 0;
+    font-size: 12px;
+  }
+
+  .station-view__summary {
+    padding: 0 10px;
+  }
+
+  .station-view__stat-num {
+    font-size: 15px;
+  }
+
+  .station-view__stat-label {
+    font-size: 9px;
+  }
+
+  .station-view__body {
+    padding: 6px 8px;
+  }
+
+  .station-view__card {
+    padding: 10px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+  }
+
+  .station-view__client {
+    font-size: 13px;
+  }
+
+  .station-view__card-specs {
+    font-size: 11px;
+  }
+
+  .station-view__spec--due {
+    font-size: 11px;
+  }
+
+  .station-view__due-date {
+    font-size: 11px;
   }
 
   .station-view__card-actions {
@@ -1262,21 +1517,14 @@
 
   .station-view__action-btn {
     width: 100%;
-    font-size: 14px;
-    min-height: 48px;
+    font-size: 12px;
+    min-height: 36px;
+    padding: 6px 10px;
   }
 
   .station-view__tag {
-    font-size: 11px;
-  }
-
-  .station-view__back-btn {
-    width: 44px;
-    height: 44px;
-  }
-
-  .station-view__title {
-    font-size: 16px;
+    font-size: 10px;
+    padding: 1px 5px;
   }
 }
 

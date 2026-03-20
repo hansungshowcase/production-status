@@ -557,32 +557,74 @@ export default function WorkerStationViewPage() {
               className={`station-view__card${overdue ? ' station-view__card--overdue' : ''} ${sKey === 'in_progress' ? 'station-view__card--active' : ''}${isCompleting ? ' station-view__card--completing' : ''}`}
               onClick={() => setExpandedId(isExpanded ? null : item.process_id)}
             >
-              {/* Top row: client + status */}
-              <div className="station-view__card-top">
-                <div className="station-view__card-top-left">
-                  <span className="station-view__client">{item.client_name || '거래처 미지정'}</span>
-                  {item.sales_person && (
-                    <span className="station-view__sales-person">담당: {item.sales_person}</span>
-                  )}
-                </div>
-                <div className="station-view__card-top-right">
+              {/* Row 1: client + tags + status + dday */}
+              <div className="station-view__card-row1">
+                <span className="station-view__client">{item.client_name || '거래처 미지정'}</span>
+                <span className="station-view__card-row1-tags">
+                  {item.product_type && <span className="station-view__tag station-view__tag--product">{item.product_type}</span>}
+                  {item.door_type && <span className="station-view__tag station-view__tag--door">{item.door_type}</span>}
+                  {item.quantity > 1 && <span className="station-view__tag station-view__tag--qty">{item.quantity}</span>}
+                </span>
+                <span className="station-view__card-row1-right">
                   {overdue && <span className="station-view__overdue-tag">납기초과</span>}
+                  {dday && (
+                    <span className={`station-view__dday station-view__dday--${dday.cls}`}>
+                      {dday.label}
+                    </span>
+                  )}
                   <span className={`station-view__step-status station-view__step-status--${sKey}`}>
                     {statusLabel(item.status)}
                   </span>
+                </span>
+              </div>
+
+              {/* Row 2: specs inline + progress + actions */}
+              <div className="station-view__card-row2">
+                <span className="station-view__card-info">
+                  {dimensions && <span className="station-view__info-item">{dimensions}</span>}
+                  {item.color && <span className="station-view__info-item">{item.color}</span>}
+                  {item.due_date && <span className="station-view__info-item station-view__info-item--due">{item.due_date}</span>}
+                </span>
+                <span className="station-view__card-progress-mini">
+                  <span className="station-view__progress-bar-mini">
+                    <span className={`station-view__progress-fill-mini${progressPct === 100 ? ' station-view__progress-fill-mini--done' : ''}`} style={{ width: `${progressPct}%` }} />
+                  </span>
+                  <span className="station-view__progress-text-mini">{completedSteps}/{totalSteps}</span>
+                </span>
+                <span className="station-view__card-actions-inline" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    className="station-view__action-btn station-view__action-btn--complete"
+                    onClick={() => requestComplete(item.process_id)}
+                    disabled={isActioning || !!actionLoading}
+                  >
+                    {isActioning ? '...' : '완료'}
+                  </button>
+                  <button
+                    className="station-view__action-btn station-view__action-btn--issue"
+                    onClick={() => openIssueModal(item)}
+                    disabled={!!actionLoading}
+                  >
+                    이슈
+                  </button>
+                  <button
+                    className="station-view__action-btn station-view__action-btn--photo"
+                    onClick={() => { closeAllModals(); setPhotoModal(item); }}
+                    disabled={!!actionLoading}
+                  >
+                    사진
+                  </button>
+                </span>
+              </div>
+
+              {/* Issue alert */}
+              {item.open_issues > 0 && (
+                <div className="station-view__issue-alert">
+                  미해결 이슈 {item.open_issues}건
                 </div>
-              </div>
+              )}
 
-              {/* Product info tags */}
-              <div className="station-view__card-tags">
-                {item.product_type && <span className="station-view__tag station-view__tag--product">{item.product_type}</span>}
-                {item.door_type && <span className="station-view__tag station-view__tag--door">{item.door_type}</span>}
-                {item.design && <span className="station-view__tag station-view__tag--design">{item.design}</span>}
-                {item.quantity && <span className="station-view__tag station-view__tag--qty">수량 {item.quantity}</span>}
-              </div>
-
-              {/* Step history — who completed each previous step */}
-              {item.step_history && item.step_history.length > 0 && (
+              {/* Step history (collapsed by default) */}
+              {isExpanded && item.step_history && item.step_history.length > 0 && (
                 <div className="station-view__step-history">
                   {item.step_history.map((h, i) => (
                     <div key={i} className="station-view__history-item">
@@ -593,72 +635,21 @@ export default function WorkerStationViewPage() {
                 </div>
               )}
 
-              {/* Specs row */}
-              <div className="station-view__card-specs">
-                {dimensions && (
-                  <span className="station-view__spec">
-                    <span className="station-view__spec-icon">📐</span>
-                    {dimensions}
-                  </span>
-                )}
-                {item.color && (
-                  <span className="station-view__spec">
-                    <span className="station-view__spec-icon">🎨</span>
-                    {item.color}
-                  </span>
-                )}
-                {item.due_date && (
-                  <span className="station-view__spec station-view__spec--due">
-                    <span className="station-view__spec-icon">📅</span>
-                    <span className="station-view__due-label">납기일 :</span>
-                    <strong className="station-view__due-date">{item.due_date}</strong>
-                    {dday && (
-                      <span className={`station-view__dday station-view__dday--${dday.cls}`}>
-                        {dday.label}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {item.created_at && (
-                  <span className="station-view__spec">
-                    <span className="station-view__spec-icon">🕐</span>
-                    등록 {new Date(item.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
-              </div>
-
-              {/* Overall progress bar */}
-              <div className="station-view__progress">
-                <div className="station-view__progress-header">
-                  <span className="station-view__progress-label">전체 공정</span>
-                  <span className="station-view__progress-steps-hint">
-                    {PROCESS_STEPS.map((s, i) => (
-                      <span key={i} className={`station-view__hint-step${i < completedSteps ? ' station-view__hint-step--done' : i === completedSteps ? ' station-view__hint-step--current' : ''}`}>
-                        {i > 0 && <span className="station-view__hint-arrow">›</span>}
-                        {s}
-                      </span>
-                    ))}
-                  </span>
-                  <span className="station-view__progress-text">{completedSteps}/{totalSteps}</span>
-                </div>
-                <div className="station-view__progress-bar">
-                  <div
-                    className={`station-view__progress-fill${progressPct === 100 ? ' station-view__progress-fill--done' : ''}`}
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Open issues alert */}
-              {item.open_issues > 0 && (
-                <div className="station-view__issue-alert">
-                  미해결 이슈 {item.open_issues}건
-                </div>
-              )}
-
               {/* Expanded detail */}
               {isExpanded && (
                 <div className="station-view__card-detail">
+                  {item.sales_person && (
+                    <div className="station-view__detail-row">
+                      <span className="station-view__detail-label">담당</span>
+                      <span className="station-view__detail-value">{item.sales_person}</span>
+                    </div>
+                  )}
+                  {item.design && (
+                    <div className="station-view__detail-row">
+                      <span className="station-view__detail-label">디자인</span>
+                      <span className="station-view__detail-value">{item.design}</span>
+                    </div>
+                  )}
                   {item.order_date && (
                     <div className="station-view__detail-row">
                       <span className="station-view__detail-label">발주일</span>
@@ -677,12 +668,6 @@ export default function WorkerStationViewPage() {
                       <span className="station-view__detail-value">{item.started_by}</span>
                     </div>
                   )}
-                  {item.completed_by && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">완료담당</span>
-                      <span className="station-view__detail-value">{item.completed_by}</span>
-                    </div>
-                  )}
                   {item.notes && (
                     <div className="station-view__detail-row">
                       <span className="station-view__detail-label">비고</span>
@@ -698,8 +683,8 @@ export default function WorkerStationViewPage() {
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="station-view__card-actions" onClick={(e) => e.stopPropagation()}>
+              {/* Desktop-only full actions (hidden on mobile) */}
+              <div className="station-view__card-actions station-view__card-actions--desktop" onClick={(e) => e.stopPropagation()}>
                 <button
                   className="station-view__action-btn station-view__action-btn--complete"
                   onClick={() => requestComplete(item.process_id)}
