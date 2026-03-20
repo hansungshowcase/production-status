@@ -49,6 +49,7 @@ export default function WorkerStationViewPage() {
   const [issueAcknowledged, setIssueAcknowledged] = useState(false); // 이슈 확인 여부
   const [issueListModal, setIssueListModal] = useState(null); // 이슈 목록 모달 { issues, loading }
   const [resolvingId, setResolvingId] = useState(null);
+  const [issueSelectOpen, setIssueSelectOpen] = useState(false);
   const prevIssueCountRef = useRef(0);
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
@@ -423,6 +424,42 @@ export default function WorkerStationViewPage() {
             >
               부서변경
             </button>
+            <div className="station-view__issue-report-wrap">
+              <button
+                className="station-view__action-chip station-view__action-chip--issue"
+                onClick={() => setIssueSelectOpen(prev => !prev)}
+              >
+                ⚠️ 이슈보고
+              </button>
+              {issueSelectOpen && items.length > 0 && (
+                <div className="station-view__issue-select" onClick={e => e.stopPropagation()}>
+                  <div className="station-view__issue-select-header">
+                    <strong>이슈보고할 제품 선택</strong>
+                    <button className="station-view__issue-select-close" onClick={() => setIssueSelectOpen(false)}>✕</button>
+                  </div>
+                  <div className="station-view__issue-select-list">
+                    {items.map(item => (
+                      <button
+                        key={item.process_id}
+                        className="station-view__issue-select-item"
+                        onClick={() => {
+                          setIssueSelectOpen(false);
+                          openIssueModal(item);
+                        }}
+                      >
+                        <span className="station-view__issue-select-client">{item.client_name || '미지정'}</span>
+                        <span className="station-view__issue-select-info">
+                          {item.product_type || ''}{item.door_type ? `/${item.door_type}` : ''}
+                        </span>
+                        <span className={`station-view__issue-select-status station-view__issue-select-status--${statusKey(item.status)}`}>
+                          {statusLabel(item.status)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -431,16 +468,19 @@ export default function WorkerStationViewPage() {
       {factoryStats && (
         <div className="factory-overview">
           <div className="factory-overview__header">
-            <h2 className="factory-overview__title">공장 전체 현황</h2>
+            <h2 className="factory-overview__title">전체 <strong>{factoryStats.total_orders}</strong></h2>
             <div className="factory-overview__global">
-              <span className="factory-overview__global-item">주문 <strong>{factoryStats.total_orders}</strong></span>
-              <span className="factory-overview__global-item">생산중 <strong>{factoryStats.in_production}</strong></span>
-              <span className="factory-overview__global-item">출고 <strong>{factoryStats.shipped}</strong></span>
+              {(factoryStats.by_step || []).map(s => {
+                const a = Number(s.actionable) || 0;
+                const name = s.step_name.replace('작업', '');
+                return (
+                  <span key={s.step_name} className={`factory-overview__global-item${a > 0 ? ' factory-overview__global-item--active' : ''}`}>
+                    {name} <strong>{a}</strong>
+                  </span>
+                );
+              })}
               {factoryStats.overdue_count > 0 && (
-                <span className="factory-overview__global-item factory-overview__global-item--red">납기초과 <strong>{factoryStats.overdue_count}</strong></span>
-              )}
-              {factoryStats.open_issues > 0 && (
-                <span className="factory-overview__global-item factory-overview__global-item--orange">이슈 <strong>{factoryStats.open_issues}</strong></span>
+                <span className="factory-overview__global-item factory-overview__global-item--red">지연 <strong>{factoryStats.overdue_count}</strong></span>
               )}
             </div>
           </div>
@@ -468,8 +508,7 @@ export default function WorkerStationViewPage() {
                     <div className="factory-step__bar-fill" style={{ width: `${donePct}%` }} />
                   </div>
                   <div className="factory-step__counts">
-                    {actionable > 0 && <span className="factory-step__count factory-step__count--waiting">잔여 {actionable}</span>}
-                    <span className="factory-step__count factory-step__count--done">완료 {c}/{total}</span>
+                    <span className={`factory-step__count${actionable > 0 ? ' factory-step__count--waiting' : ' factory-step__count--done'}`}>{actionable}</span>
                   </div>
                 </div>
               );
@@ -616,13 +655,6 @@ export default function WorkerStationViewPage() {
                     disabled={isActioning || !!actionLoading}
                   >
                     {isActioning ? '...' : <><span className="station-view__btn-text--mobile">완료</span><span className="station-view__btn-text--pc">공정완료</span></>}
-                  </button>
-                  <button
-                    className="station-view__row-btn station-view__row-btn--issue"
-                    onClick={() => openIssueModal(item)}
-                    disabled={!!actionLoading}
-                  >
-                    이슈보고
                   </button>
                 </span>
               </div>

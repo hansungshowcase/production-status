@@ -56,6 +56,119 @@
   background: rgba(255, 255, 255, 0.35);
 }
 
+.station-view__action-chip--issue {
+  background: rgba(220, 38, 38, 0.3);
+  border-color: rgba(255, 200, 200, 0.4);
+}
+
+.station-view__issue-report-wrap {
+  position: relative;
+}
+
+/* Issue select dropdown */
+.station-view__issue-select {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  max-height: 50vh;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.2);
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: sv-dropdown-in 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.station-view__issue-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.station-view__issue-select-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.station-view__issue-select-list {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.station-view__issue-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 10px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.station-view__issue-select-item:hover {
+  background: #f8fafc;
+}
+
+.station-view__issue-select-item:active {
+  background: #f0f9ff;
+}
+
+.station-view__issue-select-client {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+
+.station-view__issue-select-info {
+  font-size: 12px;
+  color: #64748b;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.station-view__issue-select-status {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.station-view__issue-select-status--waiting {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.station-view__issue-select-status--in_progress {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
 .station-view__back-btn {
   background: rgba(255, 255, 255, 0.15);
   border: none;
@@ -350,6 +463,10 @@
 .factory-overview__global-item strong {
   color: #0f172a;
   font-weight: 700;
+}
+
+.factory-overview__global-item--active strong {
+  color: #0369a1;
 }
 
 .factory-overview__global-item--red {
@@ -675,7 +792,7 @@
 .station-view__th--due { width: 75px; flex-shrink: 0; }
 .station-view__th--progress { width: 60px; flex-shrink: 0; }
 .station-view__th--steps { display: none; }
-.station-view__th--actions { width: 110px; flex-shrink: 0; text-align: center; }
+.station-view__th--actions { width: 70px; flex-shrink: 0; text-align: center; }
 
 /* ── Order row (sheet style) ── */
 .station-view__card {
@@ -884,7 +1001,7 @@
 
 /* Row action buttons */
 .station-view__row-actions {
-  width: 110px;
+  width: 70px;
   flex-shrink: 0;
   display: flex;
   gap: 3px;
@@ -1502,7 +1619,7 @@
   .station-view__th--product { min-width: 40px; }
   .station-view__th--due { width: 65px; }
   .station-view__th--progress { width: 55px; }
-  .station-view__th--actions { width: 90px; }
+  .station-view__th--actions { width: 55px; }
 
   .station-view__row {
     padding: 6px;
@@ -1530,7 +1647,7 @@
 
   .station-view__progress-bar-mini { width: 24px; }
 
-  .station-view__row-actions { width: 90px; }
+  .station-view__row-actions { width: 55px; }
 
   .station-view__row-btn {
     padding: 3px 6px;
