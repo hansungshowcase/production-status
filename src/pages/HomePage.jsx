@@ -68,7 +68,8 @@ export default function HomePage() {
       </div>
 
       <div className="home-footer">
-        <span>한성쇼케이스 제작현황 v1.0</span>
+        <span>HANSUNGSHOWCASE</span>
+        <span className="home-footer__motto">잘 만든 제품은 고객의 삶을 바꿉니다.</span>
       </div>
     </div>
   );
