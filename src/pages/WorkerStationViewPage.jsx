@@ -450,7 +450,7 @@ export default function WorkerStationViewPage() {
               const p = Number(stepStat?.in_progress) || 0;
               const c = Number(stepStat?.completed) || 0;
               const total = w + p + c;
-              const actionable = w + p;
+              const actionable = Number(stepStat?.actionable) || 0;
               const donePct = total > 0 ? Math.round((c / total) * 100) : 0;
 
               return (
