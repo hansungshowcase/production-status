@@ -157,7 +157,6 @@ export default function WorkerSelectPage() {
         </div>
       )}
       <div className="worker-select-page__footer">
-        <span>HANSUNGSHOWCASE</span>
         <span className="worker-select-page__motto">잘 만든 제품은 고객의 삶을 바꿉니다.</span>
       </div>
     </div>
