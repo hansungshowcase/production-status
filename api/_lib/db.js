@@ -14,31 +14,26 @@ export function getDb() {
   }
   const sql = cachedSql;
 
+  const executeQuery = async ({ sql: query, args = [] }) => {
+    const pgSql = convertPlaceholders(query);
+    const rows = await sql(pgSql, args);
+    return {
+      rows,
+      rowsAffected: rows.length,
+      lastInsertRowid: rows?.[0]?.id ?? null,
+    };
+  };
+
   return {
-    async execute({ sql: query, args = [] }) {
-      const pgSql = convertPlaceholders(query);
-      const rows = await sql.query(pgSql, args);
-      return {
-        rows,
-        rowsAffected: rows.length,
-        lastInsertRowid: rows?.[0]?.id ?? null,
-      };
-    },
+    execute: executeQuery,
+    // Neon HTTP driver does not support real transactions (each call is independent).
+    // transaction() returns an object with the same execute() for compatibility,
+    // commit/rollback are no-ops. Callers should handle errors themselves.
     async transaction(mode) {
-      await sql('BEGIN');
-      let done = false;
       return {
-        async execute({ sql: query, args = [] }) {
-          const pgSql = convertPlaceholders(query);
-          const rows = await sql(pgSql, args);
-          return {
-            rows,
-            rowsAffected: rows.length,
-            lastInsertRowid: rows?.[0]?.id ?? null,
-          };
-        },
-        async commit() { if (!done) { await sql('COMMIT'); done = true; } },
-        async rollback() { if (!done) { await sql('ROLLBACK'); done = true; } },
+        execute: executeQuery,
+        async commit() {},
+        async rollback() {},
       };
     },
   };
