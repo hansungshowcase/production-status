@@ -61,17 +61,17 @@ export default function InstallPrompt() {
       <div className="install-prompt__content">
         <div className="install-prompt__icon">📲</div>
         <div className="install-prompt__info">
-          <strong className="install-prompt__title">바로가기를 만드시겠습니까?</strong>
+          <strong className="install-prompt__title">한성쇼케이스 앱 설치</strong>
           <p className="install-prompt__desc">
-            홈 화면에 추가하면 앱처럼 바로 사용할 수 있습니다.
+            앱을 설치하면 핸드폰에서 더 빠르고 편리하게 사용할 수 있습니다.
           </p>
         </div>
         <div className="install-prompt__actions">
           <button className="install-prompt__btn install-prompt__btn--install" onClick={handleInstall}>
-            추가하기
+            앱 설치
           </button>
           <button className="install-prompt__btn install-prompt__btn--dismiss" onClick={handleDismiss}>
-            괜찮습니다
+            나중에
           </button>
         </div>
       </div>
