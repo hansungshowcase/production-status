@@ -37,6 +37,7 @@ export const DEPT_ICONS = STEP_ICONS;
 // 작업자별 접근 가능한 부서 제한 (미등록 작업자는 전체 부서 접근 가능)
 export const WORKER_DEPARTMENT_FILTER = {
   '이정섭 부장': ['도면설계', '레이저작업'],
+  '거니': ['V-커팅작업'],
 };
 
 export const SALES_PERSONS = [
