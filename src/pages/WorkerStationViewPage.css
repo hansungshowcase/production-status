@@ -2916,6 +2916,20 @@
 }
 
 /* ── Card Popup (카드 위에 뜨는 팝업 창) ── */
+/* Popup overlay */
+.sv-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 199;
+  animation: sv-overlay-in 0.15s ease;
+}
+
+@keyframes sv-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .sv-card-popup {
   position: fixed;
   top: 50%;

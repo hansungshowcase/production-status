@@ -696,166 +696,152 @@ export default function WorkerStationViewPage() {
               )}
 
 
-              {/* ── Popup: Confirm ── */}
-              {confirmTarget && confirmTarget.processId === item.process_id && (
-                <div className="sv-card-popup" onClick={(e) => e.stopPropagation()}>
-                  <div className="sv-card-popup__title">{confirmTarget.clientName}</div>
-                  {isLastStep ? (
-                    <>
-                      <div className="sv-card-popup__desc">최종 공정을 완료하시겠습니까?</div>
-                      <div className="sv-card-popup__flow">
-                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
-                          <span className="sv-card-popup__flow-icon">{icon}</span>
-                          <span className="sv-card-popup__flow-name">{decodedStep}</span>
-                        </div>
-                        <div className="sv-card-popup__flow-arrow">
-                          <div className="sv-card-popup__flow-arrow-track">
-                            <div className="sv-card-popup__flow-arrow-dot" />
-                          </div>
-                          <span className="sv-card-popup__flow-arrow-head">▶</span>
-                        </div>
-                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--done">
-                          <span className="sv-card-popup__flow-icon">🏁</span>
-                          <span className="sv-card-popup__flow-name">완료</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="sv-card-popup__desc">다음 공정으로 넘기겠습니까?</div>
-                      <div className="sv-card-popup__flow">
-                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
-                          <span className="sv-card-popup__flow-icon">{icon}</span>
-                          <span className="sv-card-popup__flow-name">{decodedStep}</span>
-                        </div>
-                        <div className="sv-card-popup__flow-arrow">
-                          <div className="sv-card-popup__flow-arrow-track">
-                            <div className="sv-card-popup__flow-arrow-dot" />
-                          </div>
-                          <span className="sv-card-popup__flow-arrow-head">▶</span>
-                        </div>
-                        <div className="sv-card-popup__flow-step sv-card-popup__flow-step--to">
-                          <span className="sv-card-popup__flow-icon">{STEP_ICONS[nextSteps[0]] || ''}</span>
-                          <span className="sv-card-popup__flow-name">{nextSteps[0]}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {!isLastStep && nextSteps.length > 0 && (
-                    <div className="sv-card-popup__next-steps">
-                      {nextSteps.map((step, idx) => (
-                        <button
-                          key={step}
-                          className={`sv-card-popup__next-btn${idx === 0 ? ' sv-card-popup__next-btn--primary' : ''}`}
-                          onClick={() => executeComplete(step)}
-                        >
-                          {STEP_ICONS[step] || ''} {step}
-                          {idx > 0 && <span className="sv-card-popup__skip-hint">건너뛰기</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="sv-card-popup__actions">
-                    {isLastStep && (
-                      <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>완료</button>
-                    )}
-                    <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setConfirmTarget(null)}>취소</button>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Popup: Issue ── */}
-              {issueModal && issueModal.item.process_id === item.process_id && (
-                <div className="sv-card-popup" onClick={(e) => e.stopPropagation()}>
-                  {issueModal.step === 'select' && (
-                    <>
-                      <div className="sv-card-popup__icon">⚠️</div>
-                      <div className="sv-card-popup__title">이슈 유형 선택</div>
-                      <div className="sv-card-popup__desc">{issueModal.item.client_name} · {decodedStep}</div>
-                      <div className="sv-card-popup__issue-grid">
-                        {ISSUE_TYPES.map(t => (
-                          <button
-                            key={t.value}
-                            className="sv-card-popup__issue-btn"
-                            onClick={() => selectIssueType(t.value)}
-                            style={{ borderColor: `${t.color}30`, background: `${t.color}08` }}
-                          >
-                            <span style={{ fontSize: 22 }}>{t.icon}</span>
-                            <span style={{ color: t.color, fontWeight: 600, fontSize: 13 }}>{t.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <div className="sv-card-popup__actions">
-                        <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(null)}>취소</button>
-                      </div>
-                    </>
-                  )}
-                  {issueModal.step === 'confirm' && (
-                    <>
-                      <div className="sv-card-popup__icon">⚠️</div>
-                      <div className="sv-card-popup__title">{ISSUE_TYPES.find(t => t.value === issueModal.issueType)?.label}</div>
-                      <div className="sv-card-popup__desc">{issueModal.item.client_name} · {decodedStep}</div>
-                      <textarea
-                        className="sv-card-popup__textarea"
-                        placeholder="상세 내용을 입력하세요 (선택)"
-                        value={issueDesc}
-                        onChange={e => setIssueDesc(e.target.value)}
-                        rows={3}
-                      />
-                      <label className="sv-card-popup__photo-attach">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          capture="environment"
-                          style={{ display: 'none' }}
-                          onChange={e => setIssuePhotos(prev => [...prev, ...Array.from(e.target.files)])}
-                        />
-                        <span className="sv-card-popup__photo-btn">📷 사진 첨부 {issuePhotos.length > 0 && `(${issuePhotos.length})`}</span>
-                      </label>
-                      <div className="sv-card-popup__actions">
-                        <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(prev => ({ ...prev, step: 'select' }))} disabled={issueLoading}>뒤로</button>
-                        <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={submitIssue} disabled={issueLoading}>
-                          {issueLoading ? '보고중...' : '이슈 보고'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  {issueModal.step === 'sms' && (
-                    <>
-                      <div className="sv-card-popup__icon">✅</div>
-                      <div className="sv-card-popup__title">이슈 보고 완료</div>
-                      <div className="sv-card-popup__desc">담당자에게 문자를 보내세요</div>
-                      <div className="sv-card-popup__sms-preview">
-                        <strong>{issueModal.item.client_name}</strong> · {decodedStep}<br />
-                        이슈: {issueModal.issueType}
-                        {issueDesc && <><br />내용: {issueDesc}</>}
-                      </div>
-                      <div className="sv-card-popup__contacts">
-                        {CONTACTS.map(c => (
-                          <button key={c.name} className="sv-card-popup__contact-btn" onClick={() => sendIssueSms(c.phone, issueModal.item, issueModal.issueType)}>
-                            <div className="sv-card-popup__contact-avatar" style={{ background: '#0ea5e9' }}>{c.name.charAt(0)}</div>
-                            <div className="sv-card-popup__contact-info">
-                              <span className="sv-card-popup__contact-name">{c.name} ({c.role})</span>
-                              <span className="sv-card-popup__contact-phone">{c.phone}</span>
-                            </div>
-                            <span style={{ fontSize: 13, color: '#0ea5e9', fontWeight: 700 }}>📩 문자</span>
-                          </button>
-                        ))}
-                      </div>
-                      <div className="sv-card-popup__actions">
-                        <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(null)}>닫기</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
 
             </div>
           );
         })}
       </div>
+
+      {/* ── Global Popup: Confirm ── */}
+      {confirmTarget && (
+        <>
+          <div className="sv-overlay" onClick={() => setConfirmTarget(null)} />
+          <div className="sv-card-popup">
+            <div className="sv-card-popup__title">{confirmTarget.clientName}</div>
+            {isLastStep ? (
+              <>
+                <div className="sv-card-popup__desc">최종 공정을 완료하시겠습니까?</div>
+                <div className="sv-card-popup__flow">
+                  <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
+                    <span className="sv-card-popup__flow-icon">{icon}</span>
+                    <span className="sv-card-popup__flow-name">{decodedStep}</span>
+                  </div>
+                  <div className="sv-card-popup__flow-arrow">
+                    <div className="sv-card-popup__flow-arrow-track">
+                      <div className="sv-card-popup__flow-arrow-dot" />
+                    </div>
+                    <span className="sv-card-popup__flow-arrow-head">▶</span>
+                  </div>
+                  <div className="sv-card-popup__flow-step sv-card-popup__flow-step--done">
+                    <span className="sv-card-popup__flow-icon">🏁</span>
+                    <span className="sv-card-popup__flow-name">완료</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="sv-card-popup__desc">다음 공정으로 넘기겠습니까?</div>
+                <div className="sv-card-popup__flow">
+                  <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
+                    <span className="sv-card-popup__flow-icon">{icon}</span>
+                    <span className="sv-card-popup__flow-name">{decodedStep}</span>
+                  </div>
+                  <div className="sv-card-popup__flow-arrow">
+                    <div className="sv-card-popup__flow-arrow-track">
+                      <div className="sv-card-popup__flow-arrow-dot" />
+                    </div>
+                    <span className="sv-card-popup__flow-arrow-head">▶</span>
+                  </div>
+                  <div className="sv-card-popup__flow-step sv-card-popup__flow-step--to">
+                    <span className="sv-card-popup__flow-icon">{STEP_ICONS[nextSteps[0]] || ''}</span>
+                    <span className="sv-card-popup__flow-name">{nextSteps[0]}</span>
+                  </div>
+                </div>
+              </>
+            )}
+            {!isLastStep && nextSteps.length > 0 && (
+              <div className="sv-card-popup__next-steps">
+                {nextSteps.map((step, idx) => (
+                  <button
+                    key={step}
+                    className={`sv-card-popup__next-btn${idx === 0 ? ' sv-card-popup__next-btn--primary' : ''}`}
+                    onClick={() => executeComplete(step)}
+                  >
+                    {STEP_ICONS[step] || ''} {step}
+                    {idx > 0 && <span className="sv-card-popup__skip-hint">건너뛰기</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="sv-card-popup__actions">
+              {isLastStep && (
+                <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>완료</button>
+              )}
+              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setConfirmTarget(null)}>취소</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Global Popup: Issue ── */}
+      {issueModal && (
+        <>
+          <div className="sv-overlay" onClick={() => setIssueModal(null)} />
+          <div className="sv-card-popup">
+            {issueModal.step === 'select' && (
+              <>
+                <div className="sv-card-popup__icon">⚠️</div>
+                <div className="sv-card-popup__title">이슈 유형 선택</div>
+                <div className="sv-card-popup__desc">{issueModal.item.client_name} · {decodedStep}</div>
+                <div className="sv-card-popup__issue-grid">
+                  {ISSUE_TYPES.map(t => (
+                    <button key={t.value} className="sv-card-popup__issue-btn" onClick={() => selectIssueType(t.value)} style={{ borderColor: `${t.color}30`, background: `${t.color}08` }}>
+                      <span style={{ fontSize: 22 }}>{t.icon}</span>
+                      <span style={{ color: t.color, fontWeight: 600, fontSize: 13 }}>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="sv-card-popup__actions">
+                  <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(null)}>취소</button>
+                </div>
+              </>
+            )}
+            {issueModal.step === 'confirm' && (
+              <>
+                <div className="sv-card-popup__icon">⚠️</div>
+                <div className="sv-card-popup__title">{ISSUE_TYPES.find(t => t.value === issueModal.issueType)?.label}</div>
+                <div className="sv-card-popup__desc">{issueModal.item.client_name} · {decodedStep}</div>
+                <textarea className="sv-card-popup__textarea" placeholder="상세 내용을 입력하세요 (선택)" value={issueDesc} onChange={e => setIssueDesc(e.target.value)} rows={3} />
+                <label className="sv-card-popup__photo-attach">
+                  <input type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }} onChange={e => setIssuePhotos(prev => [...prev, ...Array.from(e.target.files)])} />
+                  <span className="sv-card-popup__photo-btn">📷 사진 첨부 {issuePhotos.length > 0 && `(${issuePhotos.length})`}</span>
+                </label>
+                <div className="sv-card-popup__actions">
+                  <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(prev => ({ ...prev, step: 'select' }))} disabled={issueLoading}>뒤로</button>
+                  <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={submitIssue} disabled={issueLoading}>{issueLoading ? '보고중...' : '이슈 보고'}</button>
+                </div>
+              </>
+            )}
+            {issueModal.step === 'sms' && (
+              <>
+                <div className="sv-card-popup__icon">✅</div>
+                <div className="sv-card-popup__title">이슈 보고 완료</div>
+                <div className="sv-card-popup__desc">담당자에게 문자를 보내세요</div>
+                <div className="sv-card-popup__sms-preview">
+                  <strong>{issueModal.item.client_name}</strong> · {decodedStep}<br />
+                  이슈: {issueModal.issueType}
+                  {issueDesc && <><br />내용: {issueDesc}</>}
+                </div>
+                <div className="sv-card-popup__contacts">
+                  {CONTACTS.map(c => (
+                    <button key={c.name} className="sv-card-popup__contact-btn" onClick={() => sendIssueSms(c.phone, issueModal.item, issueModal.issueType)}>
+                      <div className="sv-card-popup__contact-avatar" style={{ background: '#0ea5e9' }}>{c.name.charAt(0)}</div>
+                      <div className="sv-card-popup__contact-info">
+                        <span className="sv-card-popup__contact-name">{c.name} ({c.role})</span>
+                        <span className="sv-card-popup__contact-phone">{c.phone}</span>
+                      </div>
+                      <span style={{ fontSize: 13, color: '#0ea5e9', fontWeight: 700 }}>📩 문자</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="sv-card-popup__actions">
+                  <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(null)}>닫기</button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       {/* 공정 완료 전환 애니메이션 */}
       {toast && toast.type === 'transition' && (
