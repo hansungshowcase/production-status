@@ -851,6 +851,17 @@
   white-space: nowrap;
 }
 
+/* Mobile: show short text, PC: show full text */
+.station-view__btn-text--pc { display: none; }
+.station-view__btn-text--mobile { display: inline; }
+
+/* Expand icon on client name */
+.station-view__row-expand-icon {
+  font-size: 8px;
+  color: #94a3b8;
+  margin-left: 2px;
+}
+
 .station-view__row-btn:active {
   transform: scale(0.95);
 }
@@ -1629,6 +1640,25 @@
   .station-view__th--client { width: 100px; }
   .station-view__th--spec { width: 130px; }
   .station-view__th--due { width: 100px; }
+
+  /* PC: bigger buttons, full text */
+  .station-view__btn-text--pc { display: inline; }
+  .station-view__btn-text--mobile { display: none; }
+
+  .station-view__row-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    min-height: 34px;
+  }
+
+  .station-view__row-btn--complete {
+    padding: 6px 18px;
+  }
+
+  /* PC: issue popup wider */
+  .sv-card-popup {
+    min-width: 400px;
+  }
 }
 
 /* ── Result Toast ── */

@@ -584,9 +584,10 @@ export default function WorkerStationViewPage() {
               {/* Single row: 거래처 | 제품 | 규격 | 납기 | 진행 | 액션 */}
               <div className="station-view__row">
                 <span className={`station-view__row-status station-view__row-status--${sKey}`} />
-                <span className="station-view__row-client">
+                <span className="station-view__row-client" title="클릭하여 상세보기">
                   {item.client_name || '미지정'}
                   {item.open_issues > 0 && <span className="station-view__row-issue-dot" title={`이슈 ${item.open_issues}건`} />}
+                  <span className="station-view__row-expand-icon">{isExpanded ? '▲' : '▼'}</span>
                 </span>
                 <span className="station-view__row-product">
                   {item.product_type || '-'}
@@ -612,7 +613,7 @@ export default function WorkerStationViewPage() {
                     onClick={() => requestComplete(item.process_id)}
                     disabled={isActioning || !!actionLoading}
                   >
-                    {isActioning ? '...' : '완료'}
+                    {isActioning ? '...' : <><span className="station-view__btn-text--mobile">완료</span><span className="station-view__btn-text--pc">공정완료</span></>}
                   </button>
                   <button
                     className="station-view__row-btn station-view__row-btn--issue"
