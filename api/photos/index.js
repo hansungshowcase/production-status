@@ -40,7 +40,12 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  const parts = await parseMultipart(req);
+  let parts;
+  try {
+    parts = await parseMultipart(req);
+  } catch (err) {
+    return res.status(400).json({ error: { message: 'multipart/form-data 형식으로 전송해주세요.', status: 400 } });
+  }
 
   const filePart = getFilePart(parts, 'photo');
   const order_id = getFieldValue(parts, 'order_id');
