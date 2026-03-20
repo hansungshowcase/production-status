@@ -339,6 +339,17 @@ export default function WorkerStationViewPage() {
       <div className="station-view__header">
         <div className="station-view__header-top">
           <button
+            className="station-view__home-btn"
+            onClick={() => {
+              sessionStorage.removeItem(WORKER_STORAGE_KEY);
+              sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
+              navigate('/');
+            }}
+            aria-label="홈으로"
+          >
+            🏠
+          </button>
+          <button
             className="station-view__back-btn"
             onClick={() => navigate(-1)}
             aria-label="뒤로가기"

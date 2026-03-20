@@ -52,6 +52,26 @@
   white-space: nowrap;
 }
 
+.station-view__home-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #ffffff;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.station-view__home-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 .station-view__action-chip:active {
   background: rgba(255, 255, 255, 0.35);
 }
