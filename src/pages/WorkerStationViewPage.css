@@ -1682,23 +1682,27 @@
   }
 
   .station-view__th--spec { display: none; }
-  .station-view__th--client { width: 64px; padding-left: 6px; }
-  .station-view__th--product { min-width: 40px; }
-  .station-view__th--due { width: 65px; }
-  .station-view__th--progress { width: 55px; }
-  .station-view__th--actions { width: 55px; }
+  .station-view__th--client { flex: none; width: 70px; padding-left: 6px; }
+  .station-view__th--product { flex: 1; min-width: 40px; }
+  .station-view__th--due { flex: none; width: 65px; }
+  .station-view__th--progress { flex: none; width: 55px; }
+  .station-view__th--actions { flex: none; width: 50px; }
 
   .station-view__row {
     padding: 6px;
   }
 
   .station-view__row-client {
-    min-width: 50px;
+    flex: none;
+    width: 70px;
     font-size: 12px;
     padding-left: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .station-view__row-product {
+    flex: 1;
     font-size: 11px;
     min-width: 40px;
   }
@@ -1706,15 +1710,16 @@
   .station-view__row-spec { display: none; }
 
   .station-view__row-due {
+    flex: none;
     width: 65px;
     font-size: 11px;
   }
 
-  .station-view__row-progress { width: 55px; }
+  .station-view__row-progress { flex: none; width: 55px; }
 
   .station-view__progress-bar-mini { width: 24px; }
 
-  .station-view__row-actions { width: 55px; }
+  .station-view__row-actions { flex: none; width: 50px; }
 
   .station-view__row-btn {
     padding: 3px 6px;
