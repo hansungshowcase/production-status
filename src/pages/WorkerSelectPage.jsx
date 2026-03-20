@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS } from '../constants';
+import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
 import './WorkerSelectPage.css';
 
@@ -68,7 +68,7 @@ export default function WorkerSelectPage() {
         </div>
 
         <div className="worker-select-page__dept-grid">
-          {DEPARTMENTS.map((dept) => (
+          {(WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS).map((dept) => (
             <button
               key={dept}
               className="worker-select-page__dept-btn"

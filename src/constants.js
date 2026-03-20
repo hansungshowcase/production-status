@@ -34,6 +34,11 @@ export const STEP_ICONS = {
 
 export const DEPT_ICONS = STEP_ICONS;
 
+// 작업자별 접근 가능한 부서 제한 (미등록 작업자는 전체 부서 접근 가능)
+export const WORKER_DEPARTMENT_FILTER = {
+  '이정섭 부장': ['도면설계', '레이저작업'],
+};
+
 export const SALES_PERSONS = [
   { name: '신은철', role: '영업 담당', color: '#0ea5e9' },
   { name: '이시아', role: '영업 담당', color: '#0891b2' },
