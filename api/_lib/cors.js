@@ -8,6 +8,11 @@ export function cors(handler) {
       return res.status(200).end();
     }
 
+    // Ensure req.body is always an object (defend against null/undefined body)
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      req.body = {};
+    }
+
     try {
       return await handler(req, res);
     } catch (err) {

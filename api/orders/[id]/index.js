@@ -125,6 +125,10 @@ async function handleDelete(id, req, res) {
   const db = getDb();
   const body = req.body || {};
 
+  if (!body.actor) {
+    return res.status(400).json({ error: { message: '삭제 요청에는 actor(담당자)가 필요합니다.', status: 400 } });
+  }
+
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
 
