@@ -1880,32 +1880,29 @@
   .station-view__th--spec { width: 110px; }
   .station-view__th--due { width: 85px; }
 
-  /* PC: show step pips */
+  /* PC: step pips ~1/3, rest equally distributed */
   .station-view__row-steps {
     display: flex;
     align-items: center;
     gap: 1px;
-    width: 140px;
-    flex-shrink: 0;
+    flex: 2;
+    min-width: 0;
   }
 
   .station-view__th--steps {
     display: block;
-    width: 140px;
-    flex-shrink: 0;
+    flex: 2;
   }
 
-  .station-view__row-product {
-    width: auto;
-    flex: 1;
-    min-width: 80px;
-  }
+  .station-view__row-client { width: auto; flex: 1; min-width: 0; }
+  .station-view__row-product { width: auto; flex: 1; min-width: 0; }
+  .station-view__row-spec { width: auto; flex: 1; min-width: 0; }
+  .station-view__row-due { width: auto; flex: 1; min-width: 0; }
 
-  .station-view__th--product {
-    width: auto;
-    flex: 1;
-    min-width: 80px;
-  }
+  .station-view__th--client { width: auto; flex: 1; }
+  .station-view__th--product { width: auto; flex: 1; }
+  .station-view__th--spec { width: auto; flex: 1; }
+  .station-view__th--due { width: auto; flex: 1; }
 
   /* PC: progress column hide (replaced by step pips) */
   .station-view__row-progress {
