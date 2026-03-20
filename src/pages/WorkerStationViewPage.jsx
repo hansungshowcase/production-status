@@ -237,7 +237,7 @@ export default function WorkerStationViewPage() {
       // Upload attached photos
       for (const file of issuePhotos) {
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('photo', file);
         formData.append('order_id', item.order_id);
         formData.append('process_id', item.process_id);
         formData.append('uploaded_by', workerName);
@@ -271,7 +271,7 @@ export default function WorkerStationViewPage() {
   function sendIssueSms(phone, item, issueType) {
     const body = buildIssueSmsBody(item, issueType);
     const cleanPhone = phone.replace(/[^0-9]/g, '');
-    window.open(`sms:${cleanPhone}?body=${encodeURIComponent(body)}`, '_self');
+    window.location.href = `sms:${cleanPhone}?body=${encodeURIComponent(body)}`;
   }
 
   function sendPhotoSms(phone, item) {
@@ -287,7 +287,7 @@ export default function WorkerStationViewPage() {
       `보고자: ${workerName}`,
     ].filter(Boolean).join('\n');
     const cleanPhone = phone.replace(/[^0-9]/g, '');
-    window.open(`sms:${cleanPhone}?body=${encodeURIComponent(body)}`, '_self');
+    window.location.href = `sms:${cleanPhone}?body=${encodeURIComponent(body)}`;
   }
 
   const today = new Date().toISOString().slice(0, 10);
