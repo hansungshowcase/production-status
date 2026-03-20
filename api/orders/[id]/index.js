@@ -28,6 +28,9 @@ export default cors(async function handler(req, res) {
 });
 
 async function handleGet(id, req, res) {
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
+  }
   const db = getDb();
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
@@ -64,6 +67,9 @@ async function handleGet(id, req, res) {
 }
 
 async function handleUpdate(id, req, res) {
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
+  }
   const db = getDb();
   const body = sanitizeInput(req.body);
 
@@ -113,6 +119,9 @@ async function handleUpdate(id, req, res) {
 }
 
 async function handleDelete(id, req, res) {
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
+  }
   const db = getDb();
   const body = req.body || {};
 

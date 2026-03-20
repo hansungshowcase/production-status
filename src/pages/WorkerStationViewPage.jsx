@@ -203,7 +203,8 @@ export default function WorkerStationViewPage() {
         issues: prev.issues.filter(i => i.id !== issueId),
       }));
       await fetchData();
-    } catch {
+    } catch (err) {
+      console.error('이슈 해결 실패:', err);
       alert('이슈 해결에 실패했습니다.');
     } finally {
       setResolvingId(null);
@@ -241,7 +242,7 @@ export default function WorkerStationViewPage() {
         formData.append('order_id', item.order_id);
         formData.append('process_id', item.process_id);
         formData.append('uploaded_by', workerName);
-        try { await uploadPhoto(formData); } catch { /* skip failed uploads */ }
+        try { await uploadPhoto(formData); } catch (err) { console.warn('사진 업로드 실패:', err); }
       }
       await fetchData();
       setIssueModal(prev => ({ ...prev, step: 'sms' }));

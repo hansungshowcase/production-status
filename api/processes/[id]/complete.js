@@ -6,8 +6,12 @@ export default cors(async function handler(req, res) {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
 
-  const db = getDb();
   const id = req.query.id;
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
+  }
+
+  const db = getDb();
   const { completed_date, actor } = req.body || {};
 
   // Find process
@@ -46,15 +50,19 @@ export default cors(async function handler(req, res) {
   });
   const order = orderRows[0];
   if (order) {
-    await db.execute({
-      sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-      args: [
-        process.order_id,
-        '공정완료',
-        `${order.client_name} - ${process.step_name} 공정이 완료되었습니다. (담당: ${completeWorker})`,
-        completeWorker
-      ]
-    });
+    try {
+      await db.execute({
+        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
+        args: [
+          process.order_id,
+          '공정완료',
+          `${order.client_name} - ${process.step_name} 공정이 완료되었습니다. (담당: ${completeWorker})`,
+          completeWorker
+        ]
+      });
+    } catch (e) {
+      console.error('활동 로그 기록 실패:', e);
+    }
   }
 
   const { rows: updatedRows } = await db.execute({

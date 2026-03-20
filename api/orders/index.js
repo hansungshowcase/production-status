@@ -185,6 +185,9 @@ async function handlePost(req, res) {
         ship_scheduled_date || null, sms_sent || null, safe_delivery || 0,
       ],
     });
+    if (!orderResult.rows || orderResult.rows.length === 0) {
+      throw new Error('주문 생성 실패: ID가 반환되지 않았습니다.');
+    }
     const orderId = Number(orderResult.rows[0].id);
 
     for (const step of STEPS) {
