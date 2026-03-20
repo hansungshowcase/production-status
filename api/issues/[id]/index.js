@@ -7,6 +7,9 @@ export default cors(async function handler(req, res) {
   }
 
   const { id } = req.query;
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '유효한 이슈 ID가 필요합니다.', status: 400 } });
+  }
   const db = getDb();
 
   const { rows } = await db.execute({ sql: 'SELECT * FROM issues WHERE id = ?', args: [id] });
