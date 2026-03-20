@@ -20,7 +20,7 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '이미 해결된 이슈입니다.', status: 400 } });
   }
 
-  const now = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).replace('T', ' ');
+  const now = new Date().toISOString();
   await db.execute({ sql: 'UPDATE issues SET resolved_at = ? WHERE id = ?', args: [now, issue.id] });
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [issue.order_id] });
