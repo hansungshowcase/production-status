@@ -7,6 +7,9 @@ export default cors(async function handler(req, res) {
   }
 
   const { id } = req.query;
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
+  }
   const db = getDb();
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
@@ -14,6 +17,10 @@ export default cors(async function handler(req, res) {
 
   if (!order) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
+  }
+
+  if (order.status === 'shipped') {
+    return res.status(400).json({ error: { message: '이미 출고 처리된 주문입니다.', status: 400 } });
   }
 
   const today = new Date().toISOString().slice(0, 10);
