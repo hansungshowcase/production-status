@@ -16,7 +16,7 @@ export function getDb() {
 
   const executeQuery = async ({ sql: query, args = [] }) => {
     const pgSql = convertPlaceholders(query);
-    const rows = await sql(pgSql, args);
+    const rows = await sql.query(pgSql, args);
     return {
       rows,
       rowsAffected: rows.length,
