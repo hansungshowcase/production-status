@@ -695,11 +695,16 @@
 }
 
 .station-view__card--overdue {
-  background: #fffbfb;
+  background: #fff5f5;
+  border-left: 3px solid #dc2626;
+}
+
+.station-view__card--overdue .station-view__row-due {
+  color: #dc2626;
 }
 
 .station-view__card--overdue.station-view__card--active {
-  background: #fff5f5;
+  background: #fff0f0;
 }
 
 /* Main row */
@@ -779,11 +784,12 @@
   width: 80px;
   flex-shrink: 0;
   font-size: 12px;
-  font-weight: 600;
-  color: #334155;
+  font-weight: 800;
+  color: #0f172a;
   display: flex;
   align-items: center;
   gap: 3px;
+  letter-spacing: -0.3px;
 }
 
 .station-view__row-progress {
@@ -1082,15 +1088,22 @@
 /* D-day */
 .station-view__dday {
   font-size: 11px;
-  font-weight: 700;
-  padding: 1px 6px;
+  font-weight: 800;
+  padding: 2px 6px;
   border-radius: 4px;
-  margin-left: 4px;
+  margin-left: 2px;
+  white-space: nowrap;
 }
 
 .station-view__dday--overdue {
   background: #dc2626;
   color: #ffffff;
+  animation: dday-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dday-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .station-view__dday--today {
@@ -1101,6 +1114,7 @@
 .station-view__dday--soon {
   background: #fef3c7;
   color: #92400e;
+  font-weight: 800;
 }
 
 .station-view__dday--normal {
@@ -1583,33 +1597,38 @@
 
 @media (min-width: 768px) {
   .station-view__body {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    padding: 12px 16px;
-  }
-
-  .station-view__card {
-    margin-bottom: 0;
-  }
-
-  .station-view__loading,
-  .station-view__error,
-  .station-view__empty {
-    grid-column: 1 / -1;
+    padding: 12px 20px;
   }
 
   .station-view__header-top {
     padding: 12px 20px;
   }
-}
 
-@media (min-width: 1280px) {
-  .station-view__body {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-    padding: 14px 20px;
+  .station-view__table-header {
+    padding: 8px 14px;
   }
+
+  .station-view__row {
+    padding: 10px 14px;
+  }
+
+  .station-view__row-client {
+    width: 100px;
+    font-size: 14px;
+  }
+
+  .station-view__row-spec {
+    width: 130px;
+  }
+
+  .station-view__row-due {
+    width: 100px;
+    font-size: 13px;
+  }
+
+  .station-view__th--client { width: 100px; }
+  .station-view__th--spec { width: 130px; }
+  .station-view__th--due { width: 100px; }
 }
 
 /* ── Result Toast ── */
