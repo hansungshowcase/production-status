@@ -1884,15 +1884,27 @@
   .station-view__row-steps {
     display: flex;
     align-items: center;
-    gap: 2px;
-    flex: 1.5;
-    min-width: 120px;
+    gap: 1px;
+    width: 140px;
+    flex-shrink: 0;
   }
 
   .station-view__th--steps {
     display: block;
-    flex: 1.5;
-    min-width: 120px;
+    width: 140px;
+    flex-shrink: 0;
+  }
+
+  .station-view__row-product {
+    width: auto;
+    flex: 1;
+    min-width: 80px;
+  }
+
+  .station-view__th--product {
+    width: auto;
+    flex: 1;
+    min-width: 80px;
   }
 
   /* PC: progress column hide (replaced by step pips) */
