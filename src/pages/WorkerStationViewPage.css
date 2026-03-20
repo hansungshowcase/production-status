@@ -896,37 +896,54 @@
   gap: 4px;
 }
 
-/* Step dots (PC only) */
+/* Step progress pips (PC only) */
 .station-view__row-steps {
   display: none;
 }
 
-.station-view__step-dot {
-  font-size: 12px;
-  opacity: 0.2;
-  transition: opacity 0.2s;
-  cursor: default;
+.station-view__step-pip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
 }
 
-.station-view__step-dot--done {
-  opacity: 1;
-}
-
-.station-view__step-dot--current {
-  opacity: 1;
-  position: relative;
-}
-
-.station-view__step-dot--current::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
+.station-view__pip-bar {
+  width: 100%;
   height: 4px;
-  border-radius: 50%;
+  border-radius: 2px;
+  background: #e2e8f0;
+  transition: background 0.2s;
+}
+
+.station-view__pip-label {
+  font-size: 8px;
+  color: #cbd5e1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  font-weight: 600;
+}
+
+.station-view__step-pip--done .station-view__pip-bar {
+  background: #059669;
+}
+
+.station-view__step-pip--done .station-view__pip-label {
+  color: #059669;
+}
+
+.station-view__step-pip--current .station-view__pip-bar {
   background: #0ea5e9;
+  box-shadow: 0 0 4px rgba(14, 165, 233, 0.4);
+}
+
+.station-view__step-pip--current .station-view__pip-label {
+  color: #0ea5e9;
+  font-weight: 800;
 }
 
 /* Mini progress bar */

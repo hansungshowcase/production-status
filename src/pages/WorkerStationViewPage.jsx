@@ -601,15 +601,19 @@ export default function WorkerStationViewPage() {
                   <span className="station-view__progress-text-mini">{completedSteps}/{totalSteps}</span>
                 </span>
                 <span className="station-view__row-steps">
-                  {PROCESS_STEPS.map((s, i) => (
-                    <span
-                      key={s}
-                      className={`station-view__step-dot${i < completedSteps ? ' station-view__step-dot--done' : i === completedSteps ? ' station-view__step-dot--current' : ''}`}
-                      title={s}
-                    >
-                      {STEP_ICONS[s]}
-                    </span>
-                  ))}
+                  {PROCESS_STEPS.map((s, i) => {
+                    const shortName = s.replace('작업', '');
+                    return (
+                      <span
+                        key={s}
+                        className={`station-view__step-pip${i < completedSteps ? ' station-view__step-pip--done' : i === completedSteps ? ' station-view__step-pip--current' : ''}`}
+                        title={s}
+                      >
+                        <span className="station-view__pip-bar" />
+                        <span className="station-view__pip-label">{shortName}</span>
+                      </span>
+                    );
+                  })}
                 </span>
                 <span className="station-view__row-actions" onClick={(e) => e.stopPropagation()}>
                   <button
