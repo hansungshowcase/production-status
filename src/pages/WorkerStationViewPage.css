@@ -672,7 +672,7 @@
 .station-view__th--spec { width: 110px; flex-shrink: 0; }
 .station-view__th--due { width: 80px; flex-shrink: 0; }
 .station-view__th--progress { width: 65px; flex-shrink: 0; }
-.station-view__th--actions { width: 130px; flex-shrink: 0; text-align: center; }
+.station-view__th--actions { width: 110px; flex-shrink: 0; text-align: center; }
 
 /* ── Order row (sheet style) ── */
 .station-view__card {
@@ -825,7 +825,7 @@
 
 /* Row action buttons */
 .station-view__row-actions {
-  width: 130px;
+  width: 110px;
   flex-shrink: 0;
   display: flex;
   gap: 3px;
@@ -1418,7 +1418,7 @@
   .station-view__th--product { min-width: 40px; }
   .station-view__th--due { width: 65px; }
   .station-view__th--progress { width: 55px; }
-  .station-view__th--actions { width: 105px; }
+  .station-view__th--actions { width: 90px; }
 
   .station-view__row {
     padding: 6px;
@@ -1446,7 +1446,7 @@
 
   .station-view__progress-bar-mini { width: 24px; }
 
-  .station-view__row-actions { width: 105px; }
+  .station-view__row-actions { width: 90px; }
 
   .station-view__row-btn {
     padding: 3px 6px;
@@ -2795,6 +2795,30 @@
   resize: vertical;
   margin-bottom: 8px;
   box-sizing: border-box;
+}
+
+.sv-card-popup__photo-attach {
+  display: block;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.sv-card-popup__photo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  background: #f1f5f9;
+  border: 1.5px dashed #94a3b8;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  transition: background 0.15s;
+}
+
+.sv-card-popup__photo-btn:active {
+  background: #e2e8f0;
 }
 
 .sv-card-popup__sms-preview {

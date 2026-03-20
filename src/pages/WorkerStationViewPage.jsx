@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getProcessesByStep, startProcess, completeProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
+import { uploadPhoto } from '../api/photos';
 import { getStats } from '../api/stats';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
@@ -41,6 +42,7 @@ export default function WorkerStationViewPage() {
   const [completedIds, setCompletedIds] = useState(new Set()); // 완료 애니메이션용
   const [issueModal, setIssueModal] = useState(null);
   const [issueDesc, setIssueDesc] = useState('');
+  const [issuePhotos, setIssuePhotos] = useState([]);
   const [issueLoading, setIssueLoading] = useState(false);
   const [photoModal, setPhotoModal] = useState(null);
   // transitionAnim 제거됨 (검은화면 없이 토스트로 대체)
@@ -212,6 +214,7 @@ export default function WorkerStationViewPage() {
     closeAllModals();
     setIssueModal({ item, step: 'select', issueType: null });
     setIssueDesc('');
+    setIssuePhotos([]);
   }
 
   function selectIssueType(issueType) {
@@ -230,6 +233,15 @@ export default function WorkerStationViewPage() {
         description: issueDesc || `${decodedStep} - ${issueType}`,
         reported_by: workerName,
       });
+      // Upload attached photos
+      for (const file of issuePhotos) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('order_id', item.order_id);
+        formData.append('process_id', item.process_id);
+        formData.append('uploaded_by', workerName);
+        try { await uploadPhoto(formData); } catch { /* skip failed uploads */ }
+      }
       await fetchData();
       setIssueModal(prev => ({ ...prev, step: 'sms' }));
     } catch {
@@ -607,14 +619,7 @@ export default function WorkerStationViewPage() {
                     onClick={() => openIssueModal(item)}
                     disabled={!!actionLoading}
                   >
-                    이슈
-                  </button>
-                  <button
-                    className="station-view__row-btn station-view__row-btn--photo"
-                    onClick={() => { closeAllModals(); setPhotoModal(item); }}
-                    disabled={!!actionLoading}
-                  >
-                    사진
+                    이슈보고
                   </button>
                 </span>
               </div>
@@ -756,6 +761,17 @@ export default function WorkerStationViewPage() {
                         onChange={e => setIssueDesc(e.target.value)}
                         rows={3}
                       />
+                      <label className="sv-card-popup__photo-attach">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          capture="environment"
+                          style={{ display: 'none' }}
+                          onChange={e => setIssuePhotos(prev => [...prev, ...Array.from(e.target.files)])}
+                        />
+                        <span className="sv-card-popup__photo-btn">📷 사진 첨부 {issuePhotos.length > 0 && `(${issuePhotos.length})`}</span>
+                      </label>
                       <div className="sv-card-popup__actions">
                         <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(prev => ({ ...prev, step: 'select' }))} disabled={issueLoading}>뒤로</button>
                         <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={submitIssue} disabled={issueLoading}>
@@ -794,35 +810,7 @@ export default function WorkerStationViewPage() {
                 </div>
               )}
 
-              {/* ── Popup: Photo ── */}
-              {photoModal && photoModal.process_id === item.process_id && (
-                <div className="sv-card-popup" onClick={(e) => e.stopPropagation()}>
-                  <div className="sv-card-popup__icon">📷</div>
-                  <div className="sv-card-popup__title">사진 전송</div>
-                  <div className="sv-card-popup__desc">{photoModal.client_name} · {decodedStep}</div>
-                  <div className="sv-card-popup__sms-preview">담당자에게 작업 사진을 문자로 보내세요</div>
-                  <div className="sv-card-popup__contacts">
-                    {CONTACTS.map(c => (
-                      <button key={c.name} className="sv-card-popup__contact-btn" onClick={() => sendPhotoSms(c.phone, photoModal)}>
-                        <div className="sv-card-popup__contact-avatar" style={{ background: '#059669' }}>{c.name.charAt(0)}</div>
-                        <div className="sv-card-popup__contact-info">
-                          <span className="sv-card-popup__contact-name">{c.name} ({c.role})</span>
-                          <span className="sv-card-popup__contact-phone">{c.phone}</span>
-                        </div>
-                        <span style={{ fontSize: 13, color: '#059669', fontWeight: 700 }}>📩 문자</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="sv-card-popup__actions">
-                    <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setPhotoModal(null)}>닫기</button>
-                  </div>
-                </div>
-              )}
 
-              {/* Expand hint */}
-              <div className="station-view__expand-hint">
-                {isExpanded ? '접기 ▲' : '상세보기 ▼'}
-              </div>
             </div>
           );
         })}
