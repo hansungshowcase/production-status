@@ -38,6 +38,7 @@ export const DEPT_ICONS = STEP_ICONS;
 export const WORKER_DEPARTMENT_FILTER = {
   '이정섭 부장': ['도면설계', '레이저작업'],
   '거니': ['V-커팅작업'],
+  '김보수': ['도면설계'],
 };
 
 export const SALES_PERSONS = [
