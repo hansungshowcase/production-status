@@ -39,7 +39,11 @@ export default function HomePage() {
         <div className="home-cards home-cards--row">
           <button
             className="home-card home-card-worker"
-            onClick={() => navigate('/worker')}
+            onClick={() => {
+              sessionStorage.removeItem('selected_worker');
+              sessionStorage.removeItem('selected_department');
+              navigate('/worker/select', { state: { redirectTo: '/worker/station' } });
+            }}
           >
             <div className="home-card-icon">&#x1F477;</div>
             <div className="home-card-title">현장 작업자</div>
