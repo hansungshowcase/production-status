@@ -114,6 +114,14 @@
   color: #334155;
 }
 
+.sales-order-card__expand-hint {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 4px 0 8px;
+  cursor: pointer;
+}
+
 /* Progress bar */
 .sales-order-card__progress {
   padding: 0 16px 12px;

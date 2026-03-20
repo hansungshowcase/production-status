@@ -93,7 +93,7 @@ export default function SalesOrderCard({ order, onDelete }) {
         </div>
       </div>
 
-      {/* Info section — 라벨 있는 상세 정보 */}
+      {/* 기본 정보 — 핵심만 */}
       <div className="sales-order-card__info">
         {specParts && (
           <div className="sales-order-card__info-item">
@@ -107,74 +107,27 @@ export default function SalesOrderCard({ order, onDelete }) {
             <span className="sales-order-card__info-value">{sizeParts}</span>
           </div>
         )}
-        {order.color && (
-          <div className="sales-order-card__info-item">
-            <span className="sales-order-card__info-label">색상</span>
-            <span className="sales-order-card__info-value">{order.color}</span>
-          </div>
-        )}
-        {order.quantity && (
+        <div className="sales-order-card__info-item">
+          <span className="sales-order-card__info-label">납기</span>
+          <span className="sales-order-card__info-value">{dueDisplay}</span>
+        </div>
+        {order.quantity > 1 && (
           <div className="sales-order-card__info-item">
             <span className="sales-order-card__info-label">수량</span>
             <span className="sales-order-card__info-value">{order.quantity}대</span>
           </div>
         )}
-        {order.design && (
-          <div className="sales-order-card__info-item">
-            <span className="sales-order-card__info-label">디자인</span>
-            <span className="sales-order-card__info-value">{order.design}</span>
-          </div>
-        )}
-        <div className="sales-order-card__info-item">
-          <span className="sales-order-card__info-label">납기</span>
-          <span className="sales-order-card__info-value">{dueDisplay}</span>
-        </div>
-        {order.sales_person && (
-          <div className="sales-order-card__info-item">
-            <span className="sales-order-card__info-label">영업</span>
-            <span className="sales-order-card__info-value">{order.sales_person}</span>
-          </div>
-        )}
-        {order.notes && (
-          <div className="sales-order-card__info-item">
-            <span className="sales-order-card__info-label">비고</span>
-            <span className="sales-order-card__info-value">{order.notes}</span>
-          </div>
-        )}
       </div>
 
-      {/* Step chain with arrows */}
-      <div className="sales-order-card__step-chain">
-        {PROCESS_STEPS.map((step, idx) => {
-          const st = stepStatusMap[step];
-          const isDone = st === 'completed';
-          const isActive = st === 'in_progress';
-          let cls = 'soc-chain__step';
-          if (isDone) cls += ' soc-chain__step--done';
-          else if (isActive) cls += ' soc-chain__step--active';
-          else cls += ' soc-chain__step--waiting';
-
-          const worker = stepWorkerMap[step];
-          return (
-            <React.Fragment key={idx}>
-              {idx > 0 && <span className="soc-chain__arrow">→</span>}
-              <span className={cls}>
-                {step}
-                {worker && (isDone || isActive) && (
-                  <span className="soc-chain__worker">({worker})</span>
-                )}
-              </span>
-            </React.Fragment>
-          );
-        })}
-        <span className="soc-chain__count">{completedSteps}/{totalSteps}</span>
+      {/* 상세보기 클릭 힌트 */}
+      <div className="sales-order-card__expand-hint">
+        {expanded ? '접기 ▲' : '상세보기 ▼'}
       </div>
 
-      {/* Expanded detail */}
+      {/* 상세 정보 (클릭 시 펼침) */}
       {expanded && (
         <div className="sales-order-card__detail">
-          {/* 주문 정보 */}
-          <div className="sales-order-card__detail-title">주문 정보</div>
+          {/* 추가 주문 정보 */}
           <div className="sales-order-card__detail-grid">
             {order.order_date && (
               <div className="sales-order-card__detail-item">
@@ -200,40 +153,16 @@ export default function SalesOrderCard({ order, onDelete }) {
                 <span className="sales-order-card__detail-value">{order.phone}</span>
               </div>
             )}
-            {order.product_type && (
+            {order.color && (
               <div className="sales-order-card__detail-item">
-                <span className="sales-order-card__detail-label">사양</span>
-                <span className="sales-order-card__detail-value">{order.product_type}</span>
-              </div>
-            )}
-            {order.door_type && (
-              <div className="sales-order-card__detail-item">
-                <span className="sales-order-card__detail-label">문짝</span>
-                <span className="sales-order-card__detail-value">{order.door_type}</span>
+                <span className="sales-order-card__detail-label">색상</span>
+                <span className="sales-order-card__detail-value">{order.color}</span>
               </div>
             )}
             {order.design && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">디자인</span>
                 <span className="sales-order-card__detail-value">{order.design}</span>
-              </div>
-            )}
-            {sizeParts && (
-              <div className="sales-order-card__detail-item">
-                <span className="sales-order-card__detail-label">규격</span>
-                <span className="sales-order-card__detail-value">{sizeParts}</span>
-              </div>
-            )}
-            {order.quantity && (
-              <div className="sales-order-card__detail-item">
-                <span className="sales-order-card__detail-label">수량</span>
-                <span className="sales-order-card__detail-value">{order.quantity}대</span>
-              </div>
-            )}
-            {order.color && (
-              <div className="sales-order-card__detail-item">
-                <span className="sales-order-card__detail-label">색상</span>
-                <span className="sales-order-card__detail-value">{order.color}</span>
               </div>
             )}
             {order.notes && (
@@ -248,6 +177,39 @@ export default function SalesOrderCard({ order, onDelete }) {
                 <span className="sales-order-card__detail-value">{order.remarks}</span>
               </div>
             )}
+          </div>
+
+          {/* 공정 상세 */}
+          <div className="sales-order-card__detail-title" style={{ marginTop: 10 }}>공정 현황</div>
+          <div className="sales-order-card__process-list">
+            {PROCESS_STEPS.map((step, idx) => {
+              const st = stepStatusMap[step] || 'waiting';
+              const isDone = st === 'completed';
+              const isActive = st === 'in_progress';
+              let dotCls = 'sales-order-card__process-dot sales-order-card__process-dot--pending';
+              let statusCls = 'sales-order-card__process-status';
+              let statusText = '대기';
+
+              if (isDone) {
+                dotCls = 'sales-order-card__process-dot sales-order-card__process-dot--done';
+                statusCls += ' sales-order-card__process-status--done';
+                statusText = '완료';
+              } else if (isActive) {
+                dotCls = 'sales-order-card__process-dot sales-order-card__process-dot--current';
+                statusCls += ' sales-order-card__process-status--current';
+                statusText = '진행중';
+              }
+
+              const worker = stepWorkerMap[step];
+              return (
+                <div key={idx} className="sales-order-card__process-item">
+                  <span className={dotCls} />
+                  <span className="sales-order-card__process-name">{step}</span>
+                  {worker && <span className="sales-order-card__process-worker">{worker}</span>}
+                  <span className={statusCls}>{statusText}</span>
+                </div>
+              );
+            })}
           </div>
 
           {/* 삭제 버튼 */}
@@ -279,39 +241,6 @@ export default function SalesOrderCard({ order, onDelete }) {
               )}
             </div>
           )}
-
-          {/* 공정 상세 */}
-          <div className="sales-order-card__detail-title" style={{ marginTop: 14 }}>공정 상세</div>
-          <div className="sales-order-card__process-list">
-            {PROCESS_STEPS.map((step, idx) => {
-              const st = stepStatusMap[step] || 'waiting';
-              const isDone = st === 'completed';
-              const isActive = st === 'in_progress';
-              let dotCls = 'sales-order-card__process-dot sales-order-card__process-dot--pending';
-              let statusCls = 'sales-order-card__process-status';
-              let statusText = '대기';
-
-              if (isDone) {
-                dotCls = 'sales-order-card__process-dot sales-order-card__process-dot--done';
-                statusCls += ' sales-order-card__process-status--done';
-                statusText = '완료';
-              } else if (isActive) {
-                dotCls = 'sales-order-card__process-dot sales-order-card__process-dot--current';
-                statusCls += ' sales-order-card__process-status--current';
-                statusText = '진행중';
-              }
-
-              const worker = stepWorkerMap[step];
-              return (
-                <div key={idx} className="sales-order-card__process-item">
-                  <span className={dotCls} />
-                  <span className="sales-order-card__process-name">{step}</span>
-                  {worker && <span className="sales-order-card__process-worker">{worker}</span>}
-                  <span className={statusCls}>{statusText}</span>
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
     </div>
