@@ -64,7 +64,7 @@ export default function WorkerSelectPage() {
             <span>👤</span>
           </div>
           <h1 className="worker-select-page__name">{selectedWorker}</h1>
-          <p className="worker-select-page__subtitle">소속 부서를 선택해주세요</p>
+          <p className="worker-select-page__subtitle">현재 하고 계시는 작업을 선택해주세요</p>
         </div>
 
         <div className="worker-select-page__dept-grid">
