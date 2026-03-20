@@ -539,6 +539,18 @@ export default function WorkerStationViewPage() {
           <div className="station-view__empty">현재 대기중인 작업이 없습니다</div>
         )}
 
+        {!loading && !error && sorted.length > 0 && (
+          <div className="station-view__table-header">
+            <span className="station-view__th station-view__th--status" />
+            <span className="station-view__th station-view__th--client">거래처</span>
+            <span className="station-view__th station-view__th--product">제품</span>
+            <span className="station-view__th station-view__th--spec">규격</span>
+            <span className="station-view__th station-view__th--due">납기</span>
+            <span className="station-view__th station-view__th--progress">진행</span>
+            <span className="station-view__th station-view__th--actions">작업</span>
+          </div>
+        )}
+
         {!loading && !error && sorted.map((item) => {
           const sKey = statusKey(item.status);
           const isActioning = actionLoading === item.process_id;
@@ -557,57 +569,48 @@ export default function WorkerStationViewPage() {
               className={`station-view__card${overdue ? ' station-view__card--overdue' : ''} ${sKey === 'in_progress' ? 'station-view__card--active' : ''}${isCompleting ? ' station-view__card--completing' : ''}`}
               onClick={() => setExpandedId(isExpanded ? null : item.process_id)}
             >
-              {/* Row 1: client + tags + status + dday */}
-              <div className="station-view__card-row1">
-                <span className="station-view__client">{item.client_name || '거래처 미지정'}</span>
-                <span className="station-view__card-row1-tags">
-                  {item.product_type && <span className="station-view__tag station-view__tag--product">{item.product_type}</span>}
-                  {item.door_type && <span className="station-view__tag station-view__tag--door">{item.door_type}</span>}
-                  {item.quantity > 1 && <span className="station-view__tag station-view__tag--qty">{item.quantity}</span>}
+              {/* Single row: 거래처 | 제품 | 규격 | 납기 | 진행 | 액션 */}
+              <div className="station-view__row">
+                <span className={`station-view__row-status station-view__row-status--${sKey}`} />
+                <span className="station-view__row-client">
+                  {item.client_name || '미지정'}
+                  {item.open_issues > 0 && <span className="station-view__row-issue-dot" title={`이슈 ${item.open_issues}건`} />}
                 </span>
-                <span className="station-view__card-row1-right">
-                  {overdue && <span className="station-view__overdue-tag">납기초과</span>}
+                <span className="station-view__row-product">
+                  {item.product_type || '-'}
+                  {item.door_type ? `/${item.door_type}` : ''}
+                  {item.quantity > 1 ? ` x${item.quantity}` : ''}
+                </span>
+                <span className="station-view__row-spec">{dimensions || '-'}</span>
+                <span className="station-view__row-due">
+                  {item.due_date ? item.due_date.slice(5) : '-'}
                   {dday && (
-                    <span className={`station-view__dday station-view__dday--${dday.cls}`}>
-                      {dday.label}
-                    </span>
+                    <span className={`station-view__dday station-view__dday--${dday.cls}`}>{dday.label}</span>
                   )}
-                  <span className={`station-view__step-status station-view__step-status--${sKey}`}>
-                    {statusLabel(item.status)}
-                  </span>
                 </span>
-              </div>
-
-              {/* Row 2: specs inline + progress + actions */}
-              <div className="station-view__card-row2">
-                <span className="station-view__card-info">
-                  {dimensions && <span className="station-view__info-item">{dimensions}</span>}
-                  {item.color && <span className="station-view__info-item">{item.color}</span>}
-                  {item.due_date && <span className="station-view__info-item station-view__info-item--due">{item.due_date}</span>}
-                </span>
-                <span className="station-view__card-progress-mini">
+                <span className="station-view__row-progress">
                   <span className="station-view__progress-bar-mini">
                     <span className={`station-view__progress-fill-mini${progressPct === 100 ? ' station-view__progress-fill-mini--done' : ''}`} style={{ width: `${progressPct}%` }} />
                   </span>
                   <span className="station-view__progress-text-mini">{completedSteps}/{totalSteps}</span>
                 </span>
-                <span className="station-view__card-actions-inline" onClick={(e) => e.stopPropagation()}>
+                <span className="station-view__row-actions" onClick={(e) => e.stopPropagation()}>
                   <button
-                    className="station-view__action-btn station-view__action-btn--complete"
+                    className="station-view__row-btn station-view__row-btn--complete"
                     onClick={() => requestComplete(item.process_id)}
                     disabled={isActioning || !!actionLoading}
                   >
                     {isActioning ? '...' : '완료'}
                   </button>
                   <button
-                    className="station-view__action-btn station-view__action-btn--issue"
+                    className="station-view__row-btn station-view__row-btn--issue"
                     onClick={() => openIssueModal(item)}
                     disabled={!!actionLoading}
                   >
                     이슈
                   </button>
                   <button
-                    className="station-view__action-btn station-view__action-btn--photo"
+                    className="station-view__row-btn station-view__row-btn--photo"
                     onClick={() => { closeAllModals(); setPhotoModal(item); }}
                     disabled={!!actionLoading}
                   >
@@ -616,97 +619,36 @@ export default function WorkerStationViewPage() {
                 </span>
               </div>
 
-              {/* Issue alert */}
-              {item.open_issues > 0 && (
-                <div className="station-view__issue-alert">
-                  미해결 이슈 {item.open_issues}건
-                </div>
-              )}
-
-              {/* Step history (collapsed by default) */}
-              {isExpanded && item.step_history && item.step_history.length > 0 && (
-                <div className="station-view__step-history">
-                  {item.step_history.map((h, i) => (
-                    <div key={i} className="station-view__history-item">
-                      <span className="station-view__history-step">{STEP_ICONS[h.step_name] || ''} {h.step_name}</span>
-                      <span className="station-view__history-worker">{h.completed_by || '-'}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Expanded detail */}
+              {/* Expanded detail on tap */}
               {isExpanded && (
-                <div className="station-view__card-detail">
-                  {item.sales_person && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">담당</span>
-                      <span className="station-view__detail-value">{item.sales_person}</span>
+                <div className="station-view__row-expand">
+                  {item.step_history && item.step_history.length > 0 && (
+                    <div className="station-view__step-history">
+                      {item.step_history.map((h, i) => (
+                        <div key={i} className="station-view__history-item">
+                          <span className="station-view__history-step">{STEP_ICONS[h.step_name] || ''} {h.step_name}</span>
+                          <span className="station-view__history-worker">{h.completed_by || '-'}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
-                  {item.design && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">디자인</span>
-                      <span className="station-view__detail-value">{item.design}</span>
-                    </div>
-                  )}
-                  {item.order_date && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">발주일</span>
-                      <span className="station-view__detail-value">{item.order_date}</span>
-                    </div>
-                  )}
-                  {item.started_at && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">공정시작</span>
-                      <span className="station-view__detail-value">{item.started_at.replace('T', ' ').slice(0, 16)}</span>
-                    </div>
-                  )}
-                  {item.started_by && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">시작담당</span>
-                      <span className="station-view__detail-value">{item.started_by}</span>
-                    </div>
-                  )}
-                  {item.notes && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">비고</span>
-                      <span className="station-view__detail-value">{item.notes}</span>
-                    </div>
-                  )}
-                  {item.remarks && (
-                    <div className="station-view__detail-row">
-                      <span className="station-view__detail-label">특이사항</span>
-                      <span className="station-view__detail-value">{item.remarks}</span>
+                  <div className="station-view__row-details">
+                    {item.color && <span className="station-view__row-detail-item">색상: {item.color}</span>}
+                    {item.design && <span className="station-view__row-detail-item">디자인: {item.design}</span>}
+                    {item.sales_person && <span className="station-view__row-detail-item">담당: {item.sales_person}</span>}
+                    {item.order_date && <span className="station-view__row-detail-item">발주: {item.order_date}</span>}
+                    {item.started_by && <span className="station-view__row-detail-item">시작: {item.started_by}</span>}
+                    {item.started_at && <span className="station-view__row-detail-item">시작일: {item.started_at.replace('T', ' ').slice(0, 16)}</span>}
+                  </div>
+                  {(item.notes || item.remarks) && (
+                    <div className="station-view__row-notes">
+                      {item.notes && <span>{item.notes}</span>}
+                      {item.remarks && <span>{item.remarks}</span>}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Desktop-only full actions (hidden on mobile) */}
-              <div className="station-view__card-actions station-view__card-actions--desktop" onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="station-view__action-btn station-view__action-btn--complete"
-                  onClick={() => requestComplete(item.process_id)}
-                  disabled={isActioning || !!actionLoading}
-                >
-                  {isActioning ? '처리중...' : '작업 완료'}
-                </button>
-                <button
-                  className="station-view__action-btn station-view__action-btn--issue"
-                  onClick={() => openIssueModal(item)}
-                  disabled={!!actionLoading}
-                >
-                  이슈
-                </button>
-                <button
-                  className="station-view__action-btn station-view__action-btn--photo"
-                  onClick={() => { closeAllModals(); setPhotoModal(item); }}
-                  disabled={!!actionLoading}
-                >
-                  사진
-                </button>
-              </div>
 
               {/* ── Popup: Confirm ── */}
               {confirmTarget && confirmTarget.processId === item.process_id && (

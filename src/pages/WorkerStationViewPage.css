@@ -645,94 +645,158 @@
   color: #888;
 }
 
-/* Order card — horizontal row layout */
+/* ── Table header ── */
+.station-view__table-header {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 10px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  margin-bottom: 2px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.station-view__th {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-align: left;
+}
+
+.station-view__th--status { width: 6px; flex-shrink: 0; }
+.station-view__th--client { width: 80px; flex-shrink: 0; padding-left: 8px; }
+.station-view__th--product { flex: 1; min-width: 60px; }
+.station-view__th--spec { width: 110px; flex-shrink: 0; }
+.station-view__th--due { width: 80px; flex-shrink: 0; }
+.station-view__th--progress { width: 65px; flex-shrink: 0; }
+.station-view__th--actions { width: 130px; flex-shrink: 0; text-align: center; }
+
+/* ── Order row (sheet style) ── */
 .station-view__card {
   position: relative;
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 6px;
-  transition: box-shadow 0.15s, border-color 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+  border-radius: 0;
+  padding: 0;
+  margin-bottom: 0;
+  transition: background 0.15s;
   cursor: pointer;
 }
 
 .station-view__card:hover {
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  background: #f8fafc;
 }
 
 .station-view__card--active {
-  border-color: #7dd3fc;
-  border-left: 3px solid #0ea5e9;
+  background: #f0f9ff;
 }
 
 .station-view__card--overdue {
-  border-color: #fca5a5;
   background: #fffbfb;
 }
 
 .station-view__card--overdue.station-view__card--active {
-  border-left-color: #dc2626;
+  background: #fff5f5;
 }
 
-/* Row 1: client + tags + status */
-.station-view__card-row1 {
+/* Main row */
+.station-view__row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
+  gap: 0;
+  padding: 8px 10px;
+  min-height: 40px;
 }
 
-.station-view__card-row1-tags {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.station-view__card-row1-right {
-  margin-left: auto;
-  display: flex;
-  gap: 4px;
-  align-items: center;
+/* Status indicator dot */
+.station-view__row-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   flex-shrink: 0;
+  background: #d97706;
 }
 
-/* Row 2: info + progress + actions */
-.station-view__card-row2 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.station-view__row-status--in_progress {
+  background: #0ea5e9;
+  box-shadow: 0 0 4px rgba(14, 165, 233, 0.4);
 }
 
-.station-view__card-info {
-  display: flex;
-  gap: 8px;
+.station-view__row-status--waiting {
+  background: #d97706;
+}
+
+/* Row cells */
+.station-view__row-client {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 8px;
+  position: relative;
+}
+
+.station-view__row-issue-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #dc2626;
+  margin-left: 3px;
+  vertical-align: middle;
+  animation: issue-blink 1s ease-in-out infinite;
+}
+
+.station-view__row-product {
+  flex: 1;
+  min-width: 60px;
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.station-view__row-spec {
+  width: 110px;
+  flex-shrink: 0;
   font-size: 12px;
   color: #64748b;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.station-view__info-item {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'JetBrains Mono', monospace;
 }
 
-.station-view__info-item--due {
-  font-weight: 700;
+.station-view__row-due {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
   color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.station-view__row-progress {
+  width: 65px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Mini progress bar */
-.station-view__card-progress-mini {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
 .station-view__progress-bar-mini {
-  width: 40px;
+  width: 30px;
   height: 4px;
   background: #e2e8f0;
   border-radius: 2px;
@@ -759,24 +823,86 @@
   white-space: nowrap;
 }
 
-/* Inline actions (row 2) */
-.station-view__card-actions-inline {
-  display: flex;
-  gap: 4px;
+/* Row action buttons */
+.station-view__row-actions {
+  width: 130px;
   flex-shrink: 0;
+  display: flex;
+  gap: 3px;
+  justify-content: center;
 }
 
-.station-view__card-actions-inline .station-view__action-btn {
-  padding: 5px 10px;
+.station-view__row-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: opacity 0.15s;
+  min-height: 28px;
+  white-space: nowrap;
+}
+
+.station-view__row-btn:active {
+  transform: scale(0.95);
+}
+
+.station-view__row-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.station-view__row-btn--complete {
+  background: #059669;
+  color: #ffffff;
+}
+
+.station-view__row-btn--issue {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.station-view__row-btn--photo {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* Expanded row detail */
+.station-view__row-expand {
+  padding: 6px 10px 10px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  animation: row-expand 0.15s ease;
+}
+
+@keyframes row-expand {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 200px; }
+}
+
+.station-view__row-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   font-size: 12px;
-  min-width: unset;
-  min-height: 30px;
-  border-radius: 6px;
+  color: #475569;
+  margin-top: 4px;
 }
 
-/* Hide desktop actions by default — show only on larger screens */
-.station-view__card-actions--desktop {
-  display: none;
+.station-view__row-detail-item {
+  white-space: nowrap;
+}
+
+.station-view__row-notes {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .station-view__card--completing {
@@ -1278,141 +1404,68 @@
     margin-top: 2px;
   }
 
-  /* Order cards */
+  /* Table row — mobile: hide spec column, smaller widths */
   .station-view__body {
-    padding: 8px 10px;
+    padding: 4px 6px;
   }
 
-  .station-view__card {
-    padding: 12px;
-    margin-bottom: 8px;
-    border-radius: 10px;
+  .station-view__table-header {
+    padding: 4px 6px;
   }
 
-  .station-view__client {
-    font-size: 14px;
+  .station-view__th--spec { display: none; }
+  .station-view__th--client { width: 64px; padding-left: 6px; }
+  .station-view__th--product { min-width: 40px; }
+  .station-view__th--due { width: 65px; }
+  .station-view__th--progress { width: 55px; }
+  .station-view__th--actions { width: 105px; }
+
+  .station-view__row {
+    padding: 6px;
   }
 
-  .station-view__card-top {
-    margin-bottom: 6px;
+  .station-view__row-client {
+    width: 64px;
+    font-size: 12px;
+    padding-left: 6px;
   }
 
-  .station-view__card-tags {
-    gap: 4px;
-    margin-bottom: 6px;
-  }
-
-  .station-view__tag {
+  .station-view__row-product {
     font-size: 11px;
-    padding: 2px 7px;
+    min-width: 40px;
   }
 
-  .station-view__card-specs {
-    gap: 4px 10px;
-    font-size: 12px;
-    margin-bottom: 8px;
-  }
+  .station-view__row-spec { display: none; }
 
-  .station-view__spec-icon {
-    font-size: 12px;
-  }
-
-  .station-view__spec--due {
-    font-size: 12px;
-  }
-
-  .station-view__due-date {
-    font-size: 12px;
-  }
-
-  .station-view__due-label {
+  .station-view__row-due {
+    width: 65px;
     font-size: 11px;
   }
 
-  .station-view__step-status {
-    font-size: 11px;
-    padding: 2px 7px;
-  }
+  .station-view__row-progress { width: 55px; }
 
-  .station-view__overdue-tag {
+  .station-view__progress-bar-mini { width: 24px; }
+
+  .station-view__row-actions { width: 105px; }
+
+  .station-view__row-btn {
+    padding: 3px 6px;
     font-size: 10px;
-    padding: 1px 6px;
+    min-height: 26px;
   }
 
-  /* Progress bar */
-  .station-view__progress {
-    margin-bottom: 8px;
+  .station-view__row-expand {
+    padding: 4px 6px 8px 16px;
   }
 
-  .station-view__progress-steps-hint {
-    font-size: 9px;
-  }
-
-  .station-view__progress-label {
-    font-size: 10px;
-  }
-
-  .station-view__progress-text {
-    font-size: 10px;
-  }
-
-  /* Actions */
-  .station-view__action-btn {
-    padding: 8px 12px;
-    font-size: 13px;
-    min-height: 40px;
-    min-width: 60px;
-    border-radius: 8px;
-  }
-
-  .station-view__card-actions {
-    gap: 6px;
-  }
-
-  /* Step history */
-  .station-view__step-history {
-    padding: 4px 10px;
-    margin: 0 0 4px;
-  }
-
-  .station-view__history-item {
+  .station-view__row-details {
     font-size: 11px;
+    gap: 2px 8px;
   }
 
-  /* D-day badge */
   .station-view__dday {
-    font-size: 10px;
-    padding: 1px 4px;
-  }
-
-  /* Card detail (expanded) */
-  .station-view__card-detail {
-    margin: 6px 0;
-    padding: 8px;
-    gap: 6px;
-  }
-
-  .station-view__detail-row {
-    font-size: 12px;
-  }
-
-  /* Issue alert */
-  .station-view__issue-alert {
-    padding: 6px 10px;
-    font-size: 12px;
-    margin-bottom: 6px;
-  }
-
-  /* Empty state */
-  .station-view__empty {
-    padding: 40px 16px;
-    font-size: 14px;
-  }
-
-  .station-view__loading,
-  .station-view__error {
-    padding: 30px 16px;
-    font-size: 14px;
+    font-size: 9px;
+    padding: 1px 3px;
   }
 
 }
