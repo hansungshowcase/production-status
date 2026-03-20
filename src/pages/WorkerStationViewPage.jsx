@@ -685,11 +685,13 @@ export default function WorkerStationViewPage() {
                     })}
                   </div>
                   <div className="station-view__row-details">
+                    {item.created_at && <span className="station-view__row-detail-item">등록: {new Date(item.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+                    {item.order_date && <span className="station-view__row-detail-item">발주: {item.order_date}</span>}
+                    {item.started_at && <span className="station-view__row-detail-item">공정시작: {item.started_at.replace('T', ' ').slice(0, 16)}</span>}
+                    {item.started_by && <span className="station-view__row-detail-item">시작담당: {item.started_by}</span>}
+                    {item.sales_person && <span className="station-view__row-detail-item">담당: {item.sales_person}</span>}
                     {item.color && <span className="station-view__row-detail-item">색상: {item.color}</span>}
                     {item.design && <span className="station-view__row-detail-item">디자인: {item.design}</span>}
-                    {item.sales_person && <span className="station-view__row-detail-item">담당: {item.sales_person}</span>}
-                    {item.order_date && <span className="station-view__row-detail-item">발주: {item.order_date}</span>}
-                    {item.started_by && <span className="station-view__row-detail-item">시작: {item.started_by}</span>}
                   </div>
                   {(item.notes || item.remarks) && (
                     <div className="station-view__row-notes">
