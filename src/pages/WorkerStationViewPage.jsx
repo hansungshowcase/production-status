@@ -668,23 +668,28 @@ export default function WorkerStationViewPage() {
               {/* Expanded detail on tap */}
               {isExpanded && (
                 <div className="station-view__row-expand">
-                  {item.step_history && item.step_history.length > 0 && (
-                    <div className="station-view__step-history">
-                      {item.step_history.map((h, i) => (
-                        <div key={i} className="station-view__history-item">
-                          <span className="station-view__history-step">{STEP_ICONS[h.step_name] || ''} {h.step_name}</span>
-                          <span className="station-view__history-worker">{h.completed_by || '-'}</span>
+                  {/* 공정 진행 아이콘 바 */}
+                  <div className="station-view__expand-steps">
+                    {PROCESS_STEPS.map((s, i) => {
+                      const historyItem = (item.step_history || []).find(h => h.step_name === s);
+                      const isDone = i < completedSteps;
+                      const isCurr = i === completedSteps;
+                      return (
+                        <div key={s} className={`station-view__exp-step${isDone ? ' station-view__exp-step--done' : ''}${isCurr ? ' station-view__exp-step--current' : ''}`}>
+                          <span className="station-view__exp-step-icon">{STEP_ICONS[s]}</span>
+                          {isDone && historyItem?.completed_by && (
+                            <span className="station-view__exp-step-who">{historyItem.completed_by}</span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                   <div className="station-view__row-details">
                     {item.color && <span className="station-view__row-detail-item">색상: {item.color}</span>}
                     {item.design && <span className="station-view__row-detail-item">디자인: {item.design}</span>}
                     {item.sales_person && <span className="station-view__row-detail-item">담당: {item.sales_person}</span>}
                     {item.order_date && <span className="station-view__row-detail-item">발주: {item.order_date}</span>}
                     {item.started_by && <span className="station-view__row-detail-item">시작: {item.started_by}</span>}
-                    {item.started_at && <span className="station-view__row-detail-item">시작일: {item.started_at.replace('T', ' ').slice(0, 16)}</span>}
                   </div>
                   {(item.notes || item.remarks) && (
                     <div className="station-view__row-notes">

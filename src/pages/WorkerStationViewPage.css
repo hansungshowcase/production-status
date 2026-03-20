@@ -1089,6 +1089,51 @@
   to { opacity: 1; max-height: 200px; }
 }
 
+/* Expand: step progress icons */
+.station-view__expand-steps {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.station-view__exp-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  opacity: 0.2;
+}
+
+.station-view__exp-step--done {
+  opacity: 1;
+}
+
+.station-view__exp-step--current {
+  opacity: 1;
+}
+
+.station-view__exp-step-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.station-view__exp-step--current .station-view__exp-step-icon {
+  filter: drop-shadow(0 0 3px rgba(14, 165, 233, 0.5));
+}
+
+.station-view__exp-step-who {
+  font-size: 9px;
+  color: #059669;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  text-align: center;
+}
+
 .station-view__row-details {
   display: flex;
   flex-wrap: wrap;
