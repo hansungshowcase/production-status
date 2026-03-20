@@ -37,9 +37,9 @@ export default function WorkerSelectPage() {
     const stepName = DEPARTMENT_STEP_MAP[department];
     if (stepName) {
       localStorage.setItem(LAST_STATION_KEY, stepName);
-      navigate(`/worker/station/${encodeURIComponent(stepName)}`, { replace: true });
+      navigate(`/worker/station/${encodeURIComponent(stepName)}`);
     } else {
-      navigate(redirectTo, { replace: true });
+      navigate(redirectTo);
     }
   }
 

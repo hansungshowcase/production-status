@@ -21,7 +21,7 @@ export default function WorkerStationPage() {
       const stepName = DEPARTMENT_STEP_MAP[department];
       if (stepName) {
         localStorage.setItem(LAST_STATION_KEY, stepName);
-        navigate(`/worker/station/${encodeURIComponent(stepName)}`, { replace: true });
+        navigate(`/worker/station/${encodeURIComponent(stepName)}`);
         return;
       }
     }
