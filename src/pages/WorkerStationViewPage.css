@@ -665,10 +665,10 @@
 
 .station-view__th--status { width: 6px; flex-shrink: 0; }
 .station-view__th--client { width: 80px; flex-shrink: 0; padding-left: 8px; }
-.station-view__th--product { flex: 1; min-width: 60px; }
-.station-view__th--spec { width: 110px; flex-shrink: 0; }
-.station-view__th--due { width: 80px; flex-shrink: 0; }
-.station-view__th--progress { width: 65px; flex-shrink: 0; }
+.station-view__th--product { flex: 1; min-width: 50px; }
+.station-view__th--spec { width: 100px; flex-shrink: 0; }
+.station-view__th--due { width: 75px; flex-shrink: 0; }
+.station-view__th--progress { width: 60px; flex-shrink: 0; }
 .station-view__th--steps { display: none; }
 .station-view__th--actions { width: 110px; flex-shrink: 0; text-align: center; }
 
@@ -768,7 +768,7 @@
 }
 
 .station-view__row-spec {
-  width: 110px;
+  width: 100px;
   flex-shrink: 0;
   font-size: 12px;
   color: #64748b;
@@ -779,7 +779,7 @@
 }
 
 .station-view__row-due {
-  width: 80px;
+  width: 75px;
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 800;
@@ -791,7 +791,7 @@
 }
 
 .station-view__row-progress {
-  width: 65px;
+  width: 60px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1693,39 +1693,49 @@
   }
 
   .station-view__row-spec {
-    width: 130px;
+    width: 110px;
   }
 
   .station-view__row-due {
-    width: 100px;
+    width: 85px;
     font-size: 13px;
   }
 
   .station-view__th--client { width: 100px; }
-  .station-view__th--spec { width: 130px; }
-  .station-view__th--due { width: 100px; }
+  .station-view__th--spec { width: 110px; }
+  .station-view__th--due { width: 85px; }
 
-  /* PC: show step dots */
+  /* PC: show step pips */
   .station-view__row-steps {
     display: flex;
     align-items: center;
-    gap: 3px;
-    flex-shrink: 0;
-    width: 160px;
+    gap: 2px;
+    flex: 1.5;
+    min-width: 120px;
   }
 
   .station-view__th--steps {
     display: block;
-    flex-shrink: 0;
-    width: 160px;
+    flex: 1.5;
+    min-width: 120px;
   }
 
+  /* PC: progress column hide (replaced by step pips) */
+  .station-view__row-progress {
+    display: none;
+  }
+
+  .station-view__th--progress {
+    display: none;
+  }
+
+  /* PC: actions */
   .station-view__row-actions {
-    width: 160px;
+    width: 140px;
   }
 
   .station-view__th--actions {
-    width: 160px;
+    width: 140px;
   }
 
   /* PC: bigger buttons, full text */
@@ -1733,13 +1743,9 @@
   .station-view__btn-text--mobile { display: none; }
 
   .station-view__row-btn {
-    padding: 6px 14px;
-    font-size: 13px;
-    min-height: 34px;
-  }
-
-  .station-view__row-btn--complete {
-    padding: 6px 18px;
+    padding: 5px 10px;
+    font-size: 12px;
+    min-height: 32px;
   }
 
   /* PC: issue popup wider */
