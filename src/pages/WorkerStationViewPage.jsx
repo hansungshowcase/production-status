@@ -327,8 +327,8 @@ export default function WorkerStationViewPage() {
         <div className="station-view__header-top">
           <button
             className="station-view__back-btn"
-            onClick={() => navigate('/')}
-            aria-label="홈으로"
+            onClick={() => navigate(-1)}
+            aria-label="뒤로가기"
           >
             &#8592;
           </button>
