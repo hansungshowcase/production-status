@@ -20,6 +20,11 @@
   font-family: 'Noto Sans KR', sans-serif;
 }
 
+.install-prompt__icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
 .install-prompt__info {
   flex: 1;
   min-width: 0;
