@@ -1,6 +1,6 @@
-const CACHE_VERSION = 25;
+const CACHE_VERSION = 26;
 const CACHE_NAME = `hansung-showcase-v${CACHE_VERSION}`;
-const RUNTIME_CACHE = 'hansung-runtime-v2';
+const RUNTIME_CACHE = `hansung-runtime-v${CACHE_VERSION}`;
 
 // App shell - critical resources
 const APP_SHELL = [

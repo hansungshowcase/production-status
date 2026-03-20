@@ -123,8 +123,8 @@
         navigator.serviceWorker.register('/sw.js')
           .then((reg) => {
             console.log('SW registered:', reg.scope);
-            // Check for updates periodically
-            setInterval(() => reg.update(), 60 * 60 * 1000);
+            // Check for updates every 5 minutes
+            setInterval(() => reg.update(), 5 * 60 * 1000);
           })
           .catch((err) => console.warn('SW registration failed:', err));
       });
