@@ -368,7 +368,11 @@
   color: #d97706;
 }
 
-.factory-overview__steps {
+.factory-overview__steps--compact {
+  display: none;
+}
+
+.factory-overview__steps--grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
@@ -649,8 +653,9 @@
   gap: 0;
   padding: 6px 10px;
   background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   border-radius: 6px;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
   position: sticky;
   top: 0;
   z-index: 5;
@@ -676,11 +681,11 @@
 .station-view__card {
   position: relative;
   background: #ffffff;
-  border-bottom: 1px solid #f1f5f9;
-  border-radius: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   padding: 0;
-  margin-bottom: 0;
-  transition: background 0.15s;
+  margin-bottom: 4px;
+  transition: background 0.15s, border-color 0.15s;
   cursor: pointer;
 }
 
@@ -1443,26 +1448,14 @@
     gap: 8px;
   }
 
-  .factory-overview__steps {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+  .factory-overview__steps--grid {
+    display: none;
   }
 
-  .factory-step {
-    padding: 10px 6px 8px;
-  }
-
-  .factory-step__icon {
-    font-size: 22px;
-  }
-
-  .factory-step__name {
-    font-size: 11px;
-  }
-
-  .factory-step__count {
-    font-size: 10px;
-    padding: 2px 5px;
+  .factory-overview__steps--compact {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
   }
 
   .factory-overview {
@@ -1602,12 +1595,12 @@
     padding: 6px 8px;
   }
 
-  .factory-step__icon {
-    font-size: 18px;
+  .factory-row__icon {
+    font-size: 14px;
   }
 
-  .factory-step__name {
-    font-size: 10px;
+  .factory-row__name {
+    font-size: 11px;
   }
 
   .station-view__section-title {

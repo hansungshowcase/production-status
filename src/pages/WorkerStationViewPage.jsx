@@ -444,7 +444,8 @@ export default function WorkerStationViewPage() {
               )}
             </div>
           </div>
-          <div className="factory-overview__steps">
+          {/* PC: grid cards */}
+          <div className="factory-overview__steps factory-overview__steps--grid">
             {PROCESS_STEPS.map((step) => {
               const stepStat = (factoryStats.by_step || []).find(s => s.step_name === step);
               const isCurrent = step === decodedStep;
@@ -470,6 +471,34 @@ export default function WorkerStationViewPage() {
                     {actionable > 0 && <span className="factory-step__count factory-step__count--waiting">잔여 {actionable}</span>}
                     <span className="factory-step__count factory-step__count--done">완료 {c}/{total}</span>
                   </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Mobile: compact row list */}
+          <div className="factory-overview__steps factory-overview__steps--compact">
+            {PROCESS_STEPS.map((step) => {
+              const stepStat = (factoryStats.by_step || []).find(s => s.step_name === step);
+              const isCurrent = step === decodedStep;
+              const c = Number(stepStat?.completed) || 0;
+              const total = (Number(stepStat?.waiting) || 0) + (Number(stepStat?.in_progress) || 0) + c;
+              const actionable = Number(stepStat?.actionable) || 0;
+              const donePct = total > 0 ? Math.round((c / total) * 100) : 0;
+
+              return (
+                <div
+                  key={step}
+                  className={`factory-row${isCurrent ? ' factory-row--current' : ''}${actionable > 0 ? ' factory-row--active' : ''}`}
+                  onClick={() => { if (!isCurrent) navigate(`/worker/station/${encodeURIComponent(step)}`); }}
+                >
+                  <span className="factory-row__icon">{STEP_ICONS[step] || ''}</span>
+                  <span className="factory-row__name">{step}</span>
+                  <div className="factory-row__bar">
+                    <div className="factory-row__bar-fill" style={{ width: `${donePct}%` }} />
+                  </div>
+                  <span className="factory-row__nums">
+                    <span className={`factory-row__badge${actionable > 0 ? ' factory-row__badge--wait' : ' factory-row__badge--done'}`}>{actionable}</span>
+                  </span>
                 </div>
               );
             })}
