@@ -96,6 +96,7 @@ export default function WorkerUpdatePage() {
       await startProcess(waitingProcess.id, {
         assigned_worker: WORKER_NAME,
         assigned_team: '조립팀',
+        actor: WORKER_NAME,
       });
       closeModal();
       showToast('공정이 시작되었습니다');

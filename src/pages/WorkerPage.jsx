@@ -208,6 +208,7 @@ export default function WorkerPage() {
       await startProcess(waitingProcess.id, {
         assigned_worker: WORKER_NAME,
         assigned_team: department || '미지정',
+        actor: WORKER_NAME,
       });
       await fetchOrders();
       await fetchStats();

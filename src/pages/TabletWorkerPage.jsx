@@ -43,7 +43,7 @@ export default function TabletWorkerPage() {
 
   async function handleStartProcess(processId) {
     try {
-      await startProcess(processId, { worker_name: '현장작업자' });
+      await startProcess(processId, { assigned_worker: '현장작업자', actor: '현장작업자' });
       await fetchOrderList();
     } catch (err) {
       console.error('Process start failed:', err);
