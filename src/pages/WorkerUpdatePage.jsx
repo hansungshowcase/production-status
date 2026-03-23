@@ -116,7 +116,7 @@ export default function WorkerUpdatePage() {
     }
     setActionLoading(true);
     try {
-      await completeProcess(inProgressProcess.id);
+      await completeProcess(inProgressProcess.id, { actor: WORKER_NAME || '작업자' });
       closeModal();
       showToast('공정 완료! 다음 공정팀에 알림 전송됨');
       setTimeout(() => navigate('/worker/search'), 1200);
@@ -131,17 +131,13 @@ export default function WorkerUpdatePage() {
   const handlePhoto = async () => {
     if (!order) return;
     const activeProc = inProgressProcess || processes.find((p) => p.status === 'waiting');
-    try {
-      await uploadPhoto({
-        order_id: order.id,
-        process_id: activeProc?.id,
-        file_path: `/photos/${order.order_number}_${Date.now()}.jpg`,
-        uploaded_by: WORKER_NAME,
-      });
-      showToast('사진이 첨부되었습니다');
-    } catch (err) {
-      showToast(`사진 첨부 실패: ${err.message}`);
-    }
+    // TODO: uploadPhoto requires multipart FormData with a 'photo' file field.
+    // Without an actual file (e.g., from camera/file picker), we cannot upload.
+    console.warn('사진 첨부: 실제 파일 선택 기능이 구현되지 않아 업로드를 건너뜁니다.', {
+      order_id: order.id,
+      process_id: activeProc?.id,
+    });
+    showToast('사진 첨부 기능은 준비 중입니다');
   };
 
   const handleIssueClick = () => {

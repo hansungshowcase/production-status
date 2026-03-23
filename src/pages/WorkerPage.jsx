@@ -174,17 +174,13 @@ export default function WorkerPage() {
   const handlePhoto = async (taskId) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
-    try {
-      await uploadPhoto({
-        order_id: task.orderId,
-        process_id: task.processId,
-        file_path: `/photos/${task.orderNumber}_${Date.now()}.jpg`,
-        uploaded_by: WORKER_NAME,
-      });
-      showToast('사진이 첨부되었습니다');
-    } catch (err) {
-      showToast(`사진 첨부 실패: ${err.message}`);
-    }
+    // TODO: uploadPhoto requires multipart FormData with a 'photo' file field.
+    // Without an actual file (e.g., from camera/file picker), we cannot upload.
+    console.warn('사진 첨부: 실제 파일 선택 기능이 구현되지 않아 업로드를 건너뜁니다.', {
+      order_id: task.orderId,
+      process_id: task.processId,
+    });
+    showToast('사진 첨부 기능은 준비 중입니다');
   };
 
   const handleIssue = (taskId) => {

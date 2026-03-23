@@ -53,7 +53,7 @@ export default function TabletWorkerPage() {
 
   async function handleCompleteProcess(processId) {
     try {
-      await completeProcess(processId);
+      await completeProcess(processId, { actor: '현장작업자' });
       await fetchOrderList();
     } catch (err) {
       console.error('Process complete failed:', err);
