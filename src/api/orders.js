@@ -18,8 +18,8 @@ export function updateOrder(id, data) {
   return request(`/orders/${id}`, { method: 'PUT', body: data });
 }
 
-export function deleteOrder(id) {
-  return request(`/orders/${id}`, { method: 'DELETE' });
+export function deleteOrder(id, actor) {
+  return request(`/orders/${id}`, { method: 'DELETE', body: { actor: actor || '시스템' } });
 }
 
 export function shipOrder(id) {
