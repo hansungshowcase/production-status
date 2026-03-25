@@ -27,9 +27,12 @@ function formatDate(dateStr) {
 }
 
 const PRE_PRODUCTION_ITEMS = [
-  { key: 'drawing_checked', label: '도면 확인' },
-  { key: 'material_ready', label: '자재 준비' },
-  { key: 'schedule_confirmed', label: '일정 확인' },
+  { key: 'instruction_check', label: '지시서 확인' },
+  { key: 'material_drawing', label: '자재 도면' },
+  { key: 'laser_drawing', label: '레이저 도면' },
+  { key: 'material_order_received', label: '자재 발주 접수' },
+  { key: 'material_order_completed', label: '자재 발주 완료' },
+  { key: 'material_received', label: '자재 입고' },
 ];
 
 export default function OrderDetailPanel({ order, onStartProcess, onCompleteProcess, onPhotoAttach, onIssueReport }) {

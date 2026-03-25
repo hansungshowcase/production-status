@@ -95,11 +95,10 @@ async function handleUpdate(id, req, res) {
   }
 
   updates.push("updated_at = CURRENT_TIMESTAMP");
-  values.push(id);
 
   await db.execute({
     sql: `UPDATE orders SET ${updates.join(', ')} WHERE id = ?`,
-    args: values,
+    args: [...values, id],
   });
 
   // Log activity
