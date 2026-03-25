@@ -94,17 +94,7 @@ export default function WorkerPage() {
   const { data: ordersRaw, loading: ordersLoading, error: ordersError, execute: fetchOrders } = useApi(
     async () => {
       const res = await getOrders({ status: 'in_production', limit: 20 });
-      const orders = Array.isArray(res) ? res : (res.orders || []);
-      const detailed = await Promise.all(
-        orders.slice(0, 20).map(async (o) => {
-          try {
-            return await getOrder(o.id);
-          } catch {
-            return { ...o, processes: [] };
-          }
-        })
-      );
-      return detailed;
+      return Array.isArray(res) ? res : (res.orders || []);
     }
   );
 

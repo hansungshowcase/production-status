@@ -57,18 +57,7 @@ export default function WorkerSearchPage() {
   const { data: ordersRaw, loading, error, execute: fetchOrders } = useApi(
     async () => {
       const res = await getOrders({ status: 'in_production', limit: 100 });
-      const orders = Array.isArray(res) ? res : (res.orders || []);
-      const { default: request } = await import('../api/client');
-      const detailed = await Promise.all(
-        orders.map(async (o) => {
-          try {
-            return await request(`/orders/${o.id}`);
-          } catch {
-            return { ...o, processes: [] };
-          }
-        })
-      );
-      return detailed;
+      return Array.isArray(res) ? res : (res.orders || []);
     }
   );
 

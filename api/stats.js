@@ -85,20 +85,18 @@ export default cors(async function handler(req, res) {
   });
   const by_sales_person = bySalesResult.rows;
 
-  // Overdue and due-soon counts
-  const activeOrdersResult = await db.execute({
-    sql: "SELECT due_date FROM orders WHERE status != 'shipped'",
+  // Overdue and due-soon counts (SQL로 계산)
+  const overdueResult = await db.execute({
+    sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date < CURRENT_DATE",
     args: [],
   });
+  const overdue_count = overdueResult.rows[0].count;
 
-  let overdue_count = 0;
-  let due_soon_count = 0;
-  for (const order of activeOrdersResult.rows) {
-    const days = daysUntilDue(order.due_date);
-    if (days === null) continue;
-    if (days < 0) overdue_count++;
-    else if (days <= 3) due_soon_count++;
-  }
+  const dueSoonResult = await db.execute({
+    sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date >= CURRENT_DATE AND due_date <= CURRENT_DATE + INTERVAL '3 days'",
+    args: [],
+  });
+  const due_soon_count = dueSoonResult.rows[0].count;
 
   return res.json({
     total_orders,

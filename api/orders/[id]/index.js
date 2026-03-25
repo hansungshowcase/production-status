@@ -40,22 +40,12 @@ async function handleGet(id, req, res) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
   }
 
-  const processesResult = await db.execute({
-    sql: 'SELECT * FROM processes WHERE order_id = ? ORDER BY id',
-    args: [order.id],
-  });
-  const preProdResult = await db.execute({
-    sql: 'SELECT * FROM pre_production WHERE order_id = ?',
-    args: [order.id],
-  });
-  const issuesResult = await db.execute({
-    sql: 'SELECT * FROM issues WHERE order_id = ? ORDER BY reported_at DESC',
-    args: [order.id],
-  });
-  const photosResult = await db.execute({
-    sql: 'SELECT * FROM photos WHERE order_id = ? ORDER BY uploaded_at DESC',
-    args: [order.id],
-  });
+  const [processesResult, preProdResult, issuesResult, photosResult] = await Promise.all([
+    db.execute({ sql: 'SELECT * FROM processes WHERE order_id = ? ORDER BY id', args: [order.id] }),
+    db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [order.id] }),
+    db.execute({ sql: 'SELECT * FROM issues WHERE order_id = ? ORDER BY reported_at DESC', args: [order.id] }),
+    db.execute({ sql: 'SELECT * FROM photos WHERE order_id = ? ORDER BY uploaded_at DESC', args: [order.id] }),
+  ]);
 
   return res.json({
     ...order,
