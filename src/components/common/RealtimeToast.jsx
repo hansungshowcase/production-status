@@ -11,7 +11,7 @@ const EVENT_LABELS = {
 
 function formatEventMessage(event) {
   const label = EVENT_LABELS[event.type] || event.type;
-  const orderNumber = event.order_number || event.orderNumber || '';
+  const orderNumber = event.order_id || '';
   const detail = event.step_name || event.stepName || '';
   const parts = [orderNumber, detail, label].filter(Boolean);
   return parts.join(' ');

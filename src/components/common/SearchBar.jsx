@@ -130,7 +130,7 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
           {!loading && results.map((order) => {
             const due = getDueInfo(order);
             const step = getStepInfo(order);
-            const clientName = `${order.client_name || ''}${order.client_store ? ' ' + order.client_store : ''}`.trim() || '-';
+            const clientName = order.client_name || '-';
             return (
               <button
                 key={order.id}
@@ -142,7 +142,7 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
                   <span className="searchbar-step">{step}</span>
                 </div>
                 <div className="searchbar-item-bottom">
-                  <span>{order.product_type || order.product_name || '-'}</span>
+                  <span>{order.product_type || '-'}</span>
                   <span className="searchbar-sep">·</span>
                   <span>{order.sales_person || '-'}</span>
                   <span className="searchbar-sep">·</span>

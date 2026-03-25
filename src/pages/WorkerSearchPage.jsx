@@ -24,8 +24,8 @@ function mapOrderForSearch(order) {
 
   return {
     id: order.id,
-    orderNumber: order.order_number,
-    product: order.product_name,
+    orderNumber: order.id,
+    product: order.product_type,
     productType: order.product_type || null,
     doorType: order.door_type || null,
     width: order.width || null,
@@ -33,7 +33,7 @@ function mapOrderForSearch(order) {
     height: order.height || null,
     color: order.color || null,
     quantity: order.quantity || null,
-    client: `${order.client_name}${order.client_store ? ' ' + order.client_store : ''}`,
+    client: order.client_name || '-',
     clientName: order.client_name || '',
     salesRep: order.sales_person || '',
     currentStep: currentStepIndex,

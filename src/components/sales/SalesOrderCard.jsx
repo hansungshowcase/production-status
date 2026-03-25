@@ -46,7 +46,7 @@ export default function SalesOrderCard({ order, onDelete }) {
   const isOverdue = dueStatus.isOverdue;
   const isShipped = order.status === 'shipped' || order.status === '출고완료' || !!order.ship_date;
 
-  const clientDisplay = `${order.client_name || ''}${order.client_store ? ' ' + order.client_store : ''}`.trim() || '-';
+  const clientDisplay = order.client_name || '-';
   const specParts = [order.product_type, order.door_type].filter(Boolean).join(' / ');
   const sizeParts = [order.width, order.depth, order.height].filter(Boolean).join(' x ');
   const dueDisplay = order.due_date

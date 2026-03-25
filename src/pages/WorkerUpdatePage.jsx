@@ -61,7 +61,7 @@ export default function WorkerUpdatePage() {
   const displaySpec = order
     ? order.product_type
       ? `${order.product_type}${order.door_type ? ' / ' + order.door_type : ''}`
-      : order.product_name || '-'
+      : '-'
     : '-';
 
   const dimensions =
@@ -70,7 +70,7 @@ export default function WorkerUpdatePage() {
       : null;
 
   const clientDisplay = order
-    ? `${order.client_name}${order.client_store ? ' ' + order.client_store : ''}`
+    ? order.client_name || '-'
     : '';
 
   // Action handlers

@@ -52,10 +52,10 @@ function mapOrderToTask(order) {
     id: order.id,
     orderId: order.id,
     processId: activeProcess?.id || null,
-    orderNumber: order.order_number,
+    orderNumber: order.id,
     status,
     statusLabel,
-    product: order.product_name,
+    product: order.product_type,
     productType: order.product_type || null,
     doorType: order.door_type || null,
     width: order.width || null,
@@ -63,7 +63,7 @@ function mapOrderToTask(order) {
     height: order.height || null,
     color: order.color || null,
     quantity: order.quantity || null,
-    client: `${order.client_name}${order.client_store ? ' ' + order.client_store : ''}`,
+    client: order.client_name || '-',
     salesRep: order.sales_person || '-',
     currentStep: currentStepIndex,
     completedSteps: completedCount,
@@ -128,9 +128,9 @@ export default function WorkerPage() {
 
   const stats = statsData
     ? {
-        waiting: statsData.waiting,
-        inProgress: statsData.in_progress,
-        completed: statsData.completed_today,
+        waiting: statsData.process_stats?.waiting,
+        inProgress: statsData.process_stats?.in_progress,
+        completed: statsData.process_stats?.completed,
       }
     : {
         waiting: tasks.filter((t) => t.status === 'waiting' && !t.isBlocked).length,
