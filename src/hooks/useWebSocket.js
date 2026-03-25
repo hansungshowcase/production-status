@@ -32,7 +32,7 @@ export default function useWebSocket() {
     };
 
     poll(); // Initial poll
-    const interval = setInterval(poll, 5000);
+    const interval = setInterval(poll, 15000);
 
     return () => {
       active = false;

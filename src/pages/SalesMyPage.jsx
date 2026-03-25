@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SalesSummaryCards from '../components/sales/SalesSummaryCards';
 import SalesOrderCard from '../components/sales/SalesOrderCard';
@@ -10,7 +10,7 @@ import useWebSocket from '../hooks/useWebSocket';
 import './SalesMyPage.css';
 
 const LS_KEY = 'sales_last_person';
-const REFRESH_INTERVAL = 5000; // 5 seconds
+const REFRESH_INTERVAL = 15000; // 15 seconds
 
 const SALES_PERSONS = ['신은철', '이시아'];
 
@@ -72,19 +72,7 @@ export default function SalesMyPage() {
       setError(null);
       const res = await getOrders({ sales_person: activePerson });
       const list = Array.isArray(res) ? res : (res.orders || []);
-
-      // Fetch detail for each order for process info
-      const { default: request } = await import('../api/client');
-      const detailed = await Promise.all(
-        list.map(async (o) => {
-          try {
-            return await request(`/orders/${o.id}`);
-          } catch {
-            return { ...o, processes: [] };
-          }
-        })
-      );
-      setOrders(detailed);
+      setOrders(list);
     } catch (err) {
       setError(err.message || '데이터를 불러오지 못했습니다');
     } finally {
@@ -124,17 +112,22 @@ export default function SalesMyPage() {
 
   if (!mySalesPerson) return null;
 
-  // Compute summary counts (from all orders, before any filter)
-  const totalCount = orders.length;
-  const shippedCount = orders.filter(isShipped).length;
-  const inProductionCount = orders.filter(isInProduction).length;
-  const overdueCount = orders.filter(isOverdue).length;
+  // Compute summary counts (memoized)
+  const { totalCount, shippedCount, inProductionCount, overdueCount } = useMemo(() => ({
+    totalCount: orders.length,
+    shippedCount: orders.filter(isShipped).length,
+    inProductionCount: orders.filter(isInProduction).length,
+    overdueCount: orders.filter(isOverdue).length,
+  }), [orders]);
 
-  // Apply status filter
-  let filtered = orders;
-  if (filter === 'in_production') filtered = orders.filter(isInProduction);
-  else if (filter === 'shipped') filtered = orders.filter(isShipped);
-  else if (filter === 'overdue') filtered = orders.filter(isOverdue);
+  // Apply status filter (memoized)
+  const filtered = useMemo(() => {
+    let result = orders;
+    if (filter === 'in_production') result = orders.filter(isInProduction);
+    else if (filter === 'shipped') result = orders.filter(isShipped);
+    else if (filter === 'overdue') result = orders.filter(isOverdue);
+    return result;
+  }, [orders, filter]);
 
   // Apply search filter
   if (searchQuery.trim()) {

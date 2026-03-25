@@ -127,17 +127,23 @@ export default function WorkerStationViewPage() {
       // 중간 공정 건너뛰기 (선택된 다음 공정이 인접하지 않은 경우)
       if (selectedNextStep && orderId) {
         const selectedIdx = PROCESS_STEPS.indexOf(selectedNextStep);
-        // 중간 공정들은 자동 완료 처리
-        for (let i = currentStepIndex + 1; i < selectedIdx; i++) {
-          const skipStep = PROCESS_STEPS[i];
-          const stepData = await getProcessesByStep(skipStep);
-          const raw = Array.isArray(stepData) ? stepData : stepData.processes || [];
+        const skipSteps = PROCESS_STEPS.slice(currentStepIndex + 1, selectedIdx);
+
+        // 중간 공정 데이터를 병렬로 조회
+        const skipDataArr = await Promise.all(
+          skipSteps.map(step => getProcessesByStep(step))
+        );
+
+        // 중간 공정들을 순차 완료 처리 (순서 보장 필요)
+        for (let i = 0; i < skipSteps.length; i++) {
+          const raw = Array.isArray(skipDataArr[i]) ? skipDataArr[i] : skipDataArr[i].processes || [];
           const match = raw.find(p => p.order_id === orderId);
           if (match) {
-            await startProcess(match.process_id, { assigned_worker: workerName, assigned_team: skipStep, actor: workerName });
+            await startProcess(match.process_id, { assigned_worker: workerName, assigned_team: skipSteps[i], actor: workerName });
             await completeProcess(match.process_id, { actor: workerName });
           }
         }
+
         // 선택한 목표 공정을 시작 처리 (현황에 추가)
         const targetData = await getProcessesByStep(selectedNextStep);
         const targetRaw = Array.isArray(targetData) ? targetData : targetData.processes || [];
