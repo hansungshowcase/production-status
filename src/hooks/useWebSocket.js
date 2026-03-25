@@ -18,14 +18,13 @@ export default function useWebSocket() {
         setIsConnected(true);
         if (data.events && data.events.length > 0) {
           lastTimestampRef.current = data.timestamp;
-          // Emit each event as a message
-          for (const event of data.events.reverse()) {
-            setLastMessage({
-              type: event.action_type,
-              data: event,
-              timestamp: event.created_at,
-            });
-          }
+          // Use the most recent event (last in array)
+          const latest = data.events[data.events.length - 1];
+          setLastMessage({
+            type: latest.action_type,
+            data: latest,
+            timestamp: latest.created_at,
+          });
         }
       } catch {
         if (active) setIsConnected(false);

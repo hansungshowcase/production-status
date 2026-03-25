@@ -95,7 +95,7 @@ export default function WorkerUpdatePage() {
     try {
       await startProcess(waitingProcess.id, {
         assigned_worker: WORKER_NAME,
-        assigned_team: '조립팀',
+        assigned_team: sessionStorage.getItem('selected_department') || WORKER_NAME,
         actor: WORKER_NAME,
       });
       closeModal();

@@ -85,7 +85,8 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
     due.setHours(0, 0, 0, 0);
     const diff = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
     const dateStr = due.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-    if (diff <= 0) return { label: `${dateStr} (D${diff === 0 ? '-Day' : '+' + Math.abs(diff)})`, className: 'searchbar-overdue' };
+    if (diff === 0) return { label: `${dateStr} (D-Day)`, className: 'searchbar-overdue' };
+    if (diff < 0) return { label: `${dateStr} (D+${Math.abs(diff)})`, className: 'searchbar-overdue' };
     if (diff <= 3) return { label: `${dateStr} (D-${diff})`, className: 'searchbar-duesoon' };
     return { label: dateStr, className: '' };
   };
