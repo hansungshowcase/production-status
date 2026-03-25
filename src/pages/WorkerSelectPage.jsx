@@ -18,7 +18,10 @@ export default function WorkerSelectPage() {
   const [factoryStats, setFactoryStats] = useState(null);
 
   useEffect(() => {
-    getStats().then(setFactoryStats).catch(() => {});
+    getStats().then((data) => {
+      setFactoryStats(data);
+      requestAnimationFrame(() => window.scrollTo(0, 0));
+    }).catch(() => {});
   }, []);
 
   function handleSelectWorker(name) {
