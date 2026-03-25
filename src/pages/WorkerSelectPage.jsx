@@ -18,18 +18,7 @@ export default function WorkerSelectPage() {
   const [factoryStats, setFactoryStats] = useState(null);
 
   useEffect(() => {
-    // 스크롤 방지: stats 로드 시 레이아웃 변경으로 스크롤 밀림 방지
-    document.body.style.overflow = 'hidden';
-    getStats().then((data) => {
-      window.scrollTo(0, 0);
-      setFactoryStats(data);
-      requestAnimationFrame(() => {
-        window.scrollTo(0, 0);
-        document.body.style.overflow = '';
-      });
-    }).catch(() => {
-      document.body.style.overflow = '';
-    });
+    getStats().then(setFactoryStats).catch(() => {});
   }, []);
 
   function handleSelectWorker(name) {
@@ -121,52 +110,50 @@ export default function WorkerSelectPage() {
         ))}
       </div>
 
-      {/* 공장 전체 현황 */}
-      {factoryStats && (
-        <div className="worker-select-page__factory">
-          <h2 className="worker-select-page__factory-title">공장 전체 현황</h2>
-          <div className="worker-select-page__factory-global">
-            <span className="worker-select-page__factory-stat">
-              주문 <strong>{factoryStats.total_orders}</strong>
+      {/* 공장 전체 현황 - 항상 렌더링하여 레이아웃 시프트 방지 */}
+      <div className="worker-select-page__factory">
+        <h2 className="worker-select-page__factory-title">공장 전체 현황</h2>
+        <div className="worker-select-page__factory-global">
+          <span className="worker-select-page__factory-stat">
+            주문 <strong>{factoryStats?.total_orders ?? '-'}</strong>
+          </span>
+          <span className="worker-select-page__factory-stat">
+            생산중 <strong>{factoryStats?.in_production ?? '-'}</strong>
+          </span>
+          <span className="worker-select-page__factory-stat">
+            출고 <strong>{factoryStats?.shipped ?? '-'}</strong>
+          </span>
+          {factoryStats?.overdue_count > 0 && (
+            <span className="worker-select-page__factory-stat worker-select-page__factory-stat--red">
+              납기초과 <strong>{factoryStats.overdue_count}</strong>
             </span>
-            <span className="worker-select-page__factory-stat">
-              생산중 <strong>{factoryStats.in_production}</strong>
-            </span>
-            <span className="worker-select-page__factory-stat">
-              출고 <strong>{factoryStats.shipped}</strong>
-            </span>
-            {factoryStats.overdue_count > 0 && (
-              <span className="worker-select-page__factory-stat worker-select-page__factory-stat--red">
-                납기초과 <strong>{factoryStats.overdue_count}</strong>
-              </span>
-            )}
-          </div>
-          <div className="worker-select-page__factory-steps">
-            {PROCESS_STEPS.map((s) => {
-              const st = (factoryStats.by_step || []).find(x => x.step_name === s);
-              const w = st?.waiting || 0;
-              const p = st?.in_progress || 0;
-              const c = st?.completed || 0;
-              const total = w + p + c;
-              const pct = total > 0 ? Math.round((c / total) * 100) : 0;
-              return (
-                <div key={s} className={`worker-select-page__fstep${p > 0 ? ' worker-select-page__fstep--active' : ''}`}>
-                  <div className="worker-select-page__fstep-icon">{STEP_ICONS[s]}</div>
-                  <div className="worker-select-page__fstep-name">{s}</div>
-                  <div className="worker-select-page__fstep-bar">
-                    <div className="worker-select-page__fstep-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="worker-select-page__fstep-counts">
-                    {p > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--prog">{p}</span>}
-                    {w > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--wait">{w}</span>}
-                    <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--done">{c}/{total}</span>
-                  </div>
+          )}
+        </div>
+        <div className="worker-select-page__factory-steps">
+          {PROCESS_STEPS.map((s) => {
+            const st = (factoryStats?.by_step || []).find(x => x.step_name === s);
+            const w = st?.waiting || 0;
+            const p = st?.in_progress || 0;
+            const c = st?.completed || 0;
+            const total = w + p + c;
+            const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+            return (
+              <div key={s} className={`worker-select-page__fstep${p > 0 ? ' worker-select-page__fstep--active' : ''}`}>
+                <div className="worker-select-page__fstep-icon">{STEP_ICONS[s]}</div>
+                <div className="worker-select-page__fstep-name">{s}</div>
+                <div className="worker-select-page__fstep-bar">
+                  <div className="worker-select-page__fstep-fill" style={{ width: `${pct}%` }} />
                 </div>
+                <div className="worker-select-page__fstep-counts">
+                  {p > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--prog">{p}</span>}
+                  {w > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--wait">{w}</span>}
+                  <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--done">{c}/{total}</span>
+                </div>
+              </div>
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
       <div className="worker-select-page__footer">
         <span className="worker-select-page__motto">잘 만든 제품은 고객의 삶을 바꿉니다.</span>
       </div>
