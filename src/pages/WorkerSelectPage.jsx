@@ -18,10 +18,18 @@ export default function WorkerSelectPage() {
   const [factoryStats, setFactoryStats] = useState(null);
 
   useEffect(() => {
+    // 스크롤 방지: stats 로드 시 레이아웃 변경으로 스크롤 밀림 방지
+    document.body.style.overflow = 'hidden';
     getStats().then((data) => {
+      window.scrollTo(0, 0);
       setFactoryStats(data);
-      requestAnimationFrame(() => window.scrollTo(0, 0));
-    }).catch(() => {});
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        document.body.style.overflow = '';
+      });
+    }).catch(() => {
+      document.body.style.overflow = '';
+    });
   }, []);
 
   function handleSelectWorker(name) {
