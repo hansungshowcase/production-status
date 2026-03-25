@@ -31,7 +31,7 @@ export default function AdminPage() {
   return (
     <div className="admin-container">
       <div className="admin-header">
-        <button className="admin-back-btn" onClick={() => navigate('/')}>
+        <button className="admin-back-btn" onClick={() => navigate(-1)}>
           &#8592;
         </button>
         <div className="admin-header-title">데이터 관리</div>

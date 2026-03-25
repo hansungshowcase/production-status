@@ -394,7 +394,7 @@ export default function WorkerPage() {
 
   return (
     <div className="app-container">
-      <Header subtitle="생산현황 관리" profileEmoji="&#x1F477;" wsConnected={isConnected} onBack={() => navigate('/')} workerName={WORKER_NAME} onChangeWorker={handleChangeWorker} />
+      <Header subtitle="생산현황 관리" profileEmoji="&#x1F477;" wsConnected={isConnected} onBack={() => navigate(-1)} workerName={WORKER_NAME} onChangeWorker={handleChangeWorker} />
       <div className="app-content">
         <SearchBar
           placeholder="거래처·제품·담당자 검색"

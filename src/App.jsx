@@ -46,7 +46,7 @@ function AnimatedPage({ children }) {
 
   return (
     <div key={location.pathname} className="page-transition-enter-active" style={{
-      animation: 'fadeInUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) both',
+      animation: 'fadeIn 0.25s ease both',
     }}>
       {children}
     </div>
