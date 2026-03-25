@@ -20,6 +20,14 @@ const OrderEntryPage = lazy(() => import('./pages/OrderEntryPage'));
 const SalesLoginPage = lazy(() => import('./pages/SalesLoginPage'));
 const SalesMyPage = lazy(() => import('./pages/SalesMyPage'));
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 function MobileHeaderBar() {
   const location = useLocation();
   const isWorker = location.pathname.startsWith('/worker');
@@ -94,6 +102,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ScrollToTop />
       {!appReady && <SplashScreen />}
       <MobileHeaderBar />
       <OfflineBanner show={isOffline} />
