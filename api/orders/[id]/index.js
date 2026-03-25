@@ -135,14 +135,21 @@ async function handleDelete(id, req, res) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
   }
 
-  // Log before deleting (since cascade will remove activity_feed entries too)
+  // Log with order_id before deleting, then nullify to survive cascade
   await db.execute({
-    sql: `INSERT INTO activity_feed (action_type, description, actor) VALUES (?, ?, ?)`,
+    sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
     args: [
+      order.id,
       '주문삭제',
       `${order.client_name} 주문(ID: ${order.id})이 삭제되었습니다.`,
       body.actor || '시스템',
     ],
+  });
+
+  // Detach delete log from order so CASCADE doesn't remove it
+  await db.execute({
+    sql: `UPDATE activity_feed SET order_id = NULL WHERE order_id = ? AND action_type = '주문삭제'`,
+    args: [order.id],
   });
 
   await db.execute({ sql: 'DELETE FROM orders WHERE id = ?', args: [id] });

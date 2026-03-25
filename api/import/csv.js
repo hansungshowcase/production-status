@@ -16,7 +16,8 @@ const HEADER_MAP = {
   '거래처': 'client_name',
   '출고완료일': 'ship_date',
   '사양': 'product_type',
-  '디자인': 'door_type',
+  '도어타입': 'door_type',
+  '디자인': 'design',
   '가로': 'width',
   '세로': 'depth',
   '높이': 'height',
@@ -150,16 +151,16 @@ export default cors(async function handler(req, res) {
       const orderResult = await db.execute({
         sql: `INSERT INTO orders (
           order_date, due_date, sales_person, client_name, ship_date,
-          product_type, door_type, width, depth, height,
+          product_type, door_type, design, width, depth, height,
           quantity, color, notes, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         args: [
           get('order_date'), get('due_date'), get('sales_person'), clientName,
-          get('ship_date'), get('product_type'), get('door_type'),
+          get('ship_date'), get('product_type'), get('door_type'), get('design'),
           get('width') ? Number(get('width')) : null,
           get('depth') ? Number(get('depth')) : null,
           get('height') ? Number(get('height')) : null,
-          get('quantity') ? Number(get('quantity')) : 1,
+          get('quantity') ? Number(get('quantity')) : null,
           get('color'), get('notes'), status,
         ],
       });

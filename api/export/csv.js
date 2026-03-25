@@ -4,7 +4,7 @@ import { STEPS } from '../_lib/steps.js';
 
 const CSV_HEADERS = [
   '발주일', '납기일', '담당', '거래처', '출고완료일',
-  '사양', '디자인', '가로', '세로', '높이', '수량', '색상',
+  '사양', '도어타입', '디자인', '가로', '세로', '높이', '수량', '색상',
   '도면설계', '레이저작업', 'V-커팅작업', '절곡작업', '용접작업', '분체작업', '조립작업', '설비작업', '포장',
   '상태', '비고',
 ];
@@ -88,6 +88,7 @@ export default cors(async function handler(req, res) {
       o.ship_date,
       o.product_type,
       o.door_type,
+      o.design,
       o.width,
       o.depth,
       o.height,
