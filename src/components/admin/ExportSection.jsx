@@ -4,8 +4,8 @@ import './ExportSection.css';
 
 const STATUS_OPTIONS = [
   { value: 'all', label: '전체' },
-  { value: 'in-progress', label: '생산중' },
-  { value: '출고완료', label: '출고완료' },
+  { value: 'in_production', label: '생산중' },
+  { value: 'shipped', label: '출고완료' },
 ];
 
 export default function ExportSection({ salesPersons = [] }) {

@@ -14,8 +14,8 @@ export default function DataOverview() {
         request('/sync/status'),
       ]);
       setStats({
-        total: statsRes.total || 0,
-        inProgress: statsRes.inProgress || 0,
+        total: statsRes.total_orders || 0,
+        inProgress: statsRes.in_production || 0,
         shipped: statsRes.shipped || 0,
       });
       if (syncRes.lastSync) {

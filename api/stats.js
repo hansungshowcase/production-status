@@ -31,7 +31,7 @@ export default cors(async function handler(req, res) {
   const openIssuesResult = await db.execute({ sql: 'SELECT COUNT(*) AS count FROM issues WHERE resolved_at IS NULL', args: [] });
   const open_issues = openIssuesResult.rows[0].count;
 
-  // Per-step breakdown with actionable count
+  // Per-step breakdown with actionable count (single query)
   const byStepResult = await db.execute({
     sql: `SELECT step_name,
       SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) AS waiting,
@@ -43,28 +43,33 @@ export default cors(async function handler(req, res) {
     args: [],
   });
 
-  const by_step = [];
-  for (const row of byStepResult.rows) {
-    const stepIndex = STEPS.indexOf(row.step_name);
-    if (stepIndex <= 0) {
-      by_step.push({ ...row, actionable: Number(row.waiting) + Number(row.in_progress) });
-    } else {
-      const prevSteps = STEPS.slice(0, stepIndex);
-      const placeholders = prevSteps.map(() => '?').join(',');
-      const actionableResult = await db.execute({
-        sql: `SELECT COUNT(*) AS cnt FROM processes p
-              JOIN orders o ON o.id = p.order_id
-              WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
-                AND o.status = 'in_production'
-                AND (SELECT COUNT(*) FROM processes p2
-                     WHERE p2.order_id = p.order_id
-                       AND p2.step_name IN (${placeholders})
-                       AND p2.status != 'completed') = 0`,
-        args: [row.step_name, ...prevSteps],
-      });
-      by_step.push({ ...row, actionable: actionableResult.rows[0].cnt });
-    }
+  // Get actionable counts for all steps in a single query
+  const actionableResult = await db.execute({
+    sql: `SELECT p.step_name, COUNT(*) AS cnt
+          FROM processes p
+          JOIN orders o ON o.id = p.order_id
+          WHERE p.status IN ('waiting', 'in_progress')
+            AND o.status = 'in_production'
+            AND NOT EXISTS (
+              SELECT 1 FROM processes p2
+              WHERE p2.order_id = p.order_id
+                AND p2.status != 'completed'
+                AND p2.id < p.id
+                AND p2.step_name != p.step_name
+            )
+          GROUP BY p.step_name`,
+    args: [],
+  });
+
+  const actionableMap = {};
+  for (const row of actionableResult.rows) {
+    actionableMap[row.step_name] = Number(row.cnt);
   }
+
+  const by_step = byStepResult.rows.map(row => ({
+    ...row,
+    actionable: actionableMap[row.step_name] || 0,
+  }));
 
   // Per sales person
   const bySalesResult = await db.execute({

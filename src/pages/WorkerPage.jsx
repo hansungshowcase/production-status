@@ -328,7 +328,7 @@ export default function WorkerPage() {
             <button
               className="issue-btn"
               style={{ background: 'var(--orange-light)', color: 'var(--orange)' }}
-              onClick={() => reportIssue('자재 부족')}
+              onClick={() => reportIssue('자재부족')}
               disabled={actionLoading}
             >
               자재 부족/지연
@@ -336,7 +336,7 @@ export default function WorkerPage() {
             <button
               className="issue-btn"
               style={{ background: 'var(--red-light)', color: 'var(--red)' }}
-              onClick={() => reportIssue('불량 발생')}
+              onClick={() => reportIssue('불량발생')}
               disabled={actionLoading}
             >
               불량 발생
@@ -344,7 +344,7 @@ export default function WorkerPage() {
             <button
               className="issue-btn"
               style={{ background: 'var(--purple-light)', color: 'var(--purple)' }}
-              onClick={() => reportIssue('설비 고장')}
+              onClick={() => reportIssue('설비고장')}
               disabled={actionLoading}
             >
               설비 고장

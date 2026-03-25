@@ -11,7 +11,7 @@ export async function downloadCsv(params = {}) {
     query.set('status', params.status);
   }
   if (params.salesPerson && params.salesPerson !== 'all') {
-    query.set('salesPerson', params.salesPerson);
+    query.set('sales_person', params.salesPerson);
   }
 
   const queryStr = query.toString();
