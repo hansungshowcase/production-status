@@ -91,9 +91,8 @@ export default function SalesMyPage() {
   useEffect(() => {
     setLoading(true);
     setOrders([]);
-    fetchOrders();
-    fetchFeed();
-    intervalRef.current = setInterval(() => { fetchOrders(); fetchFeed(); }, REFRESH_INTERVAL);
+    Promise.all([fetchOrders(), fetchFeed()]);
+    intervalRef.current = setInterval(() => { Promise.all([fetchOrders(), fetchFeed()]); }, REFRESH_INTERVAL);
     return () => clearInterval(intervalRef.current);
   }, [fetchOrders, fetchFeed]);
 

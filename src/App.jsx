@@ -8,7 +8,7 @@ import ChunkErrorBoundary from './components/common/ChunkErrorBoundary';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const WorkerPage = lazy(() => import('./pages/WorkerPage'));
-const SalesPage = lazy(() => import('./pages/SalesPage'));
+import SalesPage from './pages/SalesPage';
 const TabletWorkerPage = lazy(() => import('./pages/TabletWorkerPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const WorkerSearchPage = lazy(() => import('./pages/WorkerSearchPage'));
