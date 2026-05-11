@@ -4,6 +4,7 @@ import ExportSection from '../components/admin/ExportSection';
 import ImportSection from '../components/admin/ImportSection';
 import DataOverview from '../components/admin/DataOverview';
 import WorkersSection from '../components/admin/WorkersSection';
+import DiagnosticsSection from '../components/admin/DiagnosticsSection';
 import request from '../api/client';
 import { fetchAuthStatus, login, getRole, getToken } from '../utils/authClient';
 import './AdminPage.css';
@@ -126,6 +127,7 @@ export default function AdminPage() {
         <WorkersSection />
         <ExportSection salesPersons={salesPersons} />
         <ImportSection />
+        <DiagnosticsSection />
       </div>
 
       <div className="admin-footer">
