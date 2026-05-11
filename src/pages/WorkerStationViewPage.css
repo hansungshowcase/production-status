@@ -1088,6 +1088,17 @@
   color: #ffffff;
 }
 
+.station-view__row-btn--revert {
+  background: #fff;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+  margin-right: 6px;
+}
+
+.station-view__row-btn--revert:hover:not(:disabled) {
+  background: #fffbeb;
+}
+
 .station-view__row-btn--issue {
   background: #fef3c7;
   color: #92400e;

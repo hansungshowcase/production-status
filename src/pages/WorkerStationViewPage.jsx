@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getProcessesByStep, startProcess, completeProcess } from '../api/processes';
+import { getProcessesByStep, startProcess, completeProcess, revertProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { getStats } from '../api/stats';
@@ -110,6 +110,23 @@ export default function WorkerStationViewPage() {
     const clientName = item?.client_name || '거래처';
     const status = item?.status || item?.process_status || 'waiting';
     setConfirmTarget({ processId, clientName, status, orderId: item?.order_id });
+  }
+
+  async function handleRevert(processId, clientName) {
+    if (actionLoading) return;
+    if (!window.confirm(`${clientName || '거래처'}의 ${decodedStep} 공정을 대기 상태로 되돌리시겠습니까?`)) return;
+    setActionLoading(processId);
+    try {
+      await revertProcess(processId, workerName);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToast({ type: 'complete', client: clientName, step: decodedStep, message: '시작 취소됨' });
+      toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+      await fetchData();
+    } catch (err) {
+      alert('되돌리기 실패: ' + (err.message || ''));
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function executeComplete(selectedNextStep) {
@@ -675,6 +692,17 @@ export default function WorkerStationViewPage() {
                   })}
                 </span>
                 <span className="station-view__row-actions" onClick={(e) => e.stopPropagation()}>
+                  {sKey === 'in_progress' && (
+                    <button
+                      className="station-view__row-btn station-view__row-btn--revert"
+                      onClick={() => handleRevert(item.process_id, item.client_name)}
+                      disabled={isActioning || !!actionLoading}
+                      title="시작 취소(대기로 되돌리기)"
+                    >
+                      <span className="station-view__btn-text--mobile">취소</span>
+                      <span className="station-view__btn-text--pc">시작취소</span>
+                    </button>
+                  )}
                   <button
                     className="station-view__row-btn station-view__row-btn--complete"
                     onClick={() => requestComplete(item.process_id)}
