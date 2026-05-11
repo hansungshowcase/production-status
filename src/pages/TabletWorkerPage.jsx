@@ -3,8 +3,18 @@ import OrderListPanel from '../components/tablet/OrderListPanel';
 import OrderDetailPanel from '../components/tablet/OrderDetailPanel';
 import { getOrders } from '../api/orders';
 import { startProcess, completeProcess } from '../api/processes';
+import { uploadPhoto } from '../api/photos';
+import { reportIssue } from '../api/issues';
+import { WORKER_STORAGE_KEY } from '../constants';
 import '../../src/styles/tablet.css';
 import './TabletWorkerPage.css';
+
+const ISSUE_TYPES = [
+  { value: '자재부족', label: '자재 부족' },
+  { value: '불량발생', label: '불량 발생' },
+  { value: '설비고장', label: '설비 고장' },
+  { value: '기타', label: '기타' },
+];
 
 const REFRESH_INTERVAL = 5000; // 5 seconds
 
@@ -14,8 +24,17 @@ export default function TabletWorkerPage() {
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [toast, setToast] = useState(null); // {message, type} | null
+  const [issueModal, setIssueModal] = useState(null); // { orderId } | null
+  const [issueType, setIssueType] = useState('자재부족');
+  const [issueDesc, setIssueDesc] = useState('');
+  const [issueSaving, setIssueSaving] = useState(false);
+  const [photoUploadOrderId, setPhotoUploadOrderId] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const fileInputRef = useRef(null);
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
+
+  const workerName = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(WORKER_STORAGE_KEY)) || '현장작업자';
 
   const showToast = useCallback((message, type = 'info') => {
     setToast({ message, type });
@@ -74,11 +93,69 @@ export default function TabletWorkerPage() {
   }
 
   function handlePhotoAttach(orderId) {
-    showToast('사진 첨부 기능은 준비 중입니다.', 'info');
+    if (photoUploading) return;
+    setPhotoUploadOrderId(orderId);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  }
+
+  async function onPhotoFileSelected(e) {
+    const file = e.target.files?.[0];
+    if (!file || !photoUploadOrderId) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('파일 크기는 10MB 이하여야 합니다.', 'error');
+      return;
+    }
+    setPhotoUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      fd.append('order_id', String(photoUploadOrderId));
+      fd.append('uploaded_by', workerName);
+      await uploadPhoto(fd);
+      showToast('사진이 업로드되었습니다.', 'info');
+      await fetchOrderList();
+    } catch (err) {
+      console.error('Photo upload failed:', err);
+      showToast('사진 업로드에 실패했습니다.', 'error');
+    } finally {
+      setPhotoUploading(false);
+      setPhotoUploadOrderId(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   }
 
   function handleIssueReport(orderId) {
-    showToast('이슈 보고 기능은 준비 중입니다.', 'info');
+    setIssueType('자재부족');
+    setIssueDesc('');
+    setIssueModal({ orderId });
+  }
+
+  async function submitIssue() {
+    if (!issueModal || issueSaving) return;
+    if (!issueDesc.trim()) {
+      showToast('이슈 설명을 입력하세요.', 'error');
+      return;
+    }
+    setIssueSaving(true);
+    try {
+      await reportIssue({
+        order_id: issueModal.orderId,
+        issue_type: issueType,
+        description: issueDesc.trim(),
+        reported_by: workerName,
+      });
+      showToast('이슈가 등록되었습니다.', 'info');
+      setIssueModal(null);
+      await fetchOrderList();
+    } catch (err) {
+      console.error('Issue report failed:', err);
+      showToast('이슈 등록에 실패했습니다.', 'error');
+    } finally {
+      setIssueSaving(false);
+    }
   }
 
   if (loading) {
@@ -87,6 +164,68 @@ export default function TabletWorkerPage() {
 
   return (
     <div className="tablet-page tablet-worker-page">
+      {/* 사진 업로드용 hidden input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: 'none' }}
+        onChange={onPhotoFileSelected}
+      />
+
+      {/* 업로드 중 오버레이 */}
+      {photoUploading && (
+        <div className="tablet-overlay">
+          <div className="tablet-overlay__card">
+            <div className="tablet-overlay__spinner" />
+            <div>사진 업로드 중...</div>
+          </div>
+        </div>
+      )}
+
+      {/* 이슈 보고 모달 */}
+      {issueModal && (
+        <div className="tablet-modal__overlay" onClick={(e) => { if (e.target === e.currentTarget && !issueSaving) setIssueModal(null); }}>
+          <div className="tablet-modal__panel">
+            <div className="tablet-modal__title">이슈 보고</div>
+            <div className="tablet-modal__field">
+              <label className="tablet-modal__label">유형</label>
+              <div className="tablet-modal__chip-row">
+                {ISSUE_TYPES.map(t => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    className={`tablet-modal__chip${issueType === t.value ? ' tablet-modal__chip--active' : ''}`}
+                    onClick={() => setIssueType(t.value)}
+                    disabled={issueSaving}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="tablet-modal__field">
+              <label className="tablet-modal__label">설명</label>
+              <textarea
+                className="tablet-modal__textarea"
+                rows={4}
+                value={issueDesc}
+                onChange={(e) => setIssueDesc(e.target.value)}
+                placeholder="이슈 내용을 입력하세요"
+                disabled={issueSaving}
+              />
+            </div>
+            <div className="tablet-modal__footer">
+              <button className="tablet-modal__btn tablet-modal__btn--cancel" onClick={() => setIssueModal(null)} disabled={issueSaving}>취소</button>
+              <button className="tablet-modal__btn tablet-modal__btn--submit" onClick={submitIssue} disabled={issueSaving}>
+                {issueSaving ? '등록 중...' : '이슈 등록'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast (alert 대체 — 흐름 안 끊김) */}
       {toast && (
         <div
