@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ExportSection from '../components/admin/ExportSection';
 import ImportSection from '../components/admin/ImportSection';
 import DataOverview from '../components/admin/DataOverview';
+import WorkersSection from '../components/admin/WorkersSection';
 import request from '../api/client';
 import './AdminPage.css';
 
@@ -40,6 +41,7 @@ export default function AdminPage() {
 
       <div className="admin-content">
         <DataOverview />
+        <WorkersSection />
         <ExportSection salesPersons={salesPersons} />
         <ImportSection />
       </div>
