@@ -6,7 +6,7 @@
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "orientation": "portrait",
+  "orientation": "any",
   "theme_color": "#0369a1",
   "background_color": "#075985",
   "categories": ["business", "productivity"],
@@ -15,15 +15,9 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icons/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
@@ -32,19 +26,19 @@
       "name": "작업 등록",
       "short_name": "등록",
       "url": "/orders/new",
-      "icons": [{"src": "/icons/icon-192x192.png", "sizes": "192x192"}]
+      "icons": [{"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml"}]
     },
     {
       "name": "현장 작업자",
       "short_name": "작업",
       "url": "/worker",
-      "icons": [{"src": "/icons/icon-192x192.png", "sizes": "192x192"}]
+      "icons": [{"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml"}]
     },
     {
       "name": "영업 관리",
       "short_name": "영업",
       "url": "/sales",
-      "icons": [{"src": "/icons/icon-192x192.png", "sizes": "192x192"}]
+      "icons": [{"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml"}]
     }
   ],
   "screenshots": [],

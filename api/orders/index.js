@@ -4,6 +4,12 @@ import { sanitizeInput } from '../_lib/sanitize.js';
 import { STEPS } from '../_lib/steps.js';
 import { daysUntilDue } from '../_lib/daysUntilDue.js';
 
+// LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
+function likeEscape(s) {
+  if (s == null) return s;
+  return String(s).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 const ORDER_FIELDS = [
   'order_date', 'due_date', 'sales_person', 'client_name',
   'ship_date', 'sale_amount', 'lead_source', 'balance',
@@ -63,18 +69,19 @@ async function handleGet(req, res) {
   }
 
   if (client_name) {
-    sql += ' AND o.client_name LIKE ?';
-    params.push(`%${client_name}%`);
+    sql += " AND o.client_name LIKE ? ESCAPE '\\'";
+    params.push(`%${likeEscape(client_name)}%`);
   }
 
   if (product_type) {
-    sql += ' AND o.product_type LIKE ?';
-    params.push(`%${product_type}%`);
+    sql += " AND o.product_type LIKE ? ESCAPE '\\'";
+    params.push(`%${likeEscape(product_type)}%`);
   }
 
   if (search) {
-    sql += ' AND (o.client_name LIKE ? OR o.product_type LIKE ? OR o.sales_person LIKE ? OR o.color LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${likeEscape(search)}%`;
+    sql += " AND (o.client_name LIKE ? ESCAPE '\\' OR o.product_type LIKE ? ESCAPE '\\' OR o.sales_person LIKE ? ESCAPE '\\' OR o.color LIKE ? ESCAPE '\\')";
+    params.push(s, s, s, s);
   }
 
   if (status === 'shipped') {
@@ -118,11 +125,12 @@ async function handleGet(req, res) {
   let countSql = 'SELECT COUNT(*) AS count FROM orders o WHERE 1=1';
   const countParams = [];
   if (sales_person) { countSql += ' AND o.sales_person = ?'; countParams.push(sales_person); }
-  if (client_name) { countSql += ' AND o.client_name LIKE ?'; countParams.push(`%${client_name}%`); }
-  if (product_type) { countSql += ' AND o.product_type LIKE ?'; countParams.push(`%${product_type}%`); }
+  if (client_name) { countSql += " AND o.client_name LIKE ? ESCAPE '\\'"; countParams.push(`%${likeEscape(client_name)}%`); }
+  if (product_type) { countSql += " AND o.product_type LIKE ? ESCAPE '\\'"; countParams.push(`%${likeEscape(product_type)}%`); }
   if (search) {
-    countSql += ' AND (o.client_name LIKE ? OR o.product_type LIKE ? OR o.sales_person LIKE ? OR o.color LIKE ?)';
-    countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${likeEscape(search)}%`;
+    countSql += " AND (o.client_name LIKE ? ESCAPE '\\' OR o.product_type LIKE ? ESCAPE '\\' OR o.sales_person LIKE ? ESCAPE '\\' OR o.color LIKE ? ESCAPE '\\')";
+    countParams.push(s, s, s, s);
   }
   if (status === 'shipped') {
     countSql += " AND o.status = 'shipped'";
@@ -198,13 +206,14 @@ async function handlePost(req, res) {
         ship_scheduled_date, sms_sent, safe_delivery, status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id`,
       args: [
+        // 숫자 컬럼은 0 보존 (`||` 사용 시 0이 falsy로 변조됨 → `??` 또는 undefined 체크)
         order_date || null, due_date || null, sales_person || null, client_name,
         product_type || null, door_type || null, design || null,
-        width || null, depth || null, height || null,
-        quantity || 1, color || null, phone || null,
+        width ?? null, depth ?? null, height ?? null,
+        quantity ?? 1, color || null, phone || null,
         notes || null, remarks || null, etc_notes || null,
-        sale_amount || null, lead_source || null, balance || null,
-        ship_scheduled_date || null, sms_sent || null, safe_delivery || 0,
+        sale_amount ?? null, lead_source || null, balance ?? null,
+        ship_scheduled_date || null, sms_sent ?? null, safe_delivery ?? 0,
       ],
     });
     if (!orderResult.rows || orderResult.rows.length === 0) {

@@ -50,8 +50,9 @@ export function cors(handler) {
     const allowed = getAllowedOrigins();
     const origin = req.headers.origin || '';
     // 동일 origin 호출(origin 헤더 없음)은 허용, 외부 도메인은 화이트리스트만
-    // Vercel preview 도메인(*.vercel.app)은 자동 허용
-    const isVercelPreview = /^https:\/\/.+\.vercel\.app$/.test(origin);
+    // 본 프로젝트의 Vercel preview만 허용 — `production-status-...vercel.app` 패턴
+    // (와일드카드 *.vercel.app은 공격자가 evil.vercel.app 배포해 우회 가능)
+    const isVercelPreview = /^https:\/\/production-status(-[\w-]+)?\.vercel\.app$/.test(origin);
     if (allowed.includes(origin) || isVercelPreview) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
