@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PROCESS_STEPS } from '../../constants';
 import { updatePreProduction } from '../../api/preProduction';
 import './OrderDetailPanel.css';
@@ -37,8 +37,13 @@ const PRE_PRODUCTION_ITEMS = [
 
 export default function OrderDetailPanel({ order, onStartProcess, onCompleteProcess, onPhotoAttach, onIssueReport }) {
   const [confirm, setConfirm] = useState(null);
-  const [preChecklist, setPreChecklist] = useState({});
+  const [preChecklist, setPreChecklist] = useState(() => order?.pre_production || {});
   const [preSaving, setPreSaving] = useState(false);
+
+  // order 변경 시 서버의 pre_production 값으로 초기화 (새로고침 후 체크 보존)
+  useEffect(() => {
+    setPreChecklist(order?.pre_production || {});
+  }, [order?.id, order?.pre_production]);
 
   if (!order) {
     return (

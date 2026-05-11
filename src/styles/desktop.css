@@ -3,10 +3,9 @@
    Premium White+Blue Design
    ============================================= */
 
-/* Base resets for full-screen layout */
+/* Base resets for full-screen layout — 모바일은 자연스러운 높이 사용 (iOS Safari 주소창 토글 콘텐츠 잘림 방지) */
 html, body {
   width: 100%;
-  height: 100%;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
@@ -14,7 +13,6 @@ html, body {
 
 #root {
   width: 100%;
-  height: 100%;
   margin: 0;
   padding: 0;
 }
@@ -28,16 +26,38 @@ html, body {
   display: contents;
 }
 
-/* App container: full screen, no constraints */
-.app-container {
-  width: 100% !important;
-  max-width: none !important;
-  height: 100vh;
-  height: 100dvh;
-  margin: 0 !important;
-  border: 0;
-  box-shadow: none;
-  border-radius: 0;
+/* PC 데스크톱(1024px+)에서만 full-viewport 높이 강제 */
+@media (min-width: 1024px) {
+  html, body {
+    height: 100%;
+  }
+  #root {
+    height: 100%;
+  }
+  .app-container {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0 !important;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+}
+
+/* 모바일/태블릿은 min-height + dvh로 안전하게 (콘텐츠 잘림 방지) */
+@media (max-width: 1023px) {
+  .app-container {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: 0 !important;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
 }
 
 /* App content area */

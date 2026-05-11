@@ -13,7 +13,19 @@ export default function TabletWorkerPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [toast, setToast] = useState(null); // {message, type} | null
   const timerRef = useRef(null);
+  const toastTimerRef = useRef(null);
+
+  const showToast = useCallback((message, type = 'info') => {
+    setToast({ message, type });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   const fetchOrderList = useCallback(async () => {
     try {
@@ -47,7 +59,7 @@ export default function TabletWorkerPage() {
       await fetchOrderList();
     } catch (err) {
       console.error('Process start failed:', err);
-      alert('공정 시작에 실패했습니다.');
+      showToast('공정 시작에 실패했습니다.', 'error');
     }
   }
 
@@ -57,18 +69,16 @@ export default function TabletWorkerPage() {
       await fetchOrderList();
     } catch (err) {
       console.error('Process complete failed:', err);
-      alert('공정 완료에 실패했습니다.');
+      showToast('공정 완료에 실패했습니다.', 'error');
     }
   }
 
   function handlePhotoAttach(orderId) {
-    // Placeholder: In production, open camera/file picker
-    alert('사진 첨부 기능은 준비 중입니다.');
+    showToast('사진 첨부 기능은 준비 중입니다.', 'info');
   }
 
   function handleIssueReport(orderId) {
-    // Placeholder: In production, open issue report form
-    alert('이슈 보고 기능은 준비 중입니다.');
+    showToast('이슈 보고 기능은 준비 중입니다.', 'info');
   }
 
   if (loading) {
@@ -77,6 +87,22 @@ export default function TabletWorkerPage() {
 
   return (
     <div className="tablet-page tablet-worker-page">
+      {/* Toast (alert 대체 — 흐름 안 끊김) */}
+      {toast && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 9999, padding: '12px 22px', borderRadius: 12,
+            background: toast.type === 'error' ? '#dc2626' : '#0369a1',
+            color: 'white', fontSize: 16, fontWeight: 600,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
+
       {/* Landscape hint for portrait mode */}
       <div className="tablet-landscape-hint">
         <div className="tablet-landscape-hint-icon">📱↔️</div>

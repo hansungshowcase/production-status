@@ -23,8 +23,13 @@ export default function ComboSelect({
         setIsOpen(false);
       }
     }
+    // 모바일 터치 + 데스크톱 마우스 둘 다 지원
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   const handleChipClick = (option) => {
@@ -90,6 +95,7 @@ export default function ComboSelect({
               key={opt}
               className={`combo-select__option ${value === opt ? 'combo-select__option--selected' : ''}`}
               onMouseDown={() => handleChipClick(opt)}
+              onTouchStart={() => handleChipClick(opt)}
             >
               {opt}
             </li>

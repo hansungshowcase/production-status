@@ -303,11 +303,13 @@ export default function WorkerStationViewPage() {
   const overdueItems = items.filter(i => i.due_date && i.due_date < today);
   const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
 
-  // 새 이슈 발생 시 확인 상태 리셋
-  if (totalOpenIssues > prevIssueCountRef.current) {
-    setIssueAcknowledged(false);
-  }
-  prevIssueCountRef.current = totalOpenIssues;
+  // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
+  useEffect(() => {
+    if (totalOpenIssues > prevIssueCountRef.current) {
+      setIssueAcknowledged(false);
+    }
+    prevIssueCountRef.current = totalOpenIssues;
+  }, [totalOpenIssues]);
 
   const sorted = [...items].sort((a, b) => {
     // 납기초과 건은 항상 상단

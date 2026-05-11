@@ -1,15 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import { SALES_PERSONS } from '../constants';
+import { safeGet, safeSet } from '../utils/safeStorage';
 import './SalesLoginPage.css';
 
 const LS_KEY = 'sales_last_person';
 
 export default function SalesLoginPage() {
   const navigate = useNavigate();
-  const lastPerson = localStorage.getItem(LS_KEY);
+  const lastPerson = safeGet(LS_KEY);
 
   function handleSelect(name) {
-    localStorage.setItem(LS_KEY, name);
+    safeSet(LS_KEY, name);
     navigate('/sales/my');
   }
 

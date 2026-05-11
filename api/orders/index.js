@@ -33,12 +33,26 @@ async function handleGet(req, res) {
   let limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 200));
   let offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
 
+  // 상관 서브쿼리 3개를 derived table JOIN으로 변환 (N×M → N+M, idx_processes_order_id 활용)
   let sql = `
     SELECT o.*,
-      (SELECT COUNT(*) FROM processes p WHERE p.order_id = o.id AND p.status = 'completed') AS completed_steps,
-      (SELECT COUNT(*) FROM processes p WHERE p.order_id = o.id) AS total_steps,
-      (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues
+      COALESCE(ps.completed_steps, 0) AS completed_steps,
+      COALESCE(ps.total_steps, 0) AS total_steps,
+      COALESCE(iss.open_issues, 0) AS open_issues
     FROM orders o
+    LEFT JOIN (
+      SELECT order_id,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_steps,
+        COUNT(*) AS total_steps
+      FROM processes
+      GROUP BY order_id
+    ) ps ON ps.order_id = o.id
+    LEFT JOIN (
+      SELECT order_id, COUNT(*) AS open_issues
+      FROM issues
+      WHERE resolved_at IS NULL
+      GROUP BY order_id
+    ) iss ON iss.order_id = o.id
     WHERE 1=1
   `;
   const params = [];
@@ -77,6 +91,17 @@ async function handleGet(req, res) {
              AND o.status = 'in_production'`;
   }
 
+  // overdue/due_soon 필터를 SQL 단계로 (200건 LIMIT 후 JS filter 시 누락 방지)
+  if (overdue === 'true') {
+    sql += ` AND o.due_date IS NOT NULL AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD') AND o.status != 'shipped'`;
+  }
+  if (due_soon === 'true') {
+    sql += ` AND o.due_date IS NOT NULL
+             AND o.due_date >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+             AND o.due_date <= to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
+             AND o.status != 'shipped'`;
+  }
+
   sql += ' ORDER BY o.id DESC LIMIT ? OFFSET ?';
   params.push(Number(limit), Number(offset));
 
@@ -88,20 +113,6 @@ async function handleGet(req, res) {
     ...order,
     days_until_due: daysUntilDue(order.due_date),
   }));
-
-  // Apply overdue filter: due_date < today AND status != 'shipped'
-  if (overdue === 'true') {
-    orders = orders.filter(o =>
-      o.days_until_due !== null && o.days_until_due < 0 && o.status !== 'shipped'
-    );
-  }
-
-  // Apply due_soon filter: due_date within 3 days AND status != 'shipped'
-  if (due_soon === 'true') {
-    orders = orders.filter(o =>
-      o.days_until_due !== null && o.days_until_due >= 0 && o.days_until_due <= 3 && o.status !== 'shipped'
-    );
-  }
 
   // Get total count for pagination
   let countSql = 'SELECT COUNT(*) AS count FROM orders o WHERE 1=1';
@@ -125,6 +136,16 @@ async function handleGet(req, res) {
   } else if (status === 'waiting') {
     countSql += ` AND (SELECT COUNT(*) FROM processes p WHERE p.order_id = o.id AND p.status = 'completed') = 0
              AND o.status = 'in_production'`;
+  }
+  // overdue/due_soon — 메인 쿼리와 동일 조건 (total 정확성)
+  if (overdue === 'true') {
+    countSql += ` AND o.due_date IS NOT NULL AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD') AND o.status != 'shipped'`;
+  }
+  if (due_soon === 'true') {
+    countSql += ` AND o.due_date IS NOT NULL
+             AND o.due_date >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
+             AND o.due_date <= to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
+             AND o.status != 'shipped'`;
   }
 
   const countResult = await db.execute({ sql: countSql, args: countParams });
@@ -165,6 +186,7 @@ async function handlePost(req, res) {
 
   const db = getDb();
   const tx = await db.transaction('write');
+  let createdOrderId = null; // 부분 실패 시 cleanup용
 
   try {
     const orderResult = await tx.execute({
@@ -189,13 +211,15 @@ async function handlePost(req, res) {
       throw new Error('주문 생성 실패: ID가 반환되지 않았습니다.');
     }
     const orderId = Number(orderResult.rows[0].id);
+    createdOrderId = orderId; // cleanup용 추적
 
-    for (const step of STEPS) {
-      await tx.execute({
-        sql: `INSERT INTO processes (order_id, step_name, status) VALUES (?, ?, 'waiting')`,
-        args: [orderId, step],
-      });
-    }
+    // STEPS 9개를 1회 호출로 multi-row INSERT (N+1 제거, round-trip 9→1)
+    const stepPlaceholders = STEPS.map(() => `(?, ?, 'waiting')`).join(', ');
+    const stepArgs = STEPS.flatMap(step => [orderId, step]);
+    await tx.execute({
+      sql: `INSERT INTO processes (order_id, step_name, status) VALUES ${stepPlaceholders}`,
+      args: stepArgs,
+    });
 
     await tx.execute({
       sql: `INSERT INTO pre_production (order_id) VALUES (?)`,
@@ -209,10 +233,12 @@ async function handlePost(req, res) {
 
     await tx.commit();
 
-    // Fetch the created order with related data
-    const orderRow = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
-    const processRows = await db.execute({ sql: 'SELECT * FROM processes WHERE order_id = ?', args: [orderId] });
-    const preProdRow = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
+    // 관련 데이터 병렬 SELECT (3개 직렬 → Promise.all)
+    const [orderRow, processRows, preProdRow] = await Promise.all([
+      db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] }),
+      db.execute({ sql: 'SELECT * FROM processes WHERE order_id = ?', args: [orderId] }),
+      db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] }),
+    ]);
 
     const created = {
       ...orderRow.rows[0],
@@ -222,6 +248,15 @@ async function handlePost(req, res) {
 
     return res.status(201).json(created);
   } catch (err) {
+    // Neon HTTP는 진짜 트랜잭션 미지원 — 부분 실패 시 cleanup으로 정합성 보호
+    if (createdOrderId) {
+      try {
+        await db.execute({ sql: 'DELETE FROM orders WHERE id = ?', args: [createdOrderId] });
+        // ON DELETE CASCADE로 processes/pre_production/activity_feed 자동 정리
+      } catch (cleanupErr) {
+        console.error('주문 생성 부분 실패 후 cleanup도 실패:', cleanupErr);
+      }
+    }
     if (err.message && (err.message.includes('UNIQUE constraint') || err.message.includes('duplicate key'))) {
       return res.status(409).json({ error: { message: '이미 존재하는 주문입니다.', status: 409 } });
     }

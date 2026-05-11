@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SALES_PERSONS as SP_DATA } from '../../constants';
 import './OrderForm.css';
 
@@ -18,10 +18,13 @@ export default function OrderForm({ form, errors, onChange }) {
   const set = (field, value) => onChange({ ...form, [field]: value });
   const inp = (field) => (e) => set(field, e.target.value);
 
-  // Auto-fill today on mount
-  if (!form.order_date) {
-    setTimeout(() => onChange({ ...form, order_date: todayStr() }), 0);
-  }
+  // Auto-fill today on mount (렌더 중 setState 금지 → useEffect로)
+  useEffect(() => {
+    if (!form.order_date) {
+      onChange({ ...form, order_date: todayStr() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="of">

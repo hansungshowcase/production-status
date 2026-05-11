@@ -89,6 +89,18 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_orders_sales_person ON orders(sales_person)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date)`,
+    // FK 컬럼 인덱스 (Postgres는 FK에 자동 인덱스 안 만듦 — orders 목록 풀스캔 방지)
+    `CREATE INDEX IF NOT EXISTS idx_processes_order_id ON processes(order_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_processes_step_status ON processes(step_name, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_issues_order_id ON issues(order_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_issues_resolved ON issues(resolved_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_order_id ON photos(order_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_activity_feed_order ON activity_feed(order_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_activity_feed_created ON activity_feed(created_at DESC)`,
+    // 검색/필터 자주 사용
+    `CREATE INDEX IF NOT EXISTS idx_orders_client_name ON orders(client_name)`,
+    `CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date)`,
+    `CREATE INDEX IF NOT EXISTS idx_orders_status_due ON orders(status, due_date)`,
   ];
 
   for (const stmt of statements) {

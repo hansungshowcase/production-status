@@ -7,6 +7,7 @@ import { getOrders, deleteOrder } from '../api/orders';
 import { getFeed } from '../api/feed';
 import { formatDueStatus } from '../utils/dateUtils';
 import useWebSocket from '../hooks/useWebSocket';
+import { safeGet } from '../utils/safeStorage';
 import './SalesMyPage.css';
 
 const LS_KEY = 'sales_last_person';
@@ -38,7 +39,7 @@ function isInProduction(order) {
 
 export default function SalesMyPage() {
   const navigate = useNavigate();
-  const mySalesPerson = localStorage.getItem(LS_KEY);
+  const mySalesPerson = safeGet(LS_KEY);
   const { lastMessage, isConnected } = useWebSocket();
 
   const [orders, setOrders] = useState([]);
@@ -120,7 +121,7 @@ export default function SalesMyPage() {
   }), [orders]);
 
   // Apply status filter (memoized)
-  const filtered = useMemo(() => {
+  let filtered = useMemo(() => {
     let result = orders;
     if (filter === 'in_production') result = orders.filter(isInProduction);
     else if (filter === 'shipped') result = orders.filter(isShipped);

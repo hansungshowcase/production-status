@@ -167,12 +167,13 @@ export default cors(async function handler(req, res) {
 
       const orderId = Number(orderResult.rows[0].id);
 
-      for (const step of STEPS) {
-        await db.execute({
-          sql: `INSERT INTO processes (order_id, step_name, status) VALUES (?, ?, 'waiting')`,
-          args: [orderId, step],
-        });
-      }
+      // STEPS 9개 multi-row INSERT (N+1 제거)
+      const stepPlaceholders = STEPS.map(() => `(?, ?, 'waiting')`).join(', ');
+      const stepArgs = STEPS.flatMap(step => [orderId, step]);
+      await db.execute({
+        sql: `INSERT INTO processes (order_id, step_name, status) VALUES ${stepPlaceholders}`,
+        args: stepArgs,
+      });
 
       await db.execute({
         sql: `INSERT INTO pre_production (order_id) VALUES (?)`,
