@@ -460,3 +460,74 @@
   color: #64748b;
   border-color: #e2e8f0;
 }
+
+/* 액션 버튼 영역 (수정 / 출고) */
+.sales-order-card__actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #d0d9e8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sales-order-card__edit-btn,
+.sales-order-card__ship-btn {
+  padding: 8px 16px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+.sales-order-card__edit-btn {
+  background: #fff;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+}
+
+.sales-order-card__edit-btn:hover {
+  background: #f0f9ff;
+}
+
+.sales-order-card__ship-btn {
+  background: #fff;
+  color: #d97706;
+  border: 1px solid #fcd34d;
+}
+
+.sales-order-card__ship-btn:hover:not(:disabled) {
+  background: #fffbeb;
+}
+
+.sales-order-card__ship-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sales-order-card__ship-warn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d97706;
+}
+
+.sales-order-card__ship-btn--yes {
+  background: #d97706;
+  color: #fff;
+  border-color: #d97706;
+}
+
+.sales-order-card__ship-btn--yes:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sales-order-card__ship-btn--no {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #e2e8f0;
+}

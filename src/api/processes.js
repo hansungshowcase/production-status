@@ -15,7 +15,7 @@ export function getProcessesByStep(stepName) {
   return request(`/processes/by-step/${encodeURIComponent(stepName)}`);
 }
 
-export function revertProcess(processId) {
+export function revertProcess(processId, actor) {
   if (!processId) throw new Error('processId is required');
-  return request(`/processes/${processId}/revert`, { method: 'PATCH' });
+  return request(`/processes/${processId}/revert`, { method: 'PATCH', body: { actor: actor || '작업자' } });
 }

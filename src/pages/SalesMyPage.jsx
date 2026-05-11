@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import SalesSummaryCards from '../components/sales/SalesSummaryCards';
 import SalesOrderCard from '../components/sales/SalesOrderCard';
 import SearchBar from '../components/common/SearchBar';
-import { getOrders, deleteOrder } from '../api/orders';
+import { getOrders, deleteOrder, shipOrder } from '../api/orders';
+import OrderEditModal from '../components/order/OrderEditModal';
 import { getFeed } from '../api/feed';
 import { formatDueStatus } from '../utils/dateUtils';
 import useWebSocket from '../hooks/useWebSocket';
@@ -48,6 +49,7 @@ export default function SalesMyPage() {
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [feedItems, setFeedItems] = useState([]);
+  const [editingOrder, setEditingOrder] = useState(null);
 
   // "다른 담당자 보기" state
   const [viewingPerson, setViewingPerson] = useState(null); // null = viewing own orders
@@ -166,6 +168,27 @@ export default function SalesMyPage() {
     } catch (err) {
       alert('삭제 실패: ' + (err.message || ''));
     }
+  }
+
+  async function handleShipOrder(order) {
+    try {
+      const updated = await shipOrder(order.id, activePerson || mySalesPerson);
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updated } : o));
+      fetchFeed();
+    } catch (err) {
+      alert('출고 처리 실패: ' + (err.message || ''));
+      throw err;
+    }
+  }
+
+  function handleEditOrder(order) {
+    setEditingOrder(order);
+  }
+
+  function handleOrderSaved(updated) {
+    if (!updated) return;
+    setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o));
+    fetchFeed();
   }
 
   return (
@@ -324,7 +347,13 @@ export default function SalesMyPage() {
           ) : (
             <div className="sales-my-page__order-list">
               {filtered.map((order, idx) => (
-                <SalesOrderCard key={order.id || idx} order={order} onDelete={handleDeleteOrder} />
+                <SalesOrderCard
+                  key={order.id || idx}
+                  order={order}
+                  onDelete={handleDeleteOrder}
+                  onShip={handleShipOrder}
+                  onEdit={handleEditOrder}
+                />
               ))}
             </div>
           )}
@@ -381,6 +410,15 @@ export default function SalesMyPage() {
         <span className="sales-my-page__fab-icon">+</span>
         <span className="sales-my-page__fab-label">작업 등록하기</span>
       </button>
+
+      {/* ── 주문 수정 모달 ── */}
+      {editingOrder && (
+        <OrderEditModal
+          order={editingOrder}
+          onClose={() => setEditingOrder(null)}
+          onSaved={handleOrderSaved}
+        />
+      )}
     </div>
   );
 }

@@ -3,9 +3,11 @@ import { PROCESS_STEPS } from '../../constants';
 import { formatDueStatus } from '../../utils/dateUtils';
 import './SalesOrderCard.css';
 
-export default function SalesOrderCard({ order, onDelete }) {
+export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmShip, setConfirmShip] = useState(false);
+  const [shipping, setShipping] = useState(false);
 
   const processes = order.processes || [];
   const stepStatusMap = {};
@@ -210,6 +212,56 @@ export default function SalesOrderCard({ order, onDelete }) {
                 </div>
               );
             })}
+          </div>
+
+          {/* 액션 버튼 영역 */}
+          <div className="sales-order-card__actions">
+            {onEdit && !isShipped && (
+              <button
+                className="sales-order-card__edit-btn"
+                onClick={(e) => { e.stopPropagation(); onEdit(order); }}
+              >
+                ✏️ 수정
+              </button>
+            )}
+            {onShip && !isShipped && (
+              !confirmShip ? (
+                <button
+                  className="sales-order-card__ship-btn"
+                  onClick={(e) => { e.stopPropagation(); setConfirmShip(true); }}
+                >
+                  📦 출고완료
+                </button>
+              ) : (
+                <div className="sales-order-card__ship-confirm">
+                  <span className="sales-order-card__ship-warn">출고 처리하시겠습니까?</span>
+                  <button
+                    className="sales-order-card__ship-btn sales-order-card__ship-btn--yes"
+                    disabled={shipping}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (shipping) return;
+                      setShipping(true);
+                      try {
+                        await onShip(order);
+                        setConfirmShip(false);
+                      } finally {
+                        setShipping(false);
+                      }
+                    }}
+                  >
+                    {shipping ? '처리 중...' : '확인'}
+                  </button>
+                  <button
+                    className="sales-order-card__ship-btn sales-order-card__ship-btn--no"
+                    onClick={(e) => { e.stopPropagation(); setConfirmShip(false); }}
+                    disabled={shipping}
+                  >
+                    취소
+                  </button>
+                </div>
+              )
+            )}
           </div>
 
           {/* 삭제 버튼 */}
