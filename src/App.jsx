@@ -17,6 +17,7 @@ const WorkerSelectPage = lazy(() => import('./pages/WorkerSelectPage'));
 const WorkerStationPage = lazy(() => import('./pages/WorkerStationPage'));
 const WorkerStationViewPage = lazy(() => import('./pages/WorkerStationViewPage'));
 const OrderEntryPage = lazy(() => import('./pages/OrderEntryPage'));
+const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage'));
 const SalesLoginPage = lazy(() => import('./pages/SalesLoginPage'));
 const SalesMyPage = lazy(() => import('./pages/SalesMyPage'));
 
@@ -67,6 +68,7 @@ function AppRoutes() {
         <Route path="/worker/station/:stepName" element={<WorkerStationViewPage />} />
         <Route path="/tablet" element={<TabletWorkerPage />} />
         <Route path="/orders/new" element={<OrderEntryPage />} />
+        <Route path="/orders/:id" element={<OrderDetailPage />} />
         <Route path="/sales" element={<SalesPage />} />
         <Route path="/sales/login" element={<SalesLoginPage />} />
         <Route path="/sales/my" element={<SalesMyPage />} />

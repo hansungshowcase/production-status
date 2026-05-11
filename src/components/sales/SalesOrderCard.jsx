@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PROCESS_STEPS } from '../../constants';
 import { formatDueStatus } from '../../utils/dateUtils';
 import './SalesOrderCard.css';
 
 export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
+  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmShip, setConfirmShip] = useState(false);
@@ -213,6 +215,14 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
               );
             })}
           </div>
+
+          {/* 상세 페이지 진입 */}
+          <button
+            className="sales-order-card__detail-link"
+            onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}`); }}
+          >
+            상세 페이지 열기 →
+          </button>
 
           {/* 액션 버튼 영역 */}
           <div className="sales-order-card__actions">

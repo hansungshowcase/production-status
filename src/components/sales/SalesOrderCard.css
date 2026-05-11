@@ -461,6 +461,27 @@
   border-color: #e2e8f0;
 }
 
+/* 상세 페이지 진입 버튼 */
+.sales-order-card__detail-link {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  text-align: center;
+}
+
+.sales-order-card__detail-link:hover {
+  background: #e0f2fe;
+}
+
 /* 액션 버튼 영역 (수정 / 출고) */
 .sales-order-card__actions {
   margin-top: 12px;
