@@ -1,6 +1,8 @@
 import { cors } from '../_lib/cors.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { requireAuth } from '../_lib/auth.js';
+import { rateLimitCheck } from '../_lib/rateLimit.js';
 
 export const config = {
   api: {
@@ -38,6 +40,9 @@ export default cors(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
+  if (!rateLimitCheck(req, res)) return;
+  const auth = requireAuth(req, res, { roles: ['sales'] });
+  if (!auth) return;
 
   let parts;
   try {
