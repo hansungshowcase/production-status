@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SALES_PERSONS } from '../constants';
 import { safeGet, safeSet } from '../utils/safeStorage';
+import { fetchAuthStatus, login, getToken } from '../utils/authClient';
 import './SalesLoginPage.css';
 
 const LS_KEY = 'sales_last_person';
@@ -8,10 +10,50 @@ const LS_KEY = 'sales_last_person';
 export default function SalesLoginPage() {
   const navigate = useNavigate();
   const lastPerson = safeGet(LS_KEY);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [pwdModal, setPwdModal] = useState(null); // { name } | null
+  const [pwd, setPwd] = useState('');
+  const [loginErr, setLoginErr] = useState(null);
+  const [logging, setLogging] = useState(false);
+
+  useEffect(() => {
+    fetchAuthStatus().then(s => setAuthEnabled(!!s.enabled));
+  }, []);
 
   function handleSelect(name) {
-    safeSet(LS_KEY, name);
-    navigate('/sales/my');
+    if (!authEnabled) {
+      // opt-in 비활성 — 기존 동작
+      safeSet(LS_KEY, name);
+      navigate('/sales/my');
+      return;
+    }
+    // 인증 활성 — 기존 토큰이 유효하고 actor가 일치하면 바로 진입
+    const t = getToken();
+    if (t && safeGet('auth_actor') === name) {
+      safeSet(LS_KEY, name);
+      navigate('/sales/my');
+      return;
+    }
+    setPwd('');
+    setLoginErr(null);
+    setPwdModal({ name });
+  }
+
+  async function submitPassword() {
+    if (!pwdModal || logging) return;
+    if (!pwd.trim()) { setLoginErr('비밀번호를 입력하세요'); return; }
+    setLogging(true);
+    setLoginErr(null);
+    try {
+      await login('sales', { password: pwd, actor: pwdModal.name });
+      safeSet(LS_KEY, pwdModal.name);
+      setPwdModal(null);
+      navigate('/sales/my');
+    } catch (err) {
+      setLoginErr(err.message || '로그인 실패');
+    } finally {
+      setLogging(false);
+    }
   }
 
   return (
@@ -104,6 +146,32 @@ export default function SalesLoginPage() {
       <div className="sl-page__footer">
         한성쇼케이스 제작현황 v1.0
       </div>
+
+      {/* 비밀번호 모달 (인증 활성 시만) */}
+      {pwdModal && (
+        <div className="sl-page__pwd-overlay" onClick={(e) => { if (e.target === e.currentTarget && !logging) setPwdModal(null); }}>
+          <div className="sl-page__pwd-panel">
+            <div className="sl-page__pwd-title">{pwdModal.name}님 비밀번호 입력</div>
+            <input
+              type="password"
+              className="sl-page__pwd-input"
+              value={pwd}
+              onChange={(e) => setPwd(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitPassword(); }}
+              placeholder="비밀번호"
+              autoFocus
+              disabled={logging}
+            />
+            {loginErr && <div className="sl-page__pwd-err">{loginErr}</div>}
+            <div className="sl-page__pwd-actions">
+              <button className="sl-page__pwd-cancel" onClick={() => setPwdModal(null)} disabled={logging}>취소</button>
+              <button className="sl-page__pwd-submit" onClick={submitPassword} disabled={logging || !pwd}>
+                {logging ? '확인 중...' : '확인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

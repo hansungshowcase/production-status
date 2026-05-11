@@ -1,3 +1,5 @@
+import { getToken, clearToken } from '../utils/authClient';
+
 const BASE_URL = '/api';
 
 const REQUEST_TIMEOUT = 15000;
@@ -22,11 +24,13 @@ async function request(endpoint, options = {}, _retryCount = 0) {
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
   const isFormData = body instanceof FormData;
+  const token = getToken();
 
   const config = {
     method,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...customHeaders,
     },
     signal: controller.signal,
@@ -42,6 +46,8 @@ async function request(endpoint, options = {}, _retryCount = 0) {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message = errorData?.error?.message || `요청 실패 (${response.status})`;
+      // 401: 토큰 만료/무효 → 클리어해서 다음 진입 시 재로그인
+      if (response.status === 401) clearToken();
       throw new ApiError(message, response.status, errorData);
     }
 

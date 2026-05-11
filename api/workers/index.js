@@ -1,5 +1,6 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
+import { requireAuth } from '../_lib/auth.js';
 
 const DEPARTMENTS = ['도면설계', '레이저작업', 'V-커팅작업', '절곡작업', '용접작업', '분체작업', '조립작업', '설비작업', '포장'];
 
@@ -7,6 +8,8 @@ export default cors(async function handler(req, res) {
   if (req.method === 'GET') {
     return handleGet(req, res);
   } else if (req.method === 'POST') {
+    const auth = requireAuth(req, res, { roles: ['admin'] });
+    if (!auth) return;
     return handlePost(req, res);
   } else {
     return res.status(405).json({ error: { message: 'Method not allowed' } });

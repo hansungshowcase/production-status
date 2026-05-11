@@ -2,6 +2,7 @@ import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { STEPS } from '../_lib/steps.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
+import { requireAuth } from '../_lib/auth.js';
 
 export const config = {
   api: {
@@ -99,6 +100,9 @@ export default cors(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
+
+  const auth = requireAuth(req, res, { roles: ['admin'] });
+  if (!auth) return;
 
   const parts = await parseMultipart(req);
   const filePart = getFilePart(parts, 'file');

@@ -3,6 +3,7 @@ import { cors } from '../_lib/cors.js';
 import { sanitizeInput } from '../_lib/sanitize.js';
 import { STEPS } from '../_lib/steps.js';
 import { daysUntilDue } from '../_lib/daysUntilDue.js';
+import { requireAuth, resolveActor } from '../_lib/auth.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -163,6 +164,8 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
+  const auth = requireAuth(req, res, { roles: ['sales'] });
+  if (!auth) return;
   const body = sanitizeInput(req.body);
   const {
     client_name, width, depth, height, quantity, product_type, door_type, color,

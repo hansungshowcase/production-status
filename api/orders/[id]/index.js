@@ -1,6 +1,7 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { sanitizeInput } from '../../_lib/sanitize.js';
+import { requireAuth, resolveActor } from '../../_lib/auth.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -59,6 +60,8 @@ async function handleGet(id, req, res) {
 }
 
 async function handleUpdate(id, req, res) {
+  const auth = requireAuth(req, res, { roles: ['sales'] });
+  if (!auth) return;
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
@@ -101,7 +104,7 @@ async function handleUpdate(id, req, res) {
       order.id,
       '주문수정',
       `${order.client_name} 주문이 수정되었습니다. (${changedFields.join(', ')})`,
-      body.actor || '시스템',
+      resolveActor(req),
     ],
   });
 
@@ -110,6 +113,8 @@ async function handleUpdate(id, req, res) {
 }
 
 async function handleDelete(id, req, res) {
+  const auth = requireAuth(req, res, { roles: ['sales'] });
+  if (!auth) return;
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
@@ -134,7 +139,7 @@ async function handleDelete(id, req, res) {
       order.id,
       '주문삭제',
       `${order.client_name} 주문(ID: ${order.id})이 삭제되었습니다.`,
-      body.actor || '시스템',
+      resolveActor(req),
     ],
   });
 

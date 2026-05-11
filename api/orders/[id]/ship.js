@@ -1,10 +1,14 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
+import { requireAuth, resolveActor } from '../../_lib/auth.js';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
+
+  const auth = requireAuth(req, res, { roles: ['sales'] });
+  if (!auth) return;
 
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
@@ -37,7 +41,7 @@ export default cors(async function handler(req, res) {
       order.id,
       '출고완료',
       `${order.client_name} 주문이 출고 처리되었습니다.`,
-      body.actor || '시스템',
+      resolveActor(req),
     ],
   });
 
