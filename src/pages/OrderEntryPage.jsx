@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OrderForm from '../components/order/OrderForm';
 import Toast from '../components/common/Toast';
@@ -191,6 +191,29 @@ export default function OrderEntryPage() {
     }
   };
 
+  // Ctrl+V (또는 Cmd+V) 붙여넣기로 작업지시서 사진 업로드 — 페이지 어디서든 작동
+  const processOcrFileRef = useRef(null);
+  processOcrFileRef.current = processOcrFile;
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items || items.length === 0) return;
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            // 텍스트 input 안에서 paste해도 이미지면 preventDefault (텍스트 paste 방해 안 함)
+            e.preventDefault();
+            processOcrFileRef.current?.(file);
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
   const handleDragOver = (e) => {
     e.preventDefault();
     setDragOver(true);
@@ -305,7 +328,7 @@ export default function OrderEntryPage() {
               <>
                 <span className="order-entry__dropzone-icon">📷</span>
                 <span className="order-entry__dropzone-text">
-                  작업지시서 사진을 여기에 드래그하거나 클릭하여 업로드
+                  작업지시서 사진 — 드래그 / Ctrl+V 붙여넣기 / 클릭하여 업로드
                 </span>
                 <span className="order-entry__dropzone-hint">
                   사진을 인식하여 자동으로 입력합니다
