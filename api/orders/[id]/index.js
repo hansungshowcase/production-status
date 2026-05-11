@@ -2,6 +2,8 @@ import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { sanitizeInput } from '../../_lib/sanitize.js';
 import { requireAuth, resolveActor } from '../../_lib/auth.js';
+import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { del } from '@vercel/blob';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -20,10 +22,13 @@ export default cors(async function handler(req, res) {
   if (req.method === 'GET') {
     return handleGet(id, req, res);
   } else if (req.method === 'PUT') {
+    if (!rateLimitCheck(req, res)) return;
     return handleUpdate(id, req, res);
   } else if (req.method === 'PATCH') {
+    if (!rateLimitCheck(req, res)) return;
     return handleUpdate(id, req, res);
   } else if (req.method === 'DELETE') {
+    if (!rateLimitCheck(req, res)) return;
     return handleDelete(id, req, res);
   } else {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -148,6 +153,24 @@ async function handleDelete(id, req, res) {
     sql: `UPDATE activity_feed SET order_id = NULL WHERE order_id = ? AND action_type = '주문삭제'`,
     args: [order.id],
   });
+
+  // Blob orphan 정리: order 삭제 전 photos 의 file_path 들을 모아서 del. CASCADE는 DB row만 정리.
+  try {
+    const photosResult = await db.execute({
+      sql: 'SELECT file_path FROM photos WHERE order_id = ?',
+      args: [order.id],
+    });
+    for (const row of photosResult.rows) {
+      if (!row.file_path) continue;
+      try {
+        await del(row.file_path);
+      } catch (err) {
+        console.warn('[orders DELETE] blob 삭제 실패, 계속 진행:', err?.message || err);
+      }
+    }
+  } catch (err) {
+    console.warn('[orders DELETE] photos file_path 조회 실패, 계속 진행:', err?.message || err);
+  }
 
   await db.execute({ sql: 'DELETE FROM orders WHERE id = ?', args: [id] });
 

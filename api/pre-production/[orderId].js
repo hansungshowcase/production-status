@@ -1,5 +1,6 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
+import { rateLimitCheck } from '../_lib/rateLimit.js';
 
 const PRE_PROD_FIELDS = [
   'instruction_check',
@@ -14,6 +15,7 @@ export default cors(async function handler(req, res) {
   if (req.method === 'GET') {
     return handleGet(req, res);
   } else if (req.method === 'PATCH') {
+    if (!rateLimitCheck(req, res)) return;
     return handlePatch(req, res);
   } else {
     return res.status(405).json({ error: { message: 'Method not allowed' } });

@@ -134,8 +134,15 @@ export default cors(async function handler(req, res) {
 
   const db = getDb();
   let importedCount = 0;
+  let skippedCount = 0;
   const errors = [];
 
+  // dry-run 플래그: ?dryRun=1 이면 INSERT 하지 않고 카운트만 보고
+  const dryRun = String(req.query?.dryRun ?? '') === '1'
+    || String(req.query?.dryRun ?? '') === 'true';
+
+  // ---- 1단계: 모든 행 파싱 + 검증 ----
+  const candidates = []; // { rowIndex, values, dedupeKey }
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const get = (field) => {
@@ -149,49 +156,150 @@ export default cors(async function handler(req, res) {
       continue;
     }
 
+    const orderDate = get('order_date');
+    const productType = get('product_type');
+    const quantityRaw = get('quantity');
+    const quantity = quantityRaw ? Number(quantityRaw) : null;
     const status = mapStatus(get('status'));
 
+    candidates.push({
+      rowIndex: i + 1,
+      dedupeKey: `${clientName}||${orderDate ?? ''}||${productType ?? ''}||${quantity ?? ''}`,
+      values: {
+        order_date: orderDate,
+        due_date: get('due_date'),
+        sales_person: get('sales_person'),
+        client_name: clientName,
+        ship_date: get('ship_date'),
+        product_type: productType,
+        door_type: get('door_type'),
+        design: get('design'),
+        width: get('width') ? Number(get('width')) : null,
+        depth: get('depth') ? Number(get('depth')) : null,
+        height: get('height') ? Number(get('height')) : null,
+        quantity,
+        color: get('color'),
+        notes: get('notes'),
+        status,
+      },
+    });
+  }
+
+  const totalCount = candidates.length;
+
+  // ---- 2단계: 청크 단위 처리 (100행) ----
+  const CHUNK_SIZE = 100;
+  for (let start = 0; start < candidates.length; start += CHUNK_SIZE) {
+    const chunk = candidates.slice(start, start + CHUNK_SIZE);
+
+    // ---- 2-a: 기존 데이터 조회로 중복 체크 (client-side dedupe) ----
+    // 청크 내 거래처명 집합으로 좁혀서 SELECT
+    const clientNames = [...new Set(chunk.map(c => c.values.client_name))];
+    const existingKeys = new Set();
+    if (clientNames.length > 0) {
+      try {
+        const placeholders = clientNames.map(() => '?').join(', ');
+        const existing = await db.execute({
+          sql: `SELECT id, client_name, order_date, product_type, quantity
+                FROM orders WHERE client_name IN (${placeholders})`,
+          args: clientNames,
+        });
+        for (const r of existing.rows) {
+          // order_date 가 Date 객체로 올 수 있으니 YYYY-MM-DD 문자열로 정규화
+          let od = r.order_date;
+          if (od instanceof Date) {
+            od = od.toISOString().slice(0, 10);
+          } else if (od != null) {
+            od = String(od).slice(0, 10);
+          } else {
+            od = '';
+          }
+          const qty = r.quantity == null ? '' : Number(r.quantity);
+          const key = `${r.client_name}||${od}||${r.product_type ?? ''}||${qty}`;
+          existingKeys.add(key);
+        }
+      } catch (err) {
+        errors.push(`중복 조회 실패(청크 ${start}-${start + chunk.length}): ${err.message}`);
+      }
+    }
+
+    // 청크 내부 중복도 거름 (같은 CSV 안에서 같은 키가 두 번 나오면 첫 번째만)
+    const seenInChunk = new Set();
+    const toInsert = [];
+    for (const cand of chunk) {
+      if (existingKeys.has(cand.dedupeKey) || seenInChunk.has(cand.dedupeKey)) {
+        skippedCount++;
+        continue;
+      }
+      seenInChunk.add(cand.dedupeKey);
+      toInsert.push(cand);
+    }
+
+    if (dryRun || toInsert.length === 0) {
+      if (dryRun) importedCount += toInsert.length; // dry-run 시 "삽입 예정 수"로 누적
+      continue;
+    }
+
+    // ---- 2-b: orders 배치 INSERT (RETURNING id) ----
     try {
+      const cols = [
+        'order_date', 'due_date', 'sales_person', 'client_name', 'ship_date',
+        'product_type', 'door_type', 'design', 'width', 'depth', 'height',
+        'quantity', 'color', 'notes', 'status',
+      ];
+      const rowPh = `(${cols.map(() => '?').join(', ')})`;
+      const valuesSql = toInsert.map(() => rowPh).join(', ');
+      const args = [];
+      for (const cand of toInsert) {
+        for (const col of cols) args.push(cand.values[col]);
+      }
       const orderResult = await db.execute({
-        sql: `INSERT INTO orders (
-          order_date, due_date, sales_person, client_name, ship_date,
-          product_type, door_type, design, width, depth, height,
-          quantity, color, notes, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        args: [
-          get('order_date'), get('due_date'), get('sales_person'), clientName,
-          get('ship_date'), get('product_type'), get('door_type'), get('design'),
-          get('width') ? Number(get('width')) : null,
-          get('depth') ? Number(get('depth')) : null,
-          get('height') ? Number(get('height')) : null,
-          get('quantity') ? Number(get('quantity')) : null,
-          get('color'), get('notes'), status,
-        ],
+        sql: `INSERT INTO orders (${cols.join(', ')}) VALUES ${valuesSql} RETURNING id`,
+        args,
       });
 
-      const orderId = Number(orderResult.rows[0].id);
+      const insertedIds = orderResult.rows.map(r => Number(r.id));
 
-      // STEPS 9개 multi-row INSERT (N+1 제거)
-      const stepPlaceholders = STEPS.map(() => `(?, ?, 'waiting')`).join(', ');
-      const stepArgs = STEPS.flatMap(step => [orderId, step]);
-      await db.execute({
-        sql: `INSERT INTO processes (order_id, step_name, status) VALUES ${stepPlaceholders}`,
-        args: stepArgs,
-      });
+      // ---- 2-c: processes 배치 INSERT (orders × STEPS) ----
+      if (insertedIds.length > 0 && STEPS.length > 0) {
+        const procRowPh = `(?, ?, 'waiting')`;
+        const procRows = [];
+        const procArgs = [];
+        for (const orderId of insertedIds) {
+          for (const step of STEPS) {
+            procRows.push(procRowPh);
+            procArgs.push(orderId, step);
+          }
+        }
+        await db.execute({
+          sql: `INSERT INTO processes (order_id, step_name, status) VALUES ${procRows.join(', ')}`,
+          args: procArgs,
+        });
 
-      await db.execute({
-        sql: `INSERT INTO pre_production (order_id) VALUES (?)`,
-        args: [orderId],
-      });
+        // ---- 2-d: pre_production 배치 INSERT ----
+        const preRowPh = `(?)`;
+        const preValuesSql = insertedIds.map(() => preRowPh).join(', ');
+        await db.execute({
+          sql: `INSERT INTO pre_production (order_id) VALUES ${preValuesSql}`,
+          args: insertedIds,
+        });
+      }
 
-      importedCount++;
+      importedCount += insertedIds.length;
     } catch (err) {
-      errors.push(`행 ${i + 1}: ${err.message}`);
+      // 청크 실패 시 해당 청크 행 번호 범위로 에러 기록
+      const first = toInsert[0]?.rowIndex;
+      const last = toInsert[toInsert.length - 1]?.rowIndex;
+      errors.push(`청크 INSERT 실패(행 ${first}-${last}): ${err.message}`);
     }
   }
 
   return res.json({
     imported: importedCount,
+    inserted: importedCount,
+    skipped: skippedCount,
+    total: totalCount,
+    dryRun,
     errors: errors.length,
     errorDetails: errors.slice(0, 20),
   });

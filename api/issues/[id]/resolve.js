@@ -1,10 +1,12 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
+import { rateLimitCheck } from '../../_lib/rateLimit.js';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
+  if (!rateLimitCheck(req, res)) return;
 
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {

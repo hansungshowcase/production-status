@@ -2,6 +2,7 @@ import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { put } from '@vercel/blob';
 import { parseMultipart, getFilePart, getFieldValue } from '../_lib/parseBody.js';
+import { rateLimitCheck } from '../_lib/rateLimit.js';
 
 export const config = {
   api: {
@@ -13,6 +14,7 @@ export default cors(async function handler(req, res) {
   if (req.method === 'GET') {
     return handleGet(req, res);
   } else if (req.method === 'POST') {
+    if (!rateLimitCheck(req, res)) return;
     return handlePost(req, res);
   } else {
     return res.status(405).json({ error: { message: 'Method not allowed' } });

@@ -1,10 +1,12 @@
 import { cors } from '../_lib/cors.js';
 import { authEnabled, checkPassword, issueToken } from '../_lib/auth.js';
+import { rateLimitCheck } from '../_lib/rateLimit.js';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
+  if (!rateLimitCheck(req, res, { windowMs: 60000, max: 10 })) return;
   if (!authEnabled()) {
     // 인증 비활성 — 아무 사용자나 통과시키되 토큰 발급은 안 함 (클라이언트는 토큰 없이도 진입)
     return res.json({ enabled: false });
