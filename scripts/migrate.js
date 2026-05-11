@@ -57,7 +57,7 @@ async function migrate() {
     `CREATE TABLE IF NOT EXISTS issues (
       id SERIAL PRIMARY KEY,
       order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      process_id INTEGER REFERENCES processes(id),
+      process_id INTEGER REFERENCES processes(id) ON DELETE SET NULL,
       issue_type TEXT NOT NULL,
       description TEXT,
       reported_by TEXT,
@@ -67,7 +67,7 @@ async function migrate() {
     `CREATE TABLE IF NOT EXISTS photos (
       id SERIAL PRIMARY KEY,
       order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      process_id INTEGER REFERENCES processes(id),
+      process_id INTEGER REFERENCES processes(id) ON DELETE SET NULL,
       file_path TEXT NOT NULL,
       uploaded_by TEXT,
       uploaded_at TIMESTAMPTZ DEFAULT NOW()

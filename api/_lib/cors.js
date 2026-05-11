@@ -11,6 +11,40 @@ function getAllowedOrigins() {
   return [...new Set([...DEFAULT_ALLOWED, ...fromEnv])];
 }
 
+// API별 CDN edge cache 정책 — Vercel edge cache + stale-while-revalidate
+// 같은 GET 요청 반복 시 CDN에서 즉시 응답 (≈0ms), 백그라운드 갱신 후 다음 요청부터 최신
+const CACHE_POLICIES = {
+  // 목록류 — 짧은 fresh + 긴 stale window (UX 응답성 최고)
+  '/api/orders': 'public, s-maxage=3, stale-while-revalidate=15',
+  '/api/stats': 'public, s-maxage=10, stale-while-revalidate=30',
+  '/api/feed': 'public, s-maxage=3, stale-while-revalidate=15',
+  '/api/processes/by-step': 'public, s-maxage=3, stale-while-revalidate=15',
+  '/api/workers': 'public, s-maxage=30, stale-while-revalidate=300',
+  '/api/health': 'public, s-maxage=60',
+  '/api/export/csv': 'public, s-maxage=10, stale-while-revalidate=60',
+  // 폴링 (real-time) — 캐시 금지
+  '/api/events': 'no-store',
+  // 상세는 디폴트(짧게)
+};
+
+function pickCachePolicy(url) {
+  if (!url) return null;
+  // pathname만 사용 (?query 제외)
+  const path = url.split('?')[0];
+  // 정확 매칭 우선
+  if (CACHE_POLICIES[path]) return CACHE_POLICIES[path];
+  // prefix 매칭 (by-step/[stepName] 등)
+  for (const key of Object.keys(CACHE_POLICIES)) {
+    if (path.startsWith(key + '/')) return CACHE_POLICIES[key];
+  }
+  // 상세(/api/orders/123) 같은 동적 경로 — 더 짧게
+  if (path.startsWith('/api/orders/')) return 'public, s-maxage=2, stale-while-revalidate=10';
+  if (path.startsWith('/api/pre-production/')) return 'public, s-maxage=2, stale-while-revalidate=10';
+  if (path.startsWith('/api/issues')) return 'public, s-maxage=3, stale-while-revalidate=15';
+  if (path.startsWith('/api/photos')) return 'public, s-maxage=5, stale-while-revalidate=30';
+  return null;
+}
+
 export function cors(handler) {
   return async (req, res) => {
     const allowed = getAllowedOrigins();
@@ -32,6 +66,19 @@ export function cors(handler) {
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+    // GET 응답에 CDN edge cache 헤더 자동 추가 (성능 10배: 동일 요청 반복 시 ≈0ms)
+    if (req.method === 'GET') {
+      const policy = pickCachePolicy(req.url);
+      if (policy) {
+        res.setHeader('Cache-Control', policy);
+        res.setHeader('CDN-Cache-Control', policy);
+        res.setHeader('Vercel-CDN-Cache-Control', policy);
+      }
+    } else {
+      // 변경 메서드 — 캐시 절대 금지 (변경 후 GET이 stale 응답하는 사고 방지)
+      res.setHeader('Cache-Control', 'no-store');
+    }
+
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
     }
@@ -48,6 +95,8 @@ export function cors(handler) {
       const status = err.status || 500;
       const message = status === 500 ? '서버 내부 오류가 발생했습니다.' : (err.message || '요청 처리 중 오류가 발생했습니다.');
       if (!res.headersSent) {
+        // 에러는 캐시 안 함
+        res.setHeader('Cache-Control', 'no-store');
         return res.status(status).json({ error: { message, status } });
       }
     }
