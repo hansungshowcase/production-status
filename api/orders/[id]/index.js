@@ -2,13 +2,15 @@ import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { sanitizeInput } from '../../_lib/sanitize.js';
 
+// status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
+// 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
 const ORDER_FIELDS = [
   'order_date', 'due_date', 'sales_person', 'client_name',
-  'ship_date', 'sale_amount', 'lead_source', 'balance',
+  'sale_amount', 'lead_source', 'balance',
   'phone', 'product_type', 'door_type', 'design',
   'width', 'depth', 'height', 'quantity', 'color',
   'notes', 'remarks', 'etc_notes', 'ship_scheduled_date',
-  'sms_sent', 'safe_delivery', 'status',
+  'sms_sent', 'safe_delivery',
 ];
 
 export default cors(async function handler(req, res) {

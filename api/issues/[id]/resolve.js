@@ -24,7 +24,14 @@ export default cors(async function handler(req, res) {
   }
 
   const now = new Date().toISOString();
-  await db.execute({ sql: 'UPDATE issues SET resolved_at = ? WHERE id = ?', args: [now, issue.id] });
+  // atomic UPDATE — resolved_at IS NULL 조건으로 동시 호출 시 한 번만 통과 (race + activity_feed 중복 방지)
+  const updateResult = await db.execute({
+    sql: 'UPDATE issues SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL RETURNING id',
+    args: [now, issue.id],
+  });
+  if (!updateResult.rows || updateResult.rows.length === 0) {
+    return res.status(409).json({ error: { message: '이미 해결 처리된 이슈입니다.', status: 409 } });
+  }
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [issue.order_id] });
   const order = orderResult.rows.length > 0 ? orderResult.rows[0] : null;

@@ -60,7 +60,8 @@ async function handlePatch(req, res) {
   for (const field of PRE_PROD_FIELDS) {
     if (req.body[field] !== undefined) {
       updates.push(`${field} = ?`);
-      values.push(req.body[field]);
+      // DB 컬럼이 INTEGER — boolean/문자열 모두 0/1로 정규화 (Postgres 타입 에러 방지)
+      values.push(req.body[field] ? 1 : 0);
     }
   }
 
