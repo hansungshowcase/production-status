@@ -1046,8 +1046,10 @@
   width: 118px;
   flex-shrink: 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 3px;
-  justify-content: center;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .station-view__row-btn {
@@ -1065,6 +1067,9 @@
   align-items: center;
   justify-content: center;
   text-decoration: none;
+  box-sizing: border-box;
+  line-height: 1.15;
+  max-width: 100%;
 }
 
 /* Mobile: show short text, PC: show full text */
@@ -1092,17 +1097,6 @@
   color: #ffffff;
 }
 
-.station-view__row-btn--revert {
-  background: #fff;
-  color: #b45309;
-  border: 1px solid #fcd34d;
-  margin-right: 6px;
-}
-
-.station-view__row-btn--revert:hover:not(:disabled) {
-  background: #fffbeb;
-}
-
 .station-view__row-btn--issue {
   background: #fef3c7;
   color: #92400e;
@@ -1117,6 +1111,16 @@
   background: #eff6ff;
   color: #2563eb;
   border: 1px solid #bfdbfe;
+  min-width: 64px;
+}
+
+.station-view__row-btn--uploading {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.station-view__hidden-file {
+  display: none;
 }
 
 /* Expanded row detail */
@@ -1744,7 +1748,7 @@
   .station-view__th--product { flex: 1; min-width: 40px; }
   .station-view__th--due { flex: none; width: 65px; }
   .station-view__th--progress { flex: none; width: 55px; }
-  .station-view__th--actions { flex: none; width: 50px; }
+  .station-view__th--actions { flex: none; width: 96px; }
 
   .station-view__row {
     padding: 6px;
@@ -1752,15 +1756,14 @@
 
   .station-view__row-client {
     flex: none;
-    width: auto;
-    max-width: 120px;
+    width: 70px;
+    max-width: 70px;
     font-size: 12px;
     padding-left: 6px;
-    white-space: normal;
-    word-break: keep-all;
-    overflow: visible;
-    text-overflow: unset;
-    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
   }
 
   .station-view__row-product {
@@ -1781,12 +1784,26 @@
 
   .station-view__progress-bar-mini { width: 24px; }
 
-  .station-view__row-actions { flex: none; width: 92px; }
+  .station-view__row-actions {
+    flex: none;
+    width: 96px;
+    justify-content: flex-end;
+  }
 
   .station-view__row-btn {
     padding: 3px 5px;
     font-size: 10px;
     min-height: 26px;
+  }
+
+  .station-view__row-btn--work-order {
+    flex: 0 0 100%;
+    width: 100%;
+  }
+
+  .station-view__row-btn--complete {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .station-view__row-expand {
