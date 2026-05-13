@@ -10,6 +10,7 @@ import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
 import './WorkerStationViewPage.css';
 
 const REFRESH_INTERVAL = 5000;
+const STATS_REFRESH_INTERVAL = 30000;
 
 const CONTACTS = [
   { name: '박상규', role: '공장장', phone: '010-9322-3904' },
@@ -60,6 +61,8 @@ export default function WorkerStationViewPage() {
   const isLastStep = currentStepIndex === PROCESS_STEPS.length - 1;
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
+  const lastStatsFetchRef = useRef(0);
+  const localWorkOrderUrlsRef = useRef(new Map());
 
   function showResultToast(type, clientName) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -69,16 +72,27 @@ export default function WorkerStationViewPage() {
 
   const fetchData = useCallback(async () => {
     try {
+      const now = Date.now();
+      const shouldFetchStats = !lastStatsFetchRef.current || now - lastStatsFetchRef.current > STATS_REFRESH_INTERVAL;
+      if (shouldFetchStats) lastStatsFetchRef.current = now;
       const [data, stats] = await Promise.all([
         getProcessesByStep(decodedStep),
-        getStats().catch(() => null),
+        shouldFetchStats ? getStats().catch(() => null) : Promise.resolve(null),
       ]);
       const raw = Array.isArray(data) ? data : data.processes || [];
-      setItems(raw.map(item => ({
-        ...item,
-        status: item.status || item.process_status || 'waiting',
-      })));
-      if (stats) setFactoryStats(stats);
+      setItems(raw.map(item => {
+        if (item.work_order_image_url) {
+          localWorkOrderUrlsRef.current.delete(item.order_id);
+        }
+        return {
+          ...item,
+          work_order_image_url: item.work_order_image_url || localWorkOrderUrlsRef.current.get(item.order_id) || null,
+          status: item.status || item.process_status || 'waiting',
+        };
+      }));
+      if (stats) {
+        setFactoryStats(stats);
+      }
       setError(null);
     } catch (err) {
       console.error('Failed to fetch processes:', err);
@@ -226,6 +240,8 @@ export default function WorkerStationViewPage() {
     setWorkOrderUploadingId(item.order_id);
     try {
       const uploaded = await attachWorkOrderImage(item.order_id, file);
+      if (!uploaded?.url) throw new Error('작업지시서 이미지 주소를 받지 못했습니다.');
+      localWorkOrderUrlsRef.current.set(item.order_id, uploaded.url);
       setItems(prev => prev.map(row => (
         row.order_id === item.order_id
           ? { ...row, work_order_image_url: uploaded.url }
