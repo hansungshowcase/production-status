@@ -1043,7 +1043,7 @@
 
 /* Row action buttons */
 .station-view__row-actions {
-  width: 132px;
+  width: 118px;
   flex-shrink: 0;
   display: flex;
   gap: 3px;
@@ -1117,15 +1117,6 @@
   background: #eff6ff;
   color: #2563eb;
   border: 1px solid #bfdbfe;
-}
-
-.station-view__row-btn--uploading {
-  opacity: 0.65;
-  pointer-events: none;
-}
-
-.station-view__hidden-file {
-  display: none;
 }
 
 /* Expanded row detail */
@@ -1790,7 +1781,7 @@
 
   .station-view__progress-bar-mini { width: 24px; }
 
-  .station-view__row-actions { flex: none; width: 104px; }
+  .station-view__row-actions { flex: none; width: 92px; }
 
   .station-view__row-btn {
     padding: 3px 5px;

@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getProcessesByStep, startProcess, completeProcess, revertProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
-import { attachWorkOrderImage } from '../api/workOrderImages';
 import { getStats } from '../api/stats';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
@@ -51,7 +50,6 @@ export default function WorkerStationViewPage() {
   const [issueListModal, setIssueListModal] = useState(null); // 이슈 목록 모달 { issues, loading }
   const [resolvingId, setResolvingId] = useState(null);
   const [issueSelectOpen, setIssueSelectOpen] = useState(false);
-  const [workOrderUploadingId, setWorkOrderUploadingId] = useState(null);
   const prevIssueCountRef = useRef(0);
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
@@ -233,26 +231,6 @@ export default function WorkerStationViewPage() {
       alert('이슈 해결에 실패했습니다.');
     } finally {
       setResolvingId(null);
-    }
-  }
-
-  async function handleWorkOrderAttach(item, file) {
-    if (!file || !item?.order_id || workOrderUploadingId) return;
-    setWorkOrderUploadingId(item.order_id);
-    try {
-      const uploaded = await attachWorkOrderImage(item.order_id, file);
-      setItems(prev => prev.map(row => (
-        row.order_id === item.order_id
-          ? { ...row, work_order_image_url: uploaded.url }
-          : row
-      )));
-      setToast({ type: 'complete', message: '작업지시서 첨부 완료', client: item.client_name, step: decodedStep });
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setToast(null), 2500);
-    } catch (err) {
-      alert(err.message || '작업지시서 첨부에 실패했습니다.');
-    } finally {
-      setWorkOrderUploadingId(null);
     }
   }
 
@@ -721,25 +699,8 @@ export default function WorkerStationViewPage() {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      지시서
+                      작업지시서
                     </a>
-                  )}
-                  {!item.work_order_image_url && (
-                    <label className={`station-view__row-btn station-view__row-btn--work-order${workOrderUploadingId === item.order_id ? ' station-view__row-btn--uploading' : ''}`}>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="station-view__hidden-file"
-                        disabled={!!workOrderUploadingId}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          e.target.value = '';
-                          handleWorkOrderAttach(item, file);
-                        }}
-                      />
-                      {workOrderUploadingId === item.order_id ? '첨부중' : '지시서'}
-                    </label>
                   )}
                   {sKey === 'in_progress' && (
                     <button
