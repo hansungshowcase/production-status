@@ -560,6 +560,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .ocr-confirm__label {
@@ -572,6 +573,9 @@
 
 .ocr-confirm__input {
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 8px 12px;
   border: 1.5px solid #e2e8f0;
   border-radius: 8px;
@@ -606,6 +610,7 @@
   display: flex;
   gap: 10px;
   border-top: 1px solid #e2e8f0;
+  min-width: 0;
 }
 
 .ocr-confirm__btn {
@@ -670,14 +675,24 @@
 }
 
 .order-entry__dropzone-text {
+  max-width: 100%;
   font-size: 14px;
   font-weight: 700;
   color: #475569;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .order-entry__dropzone-hint {
+  max-width: 100%;
   font-size: 12px;
   color: #94a3b8;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .order-entry__spinner--large {

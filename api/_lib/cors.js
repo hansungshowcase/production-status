@@ -15,10 +15,10 @@ function getAllowedOrigins() {
 // 같은 GET 요청 반복 시 CDN에서 즉시 응답 (≈0ms), 백그라운드 갱신 후 다음 요청부터 최신
 const CACHE_POLICIES = {
   // 목록류 — 짧은 fresh + 긴 stale window (UX 응답성 최고)
-  '/api/orders': 'public, s-maxage=3, stale-while-revalidate=15',
+  '/api/orders': 'no-store',
   '/api/stats': 'public, s-maxage=10, stale-while-revalidate=30',
   '/api/feed': 'public, s-maxage=3, stale-while-revalidate=15',
-  '/api/processes/by-step': 'public, s-maxage=3, stale-while-revalidate=15',
+  '/api/processes/by-step': 'no-store',
   '/api/workers': 'public, s-maxage=30, stale-while-revalidate=300',
   '/api/health': 'public, s-maxage=60',
   '/api/export/csv': 'public, s-maxage=10, stale-while-revalidate=60',
@@ -38,10 +38,10 @@ function pickCachePolicy(url) {
     if (path.startsWith(key + '/')) return CACHE_POLICIES[key];
   }
   // 상세(/api/orders/123) 같은 동적 경로 — 더 짧게
-  if (path.startsWith('/api/orders/')) return 'public, s-maxage=2, stale-while-revalidate=10';
+  if (path.startsWith('/api/orders/')) return 'no-store';
   if (path.startsWith('/api/pre-production/')) return 'public, s-maxage=2, stale-while-revalidate=10';
   if (path.startsWith('/api/issues')) return 'public, s-maxage=3, stale-while-revalidate=15';
-  if (path.startsWith('/api/photos')) return 'public, s-maxage=5, stale-while-revalidate=30';
+  if (path.startsWith('/api/photos')) return 'no-store';
   return null;
 }
 

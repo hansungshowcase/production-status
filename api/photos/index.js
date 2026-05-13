@@ -1,6 +1,6 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
-import { put } from '@vercel/blob';
+import { del, put } from '@vercel/blob';
 import { parseMultipart, getFilePart, getFieldValue } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 
@@ -42,6 +42,15 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return res.status(500).json({ error: { message: '파일 저장소 설정이 누락되었습니다.', status: 500 } });
+  }
+
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > 10 * 1024 * 1024) {
+    return res.status(413).json({ error: { message: '파일 크기는 10MB 이하여야 합니다.', status: 413 } });
+  }
+
   let parts;
   try {
     parts = await parseMultipart(req);
@@ -81,17 +90,40 @@ async function handlePost(req, res) {
   }
   const order = orderResult.rows[0];
 
+  if (process_id) {
+    const processResult = await db.execute({
+      sql: 'SELECT id FROM processes WHERE id = ? AND order_id = ?',
+      args: [process_id, order_id],
+    });
+    if (processResult.rows.length === 0) {
+      return res.status(400).json({ error: { message: 'process_id가 해당 주문에 속하지 않습니다.', status: 400 } });
+    }
+  }
+
   // Upload to Vercel Blob
   const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-  const ext = filePart.filename.substring(filePart.filename.lastIndexOf('.'));
+  const extMatch = (filePart.filename || '').match(/\.[^.]+$/);
+  const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg';
   const blobFilename = `photo-${uniqueSuffix}${ext}`;
-  const blob = await put(blobFilename, filePart.data, { access: 'public' });
+  let blob;
+  try {
+    blob = await put(blobFilename, filePart.data, { access: 'public' });
+  } catch (err) {
+    console.warn('[photos] blob upload failed:', err?.message || err);
+    return res.status(502).json({ error: { message: '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status: 502 } });
+  }
 
-  const result = await db.execute({
-    sql: `INSERT INTO photos (order_id, process_id, file_path, uploaded_by)
-          VALUES (?, ?, ?, ?) RETURNING id`,
-    args: [order_id, process_id || null, blob.url, uploaded_by || null],
-  });
+  let result;
+  try {
+    result = await db.execute({
+      sql: `INSERT INTO photos (order_id, process_id, file_path, uploaded_by)
+            VALUES (?, ?, ?, ?) RETURNING id`,
+      args: [order_id, process_id || null, blob.url, uploaded_by || null],
+    });
+  } catch (err) {
+    try { await del(blob.url); } catch (deleteErr) { console.warn('[photos] blob rollback failed:', deleteErr?.message || deleteErr); }
+    throw err;
+  }
 
   await db.execute({
     sql: `INSERT INTO activity_feed (order_id, action_type, description, actor)
@@ -102,7 +134,7 @@ async function handlePost(req, res) {
       `${order.client_name} - 사진이 업로드되었습니다.`,
       uploaded_by || '시스템',
     ],
-  });
+  }).catch((err) => console.warn('[photos] activity log failed:', err?.message || err));
 
   const photoResult = await db.execute({
     sql: 'SELECT * FROM photos WHERE id = ?',
