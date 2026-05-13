@@ -171,6 +171,7 @@ export default function OrderEntryPage() {
 
       const { data } = await res.json();
       const uploaded = await uploadWorkOrderImage(resized);
+      setWorkOrderImageUrl(uploaded.url);
       setOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
       setToast({ visible: true, message: '인식 완료! 결과를 확인해주세요.' });
     } catch (err) {
