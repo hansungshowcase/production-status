@@ -67,6 +67,27 @@ export default cors(async function handler(req, res) {
     }
   }
 
+  if (process.step_name === '출고' && order && order.status !== 'shipped') {
+    const today = new Date().toISOString().slice(0, 10);
+    await db.execute({
+      sql: `UPDATE orders SET status = 'shipped', ship_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      args: [today, process.order_id],
+    });
+    try {
+      await db.execute({
+        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
+        args: [
+          process.order_id,
+          '출고완료',
+          `${order.client_name} 주문이 출고 처리되었습니다.`,
+          completeWorker,
+        ],
+      });
+    } catch (e) {
+      console.error('출고 로그 기록 실패:', e);
+    }
+  }
+
   const { rows: updatedRows } = await db.execute({
     sql: 'SELECT * FROM processes WHERE id = ?',
     args: [id]

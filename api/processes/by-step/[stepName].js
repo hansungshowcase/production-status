@@ -19,6 +19,23 @@ export default cors(async function handler(req, res) {
   try {
     const db = getDb();
     await ensureOrderImageColumn(db);
+    if (stepName === '출고') {
+      await db.execute({
+        sql: `INSERT INTO processes (order_id, step_name, status)
+              SELECT o.id, '출고', 'waiting'
+              FROM orders o
+              WHERE o.status = 'in_production'
+                AND EXISTS (
+                  SELECT 1 FROM processes p_pack
+                  WHERE p_pack.order_id = o.id AND p_pack.step_name = '포장' AND p_pack.status = 'completed'
+                )
+                AND NOT EXISTS (
+                  SELECT 1 FROM processes p_ship
+                  WHERE p_ship.order_id = o.id AND p_ship.step_name = '출고'
+                )`,
+        args: [],
+      });
+    }
     const stepIndex = STEPS.indexOf(stepName);
     const prevSteps = STEPS.slice(0, stepIndex);
 
