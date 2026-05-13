@@ -738,7 +738,7 @@ export default function WorkerStationViewPage() {
                           handleWorkOrderAttach(item, file);
                         }}
                       />
-                      {workOrderUploadingId === item.order_id ? '첨부중' : '지시서+'}
+                      {workOrderUploadingId === item.order_id ? '첨부중' : '지시서'}
                     </label>
                   )}
                   {sKey === 'in_progress' && (
