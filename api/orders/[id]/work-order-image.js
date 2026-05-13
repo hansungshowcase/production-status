@@ -1,9 +1,10 @@
-import { del, put } from '@vercel/blob';
+import { del } from '@vercel/blob';
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { parseMultipart, getFilePart } from '../../_lib/parseBody.js';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { storeImageFile } from '../../_lib/storeImage.js';
 
 export const config = {
   api: {
@@ -16,10 +17,6 @@ export default cors(async function handler(req, res) {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   if (!rateLimitCheck(req, res)) return;
-
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(500).json({ error: { message: '파일 저장소 설정이 누락되었습니다.', status: 500 } });
-  }
 
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
@@ -64,21 +61,24 @@ export default cors(async function handler(req, res) {
   const extMatch = (filePart.filename || '').match(/\.[^.]+$/);
   const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg';
   const uniqueSuffix = `${id}-${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-  let blob;
+  let storedImage;
   try {
-    blob = await put(`work-order-${uniqueSuffix}${ext}`, filePart.data, { access: 'public' });
+    storedImage = await storeImageFile(filePart, `work-order-${uniqueSuffix}${ext}`);
   } catch (err) {
-    console.warn('[work-order-image] blob upload failed:', err?.message || err);
-    return res.status(502).json({ error: { message: '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status: 502 } });
+    console.warn('[work-order-image] image upload failed:', err?.message || err);
+    const status = err.status || 502;
+    return res.status(status).json({ error: { message: err.message || '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status } });
   }
 
   try {
     await db.execute({
       sql: 'UPDATE orders SET work_order_image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      args: [blob.url, id],
+      args: [storedImage.url, id],
     });
   } catch (err) {
-    try { await del(blob.url); } catch (deleteErr) { console.warn('[work-order-image] blob rollback failed:', deleteErr?.message || deleteErr); }
+    if (storedImage.rollbackUrl) {
+      try { await del(storedImage.rollbackUrl); } catch (deleteErr) { console.warn('[work-order-image] blob rollback failed:', deleteErr?.message || deleteErr); }
+    }
     throw err;
   }
 
@@ -87,5 +87,5 @@ export default cors(async function handler(req, res) {
     args: [id, '작업지시서첨부', `${order.client_name || ''} 작업지시서 이미지가 첨부되었습니다.`, '현장작업자'],
   }).catch((err) => console.warn('[work-order-image] activity log failed:', err?.message || err));
 
-  return res.status(201).json({ url: blob.url });
+  return res.status(201).json({ url: storedImage.url });
 });

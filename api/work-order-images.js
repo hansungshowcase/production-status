@@ -1,6 +1,6 @@
-import { put } from '@vercel/blob';
 import { cors } from './_lib/cors.js';
 import { parseMultipart, getFilePart } from './_lib/parseBody.js';
+import { storeImageFile } from './_lib/storeImage.js';
 
 export const config = {
   api: {
@@ -11,10 +11,6 @@ export const config = {
 export default cors(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
-  }
-
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(500).json({ error: { message: '파일 저장소 설정이 누락되었습니다.', status: 500 } });
   }
 
   const contentLength = Number(req.headers['content-length'] || 0);
@@ -46,13 +42,14 @@ export default cors(async function handler(req, res) {
   const extMatch = (filePart.filename || '').match(/\.[^.]+$/);
   const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg';
   const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-  let blob;
+  let storedImage;
   try {
-    blob = await put(`work-order-${uniqueSuffix}${ext}`, filePart.data, { access: 'public' });
+    storedImage = await storeImageFile(filePart, `work-order-${uniqueSuffix}${ext}`);
   } catch (err) {
-    console.warn('[work-order-images] blob upload failed:', err?.message || err);
-    return res.status(502).json({ error: { message: '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status: 502 } });
+    console.warn('[work-order-images] image upload failed:', err?.message || err);
+    const status = err.status || 502;
+    return res.status(status).json({ error: { message: err.message || '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status } });
   }
 
-  return res.status(201).json({ url: blob.url });
+  return res.status(201).json({ url: storedImage.url });
 });
