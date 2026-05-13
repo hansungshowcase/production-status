@@ -834,7 +834,7 @@
 .station-view__th--due { flex: 1; }
 .station-view__th--progress { width: 60px; flex-shrink: 0; }
 .station-view__th--steps { display: none; }
-.station-view__th--actions { width: 70px; flex-shrink: 0; text-align: center; }
+.station-view__th--actions { width: 118px; flex-shrink: 0; text-align: center; }
 
 /* ── Order row (sheet style) ── */
 .station-view__card {
@@ -1747,8 +1747,8 @@
   .station-view__th--client { flex: none; width: 70px; padding-left: 6px; }
   .station-view__th--product { flex: 1; min-width: 40px; }
   .station-view__th--due { flex: none; width: 65px; }
-  .station-view__th--progress { flex: none; width: 55px; }
-  .station-view__th--actions { flex: none; width: 96px; }
+  .station-view__th--progress { display: none; }
+  .station-view__th--actions { flex: none; width: 92px; }
 
   .station-view__row {
     padding: 6px;
@@ -1769,7 +1769,7 @@
   .station-view__row-product {
     flex: 1;
     font-size: 11px;
-    min-width: 40px;
+    min-width: 0;
   }
 
   .station-view__row-spec { display: none; }
@@ -1778,15 +1778,20 @@
     flex: none;
     width: 65px;
     font-size: 11px;
+    min-width: 0;
+    overflow: hidden;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
   }
 
-  .station-view__row-progress { flex: none; width: 55px; }
+  .station-view__row-progress { display: none; }
 
   .station-view__progress-bar-mini { width: 24px; }
 
   .station-view__row-actions {
     flex: none;
-    width: 96px;
+    width: 92px;
     justify-content: flex-end;
   }
 
@@ -1794,6 +1799,8 @@
     padding: 3px 5px;
     font-size: 10px;
     min-height: 26px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .station-view__row-btn--work-order {
@@ -1802,7 +1809,8 @@
   }
 
   .station-view__row-btn--complete {
-    flex: 1 1 0;
+    flex: 0 0 100%;
+    width: 100%;
     min-width: 0;
   }
 
@@ -1818,6 +1826,10 @@
   .station-view__dday {
     font-size: 9px;
     padding: 1px 3px;
+    max-width: 100%;
+    margin-left: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
 }
@@ -1893,7 +1905,7 @@
   }
 
   .station-view__card {
-    padding: 10px;
+    padding: 0;
     margin-bottom: 6px;
     border-radius: 8px;
   }
@@ -1977,11 +1989,11 @@
 
   /* PC: actions */
   .station-view__row-actions {
-    width: 140px;
+    width: 168px;
   }
 
   .station-view__th--actions {
-    width: 140px;
+    width: 168px;
   }
 
   /* PC: bigger buttons, full text */
@@ -1992,6 +2004,14 @@
     padding: 5px 10px;
     font-size: 12px;
     min-height: 32px;
+  }
+
+  .station-view__row-btn--work-order {
+    flex: 0 0 82px;
+  }
+
+  .station-view__row-btn--complete {
+    flex: 0 0 74px;
   }
 
   /* PC: issue popup wider */
