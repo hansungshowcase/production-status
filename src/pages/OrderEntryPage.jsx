@@ -4,7 +4,7 @@ import OrderForm from '../components/order/OrderForm';
 import Toast from '../components/common/Toast';
 import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
-import request from '../api/client';
+import { uploadWorkOrderImage } from '../api/workOrderImages';
 import './OrderEntryPage.css';
 
 function todayStr() {
@@ -39,6 +39,7 @@ export default function OrderEntryPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState(null); // { data, imageUrl }
+  const [workOrderImageUrl, setWorkOrderImageUrl] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -77,6 +78,7 @@ export default function OrderEntryPage() {
         sale_amount: form.sale_amount ? Number(form.sale_amount) : null,
         lead_source: form.lead_source || null,
         notes: form.notes || null,
+        work_order_image_url: workOrderImageUrl || null,
       };
 
       const created = await createOrder(payload);
@@ -106,6 +108,7 @@ export default function OrderEntryPage() {
   const handleContinue = () => {
     setForm({ ...INITIAL_FORM, order_date: todayStr() });
     setErrors({});
+    setWorkOrderImageUrl(null);
     setShowSuccess(false);
   };
 
@@ -167,7 +170,8 @@ export default function OrderEntryPage() {
       }
 
       const { data } = await res.json();
-      setOcrResult({ data, imageUrl });
+      const uploaded = await uploadWorkOrderImage(resized);
+      setOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
       setToast({ visible: true, message: '인식 완료! 결과를 확인해주세요.' });
     } catch (err) {
       setToast({ visible: true, message: err.message || '이미지 인식에 실패했습니다' });
@@ -242,6 +246,7 @@ export default function OrderEntryPage() {
       color: d.color || prev.color,
       notes: d.notes || prev.notes,
     }));
+    setWorkOrderImageUrl(ocrResult.workOrderImageUrl || null);
     if (ocrResult.imageUrl) URL.revokeObjectURL(ocrResult.imageUrl);
     setOcrResult(null);
     setToast({ visible: true, message: '인식 결과가 입력되었습니다' });

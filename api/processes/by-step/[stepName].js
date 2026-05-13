@@ -1,5 +1,6 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
+import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 
 import { STEPS } from '../../_lib/steps.js';
 
@@ -17,6 +18,7 @@ export default cors(async function handler(req, res) {
 
   try {
     const db = getDb();
+    await ensureOrderImageColumn(db);
     const stepIndex = STEPS.indexOf(stepName);
     const prevSteps = STEPS.slice(0, stepIndex);
 
@@ -35,6 +37,7 @@ export default cors(async function handler(req, res) {
              o.id AS order_id, o.client_name, o.product_type, o.door_type,
              o.width, o.depth, o.height, o.color, o.due_date, o.sales_person,
              o.order_date, o.created_at, o.quantity, o.design, o.notes, o.remarks,
+             o.work_order_image_url,
              (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id AND p2.status = 'completed') AS completed_steps,
              (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id) AS total_steps,
              (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues

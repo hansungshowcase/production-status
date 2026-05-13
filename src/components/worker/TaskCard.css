@@ -131,6 +131,17 @@
   min-height: 44px;
 }
 
+.task-actions > a {
+  min-height: 44px;
+}
+
+.task-work-order-link {
+  background: #eff6ff;
+  color: #2563eb;
+  text-decoration: none;
+  border: 1px solid #bfdbfe;
+}
+
 /* Responsive grid */
 .task-grid {
   padding: 0;

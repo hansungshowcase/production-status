@@ -72,6 +72,7 @@ function mapOrderToTask(order) {
     isCompleted: isAllCompleted,
     dueDate: order.due_date,
     dueStatus: formatDueStatus(order.due_date, order.status),
+    workOrderImageUrl: order.work_order_image_url || null,
     processes,
   };
 }

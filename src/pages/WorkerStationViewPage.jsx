@@ -692,6 +692,16 @@ export default function WorkerStationViewPage() {
                   })}
                 </span>
                 <span className="station-view__row-actions" onClick={(e) => e.stopPropagation()}>
+                  {item.work_order_image_url && (
+                    <a
+                      className="station-view__row-btn station-view__row-btn--work-order"
+                      href={item.work_order_image_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      지시서
+                    </a>
+                  )}
                   {sKey === 'in_progress' && (
                     <button
                       className="station-view__row-btn station-view__row-btn--revert"

@@ -29,6 +29,7 @@ async function migrate() {
       ship_scheduled_date TEXT,
       sms_sent INTEGER DEFAULT 0,
       safe_delivery INTEGER DEFAULT 0,
+      work_order_image_url TEXT,
       status TEXT DEFAULT 'in_production',
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -89,6 +90,7 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_orders_sales_person ON orders(sales_person)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date)`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS work_order_image_url TEXT`,
     // FK 컬럼 인덱스 (Postgres는 FK에 자동 인덱스 안 만듦 — orders 목록 풀스캔 방지)
     `CREATE INDEX IF NOT EXISTS idx_processes_order_id ON processes(order_id)`,
     `CREATE INDEX IF NOT EXISTS idx_processes_step_status ON processes(step_name, status)`,

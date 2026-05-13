@@ -1043,7 +1043,7 @@
 
 /* Row action buttons */
 .station-view__row-actions {
-  width: 70px;
+  width: 96px;
   flex-shrink: 0;
   display: flex;
   gap: 3px;
@@ -1061,6 +1061,10 @@
   transition: opacity 0.15s;
   min-height: 28px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 /* Mobile: show short text, PC: show full text */
@@ -1107,6 +1111,12 @@
 .station-view__row-btn--photo {
   background: #e0f2fe;
   color: #0369a1;
+}
+
+.station-view__row-btn--work-order {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
 }
 
 /* Expanded row detail */
@@ -1771,10 +1781,10 @@
 
   .station-view__progress-bar-mini { width: 24px; }
 
-  .station-view__row-actions { flex: none; width: 50px; }
+  .station-view__row-actions { flex: none; width: 86px; }
 
   .station-view__row-btn {
-    padding: 3px 6px;
+    padding: 3px 5px;
     font-size: 10px;
     min-height: 26px;
   }

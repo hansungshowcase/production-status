@@ -5,6 +5,7 @@ import { STEPS } from '../_lib/steps.js';
 import { daysUntilDue } from '../_lib/daysUntilDue.js';
 import { requireAuth, resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
+import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -18,7 +19,7 @@ const ORDER_FIELDS = [
   'phone', 'product_type', 'door_type', 'design',
   'width', 'depth', 'height', 'quantity', 'color',
   'notes', 'remarks', 'etc_notes', 'ship_scheduled_date',
-  'sms_sent', 'safe_delivery', 'status',
+  'sms_sent', 'safe_delivery', 'work_order_image_url', 'status',
 ];
 
 export default cors(async function handler(req, res) {
@@ -34,6 +35,7 @@ export default cors(async function handler(req, res) {
 
 async function handleGet(req, res) {
   const db = getDb();
+  await ensureOrderImageColumn(db);
   const {
     sales_person, status, client_name, product_type, search,
     overdue, due_soon,
@@ -194,10 +196,11 @@ async function handlePost(req, res) {
     order_date, due_date, sales_person,
     design, phone, notes, remarks, etc_notes,
     sale_amount, lead_source, balance,
-    ship_scheduled_date, sms_sent, safe_delivery,
+    ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url,
   } = body;
 
   const db = getDb();
+  await ensureOrderImageColumn(db);
   const tx = await db.transaction('write');
   let createdOrderId = null; // 부분 실패 시 cleanup용
 
@@ -208,8 +211,8 @@ async function handlePost(req, res) {
         product_type, door_type, design, width, depth, height,
         quantity, color, phone, notes, remarks, etc_notes,
         sale_amount, lead_source, balance,
-        ship_scheduled_date, sms_sent, safe_delivery, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id`,
+        ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id`,
       args: [
         // 숫자 컬럼은 0 보존 (`||` 사용 시 0이 falsy로 변조됨 → `??` 또는 undefined 체크)
         order_date || null, due_date || null, sales_person || null, client_name,
@@ -218,7 +221,7 @@ async function handlePost(req, res) {
         quantity ?? 1, color || null, phone || null,
         notes || null, remarks || null, etc_notes || null,
         sale_amount ?? null, lead_source || null, balance ?? null,
-        ship_scheduled_date || null, sms_sent ?? null, safe_delivery ?? 0,
+        ship_scheduled_date || null, sms_sent ?? null, safe_delivery ?? 0, work_order_image_url || null,
       ],
     });
     if (!orderResult.rows || orderResult.rows.length === 0) {

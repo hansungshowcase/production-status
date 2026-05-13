@@ -4,6 +4,7 @@ import { sanitizeInput } from '../../_lib/sanitize.js';
 import { requireAuth, resolveActor } from '../../_lib/auth.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { del } from '@vercel/blob';
+import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -13,7 +14,7 @@ const ORDER_FIELDS = [
   'phone', 'product_type', 'door_type', 'design',
   'width', 'depth', 'height', 'quantity', 'color',
   'notes', 'remarks', 'etc_notes', 'ship_scheduled_date',
-  'sms_sent', 'safe_delivery',
+  'sms_sent', 'safe_delivery', 'work_order_image_url',
 ];
 
 export default cors(async function handler(req, res) {
@@ -40,6 +41,7 @@ async function handleGet(id, req, res) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
   const db = getDb();
+  await ensureOrderImageColumn(db);
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
@@ -71,6 +73,7 @@ async function handleUpdate(id, req, res) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
   const db = getDb();
+  await ensureOrderImageColumn(db);
   const body = sanitizeInput(req.body);
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });

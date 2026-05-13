@@ -25,6 +25,7 @@ export default function TaskCard({ task, onStart, onComplete, onPhoto, onIssue }
     isBlocked,
     isCompleted,
     dueStatus,
+    workOrderImageUrl,
   } = task;
 
   const displayProduct = productType
@@ -101,6 +102,16 @@ export default function TaskCard({ task, onStart, onComplete, onPhoto, onIssue }
       </div>
 
       <div className="task-actions">
+        {workOrderImageUrl && (
+          <a
+            className="action-btn task-work-order-link"
+            href={workOrderImageUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            작업지시서 보기
+          </a>
+        )}
         {isCompleted ? (
           <button
             className="action-btn btn-disabled"
