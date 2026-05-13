@@ -54,7 +54,7 @@ export default function TabletWorkerPage() {
       const active = list.filter(
         (o) => o.status !== '출고완료'
       );
-      setOrders(active);
+      setOrders(active.filter((o) => o.status !== 'shipped' && o.status !== '출고완료'));
       setLastRefresh(new Date());
     } catch (err) {
       console.error('Failed to fetch orders:', err);

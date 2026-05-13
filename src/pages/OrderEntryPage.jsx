@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import OrderForm from '../components/order/OrderForm';
 import Toast from '../components/common/Toast';
 import { createOrder } from '../api/orders';
@@ -32,7 +32,9 @@ const INITIAL_FORM = {
 
 export default function OrderEntryPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ ...INITIAL_FORM });
+  const location = useLocation();
+  const initialSalesPerson = location.state?.salesPerson || '';
+  const [form, setForm] = useState({ ...INITIAL_FORM, sales_person: initialSalesPerson });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '' });
