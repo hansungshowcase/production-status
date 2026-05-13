@@ -53,6 +53,27 @@ export default cors(async function handler(req, res) {
     if (updateResult.length === 0) {
       return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
     }
+    if (process.step_name === '출고') {
+      const completedDate = process.completed_at ? String(process.completed_at).slice(0, 10) : null;
+      const { rows: markerRows } = await db.execute({
+        sql: `SELECT id FROM activity_feed
+              WHERE order_id = ?
+                AND action_type = '출고완료'
+                AND actor = ?
+                AND description LIKE '%출고 공정 완료%'
+              ORDER BY created_at DESC
+              LIMIT 1`,
+        args: [process.order_id, process.completed_by || actor || '작업자'],
+      });
+      if (markerRows.length > 0) {
+        await db.execute({
+          sql: `UPDATE orders
+                SET status = 'in_production', ship_date = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'shipped' AND (? IS NULL OR ship_date = ?)`,
+          args: [process.order_id, completedDate, completedDate],
+        });
+      }
+    }
   } else if (process.status === 'in_progress') {
     const { rows: updateResult } = await db.execute({
       sql: "UPDATE processes SET status = 'waiting', started_at = NULL, started_by = NULL, completed_at = NULL WHERE id = ? AND status = 'in_progress' RETURNING id",

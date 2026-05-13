@@ -6,6 +6,7 @@ import { daysUntilDue } from '../_lib/daysUntilDue.js';
 import { requireAuth, resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
+import { ensureShippingProcesses } from '../_lib/ensureShippingProcess.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -36,6 +37,7 @@ export default cors(async function handler(req, res) {
 async function handleGet(req, res) {
   const db = getDb();
   await ensureOrderImageColumn(db);
+  await ensureShippingProcesses(db);
   const {
     sales_person, status, client_name, product_type, search,
     overdue, due_soon,
