@@ -1,5 +1,5 @@
 // For multipart form data parsing in Vercel serverless
-export async function parseMultipart(req) {
+export async function parseMultipart(req, { maxBytes = 10 * 1024 * 1024 } = {}) {
   // Vercel serverless: body may already be a Buffer or need streaming
   let buffer;
   if (req.body && Buffer.isBuffer(req.body)) {
@@ -10,10 +10,27 @@ export async function parseMultipart(req) {
     // Fallback: stream approach
     buffer = await new Promise((resolve, reject) => {
       const chunks = [];
-      req.on('data', chunk => chunks.push(chunk));
+      let total = 0;
+      req.on('data', chunk => {
+        total += chunk.length;
+        if (total > maxBytes) {
+          const err = new Error('Multipart body too large');
+          err.status = 413;
+          req.destroy(err);
+          reject(err);
+          return;
+        }
+        chunks.push(chunk);
+      });
       req.on('end', () => resolve(Buffer.concat(chunks)));
       req.on('error', reject);
     });
+  }
+
+  if (buffer.length > maxBytes) {
+    const err = new Error('Multipart body too large');
+    err.status = 413;
+    throw err;
   }
 
   const contentType = req.headers['content-type'] || '';

@@ -704,7 +704,7 @@ export default function WorkerStationViewPage() {
                       target="_blank"
                       rel="noreferrer"
                     >
-                      작업지시서
+                      보기
                     </a>
                   )}
                   {!item.work_order_image_url && (
@@ -721,7 +721,7 @@ export default function WorkerStationViewPage() {
                           handleWorkOrderAttach(item, file);
                         }}
                       />
-                      {workOrderUploadingId === item.order_id ? '첨부중' : '작업지시서'}
+                      {workOrderUploadingId === item.order_id ? '첨부중' : '첨부'}
                     </label>
                   )}
                   <button

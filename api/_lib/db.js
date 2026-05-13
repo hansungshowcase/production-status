@@ -9,6 +9,12 @@ function convertPlaceholders(sql) {
 let cachedSql = null;
 
 export function getDb() {
+  if (!process.env.POSTGRES_URL) {
+    const err = new Error('POSTGRES_URL is not configured');
+    err.status = 500;
+    throw err;
+  }
+
   if (!cachedSql) {
     cachedSql = neon(process.env.POSTGRES_URL);
   }

@@ -49,7 +49,8 @@ export default cors(async function handler(req, res) {
     parts = await parseMultipart(req);
   } catch (parseErr) {
     console.error('Multipart parse error:', parseErr);
-    return res.status(400).json({ error: { message: '이미지 파싱 실패: ' + parseErr.message, status: 400 } });
+    const status = parseErr.status || 400;
+    return res.status(status).json({ error: { message: status === 413 ? '파일 크기는 10MB 이하여야 합니다.' : '이미지 파싱 실패: ' + parseErr.message, status } });
   }
   const filePart = getFilePart(parts, 'image');
 

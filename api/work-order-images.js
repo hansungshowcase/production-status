@@ -22,7 +22,8 @@ export default cors(async function handler(req, res) {
   try {
     parts = await parseMultipart(req);
   } catch (err) {
-    return res.status(400).json({ error: { message: 'multipart/form-data 형식으로 전송해주세요.', status: 400 } });
+    const status = err.status || 400;
+    return res.status(status).json({ error: { message: status === 413 ? '파일 크기는 10MB 이하여야 합니다.' : 'multipart/form-data 형식으로 전송해주세요.', status } });
   }
 
   const filePart = getFilePart(parts, 'image');

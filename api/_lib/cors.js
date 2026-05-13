@@ -65,7 +65,7 @@ export function cors(handler) {
       res.setHeader('Vary', 'Origin');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     // GET 응답에 CDN edge cache 헤더 자동 추가 (성능 10배: 동일 요청 반복 시 ≈0ms)
     if (req.method === 'GET') {
