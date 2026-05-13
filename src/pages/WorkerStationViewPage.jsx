@@ -52,6 +52,7 @@ export default function WorkerStationViewPage() {
   const [resolvingId, setResolvingId] = useState(null);
   const [issueSelectOpen, setIssueSelectOpen] = useState(false);
   const [workOrderUploadingId, setWorkOrderUploadingId] = useState(null);
+  const [workOrderViewer, setWorkOrderViewer] = useState(null);
   const prevIssueCountRef = useRef(0);
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
@@ -103,6 +104,7 @@ export default function WorkerStationViewPage() {
     setIssueModal(null);
     setPhotoModal(null);
     setIssueListModal(null);
+    setWorkOrderViewer(null);
   }
 
   function requestComplete(processId) {
@@ -240,6 +242,14 @@ export default function WorkerStationViewPage() {
   }
 
   // ── Issue/Photo SMS handlers ──
+  function openWorkOrderViewer(item) {
+    if (!item?.work_order_image_url) return;
+    setWorkOrderViewer({
+      url: item.work_order_image_url,
+      title: item.client_name || '작업지시서',
+    });
+  }
+
   function openIssueModal(item) {
     closeAllModals();
     setIssueModal({ item, step: 'select', issueType: null });
@@ -698,14 +708,13 @@ export default function WorkerStationViewPage() {
                 </span>
                 <span className="station-view__row-actions" onClick={(e) => e.stopPropagation()}>
                   {item.work_order_image_url && (
-                    <a
+                    <button
+                      type="button"
                       className="station-view__row-btn station-view__row-btn--work-order"
-                      href={item.work_order_image_url}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() => openWorkOrderViewer(item)}
                     >
                       보기
-                    </a>
+                    </button>
                   )}
                   {!item.work_order_image_url && (
                     <label className={`station-view__row-btn station-view__row-btn--work-order${workOrderUploadingId === item.order_id ? ' station-view__row-btn--uploading' : ''}`}>
@@ -779,6 +788,21 @@ export default function WorkerStationViewPage() {
       </div>
 
       {/* ── Global Popup: Confirm ── */}
+      {workOrderViewer && (
+        <>
+          <div className="sv-overlay" onClick={() => setWorkOrderViewer(null)} />
+          <div className="sv-work-order-viewer" role="dialog" aria-modal="true" aria-label="작업지시서 보기">
+            <div className="sv-work-order-viewer__header">
+              <div className="sv-work-order-viewer__title">{workOrderViewer.title}</div>
+              <button className="sv-work-order-viewer__close" type="button" onClick={() => setWorkOrderViewer(null)}>닫기</button>
+            </div>
+            <div className="sv-work-order-viewer__body">
+              <img src={workOrderViewer.url} alt="작업지시서" className="sv-work-order-viewer__image" />
+            </div>
+          </div>
+        </>
+      )}
+
       {confirmTarget && (
         <>
           <div className="sv-overlay" onClick={() => setConfirmTarget(null)} />

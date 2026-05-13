@@ -1123,6 +1123,69 @@
   display: none;
 }
 
+.sv-work-order-viewer {
+  position: fixed;
+  inset: 16px;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  max-width: 980px;
+  margin: auto;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  overflow: hidden;
+}
+
+.sv-work-order-viewer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sv-work-order-viewer__title {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sv-work-order-viewer__close {
+  flex: 0 0 auto;
+  min-width: 54px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sv-work-order-viewer__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  overflow: auto;
+  padding: 10px;
+}
+
+.sv-work-order-viewer__image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 /* Expanded row detail */
 .station-view__row-expand {
   padding: 6px 10px 10px 24px;
