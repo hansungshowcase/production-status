@@ -6,6 +6,46 @@ const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 
 let cachedToken = null;
 
+function orderValues(order) {
+  return [
+    order.order_date || '',
+    order.due_date || '',
+    order.sales_person || '',
+    order.client_name || '',
+    order.phone || '',
+  ];
+}
+
+async function appendViaWebhook(order) {
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+  if (!webhookUrl) {
+    return { skipped: true };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || '',
+        values: orderValues(order),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Sheets webhook failed: ${response.status}`);
+    }
+
+    return { skipped: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function base64Url(input) {
   return Buffer.from(input)
     .toString('base64')
@@ -86,6 +126,11 @@ async function getAccessToken() {
 }
 
 export async function appendOrderToSheet(order) {
+  const webhookResult = await appendViaWebhook(order);
+  if (!webhookResult.skipped) {
+    return webhookResult;
+  }
+
   const sheetId = process.env.GOOGLE_SHEET_ID || DEFAULT_SHEET_ID;
   const sheetRange = process.env.GOOGLE_SHEET_RANGE || 'A:E';
   const token = await getAccessToken();
@@ -106,13 +151,7 @@ export async function appendOrderToSheet(order) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        values: [[
-          order.order_date || '',
-          order.due_date || '',
-          order.sales_person || '',
-          order.client_name || '',
-          order.phone || '',
-        ]],
+        values: [orderValues(order)],
       }),
       signal: controller.signal,
     });
