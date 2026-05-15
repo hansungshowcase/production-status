@@ -14,6 +14,10 @@ function orderValues(order) {
     order.due_date || '',
     order.sales_person || '',
     order.client_name || '',
+    '',
+    '',
+    '',
+    '',
     order.phone || '',
   ];
 }
