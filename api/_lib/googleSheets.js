@@ -3,12 +3,16 @@ import { createSign } from 'node:crypto';
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
-const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzHiJ9RSBV3Y4cIgYOP1Y-d7zgfyjqRIrFSxtqCYd9Tg46RDzjUA_k8KPaFUBLRFgR1/exec';
+const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzIGPy1iP1VdpX1k_RynpgKuLWV1zo7KPKt7MDl518DNHMz5f9UEK-SCXY6BpZyzWz_/exec';
 const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
 
 let cachedToken = null;
 
 function orderValues(order) {
+  const hasWidth = order.width !== null && order.width !== undefined && order.width !== '';
+  const hasDepth = order.depth !== null && order.depth !== undefined && order.depth !== '';
+  const hasHeight = order.height !== null && order.height !== undefined && order.height !== '';
+
   return [
     order.order_date || '',
     order.due_date || '',
@@ -19,6 +23,16 @@ function orderValues(order) {
     '',
     '',
     order.phone || '',
+    '',
+    order.product_type || '',
+    '',
+    hasWidth ? order.width : '',
+    hasWidth && hasDepth ? '*' : '',
+    hasDepth ? order.depth : '',
+    (hasWidth || hasDepth) && hasHeight ? '*' : '',
+    hasHeight ? order.height : '',
+    order.quantity || '',
+    order.color || '',
   ];
 }
 
@@ -139,7 +153,7 @@ export async function appendOrderToSheet(order) {
   }
 
   const sheetId = process.env.GOOGLE_SHEET_ID || DEFAULT_SHEET_ID;
-  const sheetRange = process.env.GOOGLE_SHEET_RANGE || 'A:E';
+  const sheetRange = process.env.GOOGLE_SHEET_RANGE || 'A:S';
   const token = await getAccessToken();
   if (!sheetId || !sheetRange || !token) {
     return { skipped: true };
