@@ -3,6 +3,8 @@ import { createSign } from 'node:crypto';
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
+const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxOuSOgJOiYc4k_jtGujvDm-N6-XOLYbtalYx9TDiHJtP8j3lOgiP51r0h36hQ0HVXY/exec';
+const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
 
 let cachedToken = null;
 
@@ -17,7 +19,7 @@ function orderValues(order) {
 }
 
 async function appendViaWebhook(order) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
   if (!webhookUrl) {
     return { skipped: true };
   }
@@ -30,7 +32,7 @@ async function appendViaWebhook(order) {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || '',
+        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
         values: orderValues(order),
       }),
       signal: controller.signal,
