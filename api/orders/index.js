@@ -7,6 +7,7 @@ import { requireAuth, resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { ensureShippingProcesses } from '../_lib/ensureShippingProcess.js';
+import { appendOrderToSheet } from '../_lib/googleSheets.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -264,6 +265,12 @@ async function handlePost(req, res) {
       processes: processRows.rows,
       pre_production: preProdRow.rows[0] || null,
     };
+
+    try {
+      await appendOrderToSheet(created);
+    } catch (sheetErr) {
+      console.error('Google Sheets order append failed:', sheetErr);
+    }
 
     return res.status(201).json(created);
   } catch (err) {
