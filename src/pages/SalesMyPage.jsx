@@ -163,7 +163,7 @@ export default function SalesMyPage() {
 
   async function handleDeleteOrder(order) {
     try {
-      await deleteOrder(order.id, activePerson || mySalesPerson);
+      await deleteOrder(order.id, activePerson || mySalesPerson, { delete_context: 'sales-management' });
       setOrders(prev => prev.filter(o => o.id !== order.id));
     } catch (err) {
       alert('삭제 실패: ' + (err.message || ''));

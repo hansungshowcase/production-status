@@ -14,7 +14,9 @@ const LS_KEY = 'sales_last_person';
 export default function OrderDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const actor = safeGet(LS_KEY) || '시스템';
+  const salesPerson = safeGet(LS_KEY);
+  const actor = salesPerson || '시스템';
+  const canManageSales = Boolean(salesPerson);
 
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ export default function OrderDetailPage() {
   async function handleDelete() {
     setActionLoading('delete');
     try {
-      await deleteOrder(order.id, actor);
+      await deleteOrder(order.id, actor, { delete_context: 'sales-management' });
       navigate(-1);
     } catch (err) {
       alert('삭제 실패: ' + (err.message || ''));
@@ -153,16 +155,18 @@ export default function OrderDetailPage() {
             )}
           </>
         )}
-        {!confirmDelete ? (
-          <button className="odp-btn odp-btn--delete" onClick={() => setConfirmDelete(true)}>🗑 삭제</button>
-        ) : (
-          <div className="odp-confirm">
-            <span>정말 삭제?</span>
-            <button className="odp-btn odp-btn--yes" disabled={actionLoading === 'delete'} onClick={handleDelete}>
-              {actionLoading === 'delete' ? '삭제 중...' : '삭제'}
-            </button>
-            <button className="odp-btn odp-btn--no" onClick={() => setConfirmDelete(false)}>취소</button>
-          </div>
+        {canManageSales && (
+          !confirmDelete ? (
+            <button className="odp-btn odp-btn--delete" onClick={() => setConfirmDelete(true)}>🗑 삭제</button>
+          ) : (
+            <div className="odp-confirm">
+              <span>정말 삭제?</span>
+              <button className="odp-btn odp-btn--yes" disabled={actionLoading === 'delete'} onClick={handleDelete}>
+                {actionLoading === 'delete' ? '삭제 중...' : '삭제'}
+              </button>
+              <button className="odp-btn odp-btn--no" onClick={() => setConfirmDelete(false)}>취소</button>
+            </div>
+          )
         )}
       </div>
 

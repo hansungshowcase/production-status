@@ -134,6 +134,10 @@ async function handleDelete(id, req, res) {
     return res.status(400).json({ error: { message: '삭제 요청에는 actor(담당자)가 필요합니다.', status: 400 } });
   }
 
+  if (auth._bypass && body.delete_context !== 'sales-management') {
+    return res.status(403).json({ error: { message: '영업관리 화면에서만 삭제할 수 있습니다.', status: 403 } });
+  }
+
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
 

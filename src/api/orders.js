@@ -21,10 +21,10 @@ export function updateOrder(id, data) {
   return request(`/orders/${id}`, { method: 'PATCH', body: data });
 }
 
-export function deleteOrder(id, actor) {
+export function deleteOrder(id, actor, options = {}) {
   if (!id) throw new Error('주문 ID가 필요합니다');
   if (!actor) throw new Error('삭제 담당자(actor)가 필요합니다');
-  return request(`/orders/${id}`, { method: 'DELETE', body: { actor } });
+  return request(`/orders/${id}`, { method: 'DELETE', body: { actor, ...options } });
 }
 
 export function shipOrder(id, actor) {
