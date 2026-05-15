@@ -33,6 +33,7 @@ async function appendViaWebhook(order) {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        sheetId: 0,
         values: orderValues(order),
       }),
       signal: controller.signal,
