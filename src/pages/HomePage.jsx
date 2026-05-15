@@ -2,6 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './HomePage.css';
 
+const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM/edit?gid=0#gid=0';
+
 export default function HomePage() {
   const navigate = useNavigate();
 
@@ -31,6 +33,14 @@ export default function HomePage() {
             거래처·납기일·사양을 한 번에 입력
           </div>
           <div className="home-hero-order__cta">작업 등록하기 &rarr;</div>
+        </button>
+
+        <button
+          className="home-sheet-link"
+          onClick={() => window.open(GOOGLE_SHEET_URL, '_blank', 'noopener,noreferrer')}
+        >
+          <span className="home-sheet-link__icon">↗</span>
+          <span className="home-sheet-link__text">구글 시트 바로가기</span>
         </button>
 
         <p className="home-desc">또는 화면을 선택하세요</p>

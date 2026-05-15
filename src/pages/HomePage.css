@@ -355,6 +355,51 @@
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }
 
+.home-sheet-link {
+  width: 100%;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1.5px solid rgba(14, 165, 233, 0.24);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: #0369a1;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  transition: transform 0.2s var(--ease-spring),
+              box-shadow 0.2s var(--ease-smooth),
+              border-color 0.2s var(--ease-smooth);
+}
+
+.home-sheet-link:hover {
+  transform: translateY(-2px);
+  border-color: rgba(14, 165, 233, 0.42);
+  box-shadow: var(--shadow-xl);
+}
+
+.home-sheet-link:active {
+  transform: scale(0.98);
+}
+
+.home-sheet-link__icon {
+  flex: 0 0 auto;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.home-sheet-link__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* ─── Divider label ─── */
 .home-desc {
   font-size: 13px;
