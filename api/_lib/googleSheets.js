@@ -3,7 +3,7 @@ import { createSign } from 'node:crypto';
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
-const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzBtogt4nIdpy5jxF-2Jl-LccL0hRXeN4UFuaaIEvTPDcwAMgMJejq8inflbrLIHTvj/exec';
+const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzHiJ9RSBV3Y4cIgYOP1Y-d7zgfyjqRIrFSxtqCYd9Tg46RDzjUA_k8KPaFUBLRFgR1/exec';
 const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
 
 let cachedToken = null;
