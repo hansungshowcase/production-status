@@ -3,7 +3,7 @@ import { createSign } from 'node:crypto';
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
-const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbzIGPy1iP1VdpX1k_RynpgKuLWV1zo7KPKt7MDl518DNHMz5f9UEK-SCXY6BpZyzWz_/exec';
+const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwIcl2eMEutqooqlERMOiLZAjo3SkuZDuKkaRpYN_75FjDl6ke2hlugkqJlmf2QutRv/exec';
 const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
 
 let cachedToken = null;
@@ -62,6 +62,39 @@ async function appendViaWebhook(order) {
     }
 
     return { skipped: false };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function deleteViaWebhook(order) {
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+  if (!webhookUrl) {
+    return { skipped: true };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        sheetId: 0,
+        action: 'deleteOrder',
+        values: orderValues(order),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Sheets webhook delete failed: ${response.status}`);
+    }
+
+    const result = await response.json().catch(() => ({}));
+    return { skipped: false, deletedRow: result.deletedRow ?? null };
   } finally {
     clearTimeout(timeout);
   }
@@ -185,4 +218,8 @@ export async function appendOrderToSheet(order) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function deleteOrderFromSheet(order) {
+  return deleteViaWebhook(order);
 }

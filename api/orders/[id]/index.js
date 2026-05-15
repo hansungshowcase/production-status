@@ -5,6 +5,7 @@ import { requireAuth, resolveActor } from '../../_lib/auth.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { del } from '@vercel/blob';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
+import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -176,6 +177,12 @@ async function handleDelete(id, req, res) {
   }
 
   await db.execute({ sql: 'DELETE FROM orders WHERE id = ?', args: [id] });
+
+  try {
+    await deleteOrderFromSheet(order);
+  } catch (sheetErr) {
+    console.error('Google Sheets order delete failed:', sheetErr);
+  }
 
   return res.json({ success: true, message: '주문이 삭제되었습니다.' });
 }
