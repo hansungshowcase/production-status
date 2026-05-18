@@ -93,3 +93,14 @@ export async function attachWorkOrderImage(orderId, file) {
     throw err;
   });
 }
+
+export async function getWorkOrderImage(orderId) {
+  if (!orderId) throw new Error('二쇰Ц ID媛 ?꾩슂?⑸땲??');
+
+  const response = await fetch(`/api/orders/${orderId}/work-order-image`);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData?.error?.message || '?묒뾽吏?쒖꽌瑜?遺덈윭?????놁뒿?덈떎.');
+  }
+  return response.json();
+}

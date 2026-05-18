@@ -12,6 +12,8 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const [shipping, setShipping] = useState(false);
 
   const processes = order.processes || [];
+  const fallbackCompletedSteps = Number(order.completed_steps || 0);
+  const fallbackTotalSteps = Number(order.total_steps || PROCESS_STEPS.length) || PROCESS_STEPS.length;
   const stepStatusMap = {};
   const stepWorkerMap = {};
   processes.forEach(p => {
@@ -19,8 +21,21 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
     if (p.completed_by) stepWorkerMap[p.step_name] = p.completed_by;
     else if (p.started_by) stepWorkerMap[p.step_name] = p.started_by;
   });
-  const completedSteps = processes.filter(p => p.status === 'completed').length;
-  const totalSteps = PROCESS_STEPS.length;
+  if (processes.length === 0 && fallbackTotalSteps > 0) {
+    PROCESS_STEPS.forEach((step, idx) => {
+      if (idx < fallbackCompletedSteps) {
+        stepStatusMap[step] = 'completed';
+      } else if (idx === fallbackCompletedSteps && fallbackCompletedSteps < fallbackTotalSteps) {
+        stepStatusMap[step] = order.status === 'shipped' ? 'completed' : 'in_progress';
+      } else {
+        stepStatusMap[step] = 'waiting';
+      }
+    });
+  }
+  const completedSteps = processes.length > 0
+    ? processes.filter(p => p.status === 'completed').length
+    : Math.min(fallbackCompletedSteps, fallbackTotalSteps);
+  const totalSteps = processes.length > 0 ? PROCESS_STEPS.length : fallbackTotalSteps;
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
   // Find current step (first non-completed)

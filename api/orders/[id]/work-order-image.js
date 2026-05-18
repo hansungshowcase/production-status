@@ -13,6 +13,10 @@ export const config = {
 };
 
 export default cors(async function handler(req, res) {
+  if (req.method === 'GET') {
+    return handleGet(req, res);
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
@@ -90,3 +94,28 @@ export default cors(async function handler(req, res) {
 
   return res.status(201).json({ url: storedImage.url });
 });
+
+async function handleGet(req, res) {
+  const { id } = req.query;
+  if (!id || isNaN(Number(id))) {
+    return res.status(400).json({ error: { message: '?좏슚??二쇰Ц ID媛 ?꾩슂?⑸땲??', status: 400 } });
+  }
+
+  const db = getDb();
+  await ensureOrderImageColumn(db);
+  const orderResult = await db.execute({
+    sql: 'SELECT work_order_image_url FROM orders WHERE id = ?',
+    args: [id],
+  });
+  const order = orderResult.rows[0];
+
+  if (!order) {
+    return res.status(404).json({ error: { message: '二쇰Ц??李얠쓣 ???놁뒿?덈떎.', status: 404 } });
+  }
+
+  if (!order.work_order_image_url) {
+    return res.status(404).json({ error: { message: '??ν맂 ?묒뾽吏?쒖꽌 ?대?吏媛 ?놁뒿?덈떎.', status: 404 } });
+  }
+
+  return res.json({ url: order.work_order_image_url });
+}

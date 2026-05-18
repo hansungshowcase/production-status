@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getProcessesByStep, startProcess, completeProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
-import { attachWorkOrderImage } from '../api/workOrderImages';
+import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages';
 import { getStats } from '../api/stats';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
@@ -82,12 +82,11 @@ export default function WorkerStationViewPage() {
       ]);
       const raw = Array.isArray(data) ? data : data.processes || [];
       setItems(raw.map(item => {
-        if (item.work_order_image_url) {
-          localWorkOrderUrlsRef.current.delete(item.order_id);
-        }
+        const localUrl = localWorkOrderUrlsRef.current.get(item.order_id) || null;
         return {
           ...item,
-          work_order_image_url: item.work_order_image_url || localWorkOrderUrlsRef.current.get(item.order_id) || null,
+          work_order_image_url: localUrl,
+          has_work_order_image: Boolean(item.has_work_order_image || localUrl),
           status: item.status || item.process_status || 'waiting',
         };
       }));
@@ -261,7 +260,7 @@ export default function WorkerStationViewPage() {
       localWorkOrderUrlsRef.current.set(item.order_id, uploaded.url);
       setItems(prev => prev.map(row => (
         row.order_id === item.order_id
-          ? { ...row, work_order_image_url: uploaded.url }
+          ? { ...row, work_order_image_url: uploaded.url, has_work_order_image: true }
           : row
       )));
       setToast({ type: 'complete', message: '작업지시서 첨부 완료', client: item.client_name, step: decodedStep });
@@ -275,12 +274,28 @@ export default function WorkerStationViewPage() {
   }
 
   // ── Issue/Photo SMS handlers ──
-  function openWorkOrderViewer(item) {
-    if (!item?.work_order_image_url) return;
-    setWorkOrderViewer({
-      url: item.work_order_image_url,
-      title: item.client_name || '작업지시서',
-    });
+  async function openWorkOrderViewer(item) {
+    if (!item?.has_work_order_image && !item?.work_order_image_url) return;
+    try {
+      let url = item.work_order_image_url || localWorkOrderUrlsRef.current.get(item.order_id);
+      if (!url) {
+        const loaded = await getWorkOrderImage(item.order_id);
+        url = loaded.url;
+        if (url) {
+          localWorkOrderUrlsRef.current.set(item.order_id, url);
+          setItems(prev => prev.map(row => (
+            row.order_id === item.order_id ? { ...row, work_order_image_url: url, has_work_order_image: true } : row
+          )));
+        }
+      }
+      if (!url) return;
+      setWorkOrderViewer({
+        url,
+        title: item.client_name || '작업지시서',
+      });
+    } catch (err) {
+      alert(err.message || '작업지시서를 불러오지 못했습니다.');
+    }
   }
 
   function openPackingPhotoViewer(item) {
@@ -748,7 +763,7 @@ export default function WorkerStationViewPage() {
                   })}
                 </span>
                 <span className="station-view__row-actions" onClick={(e) => e.stopPropagation()}>
-                  {item.work_order_image_url && (
+                  {item.has_work_order_image && (
                     <button
                       type="button"
                       className="station-view__row-btn station-view__row-btn--work-order"
@@ -757,7 +772,7 @@ export default function WorkerStationViewPage() {
                       보기
                     </button>
                   )}
-                  {!item.work_order_image_url && (
+                  {!item.has_work_order_image && (
                     <label className={`station-view__row-btn station-view__row-btn--work-order${workOrderUploadingId === item.order_id ? ' station-view__row-btn--uploading' : ''}`}>
                       <input
                         type="file"

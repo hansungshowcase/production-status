@@ -6,7 +6,6 @@ import { daysUntilDue } from '../_lib/daysUntilDue.js';
 import { requireAuth, resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
-import { ensureShippingProcesses } from '../_lib/ensureShippingProcess.js';
 import { appendOrderToSheet } from '../_lib/googleSheets.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
@@ -38,7 +37,6 @@ export default cors(async function handler(req, res) {
 async function handleGet(req, res) {
   const db = getDb();
   await ensureOrderImageColumn(db);
-  await ensureShippingProcesses(db);
   const {
     sales_person, status, client_name, product_type, search,
     overdue, due_soon,
@@ -49,7 +47,14 @@ async function handleGet(req, res) {
 
   // 상관 서브쿼리 3개를 derived table JOIN으로 변환 (N×M → N+M, idx_processes_order_id 활용)
   let sql = `
-    SELECT o.*,
+    SELECT
+      o.id, o.order_date, o.due_date, o.sales_person, o.client_name,
+      o.ship_date, o.sale_amount, o.lead_source, o.balance,
+      o.phone, o.product_type, o.door_type, o.design,
+      o.width, o.depth, o.height, o.quantity, o.color,
+      o.notes, o.remarks, o.etc_notes, o.ship_scheduled_date,
+      o.sms_sent, o.safe_delivery, o.status, o.created_at, o.updated_at,
+      CASE WHEN o.work_order_image_url IS NULL OR o.work_order_image_url = '' THEN 0 ELSE 1 END AS has_work_order_image,
       COALESCE(ps.completed_steps, 0) AS completed_steps,
       COALESCE(ps.total_steps, 0) AS total_steps,
       COALESCE(iss.open_issues, 0) AS open_issues

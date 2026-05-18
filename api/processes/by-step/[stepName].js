@@ -39,7 +39,7 @@ export default cors(async function handler(req, res) {
              o.id AS order_id, o.client_name, o.product_type, o.door_type,
              o.width, o.depth, o.height, o.color, o.due_date, o.sales_person,
              o.order_date, o.created_at, o.quantity, o.design, o.notes, o.remarks,
-             o.work_order_image_url,
+             CASE WHEN o.work_order_image_url IS NULL OR o.work_order_image_url = '' THEN 0 ELSE 1 END AS has_work_order_image,
              (SELECT ph.file_path
               FROM photos ph
               JOIN processes pp ON pp.id = ph.process_id
