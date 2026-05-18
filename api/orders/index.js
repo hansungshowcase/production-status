@@ -274,7 +274,7 @@ async function handlePost(req, res) {
     try {
       await appendOrderToSheet(created);
     } catch (sheetErr) {
-      console.error('Google Sheets order append failed:', sheetErr);
+      console.warn('Google Sheets order append skipped:', sheetErr?.message || sheetErr);
     }
 
     return res.status(201).json(created);

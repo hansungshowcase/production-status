@@ -185,7 +185,7 @@ async function handleDelete(id, req, res) {
   try {
     await deleteOrderFromSheet(order);
   } catch (sheetErr) {
-    console.error('Google Sheets order delete failed:', sheetErr);
+    console.warn('Google Sheets order delete skipped:', sheetErr?.message || sheetErr);
   }
 
   return res.json({ success: true, message: '주문이 삭제되었습니다.' });

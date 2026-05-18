@@ -4,7 +4,11 @@ import OfflineBanner from './components/common/OfflineBanner';
 import InstallPrompt from './components/common/InstallPrompt';
 import PageLoader from './components/common/PageLoader';
 import SplashScreen from './components/common/SplashScreen';
-import ChunkErrorBoundary from './components/common/ChunkErrorBoundary';
+import ChunkErrorBoundary, {
+  clearChunkReloadAttempt,
+  isChunkLoadError,
+  recoverFromChunkLoadError,
+} from './components/common/ChunkErrorBoundary';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const WorkerPage = lazy(() => import('./pages/WorkerPage'));
@@ -86,19 +90,27 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
+    const handleUnhandledRejection = (event) => {
+      if (isChunkLoadError(event.reason) && recoverFromChunkLoadError()) {
+        event.preventDefault();
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
 
     // Signal app ready after mount
     const timer = setTimeout(() => {
       setAppReady(true);
+      clearChunkReloadAttempt();
       window.dispatchEvent(new Event('app-ready'));
     }, 100);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
       clearTimeout(timer);
     };
   }, []);
