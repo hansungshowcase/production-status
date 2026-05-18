@@ -77,6 +77,15 @@ export default cors(async function handler(req, res) {
     }
   }
 
+  if (process.step_name === '포장') {
+    await db.execute({
+      sql: `INSERT INTO processes (order_id, step_name, status)
+            VALUES (?, '출고', 'waiting')
+            ON CONFLICT (order_id, step_name) WHERE step_name = '출고' DO NOTHING`,
+      args: [process.order_id],
+    });
+  }
+
   if (process.step_name === '출고' && order) {
     const today = new Date().toISOString().slice(0, 10);
     const { rows: shippedRows } = await db.execute({

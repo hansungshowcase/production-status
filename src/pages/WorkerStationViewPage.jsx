@@ -9,8 +9,8 @@ import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
 import './WorkerStationViewPage.css';
 
-const REFRESH_INTERVAL = 5000;
-const STATS_REFRESH_INTERVAL = 30000;
+const REFRESH_INTERVAL = 30000;
+const STATS_REFRESH_INTERVAL = 120000;
 
 const CONTACTS = [
   { name: '박상규', role: '공장장', phone: '010-9322-3904' },

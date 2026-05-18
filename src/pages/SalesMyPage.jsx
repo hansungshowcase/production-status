@@ -12,7 +12,7 @@ import { safeGet } from '../utils/safeStorage';
 import './SalesMyPage.css';
 
 const LS_KEY = 'sales_last_person';
-const REFRESH_INTERVAL = 15000; // 15 seconds
+const REFRESH_INTERVAL = 60000; // 60 seconds
 
 const SALES_PERSONS = ['신은철', '이시아'];
 

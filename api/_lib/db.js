@@ -22,7 +22,17 @@ export function getDb() {
 
   const executeQuery = async ({ sql: query, args = [] }) => {
     const pgSql = convertPlaceholders(query);
-    const rows = await sql.query(pgSql, args);
+    let rows;
+    try {
+      rows = await sql.query(pgSql, args);
+    } catch (err) {
+      const message = String(err?.message || '');
+      if (message.includes('exceeded the data transfer quota')) {
+        err.status = 503;
+        err.publicMessage = '데이터베이스 전송량 한도가 초과되었습니다. 관리자 조치 후 다시 이용할 수 있습니다.';
+      }
+      throw err;
+    }
     return {
       rows,
       rowsAffected: rows.length,

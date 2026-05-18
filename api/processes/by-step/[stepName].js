@@ -1,8 +1,5 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
-import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
-import { ensureShippingProcesses } from '../../_lib/ensureShippingProcess.js';
-
 import { STEPS } from '../../_lib/steps.js';
 
 export default cors(async function handler(req, res) {
@@ -19,19 +16,20 @@ export default cors(async function handler(req, res) {
 
   try {
     const db = getDb();
-    await ensureOrderImageColumn(db);
-    if (stepName === '출고') {
-      await ensureShippingProcesses(db);
-    }
     const stepIndex = STEPS.indexOf(stepName);
     const prevSteps = STEPS.slice(0, stepIndex);
 
-    // Single query: main data + previous steps filter (NOT EXISTS)
     const args = [stepName];
     let filterClause = '';
     if (prevSteps.length > 0) {
       const placeholders = prevSteps.map(() => '?').join(',');
-      filterClause = `AND NOT EXISTS (SELECT 1 FROM processes p3 WHERE p3.order_id = p.order_id AND p3.step_name IN (${placeholders}) AND p3.status != 'completed')`;
+      filterClause = `AND NOT EXISTS (
+        SELECT 1
+        FROM processes p3
+        WHERE p3.order_id = p.order_id
+          AND p3.step_name IN (${placeholders})
+          AND p3.status != 'completed'
+      )`;
       args.push(...prevSteps);
     }
 
@@ -57,39 +55,13 @@ export default cors(async function handler(req, res) {
         AND o.status = 'in_production'
         ${filterClause}
       ORDER BY o.id DESC`,
-      args
+      args,
     });
 
-    // Batch fetch step history (1 query instead of N)
-    if (prevSteps.length > 0 && rows.length > 0) {
-      const orderIds = rows.map(r => r.order_id);
-      const orderPlaceholders = orderIds.map(() => '?').join(',');
-      const stepPlaceholders = prevSteps.map(() => '?').join(',');
-      const historyResult = await db.execute({
-        sql: `SELECT order_id, step_name, completed_by, completed_at FROM processes WHERE order_id IN (${orderPlaceholders}) AND step_name IN (${stepPlaceholders}) AND status = 'completed' ORDER BY id ASC`,
-        args: [...orderIds, ...prevSteps]
-      });
-
-      const historyMap = {};
-      for (const h of historyResult.rows) {
-        if (!historyMap[h.order_id]) historyMap[h.order_id] = [];
-        historyMap[h.order_id].push({
-          step_name: h.step_name,
-          completed_by: h.completed_by || null,
-          completed_at: h.completed_at || null,
-        });
-      }
-
-      return res.json(rows.map(row => ({
-        ...row,
-        step_history: historyMap[row.order_id] || [],
-      })));
-    }
-
-    // stepIndex 0 (도면설계) or no results — no history needed
     res.json(rows.map(row => ({ ...row, step_history: [] })));
   } catch (err) {
     console.error('by-step error:', err);
-    res.status(500).json({ error: { message: '공정 데이터 조회에 실패했습니다.', status: 500 } });
+    const status = err.status || 500;
+    res.status(status).json({ error: { message: err.publicMessage || '공정 데이터 조회에 실패했습니다.', status } });
   }
 });

@@ -16,7 +16,7 @@ const ISSUE_TYPES = [
   { value: '기타', label: '기타' },
 ];
 
-const REFRESH_INTERVAL = 5000; // 5 seconds
+const REFRESH_INTERVAL = 30000; // 30 seconds
 
 export default function TabletWorkerPage() {
   const [orders, setOrders] = useState([]);
