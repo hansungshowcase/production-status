@@ -42,6 +42,12 @@ export default cors(async function handler(req, res) {
              o.width, o.depth, o.height, o.color, o.due_date, o.sales_person,
              o.order_date, o.created_at, o.quantity, o.design, o.notes, o.remarks,
              o.work_order_image_url,
+             (SELECT ph.file_path
+              FROM photos ph
+              JOIN processes pp ON pp.id = ph.process_id
+              WHERE pp.order_id = o.id AND pp.step_name = '포장'
+              ORDER BY ph.uploaded_at DESC
+              LIMIT 1) AS packing_photo_url,
              (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id AND p2.status = 'completed') AS completed_steps,
              (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id) AS total_steps,
              (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues

@@ -33,6 +33,16 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '진행 중인 공정만 완료할 수 있습니다.', status: 400 } });
   }
 
+  if (process.step_name === '포장') {
+    const { rows: photoRows } = await db.execute({
+      sql: 'SELECT id FROM photos WHERE process_id = ? LIMIT 1',
+      args: [process.id],
+    });
+    if (photoRows.length === 0) {
+      return res.status(400).json({ error: { message: '포장 완료 후 출고로 넘기려면 사진 첨부가 필요합니다.', status: 400 } });
+    }
+  }
+
   const now = new Date().toISOString();
   const completeWorker = actor || '작업자';
 

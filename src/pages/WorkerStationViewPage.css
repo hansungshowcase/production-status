@@ -1114,6 +1114,13 @@
   min-width: 64px;
 }
 
+.station-view__row-btn--packing-photo {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+  min-width: 64px;
+}
+
 .station-view__row-btn--uploading {
   opacity: 0.65;
   pointer-events: none;
@@ -3306,6 +3313,31 @@
 
 .sv-card-popup__photo-btn:active {
   background: #e2e8f0;
+}
+
+.sv-card-popup__required-photo {
+  width: 100%;
+  margin: 12px 0 4px;
+  padding: 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  box-sizing: border-box;
+}
+
+.sv-card-popup__required-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #9a3412;
+  margin-bottom: 4px;
+}
+
+.sv-card-popup__required-desc {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c2410c;
+  line-height: 1.45;
+  margin-bottom: 10px;
 }
 
 .sv-card-popup__sms-preview {

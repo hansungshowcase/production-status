@@ -54,6 +54,7 @@ export default function WorkerStationViewPage() {
   const [issueSelectOpen, setIssueSelectOpen] = useState(false);
   const [workOrderUploadingId, setWorkOrderUploadingId] = useState(null);
   const [workOrderViewer, setWorkOrderViewer] = useState(null);
+  const [packingPhotoFile, setPackingPhotoFile] = useState(null);
   const prevIssueCountRef = useRef(0);
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
@@ -119,6 +120,7 @@ export default function WorkerStationViewPage() {
     setPhotoModal(null);
     setIssueListModal(null);
     setWorkOrderViewer(null);
+    setPackingPhotoFile(null);
   }
 
   function requestComplete(processId) {
@@ -127,15 +129,29 @@ export default function WorkerStationViewPage() {
     const item = items.find(i => i.process_id === processId);
     const clientName = item?.client_name || '거래처';
     const status = item?.status || item?.process_status || 'waiting';
-    setConfirmTarget({ processId, clientName, status, orderId: item?.order_id });
+    setPackingPhotoFile(null);
+    setConfirmTarget({ processId, clientName, status, orderId: item?.order_id, item });
   }
 
   async function executeComplete(selectedNextStep) {
     if (!confirmTarget || actionLoading) return; // 이중 실행 방지
-    const { processId, clientName, status, orderId } = confirmTarget;
+    const { processId, clientName, status, orderId, item } = confirmTarget;
+    if (decodedStep === '포장' && !packingPhotoFile) {
+      alert('출고로 넘기려면 포장 사진을 첨부해야 합니다.');
+      return;
+    }
     setConfirmTarget(null);
     setActionLoading(processId);
     try {
+      if (decodedStep === '포장' && packingPhotoFile) {
+        const formData = new FormData();
+        formData.append('photo', packingPhotoFile);
+        formData.append('order_id', orderId || item?.order_id);
+        formData.append('process_id', processId);
+        formData.append('uploaded_by', workerName);
+        await uploadPhoto(formData);
+      }
+
       // 대기 상태면 자동으로 시작 후 완료
       if (status === 'waiting' || status === '대기') {
         await startProcess(processId, { assigned_worker: workerName, assigned_team: department || decodedStep, actor: workerName });
@@ -182,12 +198,13 @@ export default function WorkerStationViewPage() {
         showResultToast('complete', clientName);
       }
       // 즉시 데이터 갱신
+      setPackingPhotoFile(null);
       setTimeout(async () => {
         await fetchData();
         setCompletedIds(prev => { const next = new Set(prev); next.delete(processId); return next; });
       }, 400);
     } catch (err) {
-      alert('공정 완료에 실패했습니다.');
+      alert(err.message || '공정 완료에 실패했습니다.');
     } finally {
       setActionLoading(null);
     }
@@ -263,6 +280,14 @@ export default function WorkerStationViewPage() {
     setWorkOrderViewer({
       url: item.work_order_image_url,
       title: item.client_name || '작업지시서',
+    });
+  }
+
+  function openPackingPhotoViewer(item) {
+    if (!item?.packing_photo_url) return;
+    setWorkOrderViewer({
+      url: item.packing_photo_url,
+      title: `${item.client_name || '출고'} 포장 사진`,
     });
   }
 
@@ -749,12 +774,30 @@ export default function WorkerStationViewPage() {
                       {workOrderUploadingId === item.order_id ? '첨부중' : '첨부'}
                     </label>
                   )}
+                  {decodedStep === '출고' && item.packing_photo_url && (
+                    <button
+                      type="button"
+                      className="station-view__row-btn station-view__row-btn--packing-photo"
+                      onClick={() => openPackingPhotoViewer(item)}
+                    >
+                      포장사진
+                    </button>
+                  )}
+                  {decodedStep === '출고' && !item.packing_photo_url && (
+                    <button
+                      type="button"
+                      className="station-view__row-btn station-view__row-btn--packing-photo"
+                      disabled
+                    >
+                      사진없음
+                    </button>
+                  )}
                   <button
                     className="station-view__row-btn station-view__row-btn--complete"
                     onClick={() => requestComplete(item.process_id)}
                     disabled={isActioning || !!actionLoading}
                   >
-                    {isActioning ? '...' : <><span className="station-view__btn-text--mobile">완료</span><span className="station-view__btn-text--pc">공정완료</span></>}
+                    {isActioning ? '...' : <><span className="station-view__btn-text--mobile">{decodedStep === '출고' ? '출고' : '완료'}</span><span className="station-view__btn-text--pc">{decodedStep === '출고' ? '출고완료' : '공정완료'}</span></>}
                   </button>
                 </span>
               </div>
@@ -821,7 +864,7 @@ export default function WorkerStationViewPage() {
 
       {confirmTarget && (
         <>
-          <div className="sv-overlay" onClick={() => setConfirmTarget(null)} />
+          <div className="sv-overlay" onClick={() => { setConfirmTarget(null); setPackingPhotoFile(null); }} />
           <div className="sv-card-popup">
             <div className="sv-card-popup__title">{confirmTarget.clientName}</div>
             {isLastStep ? (
@@ -865,6 +908,27 @@ export default function WorkerStationViewPage() {
                 </div>
               </>
             )}
+            {decodedStep === '포장' && (
+              <div className="sv-card-popup__required-photo">
+                <div className="sv-card-popup__required-title">포장 사진 첨부 필수</div>
+                <div className="sv-card-popup__required-desc">출고로 넘기기 전에 완성/포장 상태 사진을 첨부하세요.</div>
+                <label className="sv-card-popup__photo-attach">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      setPackingPhotoFile(e.target.files?.[0] || null);
+                      e.target.value = '';
+                    }}
+                  />
+                  <span className="sv-card-popup__photo-btn">
+                    {packingPhotoFile ? packingPhotoFile.name : '사진 첨부'}
+                  </span>
+                </label>
+              </div>
+            )}
             {!isLastStep && nextSteps.length > 0 && (
               <div className="sv-card-popup__next-steps">
                 {nextSteps.map((step, idx) => (
@@ -872,6 +936,7 @@ export default function WorkerStationViewPage() {
                     key={step}
                     className={`sv-card-popup__next-btn${idx === 0 ? ' sv-card-popup__next-btn--primary' : ''}`}
                     onClick={() => executeComplete(step)}
+                    disabled={decodedStep === '포장' && !packingPhotoFile}
                   >
                     {STEP_ICONS[step] || ''} {step}
                     {idx > 0 && <span className="sv-card-popup__skip-hint">건너뛰기</span>}
@@ -881,9 +946,9 @@ export default function WorkerStationViewPage() {
             )}
             <div className="sv-card-popup__actions">
               {isLastStep && (
-                <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>완료</button>
+                <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>출고완료</button>
               )}
-              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setConfirmTarget(null)}>취소</button>
+              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => { setConfirmTarget(null); setPackingPhotoFile(null); }}>취소</button>
             </div>
           </div>
         </>
