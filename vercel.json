@@ -1,6 +1,9 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "env": {
+    "NODE_OPTIONS": "--no-deprecation"
+  },
   "functions": {
     "api/**/*.js": { "maxDuration": 30 }
   },
