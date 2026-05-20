@@ -69,7 +69,9 @@ async function handleGet(req, res) {
           jsonb_build_object(
             'status', status,
             'started_by', started_by,
-            'completed_by', completed_by
+            'completed_by', completed_by,
+            'started_at', started_at,
+            'completed_at', completed_at
           )
         ) AS process_summary
       FROM processes

@@ -438,6 +438,10 @@
   flex-shrink: 0;
   font-size: 12px;
   color: #94a3b8;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
 }
 
 .sales-order-card__process-status--done {
@@ -447,6 +451,14 @@
 .sales-order-card__process-status--current {
   color: #2563eb;
   font-weight: 900;
+}
+
+.sales-order-card__process-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 800;
+  color: #047857;
+  white-space: nowrap;
 }
 
 .sales-order-card__process-item:has(.sales-order-card__process-dot--done) {

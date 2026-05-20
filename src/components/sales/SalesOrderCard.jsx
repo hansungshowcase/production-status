@@ -24,6 +24,12 @@ function getDisplayWorker(step, summary, salesPerson) {
   return '';
 }
 
+function formatProcessTime(value) {
+  if (!value) return '';
+  const text = String(value).replace('T', ' ');
+  return text.slice(5, 16);
+}
+
 export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -36,11 +42,13 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const fallbackTotalSteps = Number(order.total_steps || PROCESS_STEPS.length) || PROCESS_STEPS.length;
   const stepStatusMap = {};
   const stepWorkerMap = {};
+  const stepTimeMap = {};
   const processSummary = parseProcessSummary(order.process_summary);
   processes.forEach(p => {
     stepStatusMap[p.step_name] = p.status;
     const worker = getDisplayWorker(p.step_name, p, order.sales_person);
     if (worker) stepWorkerMap[p.step_name] = worker;
+    if (p.completed_at) stepTimeMap[p.step_name] = p.completed_at;
   });
   Object.entries(processSummary).forEach(([step, summary]) => {
     if (!summary || typeof summary !== 'object') return;
@@ -50,6 +58,9 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
     const worker = getDisplayWorker(step, summary, order.sales_person);
     if (worker && !stepWorkerMap[step]) {
       stepWorkerMap[step] = worker;
+    }
+    if (summary.completed_at && !stepTimeMap[step]) {
+      stepTimeMap[step] = summary.completed_at;
     }
   });
   if (processes.length === 0 && Object.keys(processSummary).length === 0 && fallbackTotalSteps > 0) {
@@ -259,6 +270,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
               }
 
               const worker = stepWorkerMap[step];
+              const completedTime = stepTimeMap[step];
               return (
                 <div key={idx} className="sales-order-card__process-item">
                   <span className={dotCls} />
@@ -266,7 +278,12 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
                     {step}
                     {worker && <span className="sales-order-card__process-worker-inline">({worker})</span>}
                   </span>
-                  <span className={statusCls}>{statusText}</span>
+                  <span className={statusCls}>
+                    {statusText}
+                    {isDone && completedTime && (
+                      <span className="sales-order-card__process-time">{formatProcessTime(completedTime)}</span>
+                    )}
+                  </span>
                 </div>
               );
             })}
