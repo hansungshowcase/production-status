@@ -760,7 +760,11 @@ export default function WorkerStationViewPage() {
                         title={label}
                       >
                         <span className="station-view__pip-bar">
-                          <span className="station-view__pip-label">{label}</span>
+                          <span className="station-view__pip-index">{i + 1}</span>
+                          <span className="station-view__pip-label">
+                            <span className="station-view__pip-step">{shortName}</span>
+                            {worker && <span className="station-view__pip-worker">({worker})</span>}
+                          </span>
                         </span>
                       </span>
                     );
