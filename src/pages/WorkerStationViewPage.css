@@ -3493,6 +3493,94 @@
   color: #64748b;
 }
 
+.sv-overdue-popup {
+  align-items: stretch;
+  border: 1px solid #fecaca;
+  box-shadow: 0 16px 56px rgba(127, 29, 29, 0.24);
+}
+
+.sv-overdue-popup__eyebrow {
+  align-self: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 8px;
+  animation: overdue-popup-glow 1.4s ease-in-out infinite;
+}
+
+.sv-overdue-popup__list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  margin: 2px 0 8px;
+}
+
+.sv-overdue-popup__item {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.9fr) minmax(0, 1.35fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid #fee2e2;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #0f172a;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sv-overdue-popup__client,
+.sv-overdue-popup__product {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sv-overdue-popup__client {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sv-overdue-popup__product {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.sv-overdue-popup__due {
+  padding: 3px 6px;
+  border-radius: 7px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+@keyframes overdue-popup-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.12), 0 0 8px rgba(220, 38, 38, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.22), 0 0 16px rgba(220, 38, 38, 0.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sv-overdue-popup__eyebrow {
+    animation: none;
+  }
+}
+
 .sv-card-popup__issue-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

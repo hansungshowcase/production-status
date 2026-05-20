@@ -55,7 +55,9 @@ export default function WorkerStationViewPage() {
   const [workOrderUploadingId, setWorkOrderUploadingId] = useState(null);
   const [workOrderViewer, setWorkOrderViewer] = useState(null);
   const [packingPhotoFile, setPackingPhotoFile] = useState(null);
+  const [overdueAlertDismissed, setOverdueAlertDismissed] = useState(false);
   const prevIssueCountRef = useRef(0);
+  const prevOverdueKeyRef = useRef('');
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
   const nextSteps = PROCESS_STEPS.slice(currentStepIndex + 1, currentStepIndex + 3); // 다음 2개 공정
@@ -390,6 +392,7 @@ export default function WorkerStationViewPage() {
   const progressItems = items.filter(i => i.status === 'in_progress' || i.status === '진행중');
   const overdueItems = items.filter(i => i.due_date && i.due_date < today);
   const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
+  const overdueKey = overdueItems.map(i => i.process_id).sort().join(',');
 
   // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
   useEffect(() => {
@@ -398,6 +401,19 @@ export default function WorkerStationViewPage() {
     }
     prevIssueCountRef.current = totalOpenIssues;
   }, [totalOpenIssues]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!overdueKey) {
+      prevOverdueKeyRef.current = '';
+      setOverdueAlertDismissed(false);
+      return;
+    }
+    if (prevOverdueKeyRef.current !== overdueKey) {
+      prevOverdueKeyRef.current = overdueKey;
+      setOverdueAlertDismissed(false);
+    }
+  }, [loading, overdueKey]);
 
   const sorted = [...items].sort((a, b) => {
     // 납기초과 건은 항상 상단
@@ -996,6 +1012,55 @@ export default function WorkerStationViewPage() {
                 <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>출고완료</button>
               )}
               <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => { setConfirmTarget(null); setPackingPhotoFile(null); }}>취소</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {!loading && overdueItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !issueModal && !workOrderViewer && (
+        <>
+          <div className="sv-overlay" onClick={() => setOverdueAlertDismissed(true)} />
+          <div className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림">
+            <div className="sv-overdue-popup__eyebrow">납기 초과</div>
+            <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueItems.length}건</div>
+            <div className="sv-card-popup__desc">
+              납기가 지난 작업입니다. 가능한 작업부터 먼저 진행해 주세요.
+            </div>
+            <div className="sv-overdue-popup__list">
+              {overdueItems.slice(0, 4).map(item => {
+                const dday = getDday(item.due_date);
+                const product = [item.product_type, item.door_type].filter(Boolean).join(' / ') || '-';
+                return (
+                  <button
+                    key={item.process_id}
+                    type="button"
+                    className="sv-overdue-popup__item"
+                    onClick={() => {
+                      setExpandedId(item.process_id);
+                      setOverdueAlertDismissed(true);
+                    }}
+                  >
+                    <span className="sv-overdue-popup__client">{item.client_name || '-'}</span>
+                    <span className="sv-overdue-popup__product">{product}</span>
+                    <span className="sv-overdue-popup__due">{item.due_date?.slice(5) || '-'} {dday?.label || ''}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="sv-card-popup__actions">
+              <button
+                className="sv-card-popup__btn sv-card-popup__btn--ok"
+                onClick={() => {
+                  const first = overdueItems[0];
+                  if (first) setExpandedId(first.process_id);
+                  setOverdueAlertDismissed(true);
+                }}
+              >
+                첫 작업 확인
+              </button>
+              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setOverdueAlertDismissed(true)}>
+                닫기
+              </button>
             </div>
           </div>
         </>
