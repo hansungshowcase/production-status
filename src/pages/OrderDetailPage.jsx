@@ -11,6 +11,14 @@ import './OrderDetailPage.css';
 
 const LS_KEY = 'sales_last_person';
 
+function displayProcessWorker(step, processLike, salesPerson) {
+  if (!processLike) return '';
+  if (step === '도면설계') return '김보수 팀장';
+  if (processLike.completed_by) return processLike.completed_by;
+  if (processLike.started_by && processLike.started_by !== salesPerson) return processLike.started_by;
+  return '';
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -188,14 +196,15 @@ export default function OrderDetailPage() {
             const p = stepHistMap[step];
             const isDone = st === 'completed';
             const isActive = st === 'in_progress';
+            const worker = displayProcessWorker(step, p, order.sales_person);
             return (
               <div key={step} className={`odp-process-item odp-process-item--${isDone ? 'done' : isActive ? 'active' : 'wait'}`}>
                 <div className="odp-process-dot" />
                 <div className="odp-process-content">
                   <div className="odp-process-name">{step}</div>
                   <div className="odp-process-meta">
-                    {isDone && p?.completed_by && <span>완료 · {p.completed_by}</span>}
-                    {isActive && p?.started_by && <span>진행중 · {p.started_by}</span>}
+                    {isDone && worker && <span>완료 · {worker}</span>}
+                    {isActive && worker && <span>진행중 · {worker}</span>}
                     {!isDone && !isActive && <span>대기</span>}
                     {p?.completed_at && <span> · {String(p.completed_at).replace('T', ' ').slice(0, 16)}</span>}
                   </div>

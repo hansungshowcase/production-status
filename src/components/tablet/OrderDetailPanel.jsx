@@ -26,6 +26,14 @@ function formatDate(dateStr) {
   return `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getDate().toString().padStart(2, '0')}`;
 }
 
+function displayProcessWorker(step, processLike, salesPerson) {
+  if (!processLike) return '';
+  if (step === '도면설계') return '김보수 팀장';
+  if (processLike.completed_by) return processLike.completed_by;
+  if (processLike.started_by && processLike.started_by !== salesPerson) return processLike.started_by;
+  return '';
+}
+
 const PRE_PRODUCTION_ITEMS = [
   { key: 'instruction_check', label: '지시서 확인' },
   { key: 'material_drawing', label: '자재 도면' },
@@ -116,7 +124,7 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
       timeline.push({
         step,
         action: '시작',
-        worker: proc.started_by || '-',
+        worker: displayProcessWorker(step, proc, order.sales_person) || '-',
         time: proc.started_at,
         active: proc.status === 'in_progress',
       });
@@ -125,7 +133,7 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
       timeline.push({
         step,
         action: '완료',
-        worker: proc.completed_by || '-',
+        worker: displayProcessWorker(step, proc, order.sales_person) || '-',
         time: proc.completed_at,
         active: false,
       });
@@ -215,8 +223,8 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
         <div className="order-detail-status">
           <div className="order-detail-status-info">
             현재 공정: <strong>{currentStepName}</strong>
-            {currentProcess.status === 'in_progress' && currentProcess.started_by && (
-              <> — {currentProcess.started_by}님이 {formatDateTime(currentProcess.started_at)}에 시작</>
+            {currentProcess.status === 'in_progress' && displayProcessWorker(currentStepName, currentProcess, order.sales_person) && (
+              <> — {displayProcessWorker(currentStepName, currentProcess, order.sales_person)}님이 {formatDateTime(currentProcess.started_at)}에 시작</>
             )}
             {currentProcess.status === 'waiting' && <> — 대기 중</>}
           </div>

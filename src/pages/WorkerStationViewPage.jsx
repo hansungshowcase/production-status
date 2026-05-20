@@ -25,6 +25,14 @@ const ISSUE_TYPES = [
   { value: '기타', label: '기타', icon: '📝', color: '#64748b' },
 ];
 
+function displayProcessWorker(step, processLike, salesPerson) {
+  if (!processLike) return '';
+  if (step === '도면설계') return '김보수 팀장';
+  if (processLike.completed_by) return processLike.completed_by;
+  if (processLike.started_by && processLike.started_by !== salesPerson) return processLike.started_by;
+  return '';
+}
+
 export default function WorkerStationViewPage() {
   const { stepName } = useParams();
   const navigate = useNavigate();
@@ -770,8 +778,8 @@ export default function WorkerStationViewPage() {
                     const isDone = i < completedSteps;
                     const isCurr = s === item.step_name || i === completedSteps;
                     const worker = historyItem
-                      ? (historyItem.completed_by || historyItem.started_by || '')
-                      : (s === item.step_name ? item.completed_by || item.started_by || '' : '');
+                      ? displayProcessWorker(s, historyItem, item.sales_person)
+                      : (s === item.step_name ? displayProcessWorker(s, item, item.sales_person) : '');
                     const label = worker ? `${shortName}(${worker})` : shortName;
                     return (
                       <span
@@ -867,10 +875,10 @@ export default function WorkerStationViewPage() {
                         <span className="station-view__row-detail-value">{item.started_at.replace('T', ' ').slice(0, 16)}</span>
                       </span>
                     )}
-                    {item.started_by && (
+                    {displayProcessWorker(item.step_name, item, item.sales_person) && (
                       <span className="station-view__row-detail-item">
                         <span className="station-view__row-detail-label">작업자</span>
-                        <span className="station-view__row-detail-value">{item.started_by}</span>
+                        <span className="station-view__row-detail-value">{displayProcessWorker(item.step_name, item, item.sales_person)}</span>
                       </span>
                     )}
                     {item.sales_person && (
