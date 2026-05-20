@@ -1045,7 +1045,8 @@
 .station-view__step-pip--done .station-view__pip-index {
   background: #059669;
   color: #ffffff;
-  animation: station-done-check-breathe 2.4s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.16), 0 0 10px rgba(16, 185, 129, 0.35);
+  animation: station-done-check-glow 2.6s ease-in-out infinite;
 }
 
 .station-view__step-pip--done .station-view__pip-index::after {
@@ -1054,7 +1055,7 @@
   inset: -35%;
   background: linear-gradient(120deg, transparent 35%, rgba(255, 255, 255, 0.5) 50%, transparent 65%);
   transform: translateX(-120%) rotate(18deg);
-  animation: station-done-check-sheen 3.2s ease-in-out infinite;
+  animation: station-done-check-shine 2.8s ease-in-out infinite;
   pointer-events: none;
 }
 
@@ -1078,22 +1079,20 @@
   font-weight: 800;
 }
 
-@keyframes station-done-check-breathe {
+@keyframes station-done-check-glow {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.28);
-    transform: scale(1);
+    box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.14), 0 0 7px rgba(16, 185, 129, 0.24);
   }
-  45% {
-    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0);
-    transform: scale(1.04);
+  50% {
+    box-shadow: 0 0 0 1px rgba(5, 150, 105, 0.2), 0 0 14px rgba(16, 185, 129, 0.52);
   }
 }
 
-@keyframes station-done-check-sheen {
-  0%, 58% {
+@keyframes station-done-check-shine {
+  0%, 48% {
     transform: translateX(-120%) rotate(18deg);
   }
-  76%, 100% {
+  72%, 100% {
     transform: translateX(120%) rotate(18deg);
   }
 }

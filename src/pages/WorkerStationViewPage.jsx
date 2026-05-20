@@ -752,7 +752,7 @@ export default function WorkerStationViewPage() {
                     const shortName = s.replace('작업', '');
                     const historyItem = (item.step_history || []).find(h => h.step_name === s);
                     const isDone = i < completedSteps;
-                    const isCurr = i === completedSteps;
+                    const isCurr = s === item.step_name || i === completedSteps;
                     const currentWorker = isCurr
                       ? (historyItem?.started_by || item.started_by || historyItem?.completed_by || item.completed_by || '')
                       : '';
