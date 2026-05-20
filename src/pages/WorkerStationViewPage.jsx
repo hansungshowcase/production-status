@@ -759,8 +759,9 @@ export default function WorkerStationViewPage() {
                         className={`station-view__step-pip${i < completedSteps ? ' station-view__step-pip--done' : i === completedSteps ? ' station-view__step-pip--current' : ''}`}
                         title={label}
                       >
-                        <span className="station-view__pip-bar" />
-                        <span className="station-view__pip-label">{label}</span>
+                        <span className="station-view__pip-bar">
+                          <span className="station-view__pip-label">{label}</span>
+                        </span>
                       </span>
                     );
                   })}

@@ -969,30 +969,31 @@
 
 .station-view__step-pip {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
   flex: 1;
   min-width: 0;
 }
 
 .station-view__pip-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: #e2e8f0;
+  min-height: 28px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  background: #f1f5f9;
   transition: background 0.2s;
 }
 
 .station-view__pip-label {
-  font-size: 9px;
-  line-height: 1.15;
-  color: #cbd5e1;
+  font-size: 10px;
+  line-height: 1.1;
+  color: #64748b;
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  font-weight: 600;
+  font-weight: 800;
   text-align: center;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -1005,7 +1006,7 @@
 }
 
 .station-view__step-pip--done .station-view__pip-label {
-  color: #059669;
+  color: #ffffff;
 }
 
 .station-view__step-pip--current .station-view__pip-bar {
@@ -1014,7 +1015,7 @@
 }
 
 .station-view__step-pip--current .station-view__pip-label {
-  color: #0ea5e9;
+  color: #ffffff;
   font-weight: 800;
 }
 
@@ -2033,8 +2034,8 @@
   }
 
   .station-view__row {
-    padding: 14px 14px;
-    min-height: 62px;
+    padding: 12px 14px;
+    min-height: 58px;
   }
 
   .station-view__row-client {
@@ -2046,7 +2047,7 @@
     display: flex;
     align-items: stretch;
     gap: 3px;
-    flex: 2;
+    flex: 2.3;
     min-width: 0;
   }
 
