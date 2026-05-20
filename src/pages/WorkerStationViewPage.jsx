@@ -751,19 +751,23 @@ export default function WorkerStationViewPage() {
                   {PROCESS_STEPS.map((s, i) => {
                     const shortName = s.replace('작업', '');
                     const historyItem = (item.step_history || []).find(h => h.step_name === s);
-                    const worker = historyItem?.completed_by || historyItem?.started_by || (s === item.step_name ? item.completed_by || item.started_by : '');
-                    const label = worker ? `${shortName}(${worker})` : shortName;
+                    const isDone = i < completedSteps;
+                    const isCurr = i === completedSteps;
+                    const currentWorker = isCurr
+                      ? (historyItem?.started_by || item.started_by || historyItem?.completed_by || item.completed_by || '')
+                      : '';
+                    const label = currentWorker ? `${shortName}(${currentWorker})` : shortName;
                     return (
                       <span
                         key={s}
-                        className={`station-view__step-pip${i < completedSteps ? ' station-view__step-pip--done' : i === completedSteps ? ' station-view__step-pip--current' : ''}`}
+                        className={`station-view__step-pip${isDone ? ' station-view__step-pip--done' : isCurr ? ' station-view__step-pip--current' : ''}`}
                         title={label}
                       >
                         <span className="station-view__pip-bar">
-                          <span className="station-view__pip-index">{i + 1}</span>
+                          <span className="station-view__pip-index">{isDone ? '✓' : i + 1}</span>
                           <span className="station-view__pip-label">
                             <span className="station-view__pip-step">{shortName}</span>
-                            {worker && <span className="station-view__pip-worker">({worker})</span>}
+                            {currentWorker && <span className="station-view__pip-worker">{currentWorker}</span>}
                           </span>
                         </span>
                       </span>
@@ -834,11 +838,14 @@ export default function WorkerStationViewPage() {
                       const historyItem = (item.step_history || []).find(h => h.step_name === s);
                       const isDone = i < completedSteps;
                       const isCurr = i === completedSteps;
+                      const currentWorker = isCurr
+                        ? (historyItem?.started_by || item.started_by || historyItem?.completed_by || item.completed_by || '')
+                        : '';
                       return (
                         <div key={s} className={`station-view__exp-step${isDone ? ' station-view__exp-step--done' : ''}${isCurr ? ' station-view__exp-step--current' : ''}`}>
                           <span className="station-view__exp-step-icon">{STEP_ICONS[s]}</span>
-                          {isDone && historyItem?.completed_by && (
-                            <span className="station-view__exp-step-who">{historyItem.completed_by}</span>
+                          {currentWorker && (
+                            <span className="station-view__exp-step-who">{currentWorker}</span>
                           )}
                         </div>
                       );
