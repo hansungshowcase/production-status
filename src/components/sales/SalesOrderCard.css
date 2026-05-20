@@ -123,6 +123,62 @@
   color: #334155;
 }
 
+.sales-order-card__due-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.sales-order-card__due-value--soon {
+  border-color: #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.08), 0 0 12px rgba(245, 158, 11, 0.18);
+}
+
+.sales-order-card__due-value--overdue {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.08), 0 0 14px rgba(220, 38, 38, 0.24);
+  animation: sales-due-alert-glow 1.5s ease-in-out infinite;
+}
+
+.sales-order-card__due-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+@keyframes sales-due-alert-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.08), 0 0 10px rgba(220, 38, 38, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.16), 0 0 18px rgba(220, 38, 38, 0.36);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-order-card__due-value--overdue {
+    animation: none;
+  }
+}
+
 .sales-order-card__expand-hint {
   text-align: center;
   font-size: 11px;
@@ -375,6 +431,16 @@
     min-height: 28px;
     display: inline-flex;
     align-items: center;
+  }
+
+  .sales-order-card__due-value {
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: 100%;
+  }
+
+  .sales-order-card__due-status {
+    font-size: 10px;
   }
 
   .sales-order-card__detail {

@@ -94,6 +94,11 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const dueDisplay = order.due_date
     ? new Date(order.due_date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
     : '-';
+  const dueClass = dueStatus.isOverdue
+    ? 'overdue'
+    : dueStatus.isUrgent
+      ? 'soon'
+      : 'normal';
 
   return (
     <div
@@ -149,7 +154,10 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         )}
         <div className="sales-order-card__info-item">
           <span className="sales-order-card__info-label">납기</span>
-          <span className="sales-order-card__info-value">{dueDisplay}</span>
+          <span className={`sales-order-card__info-value sales-order-card__due-value sales-order-card__due-value--${dueClass}`}>
+            {dueDisplay}
+            {dueStatus.label && <span className="sales-order-card__due-status">{dueStatus.label}</span>}
+          </span>
         </div>
         {order.quantity > 1 && (
           <div className="sales-order-card__info-item">
