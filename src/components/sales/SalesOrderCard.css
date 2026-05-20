@@ -38,8 +38,10 @@
 }
 
 .sales-order-card__current-step {
+  min-width: 0;
   font-size: 13px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .sales-order-card__current-step--active {
@@ -58,6 +60,13 @@
   font-size: 13px;
   font-weight: 600;
   opacity: 0.8;
+}
+
+.sales-order-card__current-worker-inline,
+.sales-order-card__process-worker-inline {
+  margin-left: 2px;
+  font-weight: 700;
+  color: #334155;
 }
 
 .sales-order-card__badge-row {
@@ -124,14 +133,16 @@
 
 /* Progress bar */
 .sales-order-card__progress {
-  padding: 0 16px 12px;
+  padding: 4px 16px 16px;
 }
 
 .sales-order-card__progress-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  min-height: 30px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .sales-order-card__progress-text {
@@ -143,9 +154,9 @@
 }
 
 .sales-order-card__progress-bar {
-  height: 8px;
+  height: 10px;
   background: #e2e8f0;
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
@@ -159,15 +170,6 @@
 
 .sales-order-card__progress-fill--done {
   background: linear-gradient(90deg, #059669, #10b981);
-}
-
-.sales-order-card__current-worker {
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 1px 8px;
-  border-radius: 6px;
 }
 
 /* Step chain with arrows */
@@ -288,6 +290,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 30px;
+  padding: 2px 0;
   font-size: 13px;
 }
 
@@ -311,12 +315,15 @@
 }
 
 .sales-order-card__process-name {
+  min-width: 0;
   color: #475569;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .sales-order-card__process-status {
   margin-left: auto;
+  flex-shrink: 0;
   font-size: 12px;
   color: #94a3b8;
 }
@@ -382,6 +389,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .sales-order-card__progress {
+    padding: 4px 12px 14px;
   }
 }
 

@@ -57,12 +57,21 @@ async function handleGet(req, res) {
       CASE WHEN o.work_order_image_url IS NULL OR o.work_order_image_url = '' THEN 0 ELSE 1 END AS has_work_order_image,
       COALESCE(ps.completed_steps, 0) AS completed_steps,
       COALESCE(ps.total_steps, 0) AS total_steps,
+      COALESCE(ps.process_summary, '{}'::jsonb) AS process_summary,
       COALESCE(iss.open_issues, 0) AS open_issues
     FROM orders o
     LEFT JOIN (
       SELECT order_id,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_steps,
-        COUNT(*) AS total_steps
+        COUNT(*) AS total_steps,
+        jsonb_object_agg(
+          step_name,
+          jsonb_build_object(
+            'status', status,
+            'started_by', started_by,
+            'completed_by', completed_by
+          )
+        ) AS process_summary
       FROM processes
       GROUP BY order_id
     ) ps ON ps.order_id = o.id

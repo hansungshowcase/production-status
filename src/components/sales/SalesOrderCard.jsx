@@ -4,6 +4,18 @@ import { PROCESS_STEPS } from '../../constants';
 import { formatDueStatus } from '../../utils/dateUtils';
 import './SalesOrderCard.css';
 
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
 export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -16,12 +28,23 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const fallbackTotalSteps = Number(order.total_steps || PROCESS_STEPS.length) || PROCESS_STEPS.length;
   const stepStatusMap = {};
   const stepWorkerMap = {};
+  const processSummary = parseProcessSummary(order.process_summary);
   processes.forEach(p => {
     stepStatusMap[p.step_name] = p.status;
     if (p.completed_by) stepWorkerMap[p.step_name] = p.completed_by;
     else if (p.started_by) stepWorkerMap[p.step_name] = p.started_by;
   });
-  if (processes.length === 0 && fallbackTotalSteps > 0) {
+  Object.entries(processSummary).forEach(([step, summary]) => {
+    if (!summary || typeof summary !== 'object') return;
+    if (!stepStatusMap[step] && summary.status) {
+      stepStatusMap[step] = summary.status;
+    }
+    const worker = summary.completed_by || summary.started_by;
+    if (worker && !stepWorkerMap[step]) {
+      stepWorkerMap[step] = worker;
+    }
+  });
+  if (processes.length === 0 && Object.keys(processSummary).length === 0 && fallbackTotalSteps > 0) {
     PROCESS_STEPS.forEach((step, idx) => {
       if (idx < fallbackCompletedSteps) {
         stepStatusMap[step] = 'completed';
@@ -97,11 +120,9 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         <div className="sales-order-card__progress-header">
           <span className={`sales-order-card__current-step sales-order-card__current-step--${currentStepStatus === '진행중' ? 'active' : currentStepStatus === '대기' ? 'waiting' : 'done'}`}>
             {currentStepName}
+            {currentWorker && <span className="sales-order-card__current-worker-inline">({currentWorker})</span>}
             {currentStepStatus && <span className="sales-order-card__current-status"> {currentStepStatus}</span>}
           </span>
-          {currentWorker && (
-            <span className="sales-order-card__current-worker">👷 {currentWorker}</span>
-          )}
           <span className="sales-order-card__progress-text">{completedSteps}/{totalSteps}</span>
         </div>
         <div className="sales-order-card__progress-bar">
@@ -223,8 +244,10 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
               return (
                 <div key={idx} className="sales-order-card__process-item">
                   <span className={dotCls} />
-                  <span className="sales-order-card__process-name">{step}</span>
-                  {worker && <span className="sales-order-card__process-worker">{worker}</span>}
+                  <span className="sales-order-card__process-name">
+                    {step}
+                    {worker && <span className="sales-order-card__process-worker-inline">({worker})</span>}
+                  </span>
                   <span className={statusCls}>{statusText}</span>
                 </div>
               );
