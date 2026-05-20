@@ -114,8 +114,10 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
           {isShipped && (
             <span className="sales-order-card__shipped-badge">출고완료</span>
           )}
-          {isOverdue && dueStatus.label && (
-            <span className="sales-order-card__due-badge">{dueStatus.label}</span>
+          {!isShipped && order.due_date && (
+            <span className={`sales-order-card__due-badge sales-order-card__due-badge--${dueClass}`}>
+              {dueStatus.label || `납기 ${dueDisplay}`}
+            </span>
           )}
         </div>
       </div>
