@@ -853,13 +853,13 @@ export default function WorkerStationViewPage() {
                     )}
                     {item.started_by && (
                       <span className="station-view__row-detail-item">
-                        <span className="station-view__row-detail-label">시작담당</span>
+                        <span className="station-view__row-detail-label">작업자</span>
                         <span className="station-view__row-detail-value">{item.started_by}</span>
                       </span>
                     )}
                     {item.sales_person && (
                       <span className="station-view__row-detail-item">
-                        <span className="station-view__row-detail-label">담당</span>
+                        <span className="station-view__row-detail-label">발주담당</span>
                         <span className="station-view__row-detail-value">{item.sales_person}</span>
                       </span>
                     )}
