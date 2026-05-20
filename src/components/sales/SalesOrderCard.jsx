@@ -16,6 +16,14 @@ function parseProcessSummary(value) {
   return value;
 }
 
+function getDisplayWorker(step, summary, salesPerson) {
+  if (!summary || typeof summary !== 'object') return '';
+  if (summary.completed_by) return summary.completed_by;
+  if (summary.started_by && summary.started_by !== salesPerson) return summary.started_by;
+  if (step === '도면설계') return '김보수 팀장';
+  return '';
+}
+
 export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
@@ -31,15 +39,15 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const processSummary = parseProcessSummary(order.process_summary);
   processes.forEach(p => {
     stepStatusMap[p.step_name] = p.status;
-    if (p.completed_by) stepWorkerMap[p.step_name] = p.completed_by;
-    else if (p.started_by) stepWorkerMap[p.step_name] = p.started_by;
+    const worker = getDisplayWorker(p.step_name, p, order.sales_person);
+    if (worker) stepWorkerMap[p.step_name] = worker;
   });
   Object.entries(processSummary).forEach(([step, summary]) => {
     if (!summary || typeof summary !== 'object') return;
     if (!stepStatusMap[step] && summary.status) {
       stepStatusMap[step] = summary.status;
     }
-    const worker = summary.completed_by || summary.started_by;
+    const worker = getDisplayWorker(step, summary, order.sales_person);
     if (worker && !stepWorkerMap[step]) {
       stepWorkerMap[step] = worker;
     }

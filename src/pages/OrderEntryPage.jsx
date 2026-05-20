@@ -86,14 +86,14 @@ export default function OrderEntryPage() {
       const created = await createOrder(payload);
       success = true;
 
-      // 도면설계 자동 시작 (실패해도 이동에 영향 없음)
+      // 도면설계는 김보수 팀장 담당으로 시작한다. 발주 담당자는 작업자로 기록하지 않는다.
       const processes = created.processes || [];
       const firstProcess = processes.find(p => p.step_name === '도면설계');
       if (firstProcess) {
         startProcess(firstProcess.id, {
-          assigned_worker: payload.sales_person || '시스템',
+          assigned_worker: '김보수 팀장',
           assigned_team: '도면설계',
-          actor: payload.sales_person || '시스템',
+          actor: '김보수 팀장',
         }).catch(() => {});
       }
     } catch (err) {
