@@ -2116,32 +2116,38 @@
   .station-view__th--status,
   .station-view__row-status {
     grid-column: 1;
+    grid-row: 1;
   }
 
   .station-view__th--client,
   .station-view__row-client {
     grid-column: 2;
+    grid-row: 1;
     padding-left: 0;
   }
 
   .station-view__th--product,
   .station-view__row-product {
     grid-column: 3;
+    grid-row: 1;
   }
 
   .station-view__th--spec,
   .station-view__row-spec {
     grid-column: 4;
+    grid-row: 1;
   }
 
   .station-view__th--due,
   .station-view__row-due {
     grid-column: 5;
+    grid-row: 1;
   }
 
   .station-view__th--actions,
   .station-view__row-actions {
     grid-column: 6;
+    grid-row: 1;
   }
 
   .station-view__row {
@@ -2182,6 +2188,7 @@
     align-items: stretch;
     gap: 6px;
     grid-column: 2 / -1;
+    grid-row: 2;
     width: 100%;
     min-width: 0;
   }
