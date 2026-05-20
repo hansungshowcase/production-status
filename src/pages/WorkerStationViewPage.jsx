@@ -767,7 +767,7 @@ export default function WorkerStationViewPage() {
                           <span className="station-view__pip-index">{isDone ? '✓' : i + 1}</span>
                           <span className="station-view__pip-label">
                             <span className="station-view__pip-step">{shortName}</span>
-                            {currentWorker && <span className="station-view__pip-worker">{currentWorker}</span>}
+                            {currentWorker && <span className="station-view__pip-worker">({currentWorker})</span>}
                           </span>
                         </span>
                       </span>
@@ -832,38 +832,55 @@ export default function WorkerStationViewPage() {
               {/* Expanded detail on tap */}
               {isExpanded && (
                 <div className="station-view__row-expand">
-                  {/* 공정 진행 아이콘 바 */}
-                  <div className="station-view__expand-steps">
-                    {PROCESS_STEPS.map((s, i) => {
-                      const historyItem = (item.step_history || []).find(h => h.step_name === s);
-                      const isDone = i < completedSteps;
-                      const isCurr = i === completedSteps;
-                      const currentWorker = isCurr
-                        ? (historyItem?.started_by || item.started_by || historyItem?.completed_by || item.completed_by || '')
-                        : '';
-                      return (
-                        <div key={s} className={`station-view__exp-step${isDone ? ' station-view__exp-step--done' : ''}${isCurr ? ' station-view__exp-step--current' : ''}`}>
-                          <span className="station-view__exp-step-icon">{STEP_ICONS[s]}</span>
-                          {currentWorker && (
-                            <span className="station-view__exp-step-who">{currentWorker}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
                   <div className="station-view__row-details">
-                    {item.created_at && <span className="station-view__row-detail-item">등록: {new Date(item.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
-                    {item.order_date && <span className="station-view__row-detail-item">발주: {item.order_date}</span>}
-                    {item.started_at && <span className="station-view__row-detail-item">공정시작: {item.started_at.replace('T', ' ').slice(0, 16)}</span>}
-                    {item.started_by && <span className="station-view__row-detail-item">시작담당: {item.started_by}</span>}
-                    {item.sales_person && <span className="station-view__row-detail-item">담당: {item.sales_person}</span>}
-                    {item.color && <span className="station-view__row-detail-item">색상: {item.color}</span>}
-                    {item.design && <span className="station-view__row-detail-item">디자인: {item.design}</span>}
+                    {item.created_at && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">등록</span>
+                        <span className="station-view__row-detail-value">{new Date(item.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </span>
+                    )}
+                    {item.order_date && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">발주</span>
+                        <span className="station-view__row-detail-value">{item.order_date}</span>
+                      </span>
+                    )}
+                    {item.started_at && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">공정시작</span>
+                        <span className="station-view__row-detail-value">{item.started_at.replace('T', ' ').slice(0, 16)}</span>
+                      </span>
+                    )}
+                    {item.started_by && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">시작담당</span>
+                        <span className="station-view__row-detail-value">{item.started_by}</span>
+                      </span>
+                    )}
+                    {item.sales_person && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">담당</span>
+                        <span className="station-view__row-detail-value">{item.sales_person}</span>
+                      </span>
+                    )}
+                    {item.color && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">색상</span>
+                        <span className="station-view__row-detail-value">{item.color}</span>
+                      </span>
+                    )}
+                    {item.design && (
+                      <span className="station-view__row-detail-item">
+                        <span className="station-view__row-detail-label">디자인</span>
+                        <span className="station-view__row-detail-value">{item.design}</span>
+                      </span>
+                    )}
                   </div>
                   {(item.notes || item.remarks) && (
                     <div className="station-view__row-notes">
-                      {item.notes && <span>{item.notes}</span>}
-                      {item.remarks && <span>{item.remarks}</span>}
+                      <div className="station-view__row-notes-title">작업 메모</div>
+                      {item.notes && <div className="station-view__row-notes-text">{item.notes}</div>}
+                      {item.remarks && <div className="station-view__row-notes-text">{item.remarks}</div>}
                     </div>
                   )}
                 </div>

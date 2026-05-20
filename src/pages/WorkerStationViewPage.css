@@ -1248,9 +1248,9 @@
 
 /* Expanded row detail */
 .station-view__row-expand {
-  padding: 6px 10px 10px 24px;
+  padding: 12px 14px 14px 26px;
   background: #f8fafc;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #e2e8f0;
   animation: row-expand 0.15s ease;
 }
 
@@ -1259,72 +1259,63 @@
   to { opacity: 1; max-height: 200px; }
 }
 
-/* Expand: step progress icons */
-.station-view__expand-steps {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 6px;
-}
-
-.station-view__exp-step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  flex: 1;
-  min-width: 0;
-  opacity: 0.2;
-}
-
-.station-view__exp-step--done {
-  opacity: 1;
-}
-
-.station-view__exp-step--current {
-  opacity: 1;
-}
-
-.station-view__exp-step-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
-.station-view__exp-step--current .station-view__exp-step-icon {
-  filter: drop-shadow(0 0 3px rgba(14, 165, 233, 0.5));
-}
-
-.station-view__exp-step-who {
-  font-size: 9px;
-  color: #059669;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-  text-align: center;
-}
-
 .station-view__row-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 12px;
-  color: #475569;
-  margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
 }
 
 .station-view__row-detail-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.station-view__row-detail-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+}
+
+.station-view__row-detail-value {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .station-view__row-notes {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #64748b;
-  line-height: 1.4;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4f0;
+  border-left: 3px solid #0ea5e9;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.station-view__row-notes-title {
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #0369a1;
+}
+
+.station-view__row-notes-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.55;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .station-view__card--completing {
