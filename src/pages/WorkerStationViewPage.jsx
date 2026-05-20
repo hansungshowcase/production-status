@@ -735,7 +735,7 @@ export default function WorkerStationViewPage() {
                   {item.quantity > 1 ? ` x${item.quantity}` : ''}
                 </span>
                 <span className="station-view__row-spec">{dimensions || '-'}</span>
-                <span className="station-view__row-due">
+                <span className={`station-view__row-due${dday ? ` station-view__row-due--${dday.cls}` : ''}`}>
                   {item.due_date ? item.due_date.slice(5) : '-'}
                   {dday && (
                     <span className={`station-view__dday station-view__dday--${dday.cls}`}>{dday.label}</span>
