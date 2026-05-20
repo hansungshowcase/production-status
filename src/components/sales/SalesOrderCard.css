@@ -343,15 +343,19 @@
 }
 
 .sales-order-card__process-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 30px;
-  padding: 2px 0;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   font-size: 13px;
 }
 
 .sales-order-card__process-dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -360,10 +364,22 @@
 
 .sales-order-card__process-dot--done {
   background: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
 }
 
 .sales-order-card__process-dot--current {
-  background: #0ea5e9;
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 0 14px rgba(37, 99, 235, 0.42);
+  animation: sales-process-current-pulse 1.35s ease-in-out infinite;
+}
+
+.sales-order-card__process-dot--current::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 50%;
+  animation: sales-process-current-ring 1.35s ease-out infinite;
 }
 
 .sales-order-card__process-dot--pending {
@@ -389,8 +405,51 @@
 }
 
 .sales-order-card__process-status--current {
-  color: #0ea5e9;
-  font-weight: 600;
+  color: #2563eb;
+  font-weight: 900;
+}
+
+.sales-order-card__process-item:has(.sales-order-card__process-dot--done) {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.sales-order-card__process-item:has(.sales-order-card__process-dot--current) {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.06);
+}
+
+.sales-order-card__process-item:has(.sales-order-card__process-dot--current) .sales-order-card__process-name {
+  color: #1e3a8a;
+  font-weight: 900;
+}
+
+@keyframes sales-process-current-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes sales-process-current-ring {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sales-order-card__process-dot--current,
+  .sales-order-card__process-dot--current::after {
+    animation: none;
+  }
 }
 
 /* Responsive */

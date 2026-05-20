@@ -50,12 +50,14 @@ export default function SalesMyPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [feedItems, setFeedItems] = useState([]);
   const [editingOrder, setEditingOrder] = useState(null);
+  const [overdueAlertDismissed, setOverdueAlertDismissed] = useState(false);
 
   // "다른 담당자 보기" state
   const [viewingPerson, setViewingPerson] = useState(null); // null = viewing own orders
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const intervalRef = useRef(null);
+  const prevOverdueKeyRef = useRef('');
 
   const activePerson = viewingPerson || mySalesPerson;
   const isViewingOther = !!viewingPerson;
@@ -111,6 +113,22 @@ export default function SalesMyPage() {
       fetchFeed();
     }
   }, [lastMessage, fetchOrders, fetchFeed]);
+
+  const overdueOrders = orders.filter(isOverdue);
+  const overdueAlertKey = overdueOrders.map(o => o.id).sort().join(',');
+
+  useEffect(() => {
+    if (loading) return;
+    if (!overdueAlertKey) {
+      prevOverdueKeyRef.current = '';
+      setOverdueAlertDismissed(false);
+      return;
+    }
+    if (prevOverdueKeyRef.current !== overdueAlertKey) {
+      prevOverdueKeyRef.current = overdueAlertKey;
+      setOverdueAlertDismissed(false);
+    }
+  }, [loading, overdueAlertKey]);
 
   if (!mySalesPerson) return null;
 
@@ -400,6 +418,47 @@ export default function SalesMyPage() {
           )}
         </aside>
       </div>
+
+      {!loading && overdueOrders.length > 0 && !overdueAlertDismissed && !editingOrder && (
+        <div className="sales-my-page__overdue-overlay" onClick={() => setOverdueAlertDismissed(true)}>
+          <div className="sales-my-page__overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 발주 알림" onClick={(e) => e.stopPropagation()}>
+            <div className="sales-my-page__overdue-eyebrow">납기 초과 알림</div>
+            <div className="sales-my-page__overdue-title">{activePerson} 담당 납기 초과 {overdueOrders.length}건</div>
+            <div className="sales-my-page__overdue-desc">
+              담당 발주 중 납기가 지난 건입니다. 현장 진행 상황을 확인하고 빠른 진행을 요청하세요.
+            </div>
+            <div className="sales-my-page__overdue-list">
+              {overdueOrders.slice(0, 5).map(order => {
+                const due = formatDueStatus(order.due_date, order.status);
+                const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '-';
+                return (
+                  <button
+                    key={order.id}
+                    type="button"
+                    className="sales-my-page__overdue-item"
+                    onClick={() => navigate(`/orders/${order.id}`)}
+                  >
+                    <span className="sales-my-page__overdue-client">{order.client_name || '-'}</span>
+                    <span className="sales-my-page__overdue-product">{product}</span>
+                    <span className="sales-my-page__overdue-due">{due.label || order.due_date}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="sales-my-page__overdue-actions">
+              <button
+                className="sales-my-page__overdue-btn sales-my-page__overdue-btn--primary"
+                onClick={() => setFilter('overdue')}
+              >
+                납기초과만 보기
+              </button>
+              <button className="sales-my-page__overdue-btn" onClick={() => setOverdueAlertDismissed(true)}>
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── FAB ── */}
       <button
