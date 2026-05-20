@@ -750,14 +750,17 @@ export default function WorkerStationViewPage() {
                 <span className="station-view__row-steps">
                   {PROCESS_STEPS.map((s, i) => {
                     const shortName = s.replace('작업', '');
+                    const historyItem = (item.step_history || []).find(h => h.step_name === s);
+                    const worker = historyItem?.completed_by || historyItem?.started_by || (s === item.step_name ? item.completed_by || item.started_by : '');
+                    const label = worker ? `${shortName}(${worker})` : shortName;
                     return (
                       <span
                         key={s}
                         className={`station-view__step-pip${i < completedSteps ? ' station-view__step-pip--done' : i === completedSteps ? ' station-view__step-pip--current' : ''}`}
-                        title={s}
+                        title={label}
                       >
                         <span className="station-view__pip-bar" />
-                        <span className="station-view__pip-label">{shortName}</span>
+                        <span className="station-view__pip-label">{label}</span>
                       </span>
                     );
                   })}

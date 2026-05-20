@@ -48,9 +48,24 @@ export default cors(async function handler(req, res) {
               LIMIT 1) AS packing_photo_url,
              (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id AND p2.status = 'completed') AS completed_steps,
              (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id) AS total_steps,
-             (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues
+             (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues,
+             COALESCE(ph.step_history, '[]'::jsonb) AS step_history
       FROM processes p
       JOIN orders o ON o.id = p.order_id
+      LEFT JOIN (
+        SELECT order_id,
+          jsonb_agg(
+            jsonb_build_object(
+              'step_name', step_name,
+              'status', status,
+              'started_by', started_by,
+              'completed_by', completed_by
+            )
+            ORDER BY id
+          ) AS step_history
+        FROM processes
+        GROUP BY order_id
+      ) ph ON ph.order_id = o.id
       WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
         AND o.status = 'in_production'
         ${filterClause}
@@ -58,7 +73,12 @@ export default cors(async function handler(req, res) {
       args,
     });
 
-    res.json(rows.map(row => ({ ...row, step_history: [] })));
+    res.json(rows.map(row => ({
+      ...row,
+      step_history: typeof row.step_history === 'string'
+        ? JSON.parse(row.step_history)
+        : (row.step_history || []),
+    })));
   } catch (err) {
     console.error('by-step error:', err);
     const status = err.status || 500;
