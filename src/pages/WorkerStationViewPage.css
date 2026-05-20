@@ -979,7 +979,7 @@
   justify-content: flex-start;
   gap: 5px;
   width: 100%;
-  min-height: 30px;
+  min-height: 36px;
   padding: 4px 7px;
   border: 1px solid #dbe4f0;
   border-radius: 6px;
@@ -1008,7 +1008,7 @@
   min-width: 0;
   flex: 1;
   font-size: 10px;
-  line-height: 1.12;
+  line-height: 1.16;
   color: #64748b;
   max-width: 100%;
   font-weight: 800;
@@ -1031,9 +1031,9 @@
   font-size: 9px;
   font-weight: 800;
   opacity: 0.95;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 .station-view__step-pip--done .station-view__pip-bar {
@@ -2111,7 +2111,9 @@
 
   .station-view__row {
     padding: 12px 14px;
-    min-height: 96px;
+    min-height: 0;
+    flex-wrap: wrap;
+    row-gap: 9px;
   }
 
   .station-view__row-client {
@@ -2124,13 +2126,14 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: stretch;
     gap: 6px;
-    flex: 2.3;
+    flex: 0 0 100%;
+    width: 100%;
     min-width: 0;
+    padding-left: 14px;
   }
 
   .station-view__th--steps {
-    display: block;
-    flex: 2.3;
+    display: none;
   }
 
   /* PC: progress column hide (replaced by step pips) */
