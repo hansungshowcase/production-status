@@ -57,7 +57,8 @@ export default cors(async function handler(req, res) {
   }
 
   const now = new Date().toISOString();
-  const workerName = actor || assigned_worker || '작업자';
+  const requestedWorker = actor || assigned_worker || '작업자';
+  const workerName = process.step_name === '도면설계' ? '김보수 팀장' : requestedWorker;
 
   // Atomic update: only update if still 'waiting' (prevents double-click race condition)
   const { rows: updateResult } = await db.execute({
