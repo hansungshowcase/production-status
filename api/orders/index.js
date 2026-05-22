@@ -104,8 +104,15 @@ async function handleGet(req, res) {
 
   if (search) {
     const s = `%${likeEscape(search)}%`;
-    sql += " AND (o.client_name LIKE ? ESCAPE '\\' OR o.product_type LIKE ? ESCAPE '\\' OR o.sales_person LIKE ? ESCAPE '\\' OR o.color LIKE ? ESCAPE '\\')";
-    params.push(s, s, s, s);
+    const cols = [
+      'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
+      'o.phone', 'o.color', 'o.design', 'o.notes', 'o.remarks', 'o.etc_notes',
+      'o.lead_source', 'o.order_date', 'o.due_date',
+      'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
+      'CAST(o.quantity AS TEXT)',
+    ];
+    sql += ` AND (${cols.map(col => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
+    params.push(...cols.map(() => s));
   }
 
   if (status === 'shipped') {
@@ -153,8 +160,15 @@ async function handleGet(req, res) {
   if (product_type) { countSql += " AND o.product_type LIKE ? ESCAPE '\\'"; countParams.push(`%${likeEscape(product_type)}%`); }
   if (search) {
     const s = `%${likeEscape(search)}%`;
-    countSql += " AND (o.client_name LIKE ? ESCAPE '\\' OR o.product_type LIKE ? ESCAPE '\\' OR o.sales_person LIKE ? ESCAPE '\\' OR o.color LIKE ? ESCAPE '\\')";
-    countParams.push(s, s, s, s);
+    const cols = [
+      'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
+      'o.phone', 'o.color', 'o.design', 'o.notes', 'o.remarks', 'o.etc_notes',
+      'o.lead_source', 'o.order_date', 'o.due_date',
+      'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
+      'CAST(o.quantity AS TEXT)',
+    ];
+    countSql += ` AND (${cols.map(col => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
+    countParams.push(...cols.map(() => s));
   }
   if (status === 'shipped') {
     countSql += " AND o.status = 'shipped'";

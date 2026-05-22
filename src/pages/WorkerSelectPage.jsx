@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
+import { getOrders } from '../api/orders';
 import './WorkerSelectPage.css';
 
 export default function WorkerSelectPage() {
@@ -16,21 +17,40 @@ export default function WorkerSelectPage() {
   const [step, setStep] = useState(deptChangeOnly ? 'department' : 'worker');
   const [selectedWorker, setSelectedWorker] = useState(deptChangeOnly ? existingWorker : null);
   const [factoryStats, setFactoryStats] = useState(null);
-  const [departmentSearch, setDepartmentSearch] = useState('');
-
-  const normalizeSearch = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
+  const [workOrderSearch, setWorkOrderSearch] = useState('');
+  const [workOrderResults, setWorkOrderResults] = useState([]);
+  const [workOrderLoading, setWorkOrderLoading] = useState(false);
   const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
-  const filteredDepartments = selectableDepartments.filter((dept) =>
-    normalizeSearch(dept).includes(normalizeSearch(departmentSearch))
-  );
 
   useEffect(() => {
     getStats().then(setFactoryStats).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const query = workOrderSearch.trim();
+    if (!query) {
+      setWorkOrderResults([]);
+      setWorkOrderLoading(false);
+      return undefined;
+    }
+
+    setWorkOrderLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getOrders({ search: query, status: 'in_production', limit: 8 });
+        setWorkOrderResults(Array.isArray(res) ? res : (res.orders || []));
+      } catch {
+        setWorkOrderResults([]);
+      } finally {
+        setWorkOrderLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [workOrderSearch]);
+
   function handleSelectWorker(name) {
     setSelectedWorker(name);
-    setDepartmentSearch('');
     setStep('department');
   }
 
@@ -56,6 +76,23 @@ export default function WorkerSelectPage() {
     setSelectedWorker(null);
   }
 
+  function getCurrentStep(order) {
+    const summary = order?.process_summary || {};
+    return (
+      PROCESS_STEPS.find((name) => summary[name]?.status === 'in_progress') ||
+      PROCESS_STEPS.find((name) => summary[name]?.status === 'waiting') ||
+      PROCESS_STEPS[0]
+    );
+  }
+
+  function handleSelectWorkOrder(order) {
+    const stepName = getCurrentStep(order);
+    localStorage.setItem(LAST_STATION_KEY, stepName);
+    navigate(`/worker/station/${encodeURIComponent(stepName)}`, {
+      state: { focusOrderId: order.id },
+    });
+  }
+
   // 부서 선택 단계
   if (step === 'department') {
     return (
@@ -75,29 +112,8 @@ export default function WorkerSelectPage() {
           <p className="worker-select-page__subtitle">현재 하고 계시는 작업을 선택해주세요</p>
         </div>
 
-        <div className="worker-select-page__search">
-          <input
-            className="worker-select-page__search-input"
-            type="search"
-            value={departmentSearch}
-            onChange={(e) => setDepartmentSearch(e.target.value)}
-            placeholder="작업현황 검색 예: 포장, 출고, 절곡"
-            autoComplete="off"
-          />
-          {departmentSearch && (
-            <button
-              className="worker-select-page__search-clear"
-              type="button"
-              onClick={() => setDepartmentSearch('')}
-              aria-label="검색어 지우기"
-            >
-              지우기
-            </button>
-          )}
-        </div>
-
         <div className="worker-select-page__dept-grid">
-          {filteredDepartments.map((dept) => (
+          {selectableDepartments.map((dept) => (
             <button
               key={dept}
               className="worker-select-page__dept-btn"
@@ -108,9 +124,6 @@ export default function WorkerSelectPage() {
             </button>
           ))}
         </div>
-        {filteredDepartments.length === 0 && (
-          <div className="worker-select-page__empty">검색된 작업현황이 없습니다.</div>
-        )}
       </div>
     );
   }
@@ -125,6 +138,56 @@ export default function WorkerSelectPage() {
         <div className="worker-select-page__logo">HS</div>
         <h1 className="worker-select-page__title">한성쇼케이스</h1>
         <p className="worker-select-page__subtitle">작업자를 선택해주세요</p>
+      </div>
+
+      <div className="worker-select-page__work-order-search">
+        <input
+          className="worker-select-page__work-order-input"
+          type="search"
+          value={workOrderSearch}
+          onChange={(e) => setWorkOrderSearch(e.target.value)}
+          placeholder="작업지시서 검색: 발주처/상호/제품/규격/메모"
+          autoComplete="off"
+        />
+        {workOrderSearch && (
+          <button
+            className="worker-select-page__work-order-clear"
+            type="button"
+            onClick={() => setWorkOrderSearch('')}
+            aria-label="검색어 지우기"
+          >
+            지우기
+          </button>
+        )}
+        {workOrderSearch.trim() && (
+          <div className="worker-select-page__work-order-results">
+            {workOrderLoading && (
+              <div className="worker-select-page__work-order-empty">검색 중...</div>
+            )}
+            {!workOrderLoading && workOrderResults.length === 0 && (
+              <div className="worker-select-page__work-order-empty">검색된 작업지시서가 없습니다</div>
+            )}
+            {!workOrderLoading && workOrderResults.map((order) => {
+              const stepName = getCurrentStep(order);
+              const dimensions = [order.width, order.depth, order.height].filter(Boolean).join('x');
+              const spec = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '-';
+              return (
+                <button
+                  key={order.id}
+                  type="button"
+                  className="worker-select-page__work-order-item"
+                  onClick={() => handleSelectWorkOrder(order)}
+                >
+                  <span className="worker-select-page__work-order-client">{order.client_name || '미지정'}</span>
+                  <span className="worker-select-page__work-order-meta">
+                    {spec} · {dimensions || '규격없음'} · {order.due_date || '납기없음'}
+                  </span>
+                  <span className="worker-select-page__work-order-step">{stepName}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="worker-select-page__grid">

@@ -714,7 +714,7 @@ export default function WorkerStationViewPage() {
           type="search"
           value={orderSearch}
           onChange={(e) => setOrderSearch(e.target.value)}
-          placeholder="발주처/상호/제품/규격/메모 검색"
+          placeholder="작업지시서 검색: 발주처/상호/제품/규격/메모"
           autoComplete="off"
         />
         {orderSearch && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENT_STEP_MAP, LAST_STATION_KEY } from '../constants';
@@ -9,11 +9,6 @@ export default function WorkerStationPage() {
   const workerName = sessionStorage.getItem(WORKER_STORAGE_KEY);
   const department = sessionStorage.getItem(DEPARTMENT_STORAGE_KEY);
   const lastStation = localStorage.getItem(LAST_STATION_KEY);
-  const [searchTerm, setSearchTerm] = useState('');
-  const normalizeSearch = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
-  const filteredSteps = PROCESS_STEPS.filter((step) =>
-    normalizeSearch(step).includes(normalizeSearch(searchTerm))
-  );
 
   useEffect(() => {
     if (!workerName) {
@@ -59,27 +54,6 @@ export default function WorkerStationPage() {
 
       <h1 className="station-page__title">어디 작업자이신가요?</h1>
 
-      <div className="station-page__search">
-        <input
-          className="station-page__search-input"
-          type="search"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="작업현황 검색 예: 포장, 출고, 절곡"
-          autoComplete="off"
-        />
-        {searchTerm && (
-          <button
-            className="station-page__search-clear"
-            type="button"
-            onClick={() => setSearchTerm('')}
-            aria-label="검색어 지우기"
-          >
-            지우기
-          </button>
-        )}
-      </div>
-
       {lastStation && (
         <div
           className="station-page__last-pick"
@@ -97,7 +71,7 @@ export default function WorkerStationPage() {
       )}
 
       <div className="station-page__grid">
-        {filteredSteps.map((step) => (
+        {PROCESS_STEPS.map((step) => (
           <button
             key={step}
             className="station-page__btn"
@@ -108,9 +82,6 @@ export default function WorkerStationPage() {
           </button>
         ))}
       </div>
-      {filteredSteps.length === 0 && (
-        <div className="station-page__empty">검색된 작업현황이 없습니다.</div>
-      )}
     </div>
   );
 }
