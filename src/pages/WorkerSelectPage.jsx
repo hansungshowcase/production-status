@@ -16,6 +16,17 @@ export default function WorkerSelectPage() {
   const [step, setStep] = useState(deptChangeOnly ? 'department' : 'worker');
   const [selectedWorker, setSelectedWorker] = useState(deptChangeOnly ? existingWorker : null);
   const [factoryStats, setFactoryStats] = useState(null);
+  const [workerSearch, setWorkerSearch] = useState('');
+  const [departmentSearch, setDepartmentSearch] = useState('');
+
+  const normalizeSearch = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
+  const filteredWorkers = WORKERS.filter((name) =>
+    normalizeSearch(name).includes(normalizeSearch(workerSearch))
+  );
+  const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
+  const filteredDepartments = selectableDepartments.filter((dept) =>
+    normalizeSearch(dept).includes(normalizeSearch(departmentSearch))
+  );
 
   useEffect(() => {
     getStats().then(setFactoryStats).catch(() => {});
@@ -23,6 +34,7 @@ export default function WorkerSelectPage() {
 
   function handleSelectWorker(name) {
     setSelectedWorker(name);
+    setDepartmentSearch('');
     setStep('department');
   }
 
@@ -67,8 +79,29 @@ export default function WorkerSelectPage() {
           <p className="worker-select-page__subtitle">현재 하고 계시는 작업을 선택해주세요</p>
         </div>
 
+        <div className="worker-select-page__search">
+          <input
+            className="worker-select-page__search-input"
+            type="search"
+            value={departmentSearch}
+            onChange={(e) => setDepartmentSearch(e.target.value)}
+            placeholder="작업현황 검색 예: 포장, 출고, 절곡"
+            autoComplete="off"
+          />
+          {departmentSearch && (
+            <button
+              className="worker-select-page__search-clear"
+              type="button"
+              onClick={() => setDepartmentSearch('')}
+              aria-label="검색어 지우기"
+            >
+              지우기
+            </button>
+          )}
+        </div>
+
         <div className="worker-select-page__dept-grid">
-          {(WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS).map((dept) => (
+          {filteredDepartments.map((dept) => (
             <button
               key={dept}
               className="worker-select-page__dept-btn"
@@ -79,6 +112,9 @@ export default function WorkerSelectPage() {
             </button>
           ))}
         </div>
+        {filteredDepartments.length === 0 && (
+          <div className="worker-select-page__empty">검색된 작업현황이 없습니다.</div>
+        )}
       </div>
     );
   }
@@ -95,8 +131,29 @@ export default function WorkerSelectPage() {
         <p className="worker-select-page__subtitle">작업자를 선택해주세요</p>
       </div>
 
+      <div className="worker-select-page__search">
+        <input
+          className="worker-select-page__search-input"
+          type="search"
+          value={workerSearch}
+          onChange={(e) => setWorkerSearch(e.target.value)}
+          placeholder="작업자 검색 예: 김보수, 신은철"
+          autoComplete="off"
+        />
+        {workerSearch && (
+          <button
+            className="worker-select-page__search-clear"
+            type="button"
+            onClick={() => setWorkerSearch('')}
+            aria-label="검색어 지우기"
+          >
+            지우기
+          </button>
+        )}
+      </div>
+
       <div className="worker-select-page__grid">
-        {WORKERS.map((name) => (
+        {filteredWorkers.map((name) => (
           <button
             key={name}
             className="worker-select-page__btn"
@@ -109,6 +166,9 @@ export default function WorkerSelectPage() {
           </button>
         ))}
       </div>
+      {filteredWorkers.length === 0 && (
+        <div className="worker-select-page__empty">검색된 작업자가 없습니다.</div>
+      )}
 
       {/* 공장 전체 현황 - 항상 렌더링하여 레이아웃 시프트 방지 */}
       <div className="worker-select-page__factory">
