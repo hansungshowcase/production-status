@@ -38,7 +38,9 @@ export default cors(async function handler(req, res) {
              p.started_at, p.completed_at, p.started_by, p.completed_by,
              o.id AS order_id, o.client_name, o.product_type, o.door_type,
              o.width, o.depth, o.height, o.color, o.due_date, o.sales_person,
-             o.order_date, o.created_at, o.quantity, o.design, o.notes, o.remarks,
+             o.order_date, o.created_at, o.quantity, o.design, o.phone,
+             o.notes, o.remarks, o.etc_notes, o.sale_amount, o.lead_source,
+             o.ship_scheduled_date, o.safe_delivery, o.sms_sent,
              CASE WHEN o.work_order_image_url IS NULL OR o.work_order_image_url = '' THEN 0 ELSE 1 END AS has_work_order_image,
              (SELECT ph.file_path
               FROM photos ph

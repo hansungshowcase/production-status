@@ -64,6 +64,7 @@ export default function WorkerStationViewPage() {
   const [workOrderViewer, setWorkOrderViewer] = useState(null);
   const [packingPhotoFile, setPackingPhotoFile] = useState(null);
   const [overdueAlertDismissed, setOverdueAlertDismissed] = useState(false);
+  const [orderSearch, setOrderSearch] = useState('');
   const prevIssueCountRef = useRef(0);
   const prevOverdueKeyRef = useRef('');
 
@@ -396,11 +397,31 @@ export default function WorkerStationViewPage() {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const waitingItems = items.filter(i => i.status === 'waiting' || i.status === '대기');
-  const progressItems = items.filter(i => i.status === 'in_progress' || i.status === '진행중');
-  const overdueItems = items.filter(i => i.due_date && i.due_date < today);
+  const normalizeSearch = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
+  const buildSearchText = (value) => {
+    if (value === null || value === undefined) return '';
+    if (['string', 'number', 'boolean'].includes(typeof value)) return String(value);
+    if (Array.isArray(value)) return value.map(buildSearchText).join(' ');
+    if (typeof value === 'object') {
+      return Object.entries(value)
+        .filter(([key]) => !/url|image|photo|path/i.test(key))
+        .map(([, nestedValue]) => buildSearchText(nestedValue))
+        .join(' ');
+    }
+    return '';
+  };
+  const searchQuery = normalizeSearch(orderSearch);
+  const visibleItems = searchQuery
+    ? items.filter(item => {
+      return normalizeSearch(buildSearchText(item)).includes(searchQuery);
+    })
+    : items;
+  const waitingItems = visibleItems.filter(i => i.status === 'waiting' || i.status === '대기');
+  const progressItems = visibleItems.filter(i => i.status === 'in_progress' || i.status === '진행중');
+  const overdueItems = visibleItems.filter(i => i.due_date && i.due_date < today);
+  const overdueAlertItems = items.filter(i => i.due_date && i.due_date < today);
   const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
-  const overdueKey = overdueItems.map(i => i.process_id).sort().join(',');
+  const overdueKey = overdueAlertItems.map(i => i.process_id).sort().join(',');
 
   // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
   useEffect(() => {
@@ -423,7 +444,7 @@ export default function WorkerStationViewPage() {
     }
   }, [loading, overdueKey]);
 
-  const sorted = [...items].sort((a, b) => {
+  const sorted = [...visibleItems].sort((a, b) => {
     // 납기초과 건은 항상 상단
     const aOverdue = a.due_date && a.due_date < today ? 1 : 0;
     const bOverdue = b.due_date && b.due_date < today ? 1 : 0;
@@ -687,10 +708,30 @@ export default function WorkerStationViewPage() {
       <div className="station-view__section-title">
         {icon} {decodedStep} 작업 현황
       </div>
+      <div className="station-view__order-search">
+        <input
+          className="station-view__order-search-input"
+          type="search"
+          value={orderSearch}
+          onChange={(e) => setOrderSearch(e.target.value)}
+          placeholder="발주처/상호/제품/규격/메모 검색"
+          autoComplete="off"
+        />
+        {orderSearch && (
+          <button
+            className="station-view__order-search-clear"
+            type="button"
+            onClick={() => setOrderSearch('')}
+            aria-label="검색어 지우기"
+          >
+            지우기
+          </button>
+        )}
+      </div>
       <div className="station-view__summary">
         <div className="station-view__stat station-view__stat--total">
-          <span className="station-view__stat-num">{items.length}</span>
-          <span className="station-view__stat-label">전체</span>
+          <span className="station-view__stat-num">{visibleItems.length}</span>
+          <span className="station-view__stat-label">{searchQuery ? `검색/${items.length}` : '전체'}</span>
         </div>
         <div className="station-view__stat station-view__stat--progress">
           <span className="station-view__stat-num">{progressItems.length}</span>
@@ -711,7 +752,9 @@ export default function WorkerStationViewPage() {
         {error && <div className="station-view__error">{error}</div>}
 
         {!loading && !error && sorted.length === 0 && (
-          <div className="station-view__empty">현재 대기중인 작업이 없습니다</div>
+          <div className="station-view__empty">
+            {searchQuery ? '검색된 작업이 없습니다' : '현재 대기중인 작업이 없습니다'}
+          </div>
         )}
 
         {!loading && !error && sorted.length > 0 && (
@@ -1025,17 +1068,17 @@ export default function WorkerStationViewPage() {
         </>
       )}
 
-      {!loading && overdueItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !issueModal && !workOrderViewer && (
+      {!loading && overdueAlertItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !issueModal && !workOrderViewer && (
         <>
           <div className="sv-overlay" onClick={() => setOverdueAlertDismissed(true)} />
           <div className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림">
             <div className="sv-overdue-popup__eyebrow">납기 초과</div>
-            <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueItems.length}건</div>
+            <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueAlertItems.length}건</div>
             <div className="sv-card-popup__desc">
               납기가 지난 작업입니다. 가능한 작업부터 먼저 진행해 주세요.
             </div>
             <div className="sv-overdue-popup__list">
-              {overdueItems.slice(0, 4).map(item => {
+              {overdueAlertItems.slice(0, 4).map(item => {
                 const dday = getDday(item.due_date);
                 const product = [item.product_type, item.door_type].filter(Boolean).join(' / ') || '-';
                 return (
@@ -1059,7 +1102,7 @@ export default function WorkerStationViewPage() {
               <button
                 className="sv-card-popup__btn sv-card-popup__btn--ok"
                 onClick={() => {
-                  const first = overdueItems[0];
+                  const first = overdueAlertItems[0];
                   if (first) setExpandedId(first.process_id);
                   setOverdueAlertDismissed(true);
                 }}

@@ -725,6 +725,54 @@
   padding: 10px 12px 0;
 }
 
+.station-view__order-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 0;
+  max-width: 100%;
+}
+
+.station-view__order-search-input {
+  width: 100%;
+  min-height: 48px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 0 82px 0 14px;
+  outline: none;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+
+.station-view__order-search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.station-view__order-search-input:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.14);
+}
+
+.station-view__order-search-clear {
+  position: absolute;
+  right: 20px;
+  min-width: 62px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 /* Summary Stats Bar */
 .station-view__summary {
   display: flex;
@@ -1953,6 +2001,10 @@
     font-size: 13px;
   }
 
+  .station-view__order-search {
+    padding: 8px 12px 0;
+  }
+
   .station-view__summary {
     padding: 0 12px;
     margin-top: 8px;
@@ -2143,6 +2195,21 @@
   .station-view__section-title {
     padding: 8px 10px 0;
     font-size: 12px;
+  }
+
+  .station-view__order-search {
+    padding: 8px 10px 0;
+  }
+
+  .station-view__order-search-input {
+    min-height: 46px;
+    font-size: 15px;
+    padding-left: 12px;
+    padding-right: 76px;
+  }
+
+  .station-view__order-search-clear {
+    right: 18px;
   }
 
   .station-view__summary {
