@@ -168,6 +168,12 @@ export default function SalesMyPage() {
       const bDate = b.ship_date || b.updated_at || '';
       return String(bDate).localeCompare(String(aDate)) || Number(b.id || 0) - Number(a.id || 0);
     });
+  } else {
+    filtered = [...filtered].sort((a, b) => {
+      const aDue = a.due_date || '9999-12-31';
+      const bDue = b.due_date || '9999-12-31';
+      return String(aDue).localeCompare(String(bDue)) || Number(b.id || 0) - Number(a.id || 0);
+    });
   }
 
   function handleSelectPerson(person) {
