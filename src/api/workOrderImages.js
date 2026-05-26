@@ -1,29 +1,75 @@
+const FALLBACK_TARGET_BYTES = 1200 * 1024;
+
+async function canvasToFile(canvas, name, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          resolve(null);
+          return;
+        }
+        resolve(new File([blob], `${name}.jpg`, { type: 'image/jpeg' }));
+      },
+      'image/jpeg',
+      quality
+    );
+  });
+}
+
 async function prepareWorkOrderImage(file, maxWidth = 1600) {
-  if (!file || file.size < 1024 * 1024 || typeof Image === 'undefined') return file;
+  if (!file || typeof Image === 'undefined') return file;
+  if (file.size <= FALLBACK_TARGET_BYTES && /^image\/jpe?g$/i.test(file.type || '')) return file;
 
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
+    img.onload = async () => {
       URL.revokeObjectURL(url);
-      const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+      const scale = Math.min(1, maxWidth / img.width);
       const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file);
+      const name = file.name.replace(/\.[^.]+$/, '') || 'work-order';
+      const attempts = [
+        { width: canvas.width, quality: 0.82 },
+        { width: 1400, quality: 0.76 },
+        { width: 1200, quality: 0.7 },
+        { width: 1000, quality: 0.64 },
+        { width: 850, quality: 0.58 },
+      ];
+      let lastCompressed = null;
+
+      for (const attempt of attempts) {
+        if (attempt.width < canvas.width) {
+          const ratio = attempt.width / canvas.width;
+          const nextCanvas = document.createElement('canvas');
+          nextCanvas.width = Math.max(1, Math.round(canvas.width * ratio));
+          nextCanvas.height = Math.max(1, Math.round(canvas.height * ratio));
+          nextCanvas.getContext('2d').drawImage(canvas, 0, 0, nextCanvas.width, nextCanvas.height);
+          const compressed = await canvasToFile(nextCanvas, name, attempt.quality);
+          if (compressed) lastCompressed = compressed;
+          if (compressed && compressed.size <= FALLBACK_TARGET_BYTES) {
+            resolve(compressed);
             return;
           }
-          const name = file.name.replace(/\.[^.]+$/, '') || 'work-order';
-          resolve(new File([blob], `${name}.jpg`, { type: 'image/jpeg' }));
-        },
-        'image/jpeg',
-        0.85
-      );
+          if (attempt === attempts[attempts.length - 1] && compressed) {
+            resolve(compressed);
+            return;
+          }
+          continue;
+        }
+
+        const compressed = await canvasToFile(canvas, name, attempt.quality);
+        if (compressed) lastCompressed = compressed;
+        if (compressed && compressed.size <= FALLBACK_TARGET_BYTES) {
+          resolve(compressed);
+          return;
+        }
+      }
+
+      resolve(lastCompressed || file);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
