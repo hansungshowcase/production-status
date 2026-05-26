@@ -162,6 +162,14 @@ export default function SalesMyPage() {
     );
   }
 
+  if (filter === 'shipped') {
+    filtered = [...filtered].sort((a, b) => {
+      const aDate = a.ship_date || a.updated_at || '';
+      const bDate = b.ship_date || b.updated_at || '';
+      return String(bDate).localeCompare(String(aDate)) || Number(b.id || 0) - Number(a.id || 0);
+    });
+  }
+
   function handleSelectPerson(person) {
     if (person === mySalesPerson) {
       setViewingPerson(null);

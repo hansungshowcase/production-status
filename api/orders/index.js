@@ -55,6 +55,14 @@ async function handleGet(req, res) {
       o.notes, o.remarks, o.etc_notes, o.ship_scheduled_date,
       o.sms_sent, o.safe_delivery, o.status, o.created_at, o.updated_at,
       CASE WHEN o.work_order_image_url IS NULL OR o.work_order_image_url = '' THEN 0 ELSE 1 END AS has_work_order_image,
+      (
+        SELECT ph.file_path
+        FROM photos ph
+        JOIN processes pp ON pp.id = ph.process_id
+        WHERE ph.order_id = o.id AND pp.step_name = '포장'
+        ORDER BY ph.uploaded_at DESC
+        LIMIT 1
+      ) AS packing_photo_url,
       COALESCE(ps.completed_steps, 0) AS completed_steps,
       COALESCE(ps.total_steps, 0) AS total_steps,
       COALESCE(ps.process_summary, '{}'::jsonb) AS process_summary,

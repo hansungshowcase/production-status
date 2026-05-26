@@ -36,6 +36,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmShip, setConfirmShip] = useState(false);
   const [shipping, setShipping] = useState(false);
+  const [packingPhotoOpen, setPackingPhotoOpen] = useState(false);
 
   const processes = order.processes || [];
   const fallbackCompletedSteps = Number(order.completed_steps || 0);
@@ -198,6 +199,12 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         <div className="sales-order-card__detail">
           {/* 추가 주문 정보 */}
           <div className="sales-order-card__detail-grid">
+            {isShipped && order.ship_date && (
+              <div className="sales-order-card__detail-item">
+                <span className="sales-order-card__detail-label">출고일</span>
+                <span className="sales-order-card__detail-value">{order.ship_date}</span>
+              </div>
+            )}
             {order.order_date && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">발주일</span>
@@ -247,6 +254,24 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
               </div>
             )}
           </div>
+
+          {isShipped && (
+            <div className="sales-order-card__packing-photo">
+              {order.packing_photo_url ? (
+                <button
+                  className="sales-order-card__packing-photo-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPackingPhotoOpen(true);
+                  }}
+                >
+                  포장사진 보기
+                </button>
+              ) : (
+                <span className="sales-order-card__packing-photo-empty">포장사진 없음</span>
+              )}
+            </div>
+          )}
 
           {/* 공정 상세 */}
           <div className="sales-order-card__detail-title" style={{ marginTop: 10 }}>공정 현황</div>
@@ -376,6 +401,32 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {packingPhotoOpen && order.packing_photo_url && (
+        <div
+          className="sales-order-card__photo-viewer"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPackingPhotoOpen(false);
+          }}
+        >
+          <div className="sales-order-card__photo-viewer-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="sales-order-card__photo-viewer-head">
+              <span>포장사진</span>
+              <button
+                className="sales-order-card__photo-viewer-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPackingPhotoOpen(false);
+                }}
+              >
+                닫기
+              </button>
+            </div>
+            <img src={order.packing_photo_url} alt="포장사진" className="sales-order-card__photo-viewer-img" />
+          </div>
         </div>
       )}
     </div>
