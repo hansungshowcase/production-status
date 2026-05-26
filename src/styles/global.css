@@ -43,6 +43,25 @@ body {
   overscroll-behavior-y: none;
 }
 
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-y: auto;
+    overscroll-behavior-y: auto;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  body {
+    min-height: auto;
+  }
+
+  .page-transition-enter-active {
+    min-height: 100vh;
+    min-height: 100dvh;
+    touch-action: pan-y pinch-zoom;
+  }
+}
+
 #root {
   display: flex;
   flex-direction: column;

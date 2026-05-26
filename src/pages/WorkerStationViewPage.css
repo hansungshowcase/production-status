@@ -1909,6 +1909,11 @@
 
 /* Responsive */
 @media (max-width: 767px) {
+  .station-view {
+    min-height: auto;
+    touch-action: pan-y pinch-zoom;
+  }
+
   /* Header */
   .station-view__header-top {
     padding: 6px 12px 4px;
@@ -2026,6 +2031,7 @@
   /* Table row — mobile: hide spec column, smaller widths */
   .station-view__body {
     padding: 4px 6px;
+    touch-action: pan-y pinch-zoom;
   }
 
   .station-view__table-header {
