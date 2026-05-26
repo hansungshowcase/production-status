@@ -25,6 +25,43 @@ const ISSUE_TYPES = [
   { value: '기타', label: '기타', icon: '📝', color: '#64748b' },
 ];
 
+function resizeUploadImage(file, maxWidth = 1280, quality = 0.78) {
+  return new Promise((resolve) => {
+    if (!file || file.size <= 900 * 1024) {
+      resolve(file);
+      return;
+    }
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 function displayProcessWorker(step, processLike, salesPerson) {
   if (!processLike) return '';
   if (step === '도면설계') return '김보수 팀장';
@@ -1032,9 +1069,10 @@ export default function WorkerStationViewPage() {
                     accept="image/*"
                     capture="environment"
                     style={{ display: 'none' }}
-                    onChange={(e) => {
-                      setPackingPhotoFile(e.target.files?.[0] || null);
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0] || null;
                       e.target.value = '';
+                      setPackingPhotoFile(file ? await resizeUploadImage(file) : null);
                     }}
                   />
                   <span className="sv-card-popup__photo-btn">

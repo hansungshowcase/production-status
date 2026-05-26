@@ -1,8 +1,9 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
-import { del, put } from '@vercel/blob';
+import { del } from '@vercel/blob';
 import { parseMultipart, getFilePart, getFieldValue } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
+import { storeImageFile } from '../_lib/storeImage.js';
 
 export const config = {
   api: {
@@ -42,10 +43,6 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    return res.status(500).json({ error: { message: '파일 저장소 설정이 누락되었습니다.', status: 500 } });
-  }
-
   const contentLength = Number(req.headers['content-length'] || 0);
   if (contentLength > 10 * 1024 * 1024) {
     return res.status(413).json({ error: { message: '파일 크기는 10MB 이하여야 합니다.', status: 413 } });
@@ -101,17 +98,17 @@ async function handlePost(req, res) {
     }
   }
 
-  // Upload to Vercel Blob
   const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
   const extMatch = (filePart.filename || '').match(/\.[^.]+$/);
   const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg';
   const blobFilename = `photo-${uniqueSuffix}${ext}`;
-  let blob;
+  let storedImage;
   try {
-    blob = await put(blobFilename, filePart.data, { access: 'public' });
+    storedImage = await storeImageFile(filePart, blobFilename);
   } catch (err) {
-    console.warn('[photos] blob upload failed:', err?.message || err);
-    return res.status(502).json({ error: { message: '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status: 502 } });
+    console.warn('[photos] image upload failed:', err?.message || err);
+    const status = err.status || 502;
+    return res.status(status).json({ error: { message: err.message || '파일 저장에 실패했습니다. 잠시 후 다시 시도해주세요.', status } });
   }
 
   let result;
@@ -119,10 +116,12 @@ async function handlePost(req, res) {
     result = await db.execute({
       sql: `INSERT INTO photos (order_id, process_id, file_path, uploaded_by)
             VALUES (?, ?, ?, ?) RETURNING id`,
-      args: [order_id, process_id || null, blob.url, uploaded_by || null],
+      args: [order_id, process_id || null, storedImage.url, uploaded_by || null],
     });
   } catch (err) {
-    try { await del(blob.url); } catch (deleteErr) { console.warn('[photos] blob rollback failed:', deleteErr?.message || deleteErr); }
+    if (storedImage.rollbackUrl) {
+      try { await del(storedImage.rollbackUrl); } catch (deleteErr) { console.warn('[photos] blob rollback failed:', deleteErr?.message || deleteErr); }
+    }
     throw err;
   }
 
