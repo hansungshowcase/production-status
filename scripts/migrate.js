@@ -103,6 +103,12 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_orders_client_name ON orders(client_name)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_status_due ON orders(status, due_date)`,
+    `CREATE INDEX IF NOT EXISTS idx_orders_ship_date ON orders(ship_date DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_processes_order_status ON processes(order_id, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_processes_order_step_status ON processes(order_id, step_name, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_order_uploaded ON photos(order_id, uploaded_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_photos_process_id ON photos(process_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_issues_order_resolved ON issues(order_id, resolved_at)`,
   ];
 
   for (const stmt of statements) {
