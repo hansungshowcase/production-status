@@ -21,6 +21,8 @@ export default function WorkerSelectPage() {
   const [workOrderResults, setWorkOrderResults] = useState([]);
   const [workOrderLoading, setWorkOrderLoading] = useState(false);
   const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
+  const delayedOrders = factoryStats?.delayed_orders || [];
+  const delayedSteps = factoryStats?.delayed_by_step || [];
 
   useEffect(() => {
     getStats().then(setFactoryStats).catch(() => {});
@@ -90,6 +92,14 @@ export default function WorkerSelectPage() {
     localStorage.setItem(LAST_STATION_KEY, stepName);
     navigate(`/worker/station/${encodeURIComponent(stepName)}`, {
       state: { focusOrderId: order.id },
+    });
+  }
+
+  function handleSelectDelayedOrder(order) {
+    const stepName = order.step_name || getCurrentStep(order);
+    localStorage.setItem(LAST_STATION_KEY, stepName);
+    navigate(`/worker/station/${encodeURIComponent(stepName)}`, {
+      state: { focusOrderId: order.order_id || order.id },
     });
   }
 
@@ -224,22 +234,64 @@ export default function WorkerSelectPage() {
             </span>
           )}
         </div>
+        {delayedOrders.length > 0 && (
+          <div className="worker-select-page__delay-panel">
+            <div className="worker-select-page__delay-head">
+              <span className="worker-select-page__delay-title">납기초과 작업</span>
+              <span className="worker-select-page__delay-count">{delayedOrders.length}건</span>
+            </div>
+            {delayedSteps.length > 0 && (
+              <div className="worker-select-page__delay-steps">
+                {delayedSteps.slice(0, 4).map(step => (
+                  <span key={step.step_name} className="worker-select-page__delay-step">
+                    {step.step_name} <strong>{step.delayed}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="worker-select-page__delay-list">
+              {delayedOrders.slice(0, 6).map(order => {
+                const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
+                const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
+                return (
+                  <button
+                    key={order.order_id}
+                    type="button"
+                    className="worker-select-page__delay-item"
+                    onClick={() => handleSelectDelayedOrder(order)}
+                  >
+                    <span className="worker-select-page__delay-main">
+                      <strong>{order.client_name || '거래처 미입력'}</strong>
+                      <span>{product}{size ? ` · ${size}` : ''}</span>
+                    </span>
+                    <span className="worker-select-page__delay-meta">
+                      <span>{order.step_name}</span>
+                      <strong>D+{order.days_overdue}</strong>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="worker-select-page__factory-steps">
           {PROCESS_STEPS.map((s) => {
             const st = (factoryStats?.by_step || []).find(x => x.step_name === s);
             const w = st?.waiting || 0;
             const p = st?.in_progress || 0;
             const c = st?.completed || 0;
+            const d = st?.delayed || 0;
             const total = w + p + c;
             const pct = total > 0 ? Math.round((c / total) * 100) : 0;
             return (
-              <div key={s} className={`worker-select-page__fstep${p > 0 ? ' worker-select-page__fstep--active' : ''}`}>
+              <div key={s} className={`worker-select-page__fstep${p > 0 ? ' worker-select-page__fstep--active' : ''}${d > 0 ? ' worker-select-page__fstep--delayed' : ''}`}>
                 <div className="worker-select-page__fstep-icon">{STEP_ICONS[s]}</div>
                 <div className="worker-select-page__fstep-name">{s}</div>
                 <div className="worker-select-page__fstep-bar">
                   <div className="worker-select-page__fstep-fill" style={{ width: `${pct}%` }} />
                 </div>
                 <div className="worker-select-page__fstep-counts">
+                  {d > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--delay">지연 {d}</span>}
                   {p > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--prog">{p}</span>}
                   {w > 0 && <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--wait">{w}</span>}
                   <span className="worker-select-page__fstep-cnt worker-select-page__fstep-cnt--done">{c}/{total}</span>

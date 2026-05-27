@@ -15,7 +15,7 @@ export default cors(async function handler(req, res) {
     totalResult, inProdResult, shippedResult,
     waitingResult, inProgressResult, completedResult,
     openIssuesResult, byStepResult, actionableResult,
-    bySalesResult, overdueResult, dueSoonResult,
+    bySalesResult, overdueResult, dueSoonResult, delayedByStepResult, delayedOrdersResult,
   ] = await Promise.all([
     db.execute({ sql: 'SELECT COUNT(*) AS count FROM orders', args: [] }),
     db.execute({ sql: "SELECT COUNT(*) AS count FROM orders WHERE status = 'in_production'", args: [] }),
@@ -69,6 +69,58 @@ export default cors(async function handler(req, res) {
       sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date >= to_char(CURRENT_DATE, 'YYYY-MM-DD') AND due_date <= to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')",
       args: [],
     }),
+    db.execute({
+      sql: `SELECT p.step_name,
+        COUNT(*) AS delayed,
+        SUM(CASE WHEN p.status = 'in_progress' THEN 1 ELSE 0 END) AS delayed_in_progress,
+        SUM(CASE WHEN p.status = 'waiting' THEN 1 ELSE 0 END) AS delayed_waiting
+      FROM processes p
+      JOIN orders o ON o.id = p.order_id
+      WHERE o.status != 'shipped'
+        AND o.due_date IS NOT NULL
+        AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')
+        AND p.status != 'completed'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM processes p2
+          WHERE p2.order_id = p.order_id
+            AND p2.status != 'completed'
+            AND p2.id < p.id
+        )
+      GROUP BY p.step_name`,
+      args: [],
+    }),
+    db.execute({
+      sql: `WITH current_delays AS (
+        SELECT
+          o.id AS order_id,
+          o.client_name,
+          o.product_type,
+          o.door_type,
+          o.width,
+          o.depth,
+          o.height,
+          o.quantity,
+          o.due_date,
+          o.sales_person,
+          p.id AS process_id,
+          p.step_name,
+          p.status AS process_status,
+          ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY p.id) AS rn
+        FROM orders o
+        JOIN processes p ON p.order_id = o.id
+        WHERE o.status != 'shipped'
+          AND o.due_date IS NOT NULL
+          AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')
+          AND p.status != 'completed'
+      )
+      SELECT *
+      FROM current_delays
+      WHERE rn = 1
+      ORDER BY due_date ASC, order_id DESC
+      LIMIT 30`,
+      args: [],
+    }),
   ]);
 
   const total_orders = totalResult.rows[0].count;
@@ -85,9 +137,33 @@ export default cors(async function handler(req, res) {
   for (const row of actionableResult.rows) {
     actionableMap[row.step_name] = Number(row.cnt);
   }
+  const delayedMap = {};
+  for (const row of delayedByStepResult.rows) {
+    delayedMap[row.step_name] = {
+      delayed: Number(row.delayed || 0),
+      delayed_in_progress: Number(row.delayed_in_progress || 0),
+      delayed_waiting: Number(row.delayed_waiting || 0),
+    };
+  }
   const by_step = byStepResult.rows.map(row => ({
     ...row,
     actionable: actionableMap[row.step_name] || 0,
+    delayed: delayedMap[row.step_name]?.delayed || 0,
+    delayed_in_progress: delayedMap[row.step_name]?.delayed_in_progress || 0,
+    delayed_waiting: delayedMap[row.step_name]?.delayed_waiting || 0,
+  }));
+  const delayed_by_step = by_step
+    .filter(row => row.delayed > 0)
+    .map(row => ({
+      step_name: row.step_name,
+      delayed: row.delayed,
+      delayed_in_progress: row.delayed_in_progress,
+      delayed_waiting: row.delayed_waiting,
+    }))
+    .sort((a, b) => b.delayed - a.delayed || STEPS.indexOf(a.step_name) - STEPS.indexOf(b.step_name));
+  const delayed_orders = delayedOrdersResult.rows.map(row => ({
+    ...row,
+    days_overdue: Math.abs(daysUntilDue(row.due_date) || 0),
   }));
   const by_sales_person = bySalesResult.rows;
 
@@ -100,6 +176,8 @@ export default cors(async function handler(req, res) {
     overdue_count,
     due_soon_count,
     by_step,
+    delayed_by_step,
+    delayed_orders,
     by_sales_person,
   });
 });
