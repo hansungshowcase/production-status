@@ -1,7 +1,7 @@
 import React from 'react';
 import './SalesSummaryCards.css';
 
-export default function SalesSummaryCards({ total, inProduction, shipped, overdue, onFilter, activeFilter }) {
+export default function SalesSummaryCards({ total, inProduction, shipped, overdue, onFilter, activeFilter, onOverdueClick }) {
   const handle = (value) => {
     if (onFilter) onFilter(value);
   };
@@ -20,7 +20,7 @@ export default function SalesSummaryCards({ total, inProduction, shipped, overdu
         <div className="sales-summary-card__value">{inProduction}</div>
         <div className="sales-summary-card__label">생산중</div>
       </button>
-      <button className={`sales-summary-card sales-summary-card--overdue${active === 'overdue' ? ' sales-summary-card--active' : ''}`} onClick={() => handle('overdue')}>
+      <button className={`sales-summary-card sales-summary-card--overdue${active === 'overdue' ? ' sales-summary-card--active' : ''}`} onClick={() => (onOverdueClick ? onOverdueClick() : handle('overdue'))}>
         <div className="sales-summary-card__icon">⚠️</div>
         <div className="sales-summary-card__value">{overdue}</div>
         <div className="sales-summary-card__label">납기초과</div>

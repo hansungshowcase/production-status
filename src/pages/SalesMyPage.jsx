@@ -9,6 +9,7 @@ import { getFeed } from '../api/feed';
 import { formatDueStatus } from '../utils/dateUtils';
 import useWebSocket from '../hooks/useWebSocket';
 import { safeGet } from '../utils/safeStorage';
+import { PROCESS_STEPS } from '../constants';
 import './SalesMyPage.css';
 
 const LS_KEY = 'sales_last_person';
@@ -37,6 +38,35 @@ function isInProduction(order) {
   return !isShipped(order);
 }
 
+const PACKING_STEP_INDEX = PROCESS_STEPS.indexOf('포장');
+
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function hasReachedPacking(order) {
+  if (PACKING_STEP_INDEX < 0) return false;
+  const summary = parseProcessSummary(order?.process_summary);
+  const packing = summary[PROCESS_STEPS[PACKING_STEP_INDEX]];
+  if (packing?.status === 'in_progress' || packing?.status === 'completed') {
+    return true;
+  }
+  return Number(order?.completed_steps || 0) >= PACKING_STEP_INDEX;
+}
+
+function sortByOldestDue(a, b) {
+  const aDue = a.due_date || '9999-12-31';
+  const bDue = b.due_date || '9999-12-31';
+  return String(aDue).localeCompare(String(bDue)) || Number(b.id || 0) - Number(a.id || 0);
+}
 
 export default function SalesMyPage() {
   const navigate = useNavigate();
@@ -115,7 +145,8 @@ export default function SalesMyPage() {
   }, [lastMessage, fetchOrders, fetchFeed]);
 
   const overdueOrders = orders.filter(isOverdue);
-  const overdueAlertKey = overdueOrders.map(o => o.id).sort().join(',');
+  const prePackingOverdueOrders = overdueOrders.filter(order => !hasReachedPacking(order));
+  const overdueAlertKey = prePackingOverdueOrders.map(o => o.id).sort().join(',');
 
   useEffect(() => {
     if (loading) return;
@@ -126,9 +157,9 @@ export default function SalesMyPage() {
     }
     if (prevOverdueKeyRef.current !== overdueAlertKey) {
       prevOverdueKeyRef.current = overdueAlertKey;
-      setOverdueAlertDismissed(false);
     }
-  }, [loading, overdueAlertKey]);
+    setOverdueAlertDismissed(false);
+  }, [loading, overdueAlertKey, orders]);
 
   if (!mySalesPerson) return null;
 
@@ -221,6 +252,16 @@ export default function SalesMyPage() {
     if (!updated) return;
     setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, ...updated } : o));
     fetchFeed();
+  }
+
+  function handleOverdueSummaryClick() {
+    const target = [...(prePackingOverdueOrders.length ? prePackingOverdueOrders : overdueOrders)]
+      .sort(sortByOldestDue)[0];
+    if (target?.id) {
+      navigate(`/orders/${target.id}`);
+      return;
+    }
+    setFilter('overdue');
   }
 
   return (
@@ -333,6 +374,7 @@ export default function SalesMyPage() {
         shipped={shippedCount}
         overdue={overdueCount}
         onFilter={setFilter}
+        onOverdueClick={handleOverdueSummaryClick}
         activeFilter={filter}
       />
 
@@ -433,16 +475,16 @@ export default function SalesMyPage() {
         </aside>
       </div>
 
-      {!loading && overdueOrders.length > 0 && !overdueAlertDismissed && !editingOrder && (
+      {!loading && prePackingOverdueOrders.length > 0 && !overdueAlertDismissed && !editingOrder && (
         <div className="sales-my-page__overdue-overlay" onClick={() => setOverdueAlertDismissed(true)}>
           <div className="sales-my-page__overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 발주 알림" onClick={(e) => e.stopPropagation()}>
             <div className="sales-my-page__overdue-eyebrow">납기 초과 알림</div>
-            <div className="sales-my-page__overdue-title">{activePerson} 담당 납기 초과 {overdueOrders.length}건</div>
+            <div className="sales-my-page__overdue-title">{activePerson} 담당 납기 초과 {prePackingOverdueOrders.length}건</div>
             <div className="sales-my-page__overdue-desc">
               담당 발주 중 납기가 지난 건입니다. 현장 진행 상황을 확인하고 빠른 진행을 요청하세요.
             </div>
             <div className="sales-my-page__overdue-list">
-              {overdueOrders.slice(0, 5).map(order => {
+              {prePackingOverdueOrders.slice(0, 5).map(order => {
                 const due = formatDueStatus(order.due_date, order.status);
                 const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '-';
                 return (
