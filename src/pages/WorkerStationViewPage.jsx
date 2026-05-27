@@ -709,7 +709,9 @@ export default function WorkerStationViewPage() {
                   <span className="factory-delay-alert__eyebrow">납기초과 알림</span>
                   <strong className="factory-delay-alert__title">지연 작업 {delayedOrders.length}건</strong>
                   <p className="factory-delay-alert__message">
-                    납기 초과건이 발생했습니다. 해당 작업자분께서는 서둘러 진행해 주세요.
+                    우리가 늦으면, 고객의 시작도 늦어집니다.<br />
+                    오늘 우리의 빠른 대응이 고객의 오픈일을 지킵니다.<br />
+                    납기 초과 건은 최우선으로 진행 부탁드립니다.
                   </p>
                 </div>
                 {delayedSteps.length > 0 && (

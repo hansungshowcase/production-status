@@ -241,7 +241,9 @@ export default function WorkerSelectPage() {
               <span className="worker-select-page__delay-count">{delayedOrders.length}건</span>
             </div>
             <p className="worker-select-page__delay-message">
-              납기 초과건이 발생했습니다. 해당 작업자분께서는 서둘러 진행해 주세요.
+              우리가 늦으면, 고객의 시작도 늦어집니다.<br />
+              오늘 우리의 빠른 대응이 고객의 오픈일을 지킵니다.<br />
+              납기 초과 건은 최우선으로 진행 부탁드립니다.
             </p>
             {delayedSteps.length > 0 && (
               <div className="worker-select-page__delay-steps">
