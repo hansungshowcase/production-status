@@ -4,5 +4,5 @@
   <rect x="140" y="160" width="232" height="60" rx="6" fill="#0ea5e9" opacity="0.6"/>
   <rect x="140" y="232" width="232" height="60" rx="6" fill="#0ea5e9" opacity="0.4"/>
   <rect x="140" y="304" width="232" height="60" rx="6" fill="#0ea5e9" opacity="0.6"/>
-  <text x="256" y="450" font-family="-apple-system, 'Malgun Gothic', sans-serif" font-size="60" font-weight="900" text-anchor="middle" fill="#ffffff">한성</text>
+  <text x="256" y="450" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="76" font-weight="900" text-anchor="middle" fill="#ffffff">HS</text>
 </svg>
