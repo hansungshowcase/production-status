@@ -240,6 +240,9 @@ export default function WorkerSelectPage() {
               <span className="worker-select-page__delay-title">납기초과 작업</span>
               <span className="worker-select-page__delay-count">{delayedOrders.length}건</span>
             </div>
+            <p className="worker-select-page__delay-message">
+              납기 초과건이 발생했습니다. 해당 작업자분께서는 서둘러 진행해 주세요.
+            </p>
             {delayedSteps.length > 0 && (
               <div className="worker-select-page__delay-steps">
                 {delayedSteps.slice(0, 4).map(step => (
@@ -266,6 +269,7 @@ export default function WorkerSelectPage() {
                     </span>
                     <span className="worker-select-page__delay-meta">
                       <span>{order.step_name}</span>
+                      <span className="worker-select-page__delay-due">납기 {order.due_date || '-'}</span>
                       <strong>D+{order.days_overdue}</strong>
                     </span>
                   </button>

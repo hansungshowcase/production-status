@@ -708,6 +708,9 @@ export default function WorkerStationViewPage() {
                 <div>
                   <span className="factory-delay-alert__eyebrow">납기초과 알림</span>
                   <strong className="factory-delay-alert__title">지연 작업 {delayedOrders.length}건</strong>
+                  <p className="factory-delay-alert__message">
+                    납기 초과건이 발생했습니다. 해당 작업자분께서는 서둘러 진행해 주세요.
+                  </p>
                 </div>
                 {delayedSteps.length > 0 && (
                   <div className="factory-delay-alert__steps">
@@ -731,6 +734,7 @@ export default function WorkerStationViewPage() {
                       <span className="factory-delay-alert__client">{order.client_name || '거래처 미입력'}</span>
                       <span className="factory-delay-alert__product">{product}{size ? ` · ${size}` : ''}</span>
                       <span className="factory-delay-alert__step">{order.step_name}</span>
+                      <span className="factory-delay-alert__due">납기 {order.due_date || '-'}</span>
                       <span className="factory-delay-alert__dday">D+{order.days_overdue}</span>
                     </button>
                   );

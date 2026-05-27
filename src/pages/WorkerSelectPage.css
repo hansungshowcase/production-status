@@ -450,6 +450,14 @@
   font-weight: 900;
 }
 
+.worker-select-page__delay-message {
+  margin: 0 0 10px;
+  color: #7f1d1d;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .worker-select-page__delay-steps {
   display: flex;
   flex-wrap: wrap;
@@ -536,6 +544,12 @@
   color: #dc2626;
   font-size: 14px;
   font-weight: 900;
+}
+
+.worker-select-page__delay-due {
+  color: #7f1d1d;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .worker-select-page__fstep {

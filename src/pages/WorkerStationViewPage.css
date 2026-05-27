@@ -568,6 +568,14 @@
   font-weight: 900;
 }
 
+.factory-delay-alert__message {
+  margin: 5px 0 0;
+  color: #7f1d1d;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .factory-delay-alert__steps {
   display: flex;
   flex-wrap: wrap;
@@ -637,11 +645,21 @@
 
 .factory-delay-alert__dday {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
   justify-self: end;
   color: #dc2626;
   font-size: 14px;
   font-weight: 900;
+}
+
+.factory-delay-alert__due {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  color: #7f1d1d;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 /* Mobile compact row styles */
