@@ -537,6 +537,113 @@
   gap: 10px;
 }
 
+.factory-delay-alert {
+  margin: 0 0 14px;
+  padding: 14px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff7f7;
+}
+
+.factory-delay-alert__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.factory-delay-alert__eyebrow {
+  display: block;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.factory-delay-alert__title {
+  display: block;
+  margin-top: 2px;
+  color: #7f1d1d;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.factory-delay-alert__steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.factory-delay-alert__steps span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.factory-delay-alert__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.factory-delay-alert__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: 'Noto Sans KR', sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.factory-delay-alert__client,
+.factory-delay-alert__product {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factory-delay-alert__client {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.factory-delay-alert__product {
+  grid-column: 1 / 2;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.factory-delay-alert__step {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.factory-delay-alert__dday {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 900;
+}
+
 /* Mobile compact row styles */
 .factory-row {
   display: flex;
@@ -560,6 +667,10 @@
 .factory-row--current {
   background: #f0f9ff;
   border-left: 3px solid #0ea5e9;
+}
+
+.factory-row--delayed {
+  background: #fff1f2;
 }
 
 .factory-row--active .factory-row__name {
@@ -616,6 +727,11 @@
   color: #92400e;
 }
 
+.factory-row__badge--delay {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .factory-row__badge--done {
   background: #e2e8f0;
   color: #475569;
@@ -649,6 +765,11 @@
 .factory-step--active {
   border-color: #38bdf8;
   background: #f8faff;
+}
+
+.factory-step--delayed {
+  border-color: #fca5a5;
+  background: #fff7f7;
 }
 
 .factory-step__icon {
@@ -710,6 +831,11 @@
 .factory-step__count--waiting {
   background: #fef3c7;
   color: #92400e;
+}
+
+.factory-step__count--delay {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .factory-step__count--done {

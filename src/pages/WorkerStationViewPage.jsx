@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getProcessesByStep, startProcess, completeProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
@@ -73,6 +73,7 @@ function displayProcessWorker(step, processLike, salesPerson) {
 export default function WorkerStationViewPage() {
   const { stepName } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const decodedStep = decodeURIComponent(stepName);
   const icon = STEP_ICONS[decodedStep] || '';
   const workerName = sessionStorage.getItem(WORKER_STORAGE_KEY) || '현장작업자';
@@ -459,6 +460,9 @@ export default function WorkerStationViewPage() {
   const overdueAlertItems = items.filter(i => i.due_date && i.due_date < today);
   const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
   const overdueKey = overdueAlertItems.map(i => i.process_id).sort().join(',');
+  const delayedOrders = factoryStats?.delayed_orders || [];
+  const delayedSteps = factoryStats?.delayed_by_step || [];
+  const focusOrderId = location.state?.focusOrderId;
 
   // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
   useEffect(() => {
@@ -481,6 +485,12 @@ export default function WorkerStationViewPage() {
     }
   }, [loading, overdueKey]);
 
+  useEffect(() => {
+    if (!focusOrderId || items.length === 0) return;
+    const match = items.find(item => String(item.order_id) === String(focusOrderId));
+    if (match) setExpandedId(match.process_id);
+  }, [focusOrderId, items]);
+
   const sorted = [...visibleItems].sort((a, b) => {
     // 납기초과 건은 항상 상단
     const aOverdue = a.due_date && a.due_date < today ? 1 : 0;
@@ -499,6 +509,18 @@ export default function WorkerStationViewPage() {
     if (diff === 0) return { label: 'D-Day', cls: 'today' };
     if (diff <= 3) return { label: `D-${diff}`, cls: 'soon' };
     return { label: `D-${diff}`, cls: 'normal' };
+  }
+
+  function handleDelayedOrderClick(order) {
+    const targetStep = order.step_name || decodedStep;
+    if (targetStep === decodedStep) {
+      const match = items.find(item => String(item.order_id) === String(order.order_id));
+      if (match) setExpandedId(match.process_id);
+      return;
+    }
+    navigate(`/worker/station/${encodeURIComponent(targetStep)}`, {
+      state: { focusOrderId: order.order_id },
+    });
   }
 
   function statusLabel(status) {
@@ -680,6 +702,42 @@ export default function WorkerStationViewPage() {
               )}
             </div>
           </div>
+          {delayedOrders.length > 0 && (
+            <div className="factory-delay-alert">
+              <div className="factory-delay-alert__head">
+                <div>
+                  <span className="factory-delay-alert__eyebrow">납기초과 알림</span>
+                  <strong className="factory-delay-alert__title">지연 작업 {delayedOrders.length}건</strong>
+                </div>
+                {delayedSteps.length > 0 && (
+                  <div className="factory-delay-alert__steps">
+                    {delayedSteps.slice(0, 4).map(step => (
+                      <span key={step.step_name}>{step.step_name} <strong>{step.delayed}</strong></span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="factory-delay-alert__list">
+                {delayedOrders.slice(0, 6).map(order => {
+                  const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
+                  const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
+                  return (
+                    <button
+                      key={order.order_id}
+                      type="button"
+                      className="factory-delay-alert__item"
+                      onClick={() => handleDelayedOrderClick(order)}
+                    >
+                      <span className="factory-delay-alert__client">{order.client_name || '거래처 미입력'}</span>
+                      <span className="factory-delay-alert__product">{product}{size ? ` · ${size}` : ''}</span>
+                      <span className="factory-delay-alert__step">{order.step_name}</span>
+                      <span className="factory-delay-alert__dday">D+{order.days_overdue}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* PC: grid cards */}
           <div className="factory-overview__steps factory-overview__steps--grid">
             {PROCESS_STEPS.map((step) => {
@@ -690,12 +748,13 @@ export default function WorkerStationViewPage() {
               const c = Number(stepStat?.completed) || 0;
               const total = w + p + c;
               const actionable = Number(stepStat?.actionable) || 0;
+              const delayed = Number(stepStat?.delayed) || 0;
               const donePct = total > 0 ? Math.round((c / total) * 100) : 0;
 
               return (
                 <div
                   key={step}
-                  className={`factory-step${isCurrent ? ' factory-step--current' : ''}${actionable > 0 ? ' factory-step--active' : ''}`}
+                  className={`factory-step${isCurrent ? ' factory-step--current' : ''}${actionable > 0 ? ' factory-step--active' : ''}${delayed > 0 ? ' factory-step--delayed' : ''}`}
                   onClick={() => { if (!isCurrent) navigate(`/worker/station/${encodeURIComponent(step)}`); }}
                 >
                   <div className="factory-step__icon">{STEP_ICONS[step] || ''}</div>
@@ -704,6 +763,7 @@ export default function WorkerStationViewPage() {
                     <div className="factory-step__bar-fill" style={{ width: `${donePct}%` }} />
                   </div>
                   <div className="factory-step__counts">
+                    {delayed > 0 && <span className="factory-step__count factory-step__count--delay">지연 {delayed}</span>}
                     <span className={`factory-step__count${actionable > 0 ? ' factory-step__count--waiting' : ' factory-step__count--done'}`}>{actionable}</span>
                   </div>
                 </div>
@@ -718,12 +778,13 @@ export default function WorkerStationViewPage() {
               const c = Number(stepStat?.completed) || 0;
               const total = (Number(stepStat?.waiting) || 0) + (Number(stepStat?.in_progress) || 0) + c;
               const actionable = Number(stepStat?.actionable) || 0;
+              const delayed = Number(stepStat?.delayed) || 0;
               const donePct = total > 0 ? Math.round((c / total) * 100) : 0;
 
               return (
                 <div
                   key={step}
-                  className={`factory-row${isCurrent ? ' factory-row--current' : ''}${actionable > 0 ? ' factory-row--active' : ''}`}
+                  className={`factory-row${isCurrent ? ' factory-row--current' : ''}${actionable > 0 ? ' factory-row--active' : ''}${delayed > 0 ? ' factory-row--delayed' : ''}`}
                   onClick={() => { if (!isCurrent) navigate(`/worker/station/${encodeURIComponent(step)}`); }}
                 >
                   <span className="factory-row__icon">{STEP_ICONS[step] || ''}</span>
@@ -732,6 +793,7 @@ export default function WorkerStationViewPage() {
                     <div className="factory-row__bar-fill" style={{ width: `${donePct}%` }} />
                   </div>
                   <span className="factory-row__nums">
+                    {delayed > 0 && <span className="factory-row__badge factory-row__badge--delay">지연 {delayed}</span>}
                     <span className={`factory-row__badge${actionable > 0 ? ' factory-row__badge--wait' : ' factory-row__badge--done'}`}>{actionable}</span>
                   </span>
                 </div>
