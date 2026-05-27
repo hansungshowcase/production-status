@@ -270,6 +270,7 @@ export default function WorkerSelectPage() {
                     <span className="worker-select-page__delay-meta">
                       <span>{order.step_name}</span>
                       <span className="worker-select-page__delay-due">납기 {order.due_date || '-'}</span>
+                      <span className="worker-select-page__delay-worker">담당 {order.started_by || '미배정'}</span>
                       <strong>D+{order.days_overdue}</strong>
                     </span>
                   </button>

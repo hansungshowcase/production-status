@@ -735,6 +735,7 @@ export default function WorkerStationViewPage() {
                       <span className="factory-delay-alert__product">{product}{size ? ` · ${size}` : ''}</span>
                       <span className="factory-delay-alert__step">{order.step_name}</span>
                       <span className="factory-delay-alert__due">납기 {order.due_date || '-'}</span>
+                      <span className="factory-delay-alert__worker">담당 {order.started_by || '미배정'}</span>
                       <span className="factory-delay-alert__dday">D+{order.days_overdue}</span>
                     </button>
                   );
@@ -1211,7 +1212,7 @@ export default function WorkerStationViewPage() {
                   setOverdueAlertDismissed(true);
                 }}
               >
-                첫 작업 확인
+                확인
               </button>
               <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setOverdueAlertDismissed(true)}>
                 닫기

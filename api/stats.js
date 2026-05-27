@@ -106,6 +106,7 @@ export default cors(async function handler(req, res) {
           p.id AS process_id,
           p.step_name,
           p.status AS process_status,
+          p.started_by,
           ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY p.id) AS rn
         FROM orders o
         JOIN processes p ON p.order_id = o.id
