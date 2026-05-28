@@ -103,6 +103,7 @@ export default function WorkerStationViewPage() {
   const [packingPhotoFile, setPackingPhotoFile] = useState(null);
   const [overdueAlertDismissed, setOverdueAlertDismissed] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
+  const [focusedOrderId, setFocusedOrderId] = useState(null);
   const prevIssueCountRef = useRef(0);
   const prevOverdueKeyRef = useRef('');
 
@@ -114,6 +115,7 @@ export default function WorkerStationViewPage() {
   const lastStatsFetchRef = useRef(0);
   const localWorkOrderUrlsRef = useRef(new Map());
   const cardRefs = useRef(new Map());
+  const consumedFocusRef = useRef('');
 
   function showResultToast(type, clientName) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -487,18 +489,27 @@ export default function WorkerStationViewPage() {
     }
   }, [loading, overdueKey]);
 
-  useEffect(() => {
-    if (!focusOrderId || items.length === 0) return;
-    const match = items.find(item => String(item.order_id) === String(focusOrderId));
-    if (!match) return;
-    setExpandedId(match.process_id);
+  function focusOrderCard(orderId, processId) {
+    setFocusedOrderId(orderId);
+    if (processId) setExpandedId(processId);
     requestAnimationFrame(() => {
-      cardRefs.current.get(String(match.order_id))?.scrollIntoView({
+      cardRefs.current.get(String(orderId))?.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
     });
-  }, [focusOrderId, items]);
+  }
+
+  useEffect(() => {
+    if (!focusOrderId || items.length === 0) return;
+    const focusKey = `${decodedStep}:${focusOrderId}`;
+    if (consumedFocusRef.current === focusKey) return;
+    const match = items.find(item => String(item.order_id) === String(focusOrderId));
+    if (!match) return;
+    consumedFocusRef.current = focusKey;
+    setExpandedId(match.process_id);
+    focusOrderCard(match.order_id, match.process_id);
+  }, [decodedStep, focusOrderId, items]);
 
   const sorted = [...visibleItems].sort((a, b) => {
     // 납기초과 건은 항상 상단
@@ -524,7 +535,7 @@ export default function WorkerStationViewPage() {
     const targetStep = order.step_name || decodedStep;
     if (targetStep === decodedStep) {
       const match = items.find(item => String(item.order_id) === String(order.order_id));
-      if (match) setExpandedId(match.process_id);
+      if (match) focusOrderCard(match.order_id, match.process_id);
       return;
     }
     navigate(`/worker/station/${encodeURIComponent(targetStep)}`, {
@@ -942,7 +953,7 @@ export default function WorkerStationViewPage() {
                 if (node) cardRefs.current.set(key, node);
                 else cardRefs.current.delete(key);
               }}
-              className={`station-view__card${overdue ? ' station-view__card--overdue' : ''} ${sKey === 'in_progress' ? 'station-view__card--active' : ''}${isCompleting ? ' station-view__card--completing' : ''}${String(item.order_id) === String(focusOrderId) ? ' station-view__card--focused' : ''}`}
+              className={`station-view__card${overdue ? ' station-view__card--overdue' : ''} ${sKey === 'in_progress' ? 'station-view__card--active' : ''}${isCompleting ? ' station-view__card--completing' : ''}${String(item.order_id) === String(focusedOrderId) ? ' station-view__card--focused' : ''}`}
               onClick={() => setExpandedId(isExpanded ? null : item.process_id)}
             >
               {/* Single row: 거래처 | 제품 | 규격 | 납기 | 진행 | 액션 */}
