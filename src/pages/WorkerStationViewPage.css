@@ -2233,11 +2233,7 @@
   }
 
   .station-view__table-header {
-    display: grid;
-    grid-template-columns: 6px minmax(0, 1fr) 58px 70px;
-    column-gap: 6px;
-    align-items: center;
-    padding: 4px 6px;
+    display: none;
   }
 
   .station-view__th--status { grid-column: 1; width: 6px; }
@@ -2250,12 +2246,12 @@
 
   .station-view__row {
     display: grid;
-    grid-template-columns: 6px minmax(0, 1fr) 58px 70px;
-    grid-template-rows: auto auto;
-    column-gap: 6px;
+    grid-template-columns: 7px minmax(0, 1fr) 78px;
+    grid-template-rows: auto auto auto;
+    column-gap: 8px;
     align-items: center;
-    padding: 6px;
-    row-gap: 3px;
+    padding: 10px;
+    row-gap: 7px;
   }
 
   .station-view__row-client {
@@ -2264,12 +2260,12 @@
     flex: none;
     width: auto;
     max-width: none;
-    font-size: 12px;
+    font-size: 15px;
     padding-left: 0;
     white-space: normal;
     overflow: hidden;
     text-overflow: clip;
-    line-height: 1.25;
+    line-height: 1.32;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2277,11 +2273,11 @@
   }
 
   .station-view__row-product {
-    grid-column: 2 / 4;
+    grid-column: 2 / 3;
     grid-row: 2;
     flex: none;
-    font-size: 11px;
-    font-weight: 900;
+    font-size: 13px;
+    font-weight: 800;
     color: #0f172a;
     min-width: 0;
     white-space: nowrap;
@@ -2295,19 +2291,19 @@
 
   .station-view__row-due {
     grid-column: 3;
-    grid-row: 1;
+    grid-row: 1 / 3;
     flex: none;
-    width: auto;
-    font-size: 10px;
+    width: 78px;
+    font-size: 12px;
     min-width: 0;
     overflow: hidden;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 2px;
-    padding: 3px 2px;
+    padding: 6px 4px;
     text-align: center;
-    line-height: 1.05;
+    line-height: 1.15;
     border-width: 1px;
   }
 
@@ -2316,19 +2312,20 @@
   .station-view__progress-bar-mini { width: 24px; }
 
   .station-view__row-actions {
-    grid-column: 4;
-    grid-row: 1 / 3;
+    grid-column: 2 / 4;
+    grid-row: 3;
     flex: none;
-    width: 70px;
-    justify-content: flex-end;
-    gap: 2px;
+    width: 100%;
+    justify-content: stretch;
+    gap: 6px;
   }
 
   .station-view__row-btn {
-    padding: 2px 4px;
-    font-size: 9.5px;
-    min-height: 23px;
-    border-radius: 4px;
+    flex: 1 1 0;
+    padding: 7px 6px;
+    font-size: 12px;
+    min-height: 34px;
+    border-radius: 6px;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.05;
@@ -2340,32 +2337,78 @@
   }
 
   .station-view__row-btn--work-order {
-    flex: 0 0 100%;
+    flex: 1 1 0;
     width: 100%;
   }
 
   .station-view__row-btn--complete {
-    flex: 0 0 100%;
+    flex: 1 1 0;
     width: 100%;
     min-width: 0;
   }
 
   .station-view__row-expand {
-    padding: 4px 6px 8px 16px;
+    padding: 8px 10px 12px 20px;
   }
 
   .station-view__row-details {
-    font-size: 11px;
-    gap: 2px 8px;
+    font-size: 12px;
+    gap: 6px 10px;
   }
 
   .station-view__dday {
-    font-size: 9px;
-    padding: 1px 3px;
+    font-size: 10px;
+    padding: 2px 5px;
     max-width: 100%;
     margin-left: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .factory-delay-alert {
+    margin: 8px 8px 12px;
+    padding: 12px;
+  }
+
+  .factory-delay-alert__head {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .factory-delay-alert__title {
+    font-size: 16px;
+  }
+
+  .factory-delay-alert__message {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .factory-delay-alert__list {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-delay-alert__item {
+    min-height: 72px;
+    padding: 12px;
+    gap: 4px 10px;
+  }
+
+  .factory-delay-alert__client {
+    font-size: 15px;
+  }
+
+  .factory-delay-alert__product {
+    font-size: 13px;
+  }
+
+  .factory-delay-alert__step {
+    font-size: 12px;
+  }
+
+  .factory-delay-alert__due,
+  .factory-delay-alert__worker {
+    font-size: 12px;
   }
 
 }
