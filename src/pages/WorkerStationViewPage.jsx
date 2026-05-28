@@ -507,9 +507,14 @@ export default function WorkerStationViewPage() {
     const match = items.find(item => String(item.order_id) === String(focusOrderId));
     if (!match) return;
     consumedFocusRef.current = focusKey;
-    setExpandedId(match.process_id);
     focusOrderCard(match.order_id, match.process_id);
-  }, [decodedStep, focusOrderId, items]);
+
+    const { focusOrderId: _removedFocusOrderId, ...restState } = location.state || {};
+    navigate(location.pathname, {
+      replace: true,
+      state: Object.keys(restState).length ? restState : null,
+    });
+  }, [decodedStep, focusOrderId, items, location.pathname, location.state, navigate]);
 
   const sorted = [...visibleItems].sort((a, b) => {
     // 납기초과 건은 항상 상단
