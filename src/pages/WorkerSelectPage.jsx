@@ -23,6 +23,7 @@ export default function WorkerSelectPage() {
   const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
   const delayedOrders = factoryStats?.delayed_orders || [];
   const delayedSteps = factoryStats?.delayed_by_step || [];
+  const dueTodayOrders = factoryStats?.due_today_orders || [];
 
   useEffect(() => {
     getStats().then(setFactoryStats).catch(() => {});
@@ -233,7 +234,48 @@ export default function WorkerSelectPage() {
               납기초과 <strong>{factoryStats.overdue_count}</strong>
             </span>
           )}
+          {factoryStats?.due_today_count > 0 && (
+            <span className="worker-select-page__factory-stat worker-select-page__factory-stat--today">
+              금일출고 <strong>{factoryStats.due_today_count}</strong>
+            </span>
+          )}
         </div>
+        {dueTodayOrders.length > 0 && (
+          <div className="worker-select-page__delay-panel worker-select-page__delay-panel--today">
+            <div className="worker-select-page__delay-head">
+              <span className="worker-select-page__delay-title">금일 출고건</span>
+              <span className="worker-select-page__delay-count">{dueTodayOrders.length}건</span>
+            </div>
+            <p className="worker-select-page__delay-message">
+              오늘 납기 건입니다. 출고 전까지 현재 공정과 담당자를 확인해 주세요.
+            </p>
+            <div className="worker-select-page__delay-list">
+              {dueTodayOrders.slice(0, 6).map(order => {
+                const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
+                const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
+                return (
+                  <button
+                    key={order.order_id}
+                    type="button"
+                    className="worker-select-page__delay-item"
+                    onClick={() => handleSelectDelayedOrder(order)}
+                  >
+                    <span className="worker-select-page__delay-main">
+                      <strong>{order.client_name || '거래처 미입력'}</strong>
+                      <span>{product}{size ? ` · ${size}` : ''}</span>
+                    </span>
+                    <span className="worker-select-page__delay-meta">
+                      <span>{order.step_name}</span>
+                      <span className="worker-select-page__delay-due">납기 {order.due_date || '-'}</span>
+                      <span className="worker-select-page__delay-worker">담당 {order.started_by || '미배정'}</span>
+                      <strong>D-Day</strong>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {delayedOrders.length > 0 && (
           <div className="worker-select-page__delay-panel">
             <div className="worker-select-page__delay-head">

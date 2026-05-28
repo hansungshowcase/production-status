@@ -527,6 +527,11 @@
   color: #d97706;
 }
 
+.factory-overview__global-item--today,
+.factory-overview__global-item--today strong {
+  color: #b45309;
+}
+
 .factory-overview__steps--compact {
   display: none;
 }
@@ -543,6 +548,31 @@
   border: 1px solid #fecaca;
   border-radius: 12px;
   background: #fff7f7;
+}
+
+.factory-delay-alert--today {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.factory-delay-alert--today .factory-delay-alert__eyebrow,
+.factory-delay-alert--today .factory-delay-alert__title,
+.factory-delay-alert--today .factory-delay-alert__step,
+.factory-delay-alert--today .factory-delay-alert__worker {
+  color: #92400e;
+}
+
+.factory-delay-alert--today .factory-delay-alert__message,
+.factory-delay-alert--today .factory-delay-alert__due {
+  color: #78350f;
+}
+
+.factory-delay-alert--today .factory-delay-alert__item {
+  border-color: #fcd34d;
+}
+
+.factory-delay-alert--today .factory-delay-alert__dday {
+  color: #b45309;
 }
 
 .factory-delay-alert__head {

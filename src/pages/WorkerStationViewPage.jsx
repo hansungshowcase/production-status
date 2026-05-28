@@ -462,6 +462,7 @@ export default function WorkerStationViewPage() {
   const overdueKey = overdueAlertItems.map(i => i.process_id).sort().join(',');
   const delayedOrders = factoryStats?.delayed_orders || [];
   const delayedSteps = factoryStats?.delayed_by_step || [];
+  const dueTodayOrders = factoryStats?.due_today_orders || [];
   const focusOrderId = location.state?.focusOrderId;
 
   // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
@@ -700,8 +701,45 @@ export default function WorkerStationViewPage() {
               {factoryStats.overdue_count > 0 && (
                 <span className="factory-overview__global-item factory-overview__global-item--red">지연 <strong>{factoryStats.overdue_count}</strong></span>
               )}
+              {factoryStats.due_today_count > 0 && (
+                <span className="factory-overview__global-item factory-overview__global-item--today">금일출고 <strong>{factoryStats.due_today_count}</strong></span>
+              )}
             </div>
           </div>
+          {dueTodayOrders.length > 0 && (
+            <div className="factory-delay-alert factory-delay-alert--today">
+              <div className="factory-delay-alert__head">
+                <div>
+                  <span className="factory-delay-alert__eyebrow">금일 출고 알림</span>
+                  <strong className="factory-delay-alert__title">오늘 출고 대상 {dueTodayOrders.length}건</strong>
+                  <p className="factory-delay-alert__message">
+                    오늘 납기 건입니다. 출고 전까지 현재 공정과 담당자를 확인해 주세요.
+                  </p>
+                </div>
+              </div>
+              <div className="factory-delay-alert__list">
+                {dueTodayOrders.slice(0, 6).map(order => {
+                  const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
+                  const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
+                  return (
+                    <button
+                      key={order.order_id}
+                      type="button"
+                      className="factory-delay-alert__item"
+                      onClick={() => handleDelayedOrderClick(order)}
+                    >
+                      <span className="factory-delay-alert__client">{order.client_name || '거래처 미입력'}</span>
+                      <span className="factory-delay-alert__product">{product}{size ? ` · ${size}` : ''}</span>
+                      <span className="factory-delay-alert__step">{order.step_name}</span>
+                      <span className="factory-delay-alert__due">납기 {order.due_date || '-'}</span>
+                      <span className="factory-delay-alert__worker">담당 {order.started_by || '미배정'}</span>
+                      <span className="factory-delay-alert__dday">D-Day</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {delayedOrders.length > 0 && (
             <div className="factory-delay-alert">
               <div className="factory-delay-alert__head">

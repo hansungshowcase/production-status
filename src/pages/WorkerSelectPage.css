@@ -413,6 +413,14 @@
   color: #dc2626;
 }
 
+.worker-select-page__factory-stat--today {
+  color: #b45309;
+}
+
+.worker-select-page__factory-stat--today strong {
+  color: #b45309;
+}
+
 .worker-select-page__factory-steps {
   display: flex;
   flex-direction: column;
@@ -425,6 +433,30 @@
   border: 1px solid #fecaca;
   border-radius: 12px;
   background: #fff7f7;
+}
+
+.worker-select-page__delay-panel--today {
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.worker-select-page__delay-panel--today .worker-select-page__delay-title,
+.worker-select-page__delay-panel--today .worker-select-page__delay-meta span,
+.worker-select-page__delay-panel--today .worker-select-page__delay-worker {
+  color: #92400e;
+}
+
+.worker-select-page__delay-panel--today .worker-select-page__delay-count {
+  background: #f59e0b;
+}
+
+.worker-select-page__delay-panel--today .worker-select-page__delay-message,
+.worker-select-page__delay-panel--today .worker-select-page__delay-due {
+  color: #78350f;
+}
+
+.worker-select-page__delay-panel--today .worker-select-page__delay-meta strong {
+  color: #b45309;
 }
 
 .worker-select-page__delay-head {

@@ -15,7 +15,7 @@ export default cors(async function handler(req, res) {
     totalResult, inProdResult, shippedResult,
     waitingResult, inProgressResult, completedResult,
     openIssuesResult, byStepResult, actionableResult,
-    bySalesResult, overdueResult, dueSoonResult, delayedByStepResult, delayedOrdersResult,
+    bySalesResult, overdueResult, dueTodayResult, dueSoonResult, delayedByStepResult, delayedOrdersResult, dueTodayOrdersResult,
   ] = await Promise.all([
     db.execute({ sql: 'SELECT COUNT(*) AS count FROM orders', args: [] }),
     db.execute({ sql: "SELECT COUNT(*) AS count FROM orders WHERE status = 'in_production'", args: [] }),
@@ -63,6 +63,10 @@ export default cors(async function handler(req, res) {
     }),
     db.execute({
       sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')",
+      args: [],
+    }),
+    db.execute({
+      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date = to_char(CURRENT_DATE, 'YYYY-MM-DD')",
       args: [],
     }),
     db.execute({
@@ -122,6 +126,38 @@ export default cors(async function handler(req, res) {
       LIMIT 30`,
       args: [],
     }),
+    db.execute({
+      sql: `WITH current_today AS (
+        SELECT
+          o.id AS order_id,
+          o.client_name,
+          o.product_type,
+          o.door_type,
+          o.width,
+          o.depth,
+          o.height,
+          o.quantity,
+          o.due_date,
+          o.sales_person,
+          p.id AS process_id,
+          p.step_name,
+          p.status AS process_status,
+          p.started_by,
+          ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY p.id) AS rn
+        FROM orders o
+        JOIN processes p ON p.order_id = o.id
+        WHERE o.status != 'shipped'
+          AND o.due_date IS NOT NULL
+          AND o.due_date = to_char(CURRENT_DATE, 'YYYY-MM-DD')
+          AND p.status != 'completed'
+      )
+      SELECT *
+      FROM current_today
+      WHERE rn = 1
+      ORDER BY order_id DESC
+      LIMIT 30`,
+      args: [],
+    }),
   ]);
 
   const total_orders = totalResult.rows[0].count;
@@ -132,6 +168,7 @@ export default cors(async function handler(req, res) {
   const completed = completedResult.rows[0].count;
   const open_issues = openIssuesResult.rows[0].count;
   const overdue_count = overdueResult.rows[0].count;
+  const due_today_count = dueTodayResult.rows[0].count;
   const due_soon_count = dueSoonResult.rows[0].count;
 
   const actionableMap = {};
@@ -166,6 +203,10 @@ export default cors(async function handler(req, res) {
     ...row,
     days_overdue: Math.abs(daysUntilDue(row.due_date) || 0),
   }));
+  const due_today_orders = dueTodayOrdersResult.rows.map(row => ({
+    ...row,
+    days_until_due: daysUntilDue(row.due_date),
+  }));
   const by_sales_person = bySalesResult.rows;
 
   return res.json({
@@ -175,10 +216,12 @@ export default cors(async function handler(req, res) {
     process_stats: { waiting, in_progress, completed },
     open_issues,
     overdue_count,
+    due_today_count,
     due_soon_count,
     by_step,
     delayed_by_step,
     delayed_orders,
+    due_today_orders,
     by_sales_person,
   });
 });
