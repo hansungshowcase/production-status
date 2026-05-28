@@ -2460,7 +2460,7 @@
 
   .station-view__table-header {
     display: grid;
-    grid-template-columns: 6px minmax(150px, 1.45fr) minmax(86px, 0.8fr) minmax(96px, 0.85fr) minmax(110px, 0.78fr) 168px;
+    grid-template-columns: 6px minmax(130px, 1.45fr) minmax(72px, 0.8fr) minmax(82px, 0.85fr) minmax(94px, 0.78fr) 232px;
     column-gap: 10px;
     align-items: center;
     padding: 8px 14px;
@@ -2505,7 +2505,7 @@
 
   .station-view__row {
     display: grid;
-    grid-template-columns: 6px minmax(150px, 1.45fr) minmax(86px, 0.8fr) minmax(96px, 0.85fr) minmax(110px, 0.78fr) 168px;
+    grid-template-columns: 6px minmax(130px, 1.45fr) minmax(72px, 0.8fr) minmax(82px, 0.85fr) minmax(94px, 0.78fr) 232px;
     column-gap: 10px;
     align-items: center;
     padding: 12px 14px;
@@ -2582,12 +2582,14 @@
 
   /* PC: actions */
   .station-view__row-actions {
-    width: 168px;
+    width: 232px;
+    flex-wrap: nowrap;
+    gap: 6px;
     justify-content: flex-end;
   }
 
   .station-view__th--actions {
-    width: 168px;
+    width: 232px;
     text-align: center;
   }
 
@@ -2596,17 +2598,21 @@
   .station-view__btn-text--mobile { display: none; }
 
   .station-view__row-btn {
-    padding: 5px 10px;
+    padding: 5px 8px;
     font-size: 12px;
     min-height: 32px;
   }
 
   .station-view__row-btn--work-order {
-    flex: 0 0 82px;
+    flex: 0 0 52px;
+  }
+
+  .station-view__row-btn--packing-photo {
+    flex: 0 0 74px;
   }
 
   .station-view__row-btn--complete {
-    flex: 0 0 74px;
+    flex: 0 0 84px;
   }
 
   /* PC: issue popup wider */
