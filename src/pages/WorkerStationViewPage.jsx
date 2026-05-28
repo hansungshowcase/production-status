@@ -113,6 +113,7 @@ export default function WorkerStationViewPage() {
   const toastTimerRef = useRef(null);
   const lastStatsFetchRef = useRef(0);
   const localWorkOrderUrlsRef = useRef(new Map());
+  const cardRefs = useRef(new Map());
 
   function showResultToast(type, clientName) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -489,7 +490,14 @@ export default function WorkerStationViewPage() {
   useEffect(() => {
     if (!focusOrderId || items.length === 0) return;
     const match = items.find(item => String(item.order_id) === String(focusOrderId));
-    if (match) setExpandedId(match.process_id);
+    if (!match) return;
+    setExpandedId(match.process_id);
+    requestAnimationFrame(() => {
+      cardRefs.current.get(String(match.order_id))?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    });
   }, [focusOrderId, items]);
 
   const sorted = [...visibleItems].sort((a, b) => {
@@ -929,7 +937,12 @@ export default function WorkerStationViewPage() {
           return (
             <div
               key={item.process_id}
-              className={`station-view__card${overdue ? ' station-view__card--overdue' : ''} ${sKey === 'in_progress' ? 'station-view__card--active' : ''}${isCompleting ? ' station-view__card--completing' : ''}`}
+              ref={(node) => {
+                const key = String(item.order_id);
+                if (node) cardRefs.current.set(key, node);
+                else cardRefs.current.delete(key);
+              }}
+              className={`station-view__card${overdue ? ' station-view__card--overdue' : ''} ${sKey === 'in_progress' ? 'station-view__card--active' : ''}${isCompleting ? ' station-view__card--completing' : ''}${String(item.order_id) === String(focusOrderId) ? ' station-view__card--focused' : ''}`}
               onClick={() => setExpandedId(isExpanded ? null : item.process_id)}
             >
               {/* Single row: 거래처 | 제품 | 규격 | 납기 | 진행 | 액션 */}
