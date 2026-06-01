@@ -62,7 +62,8 @@ export default cors(async function handler(req, res) {
               'step_name', step_name,
               'status', status,
               'started_by', started_by,
-              'completed_by', completed_by
+              'completed_by', completed_by,
+              'completed_at', completed_at
             )
             ORDER BY id
           ) AS step_history

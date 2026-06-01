@@ -2,6 +2,8 @@ import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 
+const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -46,6 +48,13 @@ export default cors(async function handler(req, res) {
 
   // Atomic revert: only update if status still matches (prevents race condition)
   if (process.status === 'completed') {
+    const completedAt = process.completed_at ? new Date(process.completed_at).getTime() : NaN;
+    if (!Number.isFinite(completedAt) || Date.now() - completedAt > PROCESS_UNDO_WINDOW_MS) {
+      return res.status(400).json({
+        error: { message: '공정 완료 후 3일이 지나 되돌릴 수 없습니다.', status: 400 },
+      });
+    }
+
     const { rows: updateResult } = await db.execute({
       sql: "UPDATE processes SET status = 'in_progress', completed_at = NULL, completed_by = NULL, completed_date = NULL WHERE id = ? AND status = 'completed' RETURNING id",
       args: [id]
