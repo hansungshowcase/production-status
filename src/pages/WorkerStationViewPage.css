@@ -81,6 +81,17 @@
   border-color: rgba(255, 200, 200, 0.4);
 }
 
+.station-view__action-chip--undo {
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(255, 255, 255, 0.55);
+  font-weight: 800;
+}
+
+.station-view__action-chip:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .station-view__issue-report-wrap {
   position: relative;
 }

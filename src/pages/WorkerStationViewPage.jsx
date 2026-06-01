@@ -113,7 +113,7 @@ export default function WorkerStationViewPage() {
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
   const nextSteps = PROCESS_STEPS.slice(currentStepIndex + 1, currentStepIndex + 3); // 다음 2개 공정
   const isLastStep = currentStepIndex === PROCESS_STEPS.length - 1;
-  const canUndoProcess = workerName === PROCESS_UNDO_MANAGER;
+  const canUndoProcess = String(workerName || '').replace(/\s+/g, '').includes('김보수');
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
   const lastStatsFetchRef = useRef(0);
@@ -718,6 +718,15 @@ export default function WorkerStationViewPage() {
             >
               부서변경
             </button>
+            {canUndoProcess && undoAction && (
+              <button
+                className="station-view__action-chip station-view__action-chip--undo"
+                onClick={handleUndoLastAction}
+                disabled={!!actionLoading}
+              >
+                {actionLoading === 'undo' ? '되돌리는 중...' : '최근 넘김 되돌리기'}
+              </button>
+            )}
             <div className="station-view__issue-report-wrap">
               <button
                 className="station-view__action-chip station-view__action-chip--issue"
