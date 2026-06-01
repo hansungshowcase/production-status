@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getProcessesByStep, startProcess, completeProcess } from '../api/processes';
+import { getProcessesByStep, startProcess, completeProcess, revertProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages';
@@ -12,6 +12,7 @@ import './WorkerStationViewPage.css';
 
 const REFRESH_INTERVAL = 30000;
 const STATS_REFRESH_INTERVAL = 120000;
+const PROCESS_UNDO_MANAGER = '김보수 팀장';
 
 const CONTACTS = [
   { name: '박상규', role: '공장장', phone: '010-9322-3904' },
@@ -105,12 +106,14 @@ export default function WorkerStationViewPage() {
   const [overdueAlertDismissed, setOverdueAlertDismissed] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [focusedOrderId, setFocusedOrderId] = useState(null);
+  const [undoAction, setUndoAction] = useState(null);
   const prevIssueCountRef = useRef(0);
   const prevOverdueKeyRef = useRef('');
 
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
   const nextSteps = PROCESS_STEPS.slice(currentStepIndex + 1, currentStepIndex + 3); // 다음 2개 공정
   const isLastStep = currentStepIndex === PROCESS_STEPS.length - 1;
+  const canUndoProcess = workerName === PROCESS_UNDO_MANAGER;
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
   const lastStatsFetchRef = useRef(0);
@@ -121,7 +124,7 @@ export default function WorkerStationViewPage() {
   function showResultToast(type, clientName) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ type: 'complete', client: clientName, step: decodedStep, message: '공정 완료!' });
-    toastTimerRef.current = setTimeout(() => setToast(null), 3500);
+    toastTimerRef.current = setTimeout(() => setToast(null), canUndoProcess ? 10000 : 3500);
   }
 
   const fetchData = useCallback(async () => {
@@ -188,6 +191,8 @@ export default function WorkerStationViewPage() {
   async function executeComplete(selectedNextStep) {
     if (!confirmTarget || actionLoading) return; // 이중 실행 방지
     const { processId, clientName, status, orderId, item } = confirmTarget;
+    const completedProcesses = [{ id: processId, wasWaitingBeforeComplete: status === 'waiting' || status === '대기' }];
+    const startedProcessIds = [];
     if (decodedStep === '포장' && !packingPhotoFile) {
       alert('출고로 넘기려면 포장 사진을 첨부해야 합니다.');
       return;
@@ -227,6 +232,7 @@ export default function WorkerStationViewPage() {
           if (match) {
             await startProcess(match.process_id, { assigned_worker: workerName, assigned_team: skipSteps[i], actor: workerName });
             await completeProcess(match.process_id, { actor: workerName });
+            completedProcesses.push({ id: match.process_id, wasWaitingBeforeComplete: true });
           }
         }
 
@@ -234,8 +240,10 @@ export default function WorkerStationViewPage() {
         const targetData = await getProcessesByStep(selectedNextStep);
         const targetRaw = Array.isArray(targetData) ? targetData : targetData.processes || [];
         const targetMatch = targetRaw.find(p => p.order_id === orderId);
-        if (targetMatch && targetMatch.status !== 'in_progress' && targetMatch.status !== 'completed') {
+        const targetStatus = targetMatch?.status || targetMatch?.process_status;
+        if (targetMatch && targetStatus !== 'in_progress' && targetStatus !== 'completed') {
           await startProcess(targetMatch.process_id, { assigned_worker: workerName, assigned_team: selectedNextStep, actor: workerName });
+          startedProcessIds.push(targetMatch.process_id);
         }
       }
 
@@ -245,9 +253,20 @@ export default function WorkerStationViewPage() {
       if (nextStep) {
         if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
         setToast({ type: 'transition', client: clientName, fromStep: decodedStep, toStep: nextStep, fromIcon: STEP_ICONS[decodedStep] || '', toIcon: STEP_ICONS[nextStep] || '' });
-        toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+        toastTimerRef.current = setTimeout(() => setToast(null), canUndoProcess ? 10000 : 3000);
       } else {
         showResultToast('complete', clientName);
+      }
+      if (canUndoProcess) {
+        setUndoAction({
+          clientName,
+          fromStep: decodedStep,
+          toStep: nextStep,
+          completedProcesses,
+          startedProcessIds,
+        });
+      } else {
+        setUndoAction(null);
       }
       // 즉시 데이터 갱신
       setPackingPhotoFile(null);
@@ -257,6 +276,36 @@ export default function WorkerStationViewPage() {
       }, 400);
     } catch (err) {
       alert(err.message || '공정 완료에 실패했습니다.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleUndoLastAction() {
+    if (!canUndoProcess || !undoAction || actionLoading) return;
+    setActionLoading('undo');
+    try {
+      for (const processId of [...undoAction.startedProcessIds].reverse()) {
+        await revertProcess(processId, workerName);
+      }
+      for (const proc of [...undoAction.completedProcesses].reverse()) {
+        await revertProcess(proc.id, workerName);
+        if (proc.wasWaitingBeforeComplete) {
+          await revertProcess(proc.id, workerName);
+        }
+      }
+      setUndoAction(null);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToast({
+        type: 'revert',
+        client: undoAction.clientName,
+        step: undoAction.fromStep,
+        message: '공정을 되돌렸습니다',
+      });
+      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+      await fetchData();
+    } catch (err) {
+      alert(err.message || '공정 되돌리기에 실패했습니다.');
     } finally {
       setActionLoading(null);
     }
@@ -1391,6 +1440,19 @@ export default function WorkerStationViewPage() {
               <span className="sv-transition-banner__step-name">{toast.toStep}</span>
             </div>
           </div>
+          {canUndoProcess && undoAction && (
+            <button
+              type="button"
+              className="sv-transition-banner__undo"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUndoLastAction();
+              }}
+              disabled={!!actionLoading}
+            >
+              {actionLoading === 'undo' ? '되돌리는 중...' : '바로 되돌리기'}
+            </button>
+          )}
         </div>
       )}
       {toast && toast.type !== 'transition' && (
@@ -1405,6 +1467,19 @@ export default function WorkerStationViewPage() {
               대기 {waitingItems.length}건 · 진행 {progressItems.length}건
             </div>
           </div>
+          {canUndoProcess && undoAction && toast.type === 'complete' && (
+            <button
+              type="button"
+              className="sv-toast__undo"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUndoLastAction();
+              }}
+              disabled={!!actionLoading}
+            >
+              {actionLoading === 'undo' ? '되돌리는 중...' : '바로 되돌리기'}
+            </button>
+          )}
         </div>
       )}
       {/* 이슈 목록은 상단 버튼 옆 드롭다운으로 이동됨 */}

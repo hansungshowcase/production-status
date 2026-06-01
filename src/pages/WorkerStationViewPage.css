@@ -2779,6 +2779,25 @@
   margin-top: 2px;
 }
 
+.sv-toast__undo,
+.sv-transition-banner__undo {
+  border: 0;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 9px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sv-toast__undo:disabled,
+.sv-transition-banner__undo:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 @media (max-width: 767px) {
   .sv-toast {
     bottom: 24px;
@@ -3645,6 +3664,7 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
+  margin-bottom: 14px;
 }
 
 .sv-transition-banner__step {
