@@ -71,7 +71,10 @@ export default cors(async function handler(req, res) {
       WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
         AND o.status = 'in_production'
         ${filterClause}
-      ORDER BY o.id DESC`,
+      ORDER BY
+        CASE WHEN o.due_date IS NULL OR o.due_date = '' THEN 1 ELSE 0 END,
+        o.due_date ASC,
+        o.id DESC`,
       args,
     });
 

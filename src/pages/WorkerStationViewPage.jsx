@@ -516,14 +516,15 @@ export default function WorkerStationViewPage() {
     });
   }, [decodedStep, focusOrderId, items, location.pathname, location.state, navigate]);
 
-  const sorted = [...visibleItems].sort((a, b) => {
-    // 납기초과 건은 항상 상단
-    const aOverdue = a.due_date && a.due_date < today ? 1 : 0;
-    const bOverdue = b.due_date && b.due_date < today ? 1 : 0;
-    if (aOverdue !== bOverdue) return bOverdue - aOverdue;
-    // 나머지는 최신 등록순 (order_id 큰 것이 위)
+  const sortByDueDate = (a, b) => {
+    const aDue = a.due_date || '9999-12-31';
+    const bDue = b.due_date || '9999-12-31';
+    if (aDue !== bDue) return aDue.localeCompare(bDue);
     return (b.order_id || 0) - (a.order_id || 0);
-  });
+  };
+
+  const sorted = [...visibleItems].sort(sortByDueDate);
+  const sortedOverdueAlertItems = [...overdueAlertItems].sort(sortByDueDate);
 
   function getDday(dueDate) {
     if (!dueDate) return null;
@@ -1252,7 +1253,7 @@ export default function WorkerStationViewPage() {
               납기가 지난 작업입니다. 가능한 작업부터 먼저 진행해 주세요.
             </div>
             <div className="sv-overdue-popup__list">
-              {overdueAlertItems.slice(0, 4).map(item => {
+              {sortedOverdueAlertItems.slice(0, 4).map(item => {
                 const dday = getDday(item.due_date);
                 const product = [item.product_type, item.door_type].filter(Boolean).join(' / ') || '-';
                 return (
@@ -1276,7 +1277,7 @@ export default function WorkerStationViewPage() {
               <button
                 className="sv-card-popup__btn sv-card-popup__btn--ok"
                 onClick={() => {
-                  const first = overdueAlertItems[0];
+                  const first = sortedOverdueAlertItems[0];
                   if (first) setExpandedId(first.process_id);
                   setOverdueAlertDismissed(true);
                 }}
