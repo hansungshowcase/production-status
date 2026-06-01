@@ -58,6 +58,7 @@ export default cors(async function handler(req, res) {
         SELECT order_id,
           jsonb_agg(
             jsonb_build_object(
+              'id', id,
               'step_name', step_name,
               'status', status,
               'started_by', started_by,

@@ -1531,6 +1531,13 @@
   min-width: 64px;
 }
 
+.station-view__row-btn--undo {
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  min-width: 72px;
+}
+
 .station-view__row-btn--uploading {
   opacity: 0.65;
   pointer-events: none;

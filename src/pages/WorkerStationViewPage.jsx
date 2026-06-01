@@ -311,6 +311,52 @@ export default function WorkerStationViewPage() {
     }
   }
 
+  function getPreviousProcess(item) {
+    if (!item?.step_history) return null;
+    const index = PROCESS_STEPS.indexOf(item.step_name);
+    if (index <= 0) return null;
+    const previousStep = PROCESS_STEPS[index - 1];
+    return item.step_history.find(p => p.step_name === previousStep) || null;
+  }
+
+  function canUndoItemToPrevious(item) {
+    const previous = getPreviousProcess(item);
+    return Boolean(
+      canUndoProcess
+      && previous?.id
+      && previous.status === 'completed'
+      && (item.status === 'waiting' || item.status === '대기' || item.status === 'in_progress' || item.status === '진행중')
+    );
+  }
+
+  async function handleUndoItemToPrevious(item) {
+    const previous = getPreviousProcess(item);
+    if (!canUndoItemToPrevious(item) || actionLoading) return;
+    setActionLoading(`undo-${item.process_id}`);
+    try {
+      if (item.status === 'in_progress' || item.status === '진행중') {
+        await revertProcess(item.process_id, workerName);
+      }
+      await revertProcess(previous.id, workerName);
+      setUndoAction(null);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToast({
+        type: 'revert',
+        client: item.client_name,
+        step: previous.step_name,
+        message: '이전 공정으로 되돌렸습니다',
+      });
+      toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+      navigate(`/worker/station/${encodeURIComponent(previous.step_name)}`, {
+        state: { focusOrderId: item.order_id },
+      });
+    } catch (err) {
+      alert(err.message || '이전 공정으로 되돌리기에 실패했습니다.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   // ── 이슈 목록 모달 (상단 알림 클릭) ──
   async function openIssueListModal() {
     // 이미 열려있으면 닫기 (토글)
@@ -1015,6 +1061,8 @@ export default function WorkerStationViewPage() {
           const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
           const dimensions = [item.width, item.depth, item.height].filter(Boolean).join('x');
           const isCompleting = completedIds.has(item.process_id);
+          const canUndoThisItem = canUndoItemToPrevious(item);
+          const isUndoingThisItem = actionLoading === `undo-${item.process_id}`;
 
           return (
             <div
@@ -1123,6 +1171,16 @@ export default function WorkerStationViewPage() {
                       disabled
                     >
                       사진없음
+                    </button>
+                  )}
+                  {canUndoThisItem && (
+                    <button
+                      type="button"
+                      className="station-view__row-btn station-view__row-btn--undo"
+                      onClick={() => handleUndoItemToPrevious(item)}
+                      disabled={isUndoingThisItem || !!actionLoading}
+                    >
+                      {isUndoingThisItem ? '되돌리는 중...' : '이전공정'}
                     </button>
                   )}
                   <button
