@@ -7,6 +7,7 @@ import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages'
 import { getStats } from '../api/stats';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
+import { getDaysUntilDue, parseDate } from '../utils/dateUtils';
 import './WorkerStationViewPage.css';
 
 const REFRESH_INTERVAL = 30000;
@@ -437,7 +438,15 @@ export default function WorkerStationViewPage() {
     window.location.href = `sms:${cleanPhone}?body=${encodeURIComponent(body)}`;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const getDueSortValue = (dueDate) => {
+    const due = parseDate(dueDate);
+    if (!due) return Number.POSITIVE_INFINITY;
+    return new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
+  };
+  const isOverdueDue = (dueDate) => {
+    const days = getDaysUntilDue(dueDate);
+    return days !== null && days < 0;
+  };
   const normalizeSearch = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
   const buildSearchText = (value) => {
     if (value === null || value === undefined) return '';
@@ -459,8 +468,8 @@ export default function WorkerStationViewPage() {
     : items;
   const waitingItems = visibleItems.filter(i => i.status === 'waiting' || i.status === '대기');
   const progressItems = visibleItems.filter(i => i.status === 'in_progress' || i.status === '진행중');
-  const overdueItems = visibleItems.filter(i => i.due_date && i.due_date < today);
-  const overdueAlertItems = items.filter(i => i.due_date && i.due_date < today);
+  const overdueItems = visibleItems.filter(i => isOverdueDue(i.due_date));
+  const overdueAlertItems = items.filter(i => isOverdueDue(i.due_date));
   const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
   const overdueKey = overdueAlertItems.map(i => i.process_id).sort().join(',');
   const delayedOrders = factoryStats?.delayed_orders || [];
@@ -517,9 +526,9 @@ export default function WorkerStationViewPage() {
   }, [decodedStep, focusOrderId, items, location.pathname, location.state, navigate]);
 
   const sortByDueDate = (a, b) => {
-    const aDue = a.due_date || '9999-12-31';
-    const bDue = b.due_date || '9999-12-31';
-    if (aDue !== bDue) return aDue.localeCompare(bDue);
+    const aDue = getDueSortValue(a.due_date);
+    const bDue = getDueSortValue(b.due_date);
+    if (aDue !== bDue) return aDue - bDue;
     return (b.order_id || 0) - (a.order_id || 0);
   };
 
@@ -527,10 +536,8 @@ export default function WorkerStationViewPage() {
   const sortedOverdueAlertItems = [...overdueAlertItems].sort(sortByDueDate);
 
   function getDday(dueDate) {
-    if (!dueDate) return null;
-    const due = new Date(dueDate);
-    const now = new Date(today);
-    const diff = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+    const diff = getDaysUntilDue(dueDate);
+    if (diff === null) return null;
     if (diff < 0) return { label: `D+${Math.abs(diff)}`, cls: 'overdue' };
     if (diff === 0) return { label: 'D-Day', cls: 'today' };
     if (diff <= 3) return { label: `D-${diff}`, cls: 'soon' };
@@ -942,7 +949,7 @@ export default function WorkerStationViewPage() {
         {!loading && !error && sorted.map((item) => {
           const sKey = statusKey(item.status);
           const isActioning = actionLoading === item.process_id;
-          const overdue = item.due_date && item.due_date < today;
+          const overdue = isOverdueDue(item.due_date);
           const dday = getDday(item.due_date);
           const isExpanded = expandedId === item.process_id;
           const completedSteps = item.completed_steps || 0;
