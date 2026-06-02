@@ -1,4 +1,11 @@
+import { clearToken, getToken } from '../utils/authClient';
+
 const BASE_URL = '/api';
+
+function authHeaders() {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 /**
  * CSV 내보내기 - 파일 다운로드
@@ -21,7 +28,7 @@ export async function downloadCsv(params = {}) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
-    response = await fetch(url, { signal: controller.signal });
+    response = await fetch(url, { headers: authHeaders(), signal: controller.signal });
     clearTimeout(timeoutId);
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -31,6 +38,7 @@ export async function downloadCsv(params = {}) {
   }
 
   if (!response.ok) {
+    if (response.status === 401) clearToken();
     const err = await response.json().catch(() => ({}));
     throw new Error(err?.error?.message || `CSV 다운로드 실패 (${response.status})`);
   }
@@ -72,6 +80,7 @@ export async function uploadCsv(file) {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     response = await fetch(`${BASE_URL}/import/csv`, {
       method: 'POST',
+      headers: authHeaders(),
       body: formData,
       signal: controller.signal,
     });
@@ -84,6 +93,7 @@ export async function uploadCsv(file) {
   }
 
   if (!response.ok) {
+    if (response.status === 401) clearToken();
     const err = await response.json().catch(() => ({}));
     throw new Error(err?.error?.message || `CSV 업로드 실패 (${response.status})`);
   }

@@ -5,6 +5,7 @@ import Toast from '../components/common/Toast';
 import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
+import { clearToken, getToken } from '../utils/authClient';
 import './OrderEntryPage.css';
 
 function todayStr() {
@@ -159,14 +160,17 @@ export default function OrderEntryPage() {
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
+      const token = getToken();
       const res = await fetch('/api/ocr/work-order', {
         method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
         signal: controller.signal,
       });
       clearTimeout(timeout);
 
       if (!res.ok) {
+        if (res.status === 401) clearToken();
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error?.message || '인식 실패');
       }

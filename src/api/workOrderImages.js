@@ -1,4 +1,11 @@
+import { clearToken, getToken } from '../utils/authClient';
+
 const FALLBACK_TARGET_BYTES = 1200 * 1024;
+
+function authHeaders() {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function canvasToFile(canvas, name, quality) {
   return new Promise((resolve) => {
@@ -91,11 +98,13 @@ export async function uploadWorkOrderImage(file) {
 
   return fetch('/api/work-order-images', {
     method: 'POST',
+    headers: authHeaders(),
     body: formData,
     signal: controller.signal,
   }).then(async (response) => {
     clearTimeout(timeout);
     if (!response.ok) {
+      if (response.status === 401) clearToken();
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData?.error?.message || `작업지시서 업로드 실패 (${response.status})`);
     }
@@ -122,11 +131,13 @@ export async function attachWorkOrderImage(orderId, file) {
 
   return fetch(`/api/orders/${orderId}/work-order-image`, {
     method: 'POST',
+    headers: authHeaders(),
     body: formData,
     signal: controller.signal,
   }).then(async (response) => {
     clearTimeout(timeout);
     if (!response.ok) {
+      if (response.status === 401) clearToken();
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData?.error?.message || `작업지시서 첨부 실패 (${response.status})`);
     }
@@ -143,8 +154,9 @@ export async function attachWorkOrderImage(orderId, file) {
 export async function getWorkOrderImage(orderId) {
   if (!orderId) throw new Error('二쇰Ц ID媛 ?꾩슂?⑸땲??');
 
-  const response = await fetch(`/api/orders/${orderId}/work-order-image`);
+  const response = await fetch(`/api/orders/${orderId}/work-order-image`, { headers: authHeaders() });
   if (!response.ok) {
+    if (response.status === 401) clearToken();
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData?.error?.message || '?묒뾽吏?쒖꽌瑜?遺덈윭?????놁뒿?덈떎.');
   }
