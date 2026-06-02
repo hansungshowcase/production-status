@@ -65,7 +65,7 @@ export default cors(async function handler(req, res) {
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' });
 
     // Determine mime type: use parsed content type, or guess from filename, or default to jpeg
     let mimeType = filePart.contentType || 'image/jpeg';
