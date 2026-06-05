@@ -1167,3 +1167,38 @@
     align-self: flex-start;
   }
 }
+
+.sales-my-page__overdue-popup,
+.sales-my-page__overdue-popup * {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.sales-my-page__overdue-popup,
+.sales-my-page__overdue-title,
+.sales-my-page__overdue-client {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+.sales-my-page__overdue-desc,
+.sales-my-page__overdue-product {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+}
+
+.sales-my-page__overdue-eyebrow {
+  color: #b91c1c !important;
+  -webkit-text-fill-color: #b91c1c !important;
+}
+
+.sales-my-page__overdue-due,
+.sales-my-page__overdue-btn--primary {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.sales-my-page__overdue-btn:not(.sales-my-page__overdue-btn--primary) {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+}

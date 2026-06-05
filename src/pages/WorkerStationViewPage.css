@@ -4465,3 +4465,74 @@
     margin-top: 8px;
   }
 }
+
+.sv-card-popup.sv-overdue-popup,
+.sv-card-popup.sv-overdue-popup * {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.sv-card-popup.sv-overdue-popup,
+.sv-card-popup.sv-overdue-popup .sv-card-popup__title,
+.sv-card-popup.sv-overdue-popup .sv-overdue-popup__client {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+.sv-card-popup.sv-overdue-popup .sv-card-popup__desc,
+.sv-card-popup.sv-overdue-popup .sv-overdue-popup__product {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+}
+
+.sv-card-popup.sv-overdue-popup .sv-overdue-popup__eyebrow {
+  color: #b91c1c !important;
+  -webkit-text-fill-color: #b91c1c !important;
+}
+
+.sv-card-popup.sv-overdue-popup .sv-overdue-popup__due {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.factory-delay-alert,
+.factory-delay-alert * {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.factory-delay-alert__client {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+.factory-delay-alert__product {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+.factory-delay-alert__eyebrow,
+.factory-delay-alert__title,
+.factory-delay-alert__message,
+.factory-delay-alert__step,
+.factory-delay-alert__due,
+.factory-delay-alert__worker {
+  color: #7f1d1d !important;
+  -webkit-text-fill-color: #7f1d1d !important;
+}
+
+.factory-delay-alert__dday {
+  color: #dc2626 !important;
+  -webkit-text-fill-color: #dc2626 !important;
+}
+
+.factory-delay-alert--today .factory-delay-alert__eyebrow,
+.factory-delay-alert--today .factory-delay-alert__title,
+.factory-delay-alert--today .factory-delay-alert__message,
+.factory-delay-alert--today .factory-delay-alert__step,
+.factory-delay-alert--today .factory-delay-alert__due,
+.factory-delay-alert--today .factory-delay-alert__worker,
+.factory-delay-alert--today .factory-delay-alert__dday {
+  color: #92400e !important;
+  -webkit-text-fill-color: #92400e !important;
+}
