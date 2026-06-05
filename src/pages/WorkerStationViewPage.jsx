@@ -584,12 +584,12 @@ export default function WorkerStationViewPage() {
   const waitingItems = visibleItems.filter(i => i.status === 'waiting' || i.status === '대기');
   const progressItems = visibleItems.filter(i => i.status === 'in_progress' || i.status === '진행중');
   const overdueItems = visibleItems.filter(i => isOverdueDue(i.due_date));
-  const overdueAlertItems = items.filter(i => isOverdueDue(i.due_date));
   const totalOpenIssues = items.reduce((sum, i) => sum + (parseInt(i.open_issues) || 0), 0);
-  const overdueKey = overdueAlertItems.map(i => i.process_id).sort().join(',');
   const delayedOrders = factoryStats?.delayed_orders || [];
   const delayedSteps = factoryStats?.delayed_by_step || [];
   const dueTodayOrders = factoryStats?.due_today_orders || [];
+  const overdueAlertItems = delayedOrders.length > 0 ? delayedOrders : items.filter(i => isOverdueDue(i.due_date));
+  const overdueKey = overdueAlertItems.map(i => `${i.order_id || ''}:${i.process_id || ''}`).sort().join(',');
   const focusOrderId = location.state?.focusOrderId;
 
   // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
@@ -1404,16 +1404,16 @@ export default function WorkerStationViewPage() {
               납기가 지난 작업입니다. 가능한 작업부터 먼저 진행해 주세요.
             </div>
             <div className="sv-overdue-popup__list">
-              {sortedOverdueAlertItems.slice(0, 4).map(item => {
+              {sortedOverdueAlertItems.map(item => {
                 const dday = getDday(item.due_date);
                 const product = [item.product_type, item.door_type].filter(Boolean).join(' / ') || '-';
                 return (
                   <button
-                    key={item.process_id}
+                    key={item.process_id || item.order_id}
                     type="button"
                     className="sv-overdue-popup__item"
                     onClick={() => {
-                      setExpandedId(item.process_id);
+                      handleDelayedOrderClick(item);
                       setOverdueAlertDismissed(true);
                     }}
                   >
@@ -1429,7 +1429,7 @@ export default function WorkerStationViewPage() {
                 className="sv-card-popup__btn sv-card-popup__btn--ok"
                 onClick={() => {
                   const first = sortedOverdueAlertItems[0];
-                  if (first) setExpandedId(first.process_id);
+                  if (first) handleDelayedOrderClick(first);
                   setOverdueAlertDismissed(true);
                 }}
               >
