@@ -150,11 +150,17 @@ export default function OrderEntryPage() {
   const processOcrFile = async (file) => {
     if (!file) return;
     const imageUrl = URL.createObjectURL(file);
+    let uploadedUrl = null;
     setOcrLoading(true);
+    setWorkOrderImageUrl(null);
     setToast({ visible: true, message: '작업지시서를 인식하는 중...' });
 
     try {
       const resized = await resizeImage(file);
+      const uploaded = await uploadWorkOrderImage(resized);
+      uploadedUrl = uploaded.url;
+      setWorkOrderImageUrl(uploaded.url);
+
       const formData = new FormData();
       formData.append('image', resized);
 
@@ -176,12 +182,16 @@ export default function OrderEntryPage() {
       }
 
       const { data } = await res.json();
-      const uploaded = await uploadWorkOrderImage(resized);
-      setWorkOrderImageUrl(uploaded.url);
       setOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
       setToast({ visible: true, message: '인식 완료! 결과를 확인해주세요.' });
     } catch (err) {
-      setToast({ visible: true, message: err.message || '이미지 인식에 실패했습니다' });
+      URL.revokeObjectURL(imageUrl);
+      setToast({
+        visible: true,
+        message: uploadedUrl
+          ? '작업지시서 이미지는 첨부되었습니다. 인식 실패로 내용을 직접 입력해주세요.'
+          : (err.message || '이미지 인식에 실패했습니다'),
+      });
     } finally {
       setOcrLoading(false);
     }
@@ -268,6 +278,9 @@ export default function OrderEntryPage() {
 
   const handleOcrCancel = () => {
     if (ocrResult?.imageUrl) URL.revokeObjectURL(ocrResult.imageUrl);
+    if (ocrResult?.workOrderImageUrl && workOrderImageUrl === ocrResult.workOrderImageUrl) {
+      setWorkOrderImageUrl(null);
+    }
     setOcrResult(null);
   };
 
