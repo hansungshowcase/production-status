@@ -874,7 +874,7 @@ export default function WorkerStationViewPage() {
                 </div>
               </div>
               <div className="factory-delay-alert__list">
-                {dueTodayOrders.slice(0, 6).map(order => {
+                {dueTodayOrders.map(order => {
                   const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
                   const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
                   return (

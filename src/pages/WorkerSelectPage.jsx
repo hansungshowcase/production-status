@@ -250,7 +250,7 @@ export default function WorkerSelectPage() {
               오늘 납기 건입니다. 출고 전까지 현재 공정과 담당자를 확인해 주세요.
             </p>
             <div className="worker-select-page__delay-list">
-              {dueTodayOrders.slice(0, 6).map(order => {
+              {dueTodayOrders.map(order => {
                 const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
                 const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
                 return (
