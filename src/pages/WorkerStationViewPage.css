@@ -4372,3 +4372,81 @@
   0%, 100% { opacity: 0.4; transform: translateX(0); }
   50% { opacity: 1; transform: translateX(3px); }
 }
+
+@media (max-width: 767px) {
+  .sv-card-popup.sv-overdue-popup {
+    width: min(420px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    padding: 14px 12px 12px;
+    border-radius: 14px;
+    justify-content: flex-start;
+    overflow: hidden;
+    text-align: center;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-card-popup__title {
+    font-size: 15px;
+    line-height: 1.3;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-card-popup__desc {
+    margin-bottom: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-overdue-popup__list {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    gap: 8px;
+    margin: 4px 0 8px;
+    padding-right: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-overdue-popup__item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    gap: 5px;
+    padding: 10px 11px;
+    overflow: hidden;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-overdue-popup__client,
+  .sv-card-popup.sv-overdue-popup .sv-overdue-popup__product {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-overdue-popup__due {
+    align-self: flex-start;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sv-card-popup.sv-overdue-popup .sv-card-popup__actions {
+    flex: 0 0 auto;
+    margin-top: 8px;
+  }
+}
