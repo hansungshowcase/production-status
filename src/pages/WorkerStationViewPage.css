@@ -3846,6 +3846,10 @@
   animation: sv-overlay-in 0.15s ease;
 }
 
+.sv-overdue-overlay {
+  background: transparent;
+}
+
 @keyframes sv-overlay-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -3977,6 +3981,8 @@
   padding: 18px 16px 16px;
   overflow: hidden;
   border: 1px solid #fecaca;
+  background: #ffffff;
+  color: #0f172a;
   box-shadow: 0 16px 56px rgba(127, 29, 29, 0.24);
 }
 
@@ -4014,6 +4020,14 @@
   overflow-wrap: anywhere;
 }
 
+.sv-overdue-popup .sv-card-popup__title {
+  color: #0f172a;
+}
+
+.sv-overdue-popup .sv-card-popup__desc {
+  color: #475569;
+}
+
 .sv-overdue-popup__item {
   display: grid;
   grid-template-columns: minmax(70px, 0.9fr) minmax(0, 1.35fr) auto;
@@ -4041,14 +4055,15 @@
 }
 
 .sv-overdue-popup__client {
+  color: #0f172a;
   font-size: 13px;
   font-weight: 900;
 }
 
 .sv-overdue-popup__product {
+  color: #475569;
   font-size: 12px;
   font-weight: 700;
-  color: #475569;
 }
 
 .sv-overdue-popup__due {

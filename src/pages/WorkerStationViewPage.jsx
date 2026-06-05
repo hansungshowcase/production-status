@@ -1396,7 +1396,7 @@ export default function WorkerStationViewPage() {
 
       {!loading && overdueAlertItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !issueModal && !workOrderViewer && (
         <>
-          <div className="sv-overlay" onClick={() => setOverdueAlertDismissed(true)} />
+          <div className="sv-overlay sv-overdue-overlay" onClick={() => setOverdueAlertDismissed(true)} />
           <div className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림">
             <div className="sv-overdue-popup__eyebrow">납기 초과</div>
             <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueAlertItems.length}건</div>

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 45;
+const CACHE_VERSION = 46;
 const CACHE_NAME = `hansung-showcase-v${CACHE_VERSION}`;
 const RUNTIME_CACHE = `hansung-runtime-v${CACHE_VERSION}`;
 

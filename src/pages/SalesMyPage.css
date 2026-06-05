@@ -592,7 +592,7 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.38);
+  background: transparent;
 }
 
 .sales-my-page__overdue-popup {
@@ -605,6 +605,7 @@
   border: 1px solid #fecaca;
   border-radius: 16px;
   background: #ffffff;
+  color: #0f172a;
   box-shadow: 0 18px 60px rgba(127, 29, 29, 0.26);
   animation: salesOverduePopupIn 0.18s ease;
 }
@@ -670,14 +671,15 @@
 }
 
 .sales-my-page__overdue-client {
+  color: #0f172a;
   font-size: 13px;
   font-weight: 900;
 }
 
 .sales-my-page__overdue-product {
+  color: #475569;
   font-size: 12px;
   font-weight: 700;
-  color: #475569;
 }
 
 .sales-my-page__overdue-due {
