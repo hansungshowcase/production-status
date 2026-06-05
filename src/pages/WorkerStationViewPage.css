@@ -4417,9 +4417,10 @@
   }
 
   .sv-card-popup.sv-overdue-popup .sv-overdue-popup__list {
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
+    flex: 0 1 auto;
+    min-height: 180px;
+    max-height: calc(100vh - 250px);
+    max-height: calc(100dvh - 250px);
     gap: 8px;
     margin: 4px 0 8px;
     padding-right: 0;
@@ -4493,6 +4494,15 @@
 .sv-card-popup.sv-overdue-popup .sv-overdue-popup__due {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
+}
+
+.sv-card-popup.sv-overdue-popup .sv-overdue-popup__list {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.sv-card-popup.sv-overdue-popup .sv-overdue-popup__item {
+  flex-shrink: 0 !important;
 }
 
 .factory-delay-alert,
