@@ -294,6 +294,12 @@ export default function WorkerStationViewPage() {
     }
   }
 
+  async function handlePackingPhotoSelected(e) {
+    const file = e.target.files?.[0] || null;
+    e.target.value = '';
+    setPackingPhotoFile(file ? await resizeUploadImage(file) : null);
+  }
+
   async function handleUndoLastAction() {
     if (!canUndoProcess || !undoAction || !isWithinUndoWindow(undoAction.completedAt) || actionLoading) return;
     setActionLoading('undo');
@@ -1337,22 +1343,30 @@ export default function WorkerStationViewPage() {
               <div className="sv-card-popup__required-photo">
                 <div className="sv-card-popup__required-title">포장 사진 첨부 필수</div>
                 <div className="sv-card-popup__required-desc">출고로 넘기기 전에 완성/포장 상태 사진을 첨부하세요.</div>
-                <label className="sv-card-popup__photo-attach">
+                <div className="sv-card-popup__photo-actions">
+                  <label className="sv-card-popup__photo-attach">
                   <input
                     type="file"
                     accept="image/*"
                     capture="environment"
                     style={{ display: 'none' }}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0] || null;
-                      e.target.value = '';
-                      setPackingPhotoFile(file ? await resizeUploadImage(file) : null);
-                    }}
+                    onChange={handlePackingPhotoSelected}
                   />
-                  <span className="sv-card-popup__photo-btn">
-                    {packingPhotoFile ? packingPhotoFile.name : '사진 첨부'}
-                  </span>
-                </label>
+                    <span className="sv-card-popup__photo-btn">촬영</span>
+                  </label>
+                  <label className="sv-card-popup__photo-attach">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handlePackingPhotoSelected}
+                    />
+                    <span className="sv-card-popup__photo-btn">앨범에서 선택</span>
+                  </label>
+                </div>
+                {packingPhotoFile && (
+                  <div className="sv-card-popup__photo-name">{packingPhotoFile.name}</div>
+                )}
               </div>
             )}
             {!isLastStep && nextSteps.length > 0 && (

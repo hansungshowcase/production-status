@@ -4042,6 +4042,17 @@
   cursor: pointer;
 }
 
+.sv-card-popup__photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sv-card-popup__photo-actions .sv-card-popup__photo-attach {
+  margin-bottom: 0;
+}
+
 .sv-card-popup__photo-btn {
   display: inline-flex;
   align-items: center;
@@ -4058,6 +4069,16 @@
 
 .sv-card-popup__photo-btn:active {
   background: #e2e8f0;
+}
+
+.sv-card-popup__photo-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
 }
 
 .sv-card-popup__required-photo {
