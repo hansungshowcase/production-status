@@ -12,6 +12,8 @@ export const config = {
 const CURRENT_YEAR = new Date().getFullYear();
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
+const GEMINI_GENERATE_CONTENT_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const OPENAI_SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const WORK_ORDER_SCHEMA = {
   type: 'object',
@@ -93,6 +95,29 @@ function extractResponseText(data) {
   return chunks.join('\n');
 }
 
+function extractGeminiResponseText(data) {
+  const chunks = [];
+  for (const candidate of data?.candidates || []) {
+    for (const part of candidate?.content?.parts || []) {
+      if (typeof part?.text === 'string') chunks.push(part.text);
+    }
+  }
+  return chunks.join('\n');
+}
+
+function parseOcrJson(text) {
+  if (!text) {
+    throw new Error('인식 결과가 없습니다.');
+  }
+
+  let jsonStr = text;
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) jsonStr = jsonMatch[1];
+  jsonStr = jsonStr.trim();
+
+  return normalizeOcrResult(JSON.parse(jsonStr));
+}
+
 function normalizeOcrResult(parsed) {
   if (parsed.width) parsed.width = parseInt(String(parsed.width).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
@@ -110,6 +135,90 @@ function normalizeOcrResult(parsed) {
   });
 
   return parsed;
+}
+
+async function recognizeWithOpenAI({ apiKey, mimeType, filePart }) {
+  const response = await fetch(OPENAI_RESPONSES_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+      input: [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text: PROMPT },
+          {
+            type: 'input_image',
+            image_url: `data:${mimeType};base64,${filePart.data.toString('base64')}`,
+            detail: 'high',
+          },
+        ],
+      }],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'work_order_ocr',
+          schema: WORK_ORDER_SCHEMA,
+          strict: false,
+        },
+      },
+      max_output_tokens: 1200,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const upstreamMessage = errorData?.error?.message || `OpenAI OCR request failed (${response.status})`;
+    const err = new Error(upstreamMessage);
+    err.status = response.status;
+    throw err;
+  }
+
+  const responseData = await response.json();
+  return parseOcrJson(extractResponseText(responseData));
+}
+
+async function recognizeWithGemini({ apiKey, mimeType, filePart }) {
+  const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const response = await fetch(`${GEMINI_GENERATE_CONTENT_URL}/${model}:generateContent`, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: PROMPT },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: filePart.data.toString('base64'),
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const upstreamMessage = errorData?.error?.message || `Gemini OCR request failed (${response.status})`;
+    const err = new Error(upstreamMessage);
+    err.status = response.status;
+    throw err;
+  }
+
+  const responseData = await response.json();
+  return parseOcrJson(extractGeminiResponseText(responseData));
 }
 
 export default cors(async function handler(req, res) {
@@ -134,9 +243,12 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '이미지를 업로드해주세요.', status: 400 } });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey.includes('your-key-here')) {
-    return res.status(500).json({ error: { message: 'OPENAI_API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.', status: 500 } });
+  const openaiApiKey = process.env.OPENAI_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const hasOpenAI = Boolean(openaiApiKey && !openaiApiKey.includes('your-key-here'));
+  const hasGemini = Boolean(geminiApiKey && !geminiApiKey.includes('your-gemini-key'));
+  if (!hasOpenAI && !hasGemini) {
+    return res.status(500).json({ error: { message: 'OCR API 키가 설정되지 않았습니다. Vercel 환경변수 OPENAI_API_KEY 또는 GEMINI_API_KEY를 확인하세요.', status: 500 } });
   }
 
   try {
@@ -145,60 +257,29 @@ export default cors(async function handler(req, res) {
       return res.status(415).json({ error: { message: '이미지 인식은 JPG, PNG, WEBP, GIF 파일만 지원합니다.', status: 415 } });
     }
 
-    const response = await fetch(OPENAI_RESPONSES_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_text', text: PROMPT },
-            {
-              type: 'input_image',
-              image_url: `data:${mimeType};base64,${filePart.data.toString('base64')}`,
-              detail: 'high',
-            },
-          ],
-        }],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'work_order_ocr',
-            schema: WORK_ORDER_SCHEMA,
-            strict: false,
-          },
-        },
-        max_output_tokens: 1200,
-      }),
-    });
+    const errors = [];
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const upstreamMessage = errorData?.error?.message || `OpenAI OCR request failed (${response.status})`;
-      const status = response.status >= 500 ? 502 : response.status;
-      console.error('OpenAI OCR error:', response.status, upstreamMessage);
-      return res.status(status).json({ error: { message: '이미지 인식에 실패했습니다: ' + upstreamMessage, status } });
+    if (hasOpenAI) {
+      try {
+        const parsed = await recognizeWithOpenAI({ apiKey: openaiApiKey, mimeType, filePart });
+        return res.json({ success: true, provider: 'openai', data: parsed });
+      } catch (err) {
+        errors.push(`OpenAI: ${err.message || 'failed'}`);
+        console.error('OpenAI OCR error:', err.status || 500, err.message || err);
+      }
     }
 
-    const responseData = await response.json();
-    const text = extractResponseText(responseData);
-    if (!text) {
-      throw new Error('OpenAI 응답에 인식 결과가 없습니다.');
+    if (hasGemini) {
+      try {
+        const parsed = await recognizeWithGemini({ apiKey: geminiApiKey, mimeType, filePart });
+        return res.json({ success: true, provider: 'gemini', data: parsed });
+      } catch (err) {
+        errors.push(`Gemini: ${err.message || 'failed'}`);
+        console.error('Gemini OCR error:', err.status || 500, err.message || err);
+      }
     }
 
-    // Extract JSON from response (handle markdown code blocks)
-    let jsonStr = text;
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1];
-    jsonStr = jsonStr.trim();
-
-    const parsed = normalizeOcrResult(JSON.parse(jsonStr));
-
-    return res.json({ success: true, data: parsed });
+    return res.status(502).json({ error: { message: '이미지 인식에 실패했습니다. ' + errors.join(' / '), status: 502 } });
   } catch (err) {
     console.error('OCR error:', err);
     return res.status(500).json({ error: { message: '이미지 인식에 실패했습니다: ' + (err.message || ''), status: 500 } });
