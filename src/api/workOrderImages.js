@@ -23,7 +23,7 @@ async function canvasToFile(canvas, name, quality) {
   });
 }
 
-async function prepareWorkOrderImage(file, maxWidth = 1600) {
+export async function prepareWorkOrderImage(file, maxWidth = 1600) {
   if (!file || typeof Image === 'undefined') return file;
   if (file.size <= FALLBACK_TARGET_BYTES && /^image\/jpe?g$/i.test(file.type || '')) return file;
 

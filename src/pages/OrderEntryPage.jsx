@@ -4,7 +4,7 @@ import OrderForm from '../components/order/OrderForm';
 import Toast from '../components/common/Toast';
 import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
-import { uploadWorkOrderImage } from '../api/workOrderImages';
+import { prepareWorkOrderImage, uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
 import './OrderEntryPage.css';
 
@@ -119,50 +119,29 @@ export default function OrderEntryPage() {
     navigate('/sales');
   };
 
-  // ── 이미지 리사이즈 (모바일 고해상도 대응, Vercel 4.5MB 제한) ──
-  const resizeImage = (file, maxWidth = 1600) => {
-    return new Promise((resolve) => {
-      // 이미 작은 파일은 그대로
-      if (file.size < 1024 * 1024) { resolve(file); return; }
-
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(
-          (blob) => resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' })),
-          'image/jpeg',
-          0.85
-        );
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-      img.src = url;
-    });
-  };
-
   // ── OCR 사진 인식 ──
   const processOcrFile = async (file) => {
     if (!file) return;
     const imageUrl = URL.createObjectURL(file);
     let uploadedUrl = null;
+    let uploadFailed = false;
     setOcrLoading(true);
     setWorkOrderImageUrl(null);
     setToast({ visible: true, message: '작업지시서를 인식하는 중...' });
 
     try {
-      const resized = await resizeImage(file);
-      const uploaded = await uploadWorkOrderImage(resized);
-      uploadedUrl = uploaded.url;
-      setWorkOrderImageUrl(uploaded.url);
+      const prepared = await prepareWorkOrderImage(file);
+      try {
+        const uploaded = await uploadWorkOrderImage(prepared);
+        uploadedUrl = uploaded.url;
+        setWorkOrderImageUrl(uploaded.url);
+      } catch (uploadErr) {
+        uploadFailed = true;
+        console.warn('Work order image upload failed; continuing OCR only:', uploadErr);
+      }
 
       const formData = new FormData();
-      formData.append('image', resized);
+      formData.append('image', prepared);
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
@@ -182,8 +161,13 @@ export default function OrderEntryPage() {
       }
 
       const { data } = await res.json();
-      setOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
-      setToast({ visible: true, message: '인식 완료! 결과를 확인해주세요.' });
+      setOcrResult({ data, imageUrl, workOrderImageUrl: uploadedUrl });
+      setToast({
+        visible: true,
+        message: uploadFailed
+          ? '인식 완료! 이미지는 첨부되지 않아 결과 확인 후 직접 등록됩니다.'
+          : '인식 완료! 결과를 확인해주세요.',
+      });
     } catch (err) {
       URL.revokeObjectURL(imageUrl);
       setToast({
