@@ -1,6 +1,6 @@
 import { clearToken, getToken } from '../utils/authClient';
 
-const FALLBACK_TARGET_BYTES = 1200 * 1024;
+const FALLBACK_TARGET_BYTES = 1450 * 1024;
 
 function authHeaders() {
   const token = getToken();
@@ -23,7 +23,7 @@ async function canvasToFile(canvas, name, quality) {
   });
 }
 
-export async function prepareWorkOrderImage(file, maxWidth = 1600) {
+export async function prepareWorkOrderImage(file, maxWidth = 2000) {
   if (!file || typeof Image === 'undefined') return file;
   if (file.size <= FALLBACK_TARGET_BYTES && /^image\/jpe?g$/i.test(file.type || '')) return file;
 
@@ -40,11 +40,11 @@ export async function prepareWorkOrderImage(file, maxWidth = 1600) {
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const name = file.name.replace(/\.[^.]+$/, '') || 'work-order';
       const attempts = [
-        { width: canvas.width, quality: 0.82 },
-        { width: 1400, quality: 0.76 },
-        { width: 1200, quality: 0.7 },
-        { width: 1000, quality: 0.64 },
-        { width: 850, quality: 0.58 },
+        { width: canvas.width, quality: 0.9 },
+        { width: 1800, quality: 0.84 },
+        { width: 1600, quality: 0.78 },
+        { width: 1400, quality: 0.72 },
+        { width: 1200, quality: 0.68 },
       ];
       let lastCompressed = null;
 
