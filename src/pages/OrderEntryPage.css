@@ -392,6 +392,25 @@
   .order-entry__body {
     padding: 8px 12px 28px;
   }
+
+  .ocr-confirm-overlay {
+    padding: 8px;
+    align-items: flex-start;
+  }
+
+  .ocr-confirm {
+    max-width: 100%;
+    max-height: 98vh;
+    border-radius: 12px;
+  }
+
+  .ocr-confirm__image-wrap {
+    padding: 10px;
+  }
+
+  .ocr-confirm__image {
+    max-height: 62vh;
+  }
 }
 
 /* ── Tablet ── */
@@ -512,8 +531,8 @@
   background: #fff;
   border-radius: 16px;
   width: 100%;
-  max-width: 520px;
-  max-height: 90vh;
+  max-width: min(920px, 96vw);
+  max-height: 94vh;
   overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
 }
@@ -537,13 +556,14 @@
 }
 
 .ocr-confirm__image-wrap {
-  padding: 12px 20px;
+  padding: 14px 20px;
   text-align: center;
+  background: #f8fafc;
 }
 
 .ocr-confirm__image {
   max-width: 100%;
-  max-height: 200px;
+  max-height: 56vh;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
   object-fit: contain;
