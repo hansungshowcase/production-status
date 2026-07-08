@@ -90,6 +90,13 @@ export default cors(async function handler(req, res) {
   }
 
   // ── 2) 훅 누락 복구 (최근 3일 내 도달 건만) ────────────────────
+  // 안전장치: 도입 초기에는 과거 데이터 소급 발송을 막는다(기존 출고 고객에게 뒤늦은 문자 방지).
+  // 신규 주문부터 훅으로만 발송하다가, 안정화되면 NOTIFY_BACKFILL=on 으로 켠다.
+  // queued/failed 재발송(위 1번)은 신규 이벤트 대기분이라 항상 유지된다.
+  if (process.env.NOTIFY_BACKFILL !== 'on') {
+    return res.json({ ok: true, ...summary, backfill: 'disabled' });
+  }
+
   const sinceIso = new Date(Date.now() - RECOVER_WINDOW_MS).toISOString();
   const sinceDate = sinceIso.slice(0, 10);
 
