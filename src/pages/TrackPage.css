@@ -1,0 +1,456 @@
+/* ============================================================
+   TrackPage — 고객용 공개 조회 페이지
+   04_고객조회페이지_track.html 목업 이식 (track- 접두어로 스코프)
+   변수는 .track-page 내부에만 선언 → 전역 variables.css 와 충돌 없음
+   ============================================================ */
+
+.track-page {
+  /* Light theme */
+  --tp-bg: #eef1f6;
+  --tp-bg-grad-1: #e7ecf4;
+  --tp-card: #ffffff;
+  --tp-card-soft: #f6f8fc;
+  --tp-text: #16202e;
+  --tp-text-soft: #55627a;
+  --tp-text-faint: #8b96a9;
+  --tp-line: #e4e9f2;
+  --tp-line-strong: #d3dae6;
+  --tp-brand: #0f4c81;
+  --tp-brand-2: #1d76c9;
+  --tp-brand-soft: #e8f1fb;
+  --tp-accent: #14a08a;
+  --tp-accent-soft: #e2f5f0;
+  --tp-warn: #c77b1a;
+  --tp-warn-soft: #fbf1e0;
+  --tp-track: #e4e9f2;
+  --tp-shadow: 0 6px 24px rgba(19, 42, 74, .08), 0 2px 6px rgba(19, 42, 74, .05);
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, var(--tp-bg-grad-1), transparent 60%),
+    var(--tp-bg);
+  color: var(--tp-text);
+  line-height: 1.55;
+  word-break: keep-all;
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Malgun Gothic", "맑은 고딕", "Noto Sans KR", "Segoe UI", Roboto, sans-serif;
+}
+
+/* 기존 앱에 다크모드 시스템이 없으므로 OS 설정(prefers-color-scheme)을 따름 */
+@media (prefers-color-scheme: dark) {
+  .track-page {
+    --tp-bg: #0c1118;
+    --tp-bg-grad-1: #0e141d;
+    --tp-card: #131b26;
+    --tp-card-soft: #172230;
+    --tp-text: #eaf0f8;
+    --tp-text-soft: #9fb0c6;
+    --tp-text-faint: #6b7c93;
+    --tp-line: #223142;
+    --tp-line-strong: #2c3e54;
+    --tp-brand: #4aa3ec;
+    --tp-brand-2: #6bb8f5;
+    --tp-brand-soft: #14324e;
+    --tp-accent: #3ecab0;
+    --tp-accent-soft: #0f3d36;
+    --tp-warn: #e2a54b;
+    --tp-warn-soft: #3a2e18;
+    --tp-track: #223142;
+    --tp-shadow: 0 8px 28px rgba(0, 0, 0, .45), 0 2px 8px rgba(0, 0, 0, .3);
+  }
+}
+
+.track-wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 18px 16px calc(40px + env(safe-area-inset-bottom));
+}
+
+/* ---------- Header ---------- */
+.track-header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 6px 2px 16px;
+}
+.track-logo {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--tp-brand), var(--tp-brand-2));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: .5px;
+  box-shadow: 0 4px 12px rgba(15, 76, 129, .35);
+}
+.track-brand-name { font-weight: 800; font-size: 16px; letter-spacing: -.2px; }
+.track-brand-sub { font-size: 11.5px; color: var(--tp-text-faint); margin-top: 1px; }
+
+/* ---------- Card ---------- */
+.track-card {
+  background: var(--tp-card);
+  border: 1px solid var(--tp-line);
+  border-radius: 18px;
+  box-shadow: var(--tp-shadow);
+  padding: 20px 18px;
+  margin-bottom: 14px;
+}
+
+.track-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.track-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tp-accent);
+  box-shadow: 0 0 0 4px var(--tp-accent-soft);
+}
+.track-dot.ship { background: var(--tp-brand-2); box-shadow: 0 0 0 4px var(--tp-brand-soft); }
+.track-status-label { font-size: 12.5px; font-weight: 700; color: var(--tp-text-soft); }
+
+.track-client { font-size: 21px; font-weight: 800; letter-spacing: -.4px; margin: 2px 0 3px; }
+.track-order-meta { font-size: 12.5px; color: var(--tp-text-faint); }
+.track-order-meta b { color: var(--tp-text-soft); font-weight: 600; }
+
+/* ---------- 4-step stepper ---------- */
+.track-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 22px 0 6px;
+  position: relative;
+}
+.track-step { text-align: center; position: relative; }
+.track-step-bar {
+  position: absolute;
+  top: 15px;
+  height: 3px;
+  z-index: 0;
+  background: var(--tp-track);
+  left: -50%;
+  right: 50%;
+}
+.track-step:first-child .track-step-bar { display: none; }
+.track-step-bar.filled { background: var(--tp-accent); }
+.track-step-node {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 7px;
+  border-radius: 50%;
+  background: var(--tp-card);
+  border: 2px solid var(--tp-line-strong);
+  color: var(--tp-text-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all .2s;
+}
+.track-step.done .track-step-node {
+  background: var(--tp-accent);
+  border-color: var(--tp-accent);
+  color: #fff;
+}
+.track-step.current .track-step-node {
+  background: var(--tp-card);
+  border-color: var(--tp-accent);
+  color: var(--tp-accent);
+  box-shadow: 0 0 0 4px var(--tp-accent-soft);
+}
+.track-step.done.ship .track-step-node { background: var(--tp-brand-2); border-color: var(--tp-brand-2); }
+.track-step-name { font-size: 11.5px; color: var(--tp-text-faint); font-weight: 600; }
+.track-step.done .track-step-name,
+.track-step.current .track-step-name { color: var(--tp-text); font-weight: 700; }
+
+/* ---------- detailed progress ---------- */
+.track-detail-prog { margin-top: 20px; }
+.track-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 7px;
+}
+.track-detail-cur {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tp-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.track-badge {
+  display: inline-block;
+  background: var(--tp-brand-soft);
+  color: var(--tp-brand);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.track-detail-frac { font-size: 12px; color: var(--tp-text-faint); font-variant-numeric: tabular-nums; }
+.track-bar {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--tp-track);
+  overflow: hidden;
+}
+.track-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--tp-brand), var(--tp-brand-2));
+  width: 0;
+  transition: width .6s cubic-bezier(.4, 0, .2, 1);
+}
+.track-fill.done-all { background: linear-gradient(90deg, var(--tp-accent), #1dbf9f); }
+.track-prog-hint { margin-top: 8px; font-size: 12px; color: var(--tp-text-soft); }
+.track-prog-hint b { color: var(--tp-text); }
+
+/* ---------- ship date highlight ---------- */
+.track-ship-box {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  background: var(--tp-card-soft);
+  border: 1px solid var(--tp-line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.track-ship-ico {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 11px;
+  background: var(--tp-brand-soft);
+  color: var(--tp-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.track-ship-ico svg { width: 22px; height: 22px; }
+.track-ship-lbl { font-size: 11.5px; color: var(--tp-text-faint); font-weight: 600; }
+.track-ship-val { font-size: 17px; font-weight: 800; letter-spacing: -.3px; margin-top: 1px; }
+.track-ship-val small { font-size: 12px; font-weight: 600; color: var(--tp-text-soft); margin-left: 5px; }
+.track-ship-note { font-size: 11.5px; color: var(--tp-text-faint); margin-top: 6px; line-height: 1.5; }
+
+/* ---------- delivery status chip ---------- */
+.track-dstat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: -.1px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+.track-dstat::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.track-dstat.ok    { background: var(--tp-accent-soft); color: var(--tp-accent); }
+.track-dstat.adj   { background: var(--tp-warn-soft);   color: var(--tp-warn); }
+.track-dstat.resch { background: var(--tp-brand-soft);  color: var(--tp-brand); }
+
+/* ---------- section titles ---------- */
+.track-sec-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--tp-text-faint);
+  letter-spacing: .3px;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.track-sec-title::before {
+  content: "";
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--tp-brand-2);
+}
+
+/* ---------- spec grid ---------- */
+.track-spec {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--tp-line);
+  border: 1px solid var(--tp-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.track-spec-cell { background: var(--tp-card); padding: 11px 13px; }
+.track-spec-cell.full { grid-column: 1 / -1; }
+.track-spec-k { font-size: 11px; color: var(--tp-text-faint); font-weight: 600; }
+.track-spec-v { font-size: 14px; color: var(--tp-text); font-weight: 700; margin-top: 2px; }
+.track-spec-v.mono { font-variant-numeric: tabular-nums; letter-spacing: .2px; }
+.track-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, .15);
+  vertical-align: -1px;
+  margin-right: 5px;
+}
+
+/* ---------- packing photo ---------- */
+.track-photo {
+  border-radius: 13px;
+  overflow: hidden;
+  border: 1px solid var(--tp-line);
+  background: var(--tp-card-soft);
+}
+.track-photo img { display: block; width: 100%; max-width: 100%; height: auto; }
+.track-photo-cap {
+  font-size: 11.5px;
+  color: var(--tp-text-faint);
+  padding: 9px 13px;
+  border-top: 1px solid var(--tp-line);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.track-photo-cap svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.track-photo-empty {
+  border: 1.5px dashed var(--tp-line-strong);
+  border-radius: 13px;
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--tp-text-faint);
+  background: var(--tp-card-soft);
+}
+.track-photo-empty svg { width: 30px; height: 30px; opacity: .55; margin-bottom: 7px; }
+.track-photo-empty-t { font-size: 13px; font-weight: 700; color: var(--tp-text-soft); }
+.track-photo-empty-s { font-size: 11.5px; margin-top: 3px; }
+
+/* ---------- notice ---------- */
+.track-notice {
+  background: var(--tp-warn-soft);
+  border-radius: 14px;
+  padding: 15px 16px;
+  font-size: 13px;
+  color: var(--tp-text-soft);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.track-notice b { color: var(--tp-text); }
+/* 카카오톡 문의 버튼 — 전화 문의 없음, 카카오 채널 채팅 단일 창구 */
+.track-btn-kakao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 13px;
+  padding: 12px 10px;
+  border-radius: 11px;
+  background: #fee500;
+  color: #191919;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.track-btn-kakao:active { filter: brightness(0.95); }
+.track-manager {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--tp-text-soft);
+}
+.track-manager b { color: var(--tp-text); }
+.track-inquiry-hint {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--tp-text-faint);
+}
+
+/* ---------- refresh / footer ---------- */
+.track-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--tp-text-faint);
+  margin: 4px 0 22px;
+}
+.track-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tp-accent);
+  box-shadow: 0 0 0 0 var(--tp-accent);
+  animation: track-pulse 2s infinite;
+}
+@keyframes track-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(20, 160, 138, .5); }
+  70% { box-shadow: 0 0 0 7px rgba(20, 160, 138, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(20, 160, 138, 0); }
+}
+.track-foot {
+  text-align: center;
+  font-size: 11px;
+  color: var(--tp-text-faint);
+  line-height: 1.7;
+  padding-top: 4px;
+}
+.track-foot-co { font-weight: 700; color: var(--tp-text-soft); }
+.track-foot-updated { margin-top: 6px; }
+
+/* ---------- loading skeleton ---------- */
+.track-skel {
+  border-radius: 8px;
+  background: linear-gradient(90deg,
+    var(--tp-card-soft) 25%,
+    var(--tp-line) 50%,
+    var(--tp-card-soft) 75%);
+  background-size: 200% 100%;
+  animation: track-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes track-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---------- not found / error ---------- */
+.track-notfound { text-align: center; padding: 40px 20px; }
+.track-notfound-emoji { font-size: 34px; margin-bottom: 10px; }
+.track-notfound-title { font-size: 16px; font-weight: 800; color: var(--tp-text); }
+.track-notfound-sub { font-size: 13px; color: var(--tp-text-soft); margin-top: 5px; }
+.track-retry-btn {
+  margin-top: 16px;
+  padding: 10px 22px;
+  min-height: 44px;
+  border-radius: 11px;
+  font-size: 13.5px;
+  font-weight: 800;
+  font-family: inherit;
+  border: 1px solid var(--tp-brand);
+  background: var(--tp-brand);
+  color: #fff;
+  cursor: pointer;
+}
+
+@media (max-width: 340px) {
+  .track-step-name { font-size: 10.5px; }
+  .track-client { font-size: 19px; }
+}

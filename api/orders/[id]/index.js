@@ -6,6 +6,7 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { del } from '@vercel/blob';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
+import { maybeNotify } from '../../_lib/notify.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -118,7 +119,26 @@ async function handleUpdate(id, req, res) {
   });
 
   const updatedResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
-  return res.json(updatedResult.rows[0]);
+  const updated = updatedResult.rows[0];
+
+  // 알림 훅: ship_scheduled_date 가 실제로 변경(값 존재 + 이전과 다름)되고 미출고면 → rescheduled
+  // 멱등키가 'rescheduled:날짜' 이므로 같은 날짜 재저장은 중복 발송되지 않음 (실패해도 본 응답에 영향 없음)
+  try {
+    const prevSched = order.ship_scheduled_date || null;
+    const newSched = updated?.ship_scheduled_date || null;
+    if (
+      body.ship_scheduled_date !== undefined &&
+      newSched &&
+      String(newSched) !== String(prevSched || '') &&
+      updated.status !== 'shipped'
+    ) {
+      await maybeNotify(db, updated, 'rescheduled', { date: newSched });
+    }
+  } catch (e) {
+    console.error('[orders PATCH] rescheduled 알림 발송 실패(무시):', e);
+  }
+
+  return res.json(updated);
 }
 
 async function handleDelete(id, req, res) {

@@ -92,6 +92,16 @@ export default cors(async function handler(req, res) {
     args: [id, '작업지시서첨부', `${order.client_name || ''} 작업지시서 이미지가 첨부되었습니다.`, '현장작업자'],
   }).catch((err) => console.warn('[work-order-image] activity log failed:', err?.message || err));
 
+  // 작업지시서 등록 시점에도 접수 알림 보장 — 주문 생성 시 이미 나갔다면 멱등 처리로 중복 발송 없음.
+  // 알림 실패가 이미지 등록 응답을 실패시키지 않도록 격리.
+  try {
+    const { maybeNotify } = await import('../../_lib/notify.js');
+    const { rows: fullRows } = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
+    if (fullRows[0]) await maybeNotify(db, fullRows[0], 'ordered');
+  } catch (err) {
+    console.error('[work-order-image] 접수 알림 훅 실패(무시):', err?.message || err);
+  }
+
   return res.status(201).json({ url: storedImage.url });
 });
 

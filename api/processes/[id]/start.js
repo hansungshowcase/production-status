@@ -1,6 +1,11 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { maybeNotify } from '../../_lib/notify.js';
+
+// 핸들러 안에서 지역변수 `process`(공정 row)가 Node 전역 process 를 가리므로
+// 환경변수는 모듈 레벨에서 읽는다 (Vercel env 는 배포 단위 고정).
+const NOTIFY_STARTED_ENABLED = process.env.NOTIFY_STARTED === '1';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
@@ -88,6 +93,16 @@ export default cors(async function handler(req, res) {
       });
     } catch (e) {
       console.error('활동 로그 기록 실패:', e);
+    }
+
+    // 알림 훅: 해당 주문의 최초 공정 시작 + NOTIFY_STARTED=1 → started (실패해도 본 응답에 영향 없음)
+    // allProcesses 는 UPDATE 이전 스냅샷 — 전부 waiting 이었다면 이번이 첫 시작
+    if (NOTIFY_STARTED_ENABLED && allProcesses.every(p => p.status === 'waiting')) {
+      try {
+        await maybeNotify(db, order, 'started');
+      } catch (e) {
+        console.error('[start] started 알림 발송 실패(무시):', e);
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { maybeNotify, kstTodayStr } from '../../_lib/notify.js';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
@@ -84,10 +85,20 @@ export default cors(async function handler(req, res) {
             ON CONFLICT (order_id, step_name) WHERE step_name = '출고' DO NOTHING`,
       args: [process.order_id],
     });
+
+    // 알림 훅: 포장 완료 → packed (실패해도 본 응답에 영향 없음)
+    if (order) {
+      try {
+        await maybeNotify(db, order, 'packed');
+      } catch (e) {
+        console.error('[complete] packed 알림 발송 실패(무시):', e);
+      }
+    }
   }
 
   if (process.step_name === '출고' && order) {
-    const today = new Date().toISOString().slice(0, 10);
+    // KST 기준 오늘 (UTC 사용 시 KST 00~09시 출고가 전날로 기록되어 고객 안내 문자에 노출됨)
+    const today = kstTodayStr();
     const { rows: shippedRows } = await db.execute({
       sql: `UPDATE orders SET status = 'shipped', ship_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'shipped' RETURNING id`,
       args: [today, process.order_id],
@@ -105,6 +116,13 @@ export default cors(async function handler(req, res) {
         });
       } catch (e) {
         console.error('출고 로그 기록 실패:', e);
+      }
+
+      // 알림 훅: 출고 공정 완료로 shipped 전환 → shipped (실패해도 본 응답에 영향 없음)
+      try {
+        await maybeNotify(db, { ...order, status: 'shipped', ship_date: today }, 'shipped');
+      } catch (e) {
+        console.error('[complete] shipped 알림 발송 실패(무시):', e);
       }
     }
   }

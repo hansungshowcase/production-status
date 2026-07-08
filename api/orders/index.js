@@ -7,6 +7,8 @@ import { requireAuth, resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { appendOrderToSheet } from '../_lib/googleSheets.js';
+import { ensureTrackToken } from '../_lib/trackToken.js';
+import { maybeNotify } from '../_lib/notify.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -303,6 +305,19 @@ async function handlePost(req, res) {
       processes: processRows.rows,
       pre_production: preProdRow.rows[0] || null,
     };
+
+    // 알림 훅: 주문 생성 → track_token 발급 + ordered 알림 (실패해도 본 응답에 영향 없음)
+    // 토큰 발급 실패가 ordered 알림까지 삼키지 않도록 try 분리
+    try {
+      created.track_token = await ensureTrackToken(db, created);
+    } catch (tokenErr) {
+      console.error('[orders POST] track_token 발급 실패(무시):', tokenErr);
+    }
+    try {
+      await maybeNotify(db, created, 'ordered');
+    } catch (notifyErr) {
+      console.error('[orders POST] ordered 알림 발송 실패(무시):', notifyErr);
+    }
 
     try {
       await appendOrderToSheet(created);

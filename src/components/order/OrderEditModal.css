@@ -74,6 +74,48 @@
   border-radius: 8px;
 }
 
+/* ── 출고예정일 필드 (모달 전용 — OrderForm/신규 등록에는 미노출) ── */
+.order-edit-modal__ship-section {
+  margin: 4px 14px 8px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.order-edit-modal__ship-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.order-edit-modal__ship-input {
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #fff;
+}
+
+.order-edit-modal__ship-input:focus {
+  outline: none;
+  border-color: #0369a1;
+  box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.12);
+}
+
+.order-edit-modal__ship-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #b45309;
+}
+
 .order-edit-modal__footer {
   display: flex;
   justify-content: flex-end;
@@ -81,6 +123,30 @@
   padding: 14px 20px;
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
+}
+
+/* ── 고객 조회링크 복사 버튼 (track_token 있을 때만 렌더) ── */
+.order-edit-modal__copy-link {
+  margin-right: auto;
+  padding: 10px 14px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  background: #fff;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+}
+
+.order-edit-modal__copy-link:hover:not(:disabled) {
+  background: #f0f9ff;
+}
+
+.order-edit-modal__copy-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .order-edit-modal__cancel,
@@ -128,5 +194,12 @@
   .order-edit-modal__panel {
     border-radius: 16px 16px 0 0;
     max-height: 96vh;
+  }
+  .order-edit-modal__footer {
+    flex-wrap: wrap;
+  }
+  .order-edit-modal__copy-link {
+    flex: 1 1 100%;
+    margin-right: 0;
   }
 }
