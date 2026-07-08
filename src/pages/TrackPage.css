@@ -174,88 +174,68 @@
 .track-step.done .track-step-name,
 .track-step.current .track-step-name { color: var(--tp-text); font-weight: 700; }
 
-/* ---------- detailed progress ---------- */
-.track-detail-prog { margin-top: 20px; }
-.track-detail-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 7px;
-}
-.track-detail-cur {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--tp-text);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.track-badge {
-  display: inline-block;
-  background: var(--tp-brand-soft);
-  color: var(--tp-brand);
-  font-size: 11px;
-  font-weight: 800;
-  padding: 3px 9px;
-  border-radius: 999px;
-}
-.track-detail-frac { font-size: 12px; color: var(--tp-text-faint); font-variant-numeric: tabular-nums; }
-.track-bar {
-  height: 9px;
-  border-radius: 999px;
-  background: var(--tp-track);
-  overflow: hidden;
-}
-.track-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--tp-brand), var(--tp-brand-2));
-  width: 0;
-  transition: width .6s cubic-bezier(.4, 0, .2, 1);
-}
-.track-fill.done-all { background: linear-gradient(90deg, var(--tp-accent), #1dbf9f); }
-.track-prog-hint { margin-top: 8px; font-size: 12px; color: var(--tp-text-soft); }
-.track-prog-hint b { color: var(--tp-text); }
-
-/* ---------- ship date highlight ---------- */
-.track-ship-box {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  background: var(--tp-card-soft);
+/* ---------- 출고일 히어로 (가장 큰 정보) ---------- */
+.track-hero {
+  background: var(--tp-card);
   border: 1px solid var(--tp-line);
-  border-radius: 14px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
+  border-radius: 18px;
+  box-shadow: var(--tp-shadow);
+  padding: 22px 20px 24px;
+  margin-bottom: 12px;
+  text-align: center;
 }
-.track-ship-ico {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  border-radius: 11px;
-  background: var(--tp-brand-soft);
-  color: var(--tp-brand);
+.track-hero-lbl {
+  font-size: 12.5px;
+  color: var(--tp-text-faint);
+  font-weight: 600;
+  margin-top: 15px;
+}
+.track-hero-date {
+  font-size: 29px;
+  font-weight: 800;
+  letter-spacing: -.6px;
+  color: var(--tp-text);
+  margin-top: 3px;
+  line-height: 1.15;
+}
+.track-hero-date--sm { font-size: 18px; font-weight: 700; color: var(--tp-warn); margin-top: 8px; }
+.track-hero-sub {
+  font-size: 13.5px;
+  color: var(--tp-text-soft);
+  font-weight: 600;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
 }
-.track-ship-ico svg { width: 22px; height: 22px; }
-.track-ship-lbl { font-size: 11.5px; color: var(--tp-text-faint); font-weight: 600; }
-.track-ship-val { font-size: 17px; font-weight: 800; letter-spacing: -.3px; margin-top: 1px; }
-.track-ship-val small { font-size: 12px; font-weight: 600; color: var(--tp-text-soft); margin-left: 5px; }
-.track-ship-note { font-size: 11.5px; color: var(--tp-text-faint); margin-top: 6px; line-height: 1.5; }
+.track-dday {
+  display: inline-block;
+  background: var(--tp-brand);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 2px 11px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.track-hero-note {
+  font-size: 12px;
+  color: var(--tp-text-faint);
+  margin-top: 13px;
+  line-height: 1.55;
+}
 
-/* ---------- delivery status chip ---------- */
+/* ---------- delivery status chip (히어로 상단 중앙) ---------- */
 .track-dstat {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
+  gap: 7px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: -.1px;
-  padding: 4px 10px;
+  padding: 5px 13px;
   border-radius: 999px;
-  margin-bottom: 6px;
 }
 .track-dstat::before {
   content: "";
@@ -268,6 +248,35 @@
 .track-dstat.ok    { background: var(--tp-accent-soft); color: var(--tp-accent); }
 .track-dstat.adj   { background: var(--tp-warn-soft);   color: var(--tp-warn); }
 .track-dstat.resch { background: var(--tp-brand-soft);  color: var(--tp-brand); }
+
+/* ---------- 현재 진행 한 줄 (스텝퍼 아래) ---------- */
+.track-order-no {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tp-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.track-now {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.track-now-hint { font-size: 13px; color: var(--tp-text-soft); }
+.track-now-hint b { color: var(--tp-text); font-weight: 700; }
+.track-now-frac {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tp-text-faint);
+  font-variant-numeric: tabular-nums;
+  background: var(--tp-card-soft);
+  border: 1px solid var(--tp-line);
+  padding: 3px 11px;
+  border-radius: 999px;
+}
 
 /* ---------- section titles ---------- */
 .track-sec-title {

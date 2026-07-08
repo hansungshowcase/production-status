@@ -10,6 +10,27 @@ export default function OrderEditModal({ order, onClose, onSaved }) {
   const [serverError, setServerError] = useState(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [linkLoading, setLinkLoading] = useState(false);
+  const [viewLoading, setViewLoading] = useState(false);
+
+  // 고객 화면 보기 — 발급 API로 링크를 받아 실제 고객 조회페이지를 새 탭으로 연다
+  async function handleViewTrackPage() {
+    if (!order?.id || viewLoading) return;
+    // 팝업 차단 회피: 클릭 시점에 빈 탭을 먼저 열고, 링크 발급 후 주소를 채운다
+    const win = window.open('', '_blank');
+    setViewLoading(true);
+    try {
+      const res = await getTrackLink(order.id);
+      const url = res?.url || '';
+      if (!url) throw new Error('링크 발급 실패');
+      if (win) win.location.href = url;
+      else window.location.href = url;
+    } catch {
+      if (win) win.close();
+      window.alert('고객 화면을 여는 데 실패했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setViewLoading(false);
+    }
+  }
 
   // 조회링크는 목록 응답에 없고(토큰 공개 방지) 발급 API 로 필요 시점에 받아온다
   async function handleCopyTrackLink() {
@@ -123,11 +144,19 @@ export default function OrderEditModal({ order, onClose, onSaved }) {
         <div className="order-edit-modal__footer">
           <button
             type="button"
+            className="order-edit-modal__view-link"
+            onClick={handleViewTrackPage}
+            disabled={saving || viewLoading}
+          >
+            {viewLoading ? '여는 중…' : '고객 화면 보기'}
+          </button>
+          <button
+            type="button"
             className="order-edit-modal__copy-link"
             onClick={handleCopyTrackLink}
             disabled={saving || linkLoading}
           >
-            {linkCopied ? '복사됨 ✓' : linkLoading ? '발급 중…' : '고객 조회링크 복사'}
+            {linkCopied ? '복사됨 ✓' : linkLoading ? '발급 중…' : '조회링크 복사'}
           </button>
           <button className="order-edit-modal__cancel" onClick={onClose} disabled={saving}>취소</button>
           <button className="order-edit-modal__save" onClick={handleSave} disabled={saving}>

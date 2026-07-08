@@ -7,40 +7,6 @@ import './TrackPage.css';
 const STAGES = ['접수', '제작중', '포장완료', '출고완료'];
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5분
 
-// 미리보기용 토큰 — /track/preview 로 접속하면 API 없이 샘플 주문으로 렌더 (사내 화면 확인용)
-const PREVIEW_TOKENS = ['preview', 'demo', 'sample', '미리보기'];
-const PREVIEW_SAMPLE = {
-  order_no: 'HS-2026-0142',
-  manager_name: '이준형',
-  client_name: '행***',
-  product_type: '쇼케이스',
-  door_type: '평대',
-  size: { width: 1800, depth: 1000, height: 900 },
-  quantity: 1,
-  color: '블랙',
-  status: 'in_production',
-  delivery_status: 'on_track',
-  due_date: '2026-07-22',
-  ship_scheduled_date: null,
-  ship_date: null,
-  progress: { completed: 5, total: 10 },
-  current_step: '조립작업',
-  steps: [
-    { name: '도면설계', status: 'completed' },
-    { name: '레이저작업', status: 'completed' },
-    { name: 'V-커팅작업', status: 'completed' },
-    { name: '절곡작업', status: 'completed' },
-    { name: '용접작업', status: 'completed' },
-    { name: '분체작업', status: 'in_progress' },
-    { name: '조립작업', status: 'waiting' },
-    { name: '설비작업', status: 'waiting' },
-    { name: '포장', status: 'waiting' },
-    { name: '출고', status: 'waiting' },
-  ],
-  packing_photo_url: null,
-  _preview: true,
-};
-
 /* ── 인라인 아이콘 (목업과 동일) ───────────────────── */
 const IconTruck = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -162,27 +128,21 @@ function Stepper({ stage, shipped }) {
 function ShipBox({ data, deliveryStatus }) {
   if (data.status === 'shipped') {
     return (
-      <div className="track-ship-box">
-        <div className="track-ship-ico"><IconTruck /></div>
-        <div>
-          <div className="track-ship-lbl">출고 완료일</div>
-          <div className="track-ship-val">
-            {fmtDate(data.ship_date)} <small>{weekday(data.ship_date)}</small>
-          </div>
-        </div>
+      <div className="track-hero track-hero--done">
+        <div className="track-dstat resch">출고 완료</div>
+        <div className="track-hero-lbl">출고 완료일</div>
+        <div className="track-hero-date">{fmtDate(data.ship_date)}</div>
+        <div className="track-hero-sub">{weekday(data.ship_date)}</div>
       </div>
     );
   }
   if (deliveryStatus === 'adjusting') {
     // 조정 중: 기존 납기(due_date)·D-day를 숨기고 재안내 예정만 표시
     return (
-      <div className="track-ship-box">
-        <div className="track-ship-ico"><IconCal /></div>
-        <div>
-          <div className="track-dstat adj">출고일 조정 중 — 확인 후 다시 안내드립니다</div>
-          <div className="track-ship-lbl">예상 출고일</div>
-          <div className="track-ship-val">조정 후 안내</div>
-        </div>
+      <div className="track-hero">
+        <div className="track-dstat adj">출고일 조정 중</div>
+        <div className="track-hero-lbl">예상 출고일</div>
+        <div className="track-hero-date track-hero-date--sm">확인 후 다시 안내드립니다</div>
       </div>
     );
   }
@@ -190,30 +150,25 @@ function ShipBox({ data, deliveryStatus }) {
     // 조정 확정: 새 출고예정일만 크게 표시, 원래 due_date는 비노출
     const nd = dday(data.ship_scheduled_date);
     return (
-      <div className="track-ship-box">
-        <div className="track-ship-ico"><IconCal /></div>
-        <div>
-          <div className="track-dstat resch">새 출고예정일</div>
-          <div className="track-ship-val">
-            {fmtDate(data.ship_scheduled_date)}{' '}
-            <small>{weekday(data.ship_scheduled_date)}{nd ? ` · ${nd}` : ''}</small>
-          </div>
-          <div className="track-ship-note">일정이 조정되어 문자/카카오톡으로 안내드렸습니다. 양해 감사드립니다.</div>
+      <div className="track-hero">
+        <div className="track-dstat resch">새 출고예정일</div>
+        <div className="track-hero-date">{fmtDate(data.ship_scheduled_date)}</div>
+        <div className="track-hero-sub">
+          {weekday(data.ship_scheduled_date)}{nd ? <span className="track-dday">{nd}</span> : null}
         </div>
+        <div className="track-hero-note">일정이 조정되어 문자·카카오톡으로 안내드렸습니다. 양해 감사드립니다.</div>
       </div>
     );
   }
   // on_track
   const dd = dday(data.due_date);
   return (
-    <div className="track-ship-box">
-      <div className="track-ship-ico"><IconCal /></div>
-      <div>
-        <div className="track-dstat ok">예정대로 진행 중</div>
-        <div className="track-ship-lbl">예상 출고(납기)일</div>
-        <div className="track-ship-val">
-          {fmtDate(data.due_date)} <small>{weekday(data.due_date)}{dd ? ` · ${dd}` : ''}</small>
-        </div>
+    <div className="track-hero">
+      <div className="track-dstat ok">예정대로 진행 중</div>
+      <div className="track-hero-lbl">예상 출고(납기)일</div>
+      <div className="track-hero-date">{fmtDate(data.due_date)}</div>
+      <div className="track-hero-sub">
+        {weekday(data.due_date)}{dd ? <span className="track-dday">{dd}</span> : null}
       </div>
     </div>
   );
@@ -266,21 +221,9 @@ export default function TrackPage() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
-  const [fillPct, setFillPct] = useState(0);
   const mountedRef = useRef(true);
 
-  const isPreview = PREVIEW_TOKENS.includes(String(token || '').toLowerCase());
-
   const load = useCallback(async (silent = false) => {
-    // 미리보기 토큰: 서버 호출 없이 샘플 데이터로 렌더 (사내 화면 확인용)
-    if (PREVIEW_TOKENS.includes(String(token || '').toLowerCase())) {
-      setData(PREVIEW_SAMPLE);
-      setNotFound(false);
-      setError(null);
-      setUpdatedAt(new Date());
-      setLoading(false);
-      return;
-    }
     if (!silent) {
       setLoading(true);
       setNotFound(false);
@@ -317,16 +260,7 @@ export default function TrackPage() {
     };
   }, [load]);
 
-  // 진행바 애니메이션 (0 → pct)
   const { completed, total } = data ? deriveProgress(data) : { completed: 0, total: 10 };
-  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-  useEffect(() => {
-    // setTimeout 사용: requestAnimationFrame 은 백그라운드 탭에서 발화하지 않아
-    // 진행바가 0% 에 머무는 경우가 있음 (CSS transition 이 애니메이션 담당)
-    const t = setTimeout(() => setFillPct(pct), 50);
-    return () => clearTimeout(t);
-  }, [pct]);
-
   const shipped = data?.status === 'shipped';
   const stage = data ? customerStage(data, completed, total) : 0;
   const deliveryStatus = data ? deriveDeliveryStatus(data) : 'on_track';
@@ -382,36 +316,27 @@ export default function TrackPage() {
 
           {!loading && !notFound && data && (
             <>
-              {/* 메인 진행 카드 */}
+              {/* 출고일 / 납기 상태 — 가장 크게 (고객이 제일 궁금한 정보) */}
+              <ShipBox data={data} deliveryStatus={deliveryStatus} />
+
+              {/* 진행 카드 */}
               <div className="track-card">
                 <div className="track-status-line">
                   <span className={`track-dot${shipped ? ' ship' : ''}`} />
                   <span className="track-status-label">{shipped ? '출고 완료' : '제작 진행중'}</span>
+                  <span className="track-order-no">{orderNo}</span>
                 </div>
                 <div className="track-client">{clientName}</div>
-                <div className="track-order-meta">주문번호 <b>{orderNo}</b> · 주문조회 링크</div>
 
                 <Stepper stage={stage} shipped={shipped} />
 
-                <div className="track-detail-prog">
-                  <div className="track-detail-head">
-                    <span className="track-detail-cur">
-                      현재 단계 {currentStep && <span className="track-badge">{currentStep}</span>}
-                    </span>
-                    <span className="track-detail-frac">{completed} / {total} 공정</span>
-                  </div>
-                  <div className="track-bar">
-                    <div
-                      className={`track-fill${pct >= 100 ? ' done-all' : ''}`}
-                      style={{ width: `${fillPct}%` }}
-                    />
-                  </div>
-                  <div className="track-prog-hint">{hint}</div>
+                <div className="track-now">
+                  <span className="track-now-hint">{hint}</span>
+                  {!shipped && (
+                    <span className="track-now-frac">{completed}/{total} 공정</span>
+                  )}
                 </div>
               </div>
-
-              {/* 출고일 / 납기 상태 */}
-              <ShipBox data={data} deliveryStatus={deliveryStatus} />
 
               {/* 제품 정보 */}
               <div className="track-card">
@@ -495,7 +420,7 @@ export default function TrackPage() {
 
         <div className="track-refresh">
           <span className="track-live" />
-          <span>{isPreview ? '미리보기 화면입니다 (샘플 주문)' : '약 5분마다 자동으로 새로고침됩니다'}</span>
+          <span>약 5분마다 자동으로 새로고침됩니다</span>
         </div>
 
         <div className="track-foot">

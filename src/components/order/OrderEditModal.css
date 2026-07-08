@@ -125,7 +125,28 @@
   background: #f8fafc;
 }
 
-/* ── 고객 조회링크 복사 버튼 (track_token 있을 때만 렌더) ── */
+/* ── 고객 화면 보기 (실제 고객 조회페이지를 새 탭으로) ── */
+.order-edit-modal__view-link {
+  padding: 10px 14px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  background: #0369a1;
+  color: #fff;
+  border: 1px solid #0369a1;
+}
+.order-edit-modal__view-link:hover:not(:disabled) {
+  background: #025b8a;
+}
+.order-edit-modal__view-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── 고객 조회링크 복사 버튼 ── */
 .order-edit-modal__copy-link {
   margin-right: auto;
   padding: 10px 14px;
@@ -198,8 +219,11 @@
   .order-edit-modal__footer {
     flex-wrap: wrap;
   }
+  .order-edit-modal__view-link {
+    flex: 1 1 48%;
+  }
   .order-edit-modal__copy-link {
-    flex: 1 1 100%;
+    flex: 1 1 48%;
     margin-right: 0;
   }
 }
