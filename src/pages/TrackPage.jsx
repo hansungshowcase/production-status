@@ -7,6 +7,40 @@ import './TrackPage.css';
 const STAGES = ['접수', '제작중', '포장완료', '출고완료'];
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5분
 
+// 미리보기용 토큰 — /track/preview 로 접속하면 API 없이 샘플 주문으로 렌더 (사내 화면 확인용)
+const PREVIEW_TOKENS = ['preview', 'demo', 'sample', '미리보기'];
+const PREVIEW_SAMPLE = {
+  order_no: 'HS-2026-0142',
+  manager_name: '이준형',
+  client_name: '행***',
+  product_type: '쇼케이스',
+  door_type: '평대',
+  size: { width: 1800, depth: 1000, height: 900 },
+  quantity: 1,
+  color: '블랙',
+  status: 'in_production',
+  delivery_status: 'on_track',
+  due_date: '2026-07-22',
+  ship_scheduled_date: null,
+  ship_date: null,
+  progress: { completed: 5, total: 10 },
+  current_step: '조립작업',
+  steps: [
+    { name: '도면설계', status: 'completed' },
+    { name: '레이저작업', status: 'completed' },
+    { name: 'V-커팅작업', status: 'completed' },
+    { name: '절곡작업', status: 'completed' },
+    { name: '용접작업', status: 'completed' },
+    { name: '분체작업', status: 'in_progress' },
+    { name: '조립작업', status: 'waiting' },
+    { name: '설비작업', status: 'waiting' },
+    { name: '포장', status: 'waiting' },
+    { name: '출고', status: 'waiting' },
+  ],
+  packing_photo_url: null,
+  _preview: true,
+};
+
 /* ── 인라인 아이콘 (목업과 동일) ───────────────────── */
 const IconTruck = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -235,7 +269,18 @@ export default function TrackPage() {
   const [fillPct, setFillPct] = useState(0);
   const mountedRef = useRef(true);
 
+  const isPreview = PREVIEW_TOKENS.includes(String(token || '').toLowerCase());
+
   const load = useCallback(async (silent = false) => {
+    // 미리보기 토큰: 서버 호출 없이 샘플 데이터로 렌더 (사내 화면 확인용)
+    if (PREVIEW_TOKENS.includes(String(token || '').toLowerCase())) {
+      setData(PREVIEW_SAMPLE);
+      setNotFound(false);
+      setError(null);
+      setUpdatedAt(new Date());
+      setLoading(false);
+      return;
+    }
     if (!silent) {
       setLoading(true);
       setNotFound(false);
@@ -450,7 +495,7 @@ export default function TrackPage() {
 
         <div className="track-refresh">
           <span className="track-live" />
-          <span>약 5분마다 자동으로 새로고침됩니다</span>
+          <span>{isPreview ? '미리보기 화면입니다 (샘플 주문)' : '약 5분마다 자동으로 새로고침됩니다'}</span>
         </div>
 
         <div className="track-foot">
