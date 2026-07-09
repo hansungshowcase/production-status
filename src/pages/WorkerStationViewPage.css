@@ -1,14 +1,14 @@
 .station-view {
   min-height: 100vh;
   min-height: 100dvh;
-  background: #f0f9ff;
+  background: var(--bg, #f4f7fb);
   font-family: 'Noto Sans KR', sans-serif;
   padding-bottom: 24px;
 }
 
 /* Header */
 .station-view__header {
-  background: linear-gradient(135deg, #075985 0%, #0ea5e9 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
   padding: 0;
   position: sticky;
   top: 0;
@@ -163,7 +163,7 @@
 }
 
 .station-view__issue-select-item:active {
-  background: #f0f9ff;
+  background: #eff6ff;
 }
 
 .station-view__issue-select-client {
@@ -196,8 +196,8 @@
 }
 
 .station-view__issue-select-status--in_progress {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .station-view__back-btn {
@@ -519,7 +519,7 @@
 }
 
 .factory-overview__global-item--active strong {
-  color: #0369a1;
+  color: #1d4ed8;
 }
 
 .factory-overview__global-item--red {
@@ -982,7 +982,7 @@
   align-items: center;
   padding: 8px 4px;
   background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border, #d8e1ec);
 }
 
 .station-view__stat:first-child {
@@ -1514,7 +1514,7 @@
 
 .station-view__row-btn--photo {
   background: #e0f2fe;
-  color: #0369a1;
+  color: #1d4ed8;
 }
 
 .station-view__row-btn--work-order {
@@ -1549,12 +1549,15 @@
 
 .sv-work-order-viewer {
   position: fixed;
-  inset: 16px;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1001;
   display: flex;
   flex-direction: column;
-  max-width: 980px;
-  margin: auto;
+  width: fit-content;
+  max-height: calc(100vh - 20px);
+  max-width: min(980px, calc(100vw - 20px));
   background: #ffffff;
   border-radius: 8px;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
@@ -1593,20 +1596,23 @@
 }
 
 .sv-work-order-viewer__body {
-  flex: 1;
-  min-height: 0;
+  flex: 0 1 auto;
+  width: 100%;
+  max-height: calc(100vh - 74px);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f8fafc;
+  background: #ffffff;
   overflow: auto;
-  padding: 10px;
+  padding: 0;
 }
 
 .sv-work-order-viewer__image {
   display: block;
+  width: auto;
+  height: auto;
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 74px);
   object-fit: contain;
 }
 

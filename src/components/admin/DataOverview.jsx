@@ -3,7 +3,7 @@ import request from '../../api/client';
 import './DataOverview.css';
 
 export default function DataOverview() {
-  const [stats, setStats] = useState({ total: 0, inProgress: 0, shipped: 0 });
+  const [stats, setStats] = useState(null);
   const [syncTime, setSyncTime] = useState(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -14,9 +14,9 @@ export default function DataOverview() {
         request('/sync/status'),
       ]);
       setStats({
-        total: statsRes.total_orders || 0,
-        inProgress: statsRes.in_production || 0,
-        shipped: statsRes.shipped || 0,
+        total: statsRes.total_orders,
+        inProgress: statsRes.in_production,
+        shipped: statsRes.shipped,
       });
       if (syncRes.lastSync) {
         setSyncTime(new Date(syncRes.lastSync).toLocaleString('ko-KR'));
@@ -49,15 +49,15 @@ export default function DataOverview() {
 
       <div className="overview-stats">
         <div className="overview-stat-card">
-          <div className="overview-stat-value blue">{stats.total}</div>
+          <div className="overview-stat-value blue">{stats?.total ?? '-'}</div>
           <div className="overview-stat-label">전체 주문</div>
         </div>
         <div className="overview-stat-card">
-          <div className="overview-stat-value orange">{stats.inProgress}</div>
+          <div className="overview-stat-value orange">{stats?.inProgress ?? '-'}</div>
           <div className="overview-stat-label">생산중</div>
         </div>
         <div className="overview-stat-card">
-          <div className="overview-stat-value green">{stats.shipped}</div>
+          <div className="overview-stat-value green">{stats?.shipped ?? '-'}</div>
           <div className="overview-stat-label">출고완료</div>
         </div>
       </div>

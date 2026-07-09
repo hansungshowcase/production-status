@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PROCESS_STEPS } from '../../constants';
-import { formatDueStatus } from '../../utils/dateUtils';
+import { extractDueDateFromOrder, formatDueStatus } from '../../utils/dateUtils';
+import { getVisibleOrderMemo } from '../../utils/orderText';
+import { getOrder } from '../../api/orders';
+import { buildShippingDocumentData, buildShippingDocumentPrintHtml } from './shippingDocuments';
 import './SalesOrderCard.css';
 
 function parseProcessSummary(value) {
@@ -30,24 +33,144 @@ function formatProcessTime(value) {
   return text.slice(5, 16);
 }
 
+function getDeliveryAddress(order) {
+  return order.delivery_address || order.address || order.client_address || order.deliveryAddress || order.clientAddress || '';
+}
+
+function getFreightPayment(order) {
+  return order.freight_payment
+    || order.freightPayment
+    || order.shipping_fee_payer
+    || order.shippingFeePayer
+    || order.delivery_fee_payer
+    || order.deliveryFeePayer
+    || order.transport_payment
+    || order.transportPayment
+    || order.freight
+    || order['운임여부']
+    || '';
+}
+
+function formatMoney(value) {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `${Math.round(value).toLocaleString('ko-KR')}원`;
+  }
+  const raw = String(value).trim();
+  if (!raw || raw === '-') return '';
+  const number = Number(raw.replace(/,/g, '').replace(/[^\d.]/g, ''));
+  if (Number.isFinite(number) && number > 0) {
+    return `${Math.round(number).toLocaleString('ko-KR')}원`;
+  }
+  return raw;
+}
+
+function getWorkOrderImageUrl(order) {
+  return order.work_order_image_url || order.workOrderImageUrl || '';
+}
+
+function getOrderPhotos(order) {
+  return Array.isArray(order.photos) ? order.photos : [];
+}
+
+function getOpenIssues(order) {
+  const issues = Array.isArray(order.issues) ? order.issues : [];
+  return issues.filter(issue => !issue.resolved_at);
+}
+
+function getPhotoHref(photo) {
+  if (photo?.id) return `/api/photos/${encodeURIComponent(photo.id)}?download=1`;
+  return photo?.file_path || photo?.url || '#';
+}
+
+function renderDocumentMultiline(value, className) {
+  const lines = String(value || '').split('\n');
+
+  return (
+    <div className={className}>
+      {lines.map((line, index) => (
+        <React.Fragment key={index}>
+          {line || '\u00a0'}
+          {index < lines.length - 1 && <br />}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function renderDocumentGuide(guide) {
+  if (!guide) return null;
+  const className = guide.compact
+    ? 'sales-order-card__document-guide sales-order-card__document-guide--shipping'
+    : 'sales-order-card__document-guide';
+
+  return (
+    <div className={className}>
+      {guide.intro && renderDocumentMultiline(guide.intro, 'sales-order-card__document-guide-intro')}
+      <div className="sales-order-card__document-guide-title">{guide.title}</div>
+      {(guide.steps || []).map((step, index) => (
+        <React.Fragment key={index}>
+          {renderDocumentMultiline(step, 'sales-order-card__document-guide-step')}
+        </React.Fragment>
+      ))}
+      {guide.warning && guide.showWarning !== false && renderDocumentMultiline(guide.warning, 'sales-order-card__document-guide-warning')}
+      {guide.driverInfo && renderDocumentMultiline(guide.driverInfo, 'sales-order-card__document-guide-driver')}
+    </div>
+  );
+}
+
 export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
-  const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmShip, setConfirmShip] = useState(false);
   const [shipping, setShipping] = useState(false);
   const [packingPhotoOpen, setPackingPhotoOpen] = useState(false);
+  const [documentPreview, setDocumentPreview] = useState(null);
+  const [detailOrder, setDetailOrder] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
 
-  const processes = order.processes || [];
-  const fallbackCompletedSteps = Number(order.completed_steps || 0);
-  const fallbackTotalSteps = Number(order.total_steps || PROCESS_STEPS.length) || PROCESS_STEPS.length;
+  useEffect(() => {
+    if (!expanded || detailOrder || detailLoading || !order.id) return;
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError('');
+    getOrder(order.id)
+      .then((data) => {
+        if (!cancelled) setDetailOrder(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setDetailError(err.message || '상세 정보를 불러오지 못했습니다.');
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detailLoading, detailOrder, expanded, order.id]);
+
+  const displayOrder = detailOrder || order;
+  const displayDueDate = extractDueDateFromOrder(displayOrder);
+  const visibleNotes = getVisibleOrderMemo(displayOrder.notes);
+  const visibleRemarks = getVisibleOrderMemo(displayOrder.remarks);
+  const deliveryAddress = getDeliveryAddress(displayOrder);
+  const freightPayment = getFreightPayment(displayOrder);
+  const balanceDisplay = formatMoney(displayOrder.balance);
+  const workOrderImageUrl = getWorkOrderImageUrl(displayOrder);
+  const orderPhotos = getOrderPhotos(displayOrder);
+  const openIssues = getOpenIssues(displayOrder);
+
+  const processes = displayOrder.processes || [];
+  const fallbackCompletedSteps = Number(displayOrder.completed_steps || 0);
+  const fallbackTotalSteps = Number(displayOrder.total_steps || PROCESS_STEPS.length) || PROCESS_STEPS.length;
   const stepStatusMap = {};
   const stepWorkerMap = {};
   const stepTimeMap = {};
-  const processSummary = parseProcessSummary(order.process_summary);
+  const processSummary = parseProcessSummary(displayOrder.process_summary);
   processes.forEach(p => {
     stepStatusMap[p.step_name] = p.status;
-    const worker = getDisplayWorker(p.step_name, p, order.sales_person);
+    const worker = getDisplayWorker(p.step_name, p, displayOrder.sales_person);
     if (worker) stepWorkerMap[p.step_name] = worker;
     if (p.completed_at) stepTimeMap[p.step_name] = p.completed_at;
   });
@@ -56,7 +179,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
     if (!stepStatusMap[step] && summary.status) {
       stepStatusMap[step] = summary.status;
     }
-    const worker = getDisplayWorker(step, summary, order.sales_person);
+    const worker = getDisplayWorker(step, summary, displayOrder.sales_person);
     if (worker && !stepWorkerMap[step]) {
       stepWorkerMap[step] = worker;
     }
@@ -69,7 +192,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
       if (idx < fallbackCompletedSteps) {
         stepStatusMap[step] = 'completed';
       } else if (idx === fallbackCompletedSteps && fallbackCompletedSteps < fallbackTotalSteps) {
-        stepStatusMap[step] = order.status === 'shipped' ? 'completed' : 'in_progress';
+        stepStatusMap[step] = displayOrder.status === 'shipped' ? 'completed' : 'in_progress';
       } else {
         stepStatusMap[step] = 'waiting';
       }
@@ -81,7 +204,6 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const totalSteps = processes.length > 0 ? PROCESS_STEPS.length : fallbackTotalSteps;
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
-  // Find current step (first non-completed)
   let currentStepName = null;
   let currentStepStatus = null;
   let currentWorker = null;
@@ -104,15 +226,15 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
     currentStepStatus = null;
   }
 
-  const dueStatus = formatDueStatus(order.due_date, order.status);
+  const dueStatus = formatDueStatus(displayDueDate, displayOrder.status);
   const isOverdue = dueStatus.isOverdue;
-  const isShipped = order.status === 'shipped' || order.status === '출고완료' || !!order.ship_date;
+  const isShipped = displayOrder.status === 'shipped' || displayOrder.status === '출고완료' || !!displayOrder.ship_date;
 
-  const clientDisplay = order.client_name || '-';
-  const specParts = [order.product_type, order.door_type].filter(Boolean).join(' / ');
-  const sizeParts = [order.width, order.depth, order.height].filter(Boolean).join(' x ');
-  const dueDisplay = order.due_date
-    ? new Date(order.due_date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
+  const clientDisplay = displayOrder.client_name || '-';
+  const specParts = [displayOrder.product_type, displayOrder.door_type].filter(Boolean).join(' / ');
+  const sizeParts = [displayOrder.width, displayOrder.depth, displayOrder.height].filter(Boolean).join(' x ');
+  const dueDisplay = displayDueDate
+    ? new Date(displayDueDate).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })
     : '-';
   const dueClass = dueStatus.isOverdue
     ? 'overdue'
@@ -120,12 +242,33 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
       ? 'soon'
       : 'normal';
 
+  function openDocumentPreview(type, e) {
+    e.stopPropagation();
+    setDocumentPreview(buildShippingDocumentData(displayOrder, type));
+  }
+
+  function closeDocumentPreview(e) {
+    if (e) e.stopPropagation();
+    setDocumentPreview(null);
+  }
+
+  function printDocumentPreview(e) {
+    e.stopPropagation();
+    if (!documentPreview) return;
+    const printWindow = window.open('', '_blank', 'width=820,height=900');
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(buildShippingDocumentPrintHtml(documentPreview));
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 250);
+  }
+
   return (
     <div
       className={`sales-order-card${isOverdue ? ' sales-order-card--overdue' : ''}`}
       onClick={() => setExpanded(!expanded)}
     >
-      {/* Header: 거래처명 + 뱃지 */}
       <div className="sales-order-card__header">
         <div className="sales-order-card__header-left">
           <span className="sales-order-card__client">{clientDisplay}</span>
@@ -134,7 +277,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
           {isShipped && (
             <span className="sales-order-card__shipped-badge">출고완료</span>
           )}
-          {!isShipped && order.due_date && (
+          {!isShipped && displayDueDate && (
             <span className={`sales-order-card__due-badge sales-order-card__due-badge--${dueClass}`}>
               {dueStatus.label || `납기 ${dueDisplay}`}
             </span>
@@ -142,7 +285,6 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         </div>
       </div>
 
-      {/* Progress bar + 현재 공정 */}
       <div className="sales-order-card__progress">
         <div className="sales-order-card__progress-header">
           <span className={`sales-order-card__current-step sales-order-card__current-step--${currentStepStatus === '진행중' ? 'active' : currentStepStatus === '대기' ? 'waiting' : 'done'}`}>
@@ -160,7 +302,6 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         </div>
       </div>
 
-      {/* 기본 정보 — 핵심만 */}
       <div className="sales-order-card__info">
         {specParts && (
           <div className="sales-order-card__info-item">
@@ -181,99 +322,178 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
             {dueStatus.label && <span className="sales-order-card__due-status">{dueStatus.label}</span>}
           </span>
         </div>
-        {order.quantity > 1 && (
+        {displayOrder.quantity > 1 && (
           <div className="sales-order-card__info-item">
             <span className="sales-order-card__info-label">수량</span>
-            <span className="sales-order-card__info-value">{order.quantity}대</span>
+            <span className="sales-order-card__info-value">{displayOrder.quantity}대</span>
           </div>
         )}
       </div>
 
-      {/* 상세보기 클릭 힌트 */}
       <div className="sales-order-card__expand-hint">
         {expanded ? '접기 ▲' : '상세보기 ▼'}
       </div>
 
-      {/* 상세 정보 (클릭 시 펼침) */}
       {expanded && (
         <div className="sales-order-card__detail">
-          {/* 추가 주문 정보 */}
           <div className="sales-order-card__detail-grid">
-            {isShipped && order.ship_date && (
+            {isShipped && displayOrder.ship_date && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">출고일</span>
-                <span className="sales-order-card__detail-value">{order.ship_date}</span>
+                <span className="sales-order-card__detail-value">{displayOrder.ship_date}</span>
               </div>
             )}
-            {order.order_date && (
+            {displayOrder.order_date && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">발주일</span>
-                <span className="sales-order-card__detail-value">{order.order_date}</span>
+                <span className="sales-order-card__detail-value">{displayOrder.order_date}</span>
               </div>
             )}
-            {order.due_date && (
+            {displayDueDate && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">납기일</span>
-                <span className="sales-order-card__detail-value">{order.due_date}</span>
+                <span className="sales-order-card__detail-value">{displayDueDate}</span>
               </div>
             )}
-            {order.sales_person && (
+            {displayOrder.sales_person && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">담당</span>
-                <span className="sales-order-card__detail-value">{order.sales_person}</span>
+                <span className="sales-order-card__detail-value">{displayOrder.sales_person}</span>
               </div>
             )}
-            {order.phone && (
+            {displayOrder.phone && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">연락처</span>
-                <span className="sales-order-card__detail-value">{order.phone}</span>
+                <span className="sales-order-card__detail-value">{displayOrder.phone}</span>
               </div>
             )}
-            {order.color && (
+            {displayOrder.color && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">색상</span>
-                <span className="sales-order-card__detail-value">{order.color}</span>
+                <span className="sales-order-card__detail-value">{displayOrder.color}</span>
               </div>
             )}
-            {order.design && (
+            {displayOrder.design && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">디자인</span>
-                <span className="sales-order-card__detail-value">{order.design}</span>
+                <span className="sales-order-card__detail-value">{displayOrder.design}</span>
               </div>
             )}
-            {order.notes && (
+            {deliveryAddress && (
+              <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
+                <span className="sales-order-card__detail-label">주소</span>
+                <span className="sales-order-card__detail-value">{deliveryAddress}</span>
+              </div>
+            )}
+            {balanceDisplay && (
+              <div className="sales-order-card__detail-item">
+                <span className="sales-order-card__detail-label">남은 잔금</span>
+                <span className="sales-order-card__detail-value">{balanceDisplay}</span>
+              </div>
+            )}
+            {freightPayment && (
+              <div className="sales-order-card__detail-item">
+                <span className="sales-order-card__detail-label">운임여부</span>
+                <span className="sales-order-card__detail-value">{freightPayment}</span>
+              </div>
+            )}
+            {workOrderImageUrl && (
+              <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
+                <span className="sales-order-card__detail-label">작업지시서</span>
+                <a
+                  className="sales-order-card__detail-value sales-order-card__detail-file"
+                  href={workOrderImageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  보기
+                </a>
+              </div>
+            )}
+            {visibleNotes && (
               <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
                 <span className="sales-order-card__detail-label">비고</span>
-                <span className="sales-order-card__detail-value">{order.notes}</span>
+                <span className="sales-order-card__detail-value">{visibleNotes}</span>
               </div>
             )}
-            {order.remarks && (
+            {visibleRemarks && (
               <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
                 <span className="sales-order-card__detail-label">특이사항</span>
-                <span className="sales-order-card__detail-value">{order.remarks}</span>
+                <span className="sales-order-card__detail-value">{visibleRemarks}</span>
               </div>
             )}
           </div>
 
-          {isShipped && (
+          {detailLoading && (
+            <div className="sales-order-card__detail-note">상세 정보를 불러오는 중...</div>
+          )}
+          {detailError && (
+            <div className="sales-order-card__detail-note sales-order-card__detail-note--error">{detailError}</div>
+          )}
+
+          {(orderPhotos.length > 0 || openIssues.length > 0) && (
+            <div className="sales-order-card__detail-grid">
+              {orderPhotos.length > 0 && (
+                <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
+                  <span className="sales-order-card__detail-label">사진</span>
+                  <span className="sales-order-card__detail-value sales-order-card__detail-attachments">
+                    {orderPhotos.map((photo, index) => (
+                      <a
+                        key={photo.id || photo.file_path || index}
+                        href={getPhotoHref(photo)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        사진 {index + 1}
+                      </a>
+                    ))}
+                  </span>
+                </div>
+              )}
+              {openIssues.length > 0 && (
+                <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
+                  <span className="sales-order-card__detail-label">이슈</span>
+                  <span className="sales-order-card__detail-value">
+                    미해결 {openIssues.length}건
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(isShipped || displayOrder.packing_photo_url) && (
             <div className="sales-order-card__packing-photo">
-              {order.packing_photo_url ? (
+              {displayOrder.packing_photo_url ? (
+                <>
                 <button
-                  className="sales-order-card__packing-photo-btn"
+                  className="sales-order-card__packing-photo-preview"
                   onClick={(e) => {
                     e.stopPropagation();
                     setPackingPhotoOpen(true);
                   }}
                 >
+                  <img src={displayOrder.packing_photo_url} alt="포장사진" />
                   포장사진 보기
                 </button>
+                <a
+                  className="sales-order-card__packing-photo-download"
+                  href={displayOrder.packing_photo_url}
+                  download="packing-photo"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  다운로드
+                </a>
+                </>
               ) : (
                 <span className="sales-order-card__packing-photo-empty">포장사진 없음</span>
               )}
             </div>
           )}
 
-          {/* 공정 상세 */}
           <div className="sales-order-card__detail-title" style={{ marginTop: 10 }}>공정 현황</div>
           <div className="sales-order-card__process-list">
             {PROCESS_STEPS.map((step, idx) => {
@@ -314,22 +534,13 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
             })}
           </div>
 
-          {/* 상세 페이지 진입 */}
-          <button
-            className="sales-order-card__detail-link"
-            onClick={(e) => { e.stopPropagation(); navigate(`/orders/${order.id}`); }}
-          >
-            상세 페이지 열기 →
-          </button>
-
-          {/* 액션 버튼 영역 */}
           <div className="sales-order-card__actions">
             {onEdit && !isShipped && (
               <button
                 className="sales-order-card__edit-btn"
                 onClick={(e) => { e.stopPropagation(); onEdit(order); }}
               >
-                ✏️ 수정
+                수정
               </button>
             )}
             {onShip && !isShipped && (
@@ -338,7 +549,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
                   className="sales-order-card__ship-btn"
                   onClick={(e) => { e.stopPropagation(); setConfirmShip(true); }}
                 >
-                  📦 출고완료
+                  출고완료
                 </button>
               ) : (
                 <div className="sales-order-card__ship-confirm">
@@ -370,9 +581,20 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
                 </div>
               )
             )}
+            <button
+              className="sales-order-card__document-btn"
+              onClick={(e) => openDocumentPreview('shipping', e)}
+            >
+              출하지시서 출력
+            </button>
+            <button
+              className="sales-order-card__document-btn"
+              onClick={(e) => openDocumentPreview('delivery', e)}
+            >
+              납품내역서 출력
+            </button>
           </div>
 
-          {/* 삭제 버튼 */}
           {onDelete && (
             <div className="sales-order-card__delete-section">
               {!confirmDelete ? (
@@ -404,7 +626,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         </div>
       )}
 
-      {packingPhotoOpen && order.packing_photo_url && (
+      {packingPhotoOpen && displayOrder.packing_photo_url && (
         <div
           className="sales-order-card__photo-viewer"
           onClick={(e) => {
@@ -425,10 +647,133 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
                 닫기
               </button>
             </div>
-            <img src={order.packing_photo_url} alt="포장사진" className="sales-order-card__photo-viewer-img" />
+            <img src={displayOrder.packing_photo_url} alt="포장사진" className="sales-order-card__photo-viewer-img" />
           </div>
         </div>
       )}
+
+      {documentPreview && createPortal((
+        <div
+          className="sales-order-card__document-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${documentPreview.title} 미리보기`}
+          onClick={closeDocumentPreview}
+        >
+          <div
+            className="sales-order-card__document-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sales-order-card__document-toolbar">
+              <strong>{documentPreview.title} 미리보기</strong>
+              <div className="sales-order-card__document-toolbar-actions">
+                <button className="sales-order-card__document-print" onClick={printDocumentPreview}>
+                  인쇄하기
+                </button>
+                <button className="sales-order-card__document-close" onClick={closeDocumentPreview}>
+                  닫기
+                </button>
+              </div>
+            </div>
+            <div className={`sales-order-card__document-sheet${documentPreview.type === 'shipping' ? ' sales-order-card__document-sheet--shipping' : ''}`}>
+              <div className="sales-order-card__document-top">
+                <div>
+                  <h2>{documentPreview.title}</h2>
+                  <div className="sales-order-card__document-receiver">
+                    <strong>{documentPreview.customerName}</strong>
+                    <span>연락처 {documentPreview.customerPhone}</span>
+                    <span>납품주소 {documentPreview.customerAddress}</span>
+                  </div>
+                </div>
+                <div className="sales-order-card__document-supplier-wrap">
+                  <div className="sales-order-card__document-stamp">한성<br />쇼케이스<br />그룹</div>
+                  <table className="sales-order-card__document-supplier">
+                    <tbody>
+                      <tr>
+                        <th rowSpan="4" className="sales-order-card__document-vertical">공<br />급<br />자</th>
+                        <th>주문일</th>
+                        <td>{documentPreview.orderDate}</td>
+                        <th>출고일</th>
+                        <td>{documentPreview.shipDate}</td>
+                      </tr>
+                      <tr>
+                        <th>사업자번호</th>
+                        <td>{documentPreview.company.businessNumber}</td>
+                        <th>전화</th>
+                        <td>{documentPreview.company.phone}</td>
+                      </tr>
+                      <tr>
+                        <th>상호/성명</th>
+                        <td colSpan="3">{documentPreview.company.name}</td>
+                      </tr>
+                      <tr>
+                        <th>주소</th>
+                        <td colSpan="3">{documentPreview.company.address}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <table className="sales-order-card__document-items">
+                <thead>
+                  <tr>
+                    <th>월/일</th>
+                    <th>품목명</th>
+                    <th>규격</th>
+                    <th>수량</th>
+                    <th>적요</th>
+                    {documentPreview.type === 'shipping' && <th>창고명</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: documentPreview.type === 'shipping' ? 9 : 7 }, (_, index) => {
+                    const row = documentPreview.rows[index] || {};
+                    return (
+                      <tr key={index}>
+                        <td>{row.date || ''}</td>
+                        <td>{row.itemName || ''}</td>
+                        <td>{row.spec || ''}</td>
+                        <td>{row.quantity || ''}</td>
+                        <td>{row.note || ''}</td>
+                        {documentPreview.type === 'shipping' && (
+                          <td className="sales-order-card__document-red">{row.warehouse || ''}</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="sales-order-card__document-notice">
+                {documentPreview.notice.map((line, index) => (
+                  <div key={index}>※ {line}</div>
+                ))}
+              </div>
+              {(documentPreview.balanceText || documentPreview.freightText) && (
+                <table className="sales-order-card__document-balance">
+                  <tbody>
+                    {documentPreview.balanceText && <tr><th>잔금내역</th><td>{documentPreview.balanceText}</td></tr>}
+                    {documentPreview.freightText && <tr><th>운임여부</th><td>{documentPreview.freightText}</td></tr>}
+                  </tbody>
+                </table>
+              )}
+              <table className="sales-order-card__document-sign">
+                <tbody>
+                  <tr>
+                    <th>배송담당자</th><td className="sales-order-card__document-sign-cell" />
+                    {documentPreview.type !== 'shipping' && (
+                      <>
+                        <th>수취인</th><td className="sales-order-card__document-sign-cell" />
+                        <th>수평확인완료</th><td className="sales-order-card__document-sign-cell" />
+                      </>
+                    )}
+                  </tr>
+                </tbody>
+              </table>
+              {renderDocumentGuide(documentPreview.levelingGuide)}
+            </div>
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }

@@ -17,6 +17,28 @@ import './WorkerUpdatePage.css';
 
 const WORKER_NAME = '작업자';
 
+function buildProcessByStep(processes) {
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  const processByStep = new Map();
+  (processes || []).forEach((process) => {
+    const current = processByStep.get(process.step_name);
+    if (!current || (priority[process.status] || 0) > (priority[current.status] || 0)) {
+      processByStep.set(process.step_name, process);
+    }
+  });
+  return processByStep;
+}
+
+function getProcessByStep(processes, step) {
+  return buildProcessByStep(processes).get(step);
+}
+
+function getCurrentProcess(processes) {
+  return PROCESS_STEPS
+    .map((step) => getProcessByStep(processes, step))
+    .find((process) => process && process.status !== 'completed') || null;
+}
+
 const ISSUE_TYPES = [
   { key: '자재부족', label: '자재 부족/지연', bg: '#fffbeb', color: '#d97706' },
   { key: '불량발생', label: '불량 발생', bg: '#fef2f2', color: '#dc2626' },
@@ -48,12 +70,14 @@ export default function WorkerUpdatePage() {
 
   // Derive process state
   const processes = order?.processes || [];
-  const completedCount = processes.filter((p) => p.status === 'completed').length;
-  const inProgressProcess = processes.find((p) => p.status === 'in_progress');
-  const currentStepIndex = inProgressProcess
-    ? PROCESS_STEPS.indexOf(inProgressProcess.step_name)
+  const processByStep = buildProcessByStep(processes);
+  const completedCount = PROCESS_STEPS.filter((step) => processByStep.get(step)?.status === 'completed').length;
+  const currentProcess = getCurrentProcess(processes);
+  const inProgressProcess = currentProcess?.status === 'in_progress' ? currentProcess : null;
+  const currentStepIndex = currentProcess
+    ? PROCESS_STEPS.indexOf(currentProcess.step_name)
     : completedCount;
-  const isAllCompleted = completedCount === processes.length && processes.length > 0;
+  const isAllCompleted = completedCount === PROCESS_STEPS.length;
   const isActive = !!inProgressProcess;
 
   const dueStatus = order ? formatDueStatus(order.due_date, order.status) : null;
@@ -85,7 +109,7 @@ export default function WorkerUpdatePage() {
   };
 
   const confirmStart = async () => {
-    const waitingProcess = processes.find((p) => p.status === 'waiting');
+    const waitingProcess = currentProcess?.status === 'waiting' ? currentProcess : null;
     if (!waitingProcess) {
       showToast('시작할 수 있는 공정이 없습니다');
       closeModal();
@@ -131,7 +155,7 @@ export default function WorkerUpdatePage() {
 
   const handlePhoto = async () => {
     if (!order) return;
-    const activeProc = inProgressProcess || processes.find((p) => p.status === 'waiting');
+    const activeProc = inProgressProcess || currentProcess;
     // TODO: uploadPhoto requires multipart FormData with a 'photo' file field.
     // Without an actual file (e.g., from camera/file picker), we cannot upload.
     console.warn('사진 첨부: 실제 파일 선택 기능이 구현되지 않아 업로드를 건너뜁니다.', {
@@ -146,7 +170,7 @@ export default function WorkerUpdatePage() {
   };
 
   const submitIssue = async (issueType) => {
-    const activeProc = inProgressProcess || processes.find((p) => p.status === 'waiting');
+    const activeProc = inProgressProcess || currentProcess;
     setActionLoading(true);
     try {
       await reportIssueApi({

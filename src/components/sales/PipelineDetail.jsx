@@ -23,8 +23,12 @@ export default function PipelineDetail({ processes, expanded }) {
 
   // Build a map from step_name to process data
   const processMap = {};
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
   (processes || []).forEach((p) => {
-    processMap[p.step_name] = p;
+    const current = processMap[p.step_name];
+    if (!current || (priority[p.status] || 0) > (priority[current.status] || 0)) {
+      processMap[p.step_name] = p;
+    }
   });
 
   return (

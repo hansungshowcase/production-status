@@ -1,6 +1,7 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { STEPS } from '../_lib/steps.js';
+import { requireAuth } from '../_lib/auth.js';
 
 const CSV_HEADERS = [
   '발주일', '납기일', '담당', '거래처', '출고완료일',
@@ -35,6 +36,8 @@ export default cors(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
+  const auth = requireAuth(req, res, { roles: ['admin'] });
+  if (!auth) return;
 
   const db = getDb();
   const { status, sales_person, client_name } = req.query;

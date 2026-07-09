@@ -22,7 +22,35 @@ async function handleGet(req, res) {
     return res.status(404).json({ error: { message: '사진을 찾을 수 없습니다.', status: 404 } });
   }
 
-  return res.json(rows[0]);
+  const photo = rows[0];
+  if (req.query.download === '1') {
+    if (!photo.file_path) {
+      return res.status(404).json({ error: { message: '다운로드할 사진 파일이 없습니다.', status: 404 } });
+    }
+
+    const upstream = await fetch(photo.file_path);
+    if (!upstream.ok) {
+      return res.status(502).json({ error: { message: '사진 파일을 불러오지 못했습니다.', status: 502 } });
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+    const extFromType = contentType.includes('png')
+      ? 'png'
+      : contentType.includes('webp')
+        ? 'webp'
+        : contentType.includes('gif')
+          ? 'gif'
+          : 'jpg';
+    const filename = `packing-photo-${photo.id}.${extFromType}`;
+    const bytes = Buffer.from(await upstream.arrayBuffer());
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', String(bytes.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(bytes);
+  }
+
+  return res.json(photo);
 }
 
 async function handleDelete(req, res) {

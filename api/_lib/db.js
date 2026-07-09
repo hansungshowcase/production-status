@@ -5,7 +5,19 @@ function convertPlaceholders(sql) {
   return sql.replace(/\?/g, () => `$${++idx}`);
 }
 
-// Module-level connection cache (reused across requests in the same serverless instance)
+export function normalizeDatabaseError(err) {
+  const message = String(err?.message || '');
+  if (
+    message.includes('exceeded the compute time quota')
+    || message.includes('exceeded the data transfer quota')
+  ) {
+    err.status = 503;
+    err.publicMessage = '데이터베이스 사용 한도가 초과되어 잠시 처리할 수 없습니다. 관리자에게 Neon production-status 리소스 확인을 요청해주세요.';
+  }
+  return err;
+}
+
+// Module-level connection cache reused across requests in the same serverless instance.
 let cachedSql = null;
 
 export function getDb() {
@@ -26,12 +38,7 @@ export function getDb() {
     try {
       rows = await sql.query(pgSql, args);
     } catch (err) {
-      const message = String(err?.message || '');
-      if (message.includes('exceeded the data transfer quota')) {
-        err.status = 503;
-        err.publicMessage = '데이터베이스 전송량 한도가 초과되었습니다. 관리자 조치 후 다시 이용할 수 있습니다.';
-      }
-      throw err;
+      throw normalizeDatabaseError(err);
     }
     return {
       rows,
@@ -42,10 +49,8 @@ export function getDb() {
 
   return {
     execute: executeQuery,
-    // Neon HTTP driver does not support real transactions (each call is independent).
-    // transaction() returns an object with the same execute() for compatibility,
-    // commit/rollback are no-ops. Callers should handle errors themselves.
-    async transaction(mode) {
+    // Neon HTTP driver does not support real transactions; keep this compatibility wrapper.
+    async transaction() {
       return {
         execute: executeQuery,
         async commit() {},

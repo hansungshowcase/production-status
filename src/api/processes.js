@@ -12,7 +12,7 @@ export function completeProcess(processId, data = {}) {
 
 export function getProcessesByStep(stepName) {
   if (!stepName) throw new Error('stepName is required');
-  return request(`/processes/by-step/${encodeURIComponent(stepName)}`);
+  return request(`/processes/by-step/${encodeURIComponent(stepName)}?_=${Date.now()}`);
 }
 
 export function revertProcess(processId, actor) {

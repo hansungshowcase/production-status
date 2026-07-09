@@ -1,6 +1,7 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
+import { requireAuth, requireWorkerAction } from '../_lib/auth.js';
 
 const VALID_ISSUE_TYPES = ['자재부족', '불량발생', '설비고장', '기타'];
 
@@ -51,6 +52,7 @@ async function handlePost(req, res) {
   if (!reported_by) {
     return res.status(400).json({ error: { message: 'reported_by는 필수 항목입니다.', status: 400 } });
   }
+  if (!authorizeIssueReport(req, res, { reported_by })) return;
 
   const db = getDb();
 
@@ -83,4 +85,15 @@ async function handlePost(req, res) {
   });
 
   return res.status(201).json(issueResult.rows[0]);
+}
+
+function authorizeIssueReport(req, res, { reported_by }) {
+  const header = req.headers?.authorization || '';
+  if (!header && reported_by) {
+    const workerAuth = requireWorkerAction({ ...req, body: { actor: reported_by } }, res);
+    return Boolean(workerAuth);
+  }
+
+  const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
+  return Boolean(auth);
 }

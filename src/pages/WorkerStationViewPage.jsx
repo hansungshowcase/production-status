@@ -7,10 +7,11 @@ import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages'
 import { getStats } from '../api/stats';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
-import { getDaysUntilDue, parseDate } from '../utils/dateUtils';
+import { extractDueDateFromOrder, getDaysUntilDue, parseDate } from '../utils/dateUtils';
+import { getVisibleOrderMemo } from '../utils/orderText';
 import './WorkerStationViewPage.css';
 
-const REFRESH_INTERVAL = 30000;
+const REFRESH_INTERVAL = 180000;
 const STATS_REFRESH_INTERVAL = 120000;
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESS_UNDO_MANAGER = '김보수 팀장';
@@ -589,6 +590,9 @@ export default function WorkerStationViewPage() {
   const delayedSteps = factoryStats?.delayed_by_step || [];
   const dueTodayOrders = factoryStats?.due_today_orders || [];
   const overdueAlertItems = delayedOrders.length > 0 ? delayedOrders : items.filter(i => isOverdueDue(i.due_date));
+  const delayedOrdersTotalCount = Number(factoryStats?.overdue_count) || delayedOrders.length;
+  const overdueAlertTotalCount = delayedOrdersTotalCount || overdueAlertItems.length;
+  const dueTodayOrdersTotalCount = Number(factoryStats?.due_today_count) || dueTodayOrders.length;
   const overdueKey = overdueAlertItems.map(i => `${i.order_id || ''}:${i.process_id || ''}`).sort().join(',');
   const focusOrderId = location.state?.focusOrderId;
 
@@ -867,7 +871,7 @@ export default function WorkerStationViewPage() {
               <div className="factory-delay-alert__head">
                 <div>
                   <span className="factory-delay-alert__eyebrow">금일 출고 알림</span>
-                  <strong className="factory-delay-alert__title">오늘 출고 대상 {dueTodayOrders.length}건</strong>
+                  <strong className="factory-delay-alert__title">오늘 출고 대상 {dueTodayOrdersTotalCount}건</strong>
                   <p className="factory-delay-alert__message">
                     오늘 납기 건입니다. 출고 전까지 현재 공정과 담당자를 확인해 주세요.
                   </p>
@@ -901,7 +905,7 @@ export default function WorkerStationViewPage() {
               <div className="factory-delay-alert__head">
                 <div>
                   <span className="factory-delay-alert__eyebrow">납기초과 알림</span>
-                  <strong className="factory-delay-alert__title">지연 작업 {delayedOrders.length}건</strong>
+                  <strong className="factory-delay-alert__title">지연 작업 {delayedOrdersTotalCount}건</strong>
                   <p className="factory-delay-alert__message">
                     우리가 늦으면, 고객의 시작도 늦어집니다.<br />
                     오늘 우리의 빠른 대응이 고객의 오픈일을 지킵니다.<br />
@@ -1073,8 +1077,9 @@ export default function WorkerStationViewPage() {
         {!loading && !error && sorted.map((item) => {
           const sKey = statusKey(item.status);
           const isActioning = actionLoading === item.process_id;
-          const overdue = isOverdueDue(item.due_date);
-          const dday = getDday(item.due_date);
+          const displayDueDate = extractDueDateFromOrder(item);
+          const overdue = isOverdueDue(displayDueDate);
+          const dday = getDday(displayDueDate);
           const isExpanded = expandedId === item.process_id;
           const completedSteps = item.completed_steps || 0;
           const totalSteps = item.total_steps || 8;
@@ -1083,6 +1088,8 @@ export default function WorkerStationViewPage() {
           const isCompleting = completedIds.has(item.process_id);
           const canUndoThisItem = canUndoItemToPrevious(item);
           const isUndoingThisItem = actionLoading === `undo-${item.process_id}`;
+          const visibleNotes = getVisibleOrderMemo(item.notes);
+          const visibleRemarks = getVisibleOrderMemo(item.remarks);
 
           return (
             <div
@@ -1110,7 +1117,7 @@ export default function WorkerStationViewPage() {
                 </span>
                 <span className="station-view__row-spec">{dimensions || '-'}</span>
                 <span className={`station-view__row-due${dday ? ` station-view__row-due--${dday.cls}` : ''}`}>
-                  {item.due_date ? item.due_date.slice(5) : '-'}
+                  {displayDueDate ? displayDueDate.slice(5) : '-'}
                   {dday && (
                     <span className={`station-view__dday station-view__dday--${dday.cls}`}>{dday.label}</span>
                   )}
@@ -1260,11 +1267,11 @@ export default function WorkerStationViewPage() {
                       </span>
                     )}
                   </div>
-                  {(item.notes || item.remarks) && (
+                  {(visibleNotes || visibleRemarks) && (
                     <div className="station-view__row-notes">
                       <div className="station-view__row-notes-title">작업 메모</div>
-                      {item.notes && <div className="station-view__row-notes-text">{item.notes}</div>}
-                      {item.remarks && <div className="station-view__row-notes-text">{item.remarks}</div>}
+                      {visibleNotes && <div className="station-view__row-notes-text">{visibleNotes}</div>}
+                      {visibleRemarks && <div className="station-view__row-notes-text">{visibleRemarks}</div>}
                     </div>
                   )}
                 </div>
@@ -1399,7 +1406,7 @@ export default function WorkerStationViewPage() {
           <div className="sv-overlay sv-overdue-overlay" onClick={() => setOverdueAlertDismissed(true)} />
           <div className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림">
             <div className="sv-overdue-popup__eyebrow">납기 초과</div>
-            <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueAlertItems.length}건</div>
+            <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueAlertTotalCount}건</div>
             <div className="sv-card-popup__desc">
               납기가 지난 작업입니다. 가능한 작업부터 먼저 진행해 주세요.
             </div>

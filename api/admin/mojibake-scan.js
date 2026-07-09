@@ -30,6 +30,11 @@ export default cors(async function handler(req, res) {
   const results = {};
   for (const c of checks) {
     try {
+      const { rows: countRows } = await db.execute({
+        sql: `SELECT COUNT(*) AS count FROM ${c.table}
+              WHERE ${c.col} IS NOT NULL AND ${c.col} ~ ?`,
+        args: [suspectRegex],
+      });
       const { rows } = await db.execute({
         sql: `SELECT id, ${c.col} AS sample FROM ${c.table}
               WHERE ${c.col} IS NOT NULL AND ${c.col} ~ ?
@@ -37,7 +42,7 @@ export default cors(async function handler(req, res) {
         args: [suspectRegex],
       });
       results[`${c.table}.${c.col}`] = {
-        suspectCount: rows.length,
+        suspectCount: Number(countRows[0]?.count || 0),
         samples: rows.map(r => ({
           id: r.id,
           preview: String(r.sample).slice(0, 80),

@@ -6,6 +6,7 @@ import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
+import { buildOrderPayload } from './orderEntryPayload';
 import './OrderEntryPage.css';
 
 function todayStr() {
@@ -19,6 +20,8 @@ const INITIAL_FORM = {
   sales_person: '',
   client_name: '',
   phone: '',
+  delivery_address: '',
+  freight_payment: '',
   product_type: '',
   door_type: '',
   width: '',
@@ -27,9 +30,167 @@ const INITIAL_FORM = {
   quantity: '',
   color: '',
   sale_amount: '',
+  balance: '',
   lead_source: '',
   notes: '',
 };
+
+const EMPTY_OCR_DATA = {
+  client_name: '',
+  order_date: '',
+  due_date: '',
+  phone: '',
+  delivery_address: '',
+  freight_payment: '',
+  sales_person: '',
+  product_type: '',
+  door_type: '',
+  width: '',
+  depth: '',
+  height: '',
+  quantity: '',
+  color: '',
+  notes: '',
+};
+
+const PRODUCT_TYPE_OPTIONS = ['제과', '정육', '반찬', '꽃', '대면', '오픈', '진열', '마카롱', '샌드위치', '쇼케이스', '버티칼', '냉장고', '냉동고'];
+const DOOR_TYPE_OPTIONS = ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운드앞문', '라운드뒷문', '평대'];
+const COLOR_OPTIONS = ['화이트', '올백색', '올스텐', '올검정', '블랙', '골드스텐', '골드미러'];
+const CURRENT_YEAR = new Date().getFullYear();
+
+function normalizeOcrText(text) {
+  return String(text || '')
+    .replace(/\r/g, '\n')
+    .replace(/[|｜]/g, ' ')
+    .replace(/[：]/g, ':')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function extractLabeledValue(text, labels) {
+  const labelPattern = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const regex = new RegExp(`(?:${labelPattern})\\s*[:：]?\\s*([^\\n]+)`, 'i');
+  const match = text.match(regex);
+  if (!match) return '';
+  return match[1]
+    .replace(/\s{2,}.*/, '')
+    .replace(/(?:발주일|주문일|납기|납품|연락처|전화|담당|제품|품명|문짝|색상|비고)\s*[:：]?.*$/i, '')
+    .trim();
+}
+
+function normalizeDateValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/(?:(\d{2,4})\D+)?(\d{1,2})\D+(\d{1,2})/);
+  if (!match) return '';
+
+  let year = match[1] ? Number(match[1]) : CURRENT_YEAR;
+  if (year < 100) year += 2000;
+  if (year < CURRENT_YEAR - 1) year = CURRENT_YEAR;
+
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function extractPhone(text) {
+  const match = text.match(/(?:010|011|016|017|018|019|02|0\d{2})[-.\s]?\d{3,4}[-.\s]?\d{4}/);
+  return match ? match[0].replace(/[^\d]/g, '').replace(/^(010|011|016|017|018|019)(\d{4})(\d{4})$/, '$1-$2-$3') : '';
+}
+
+function extractFirstNumber(value) {
+  const match = String(value || '').match(/\d+(?:\.\d+)?/);
+  return match ? match[0] : '';
+}
+
+function extractQuantity(text) {
+  const labeled = extractFirstNumber(extractLabeledValue(text, ['수량', '개수', 'Quantity', 'Qty', 'QTY']));
+  if (labeled) return labeled;
+  const match = String(text || '').match(/(?:Quantity|Quantit\w+|Qty|QTY|\bEA\b|\bea\b)\D{0,24}(\d+)/i);
+  return match ? match[1] : '';
+}
+
+function extractSize(text) {
+  const labeled = {
+    width: extractFirstNumber(extractLabeledValue(text, ['가로', '폭'])),
+    depth: extractFirstNumber(extractLabeledValue(text, ['세로', '깊이'])),
+    height: extractFirstNumber(extractLabeledValue(text, ['높이'])),
+  };
+  const sizeLine = extractLabeledValue(text, ['사이즈', '규격', '크기', 'Size', 'Dimensions']);
+  const sizeMatch = (sizeLine || text).match(/(\d{2,5})\s*(?:x|X|\*|×)\s*(\d{2,5})\s*(?:x|X|\*|×)\s*(\d{2,5})/);
+  if (sizeMatch) {
+    return {
+      width: labeled.width || sizeMatch[1],
+      depth: labeled.depth || sizeMatch[2],
+      height: labeled.height || sizeMatch[3],
+    };
+  }
+  return labeled;
+}
+
+function inferOption(text, options) {
+  const normalized = String(text || '').replace(/\s/g, '');
+  return options.find((option) => normalized.includes(option.replace(/\s/g, ''))) || '';
+}
+
+function parseBrowserOcrText(text) {
+  const normalized = normalizeOcrText(text);
+  const size = extractSize(normalized);
+  const dateMatches = Array.from(normalized.matchAll(/\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/g)).map((match) => match[0]);
+  const orderDate = normalizeDateValue(extractLabeledValue(normalized, ['발주일', '주문일', '작성일', '등록일', 'Order Date', 'Order'])) || normalizeDateValue(dateMatches[0]);
+  const dueDate = normalizeDateValue(extractLabeledValue(normalized, ['납기일', '납품일', '출고일', '납기', '납품', 'Due Date', 'Due', 'Ship Date'])) || normalizeDateValue(dateMatches[1]);
+  const notes = extractLabeledValue(normalized, ['비고', '특이사항', '요청사항', '메모', 'Note', 'Notes', 'Memo']);
+
+  return {
+    client_name: extractLabeledValue(normalized, ['거래처', '발주처', '상호', '업체명', '고객명', '고객', 'Client', 'Customer', 'Company']),
+    order_date: orderDate,
+    due_date: dueDate,
+    phone: extractPhone(normalized) || extractLabeledValue(normalized, ['연락처', '전화', '휴대폰', '핸드폰', 'Phone', 'Tel', 'Mobile']),
+    delivery_address: extractLabeledValue(normalized, ['납품주소', '주소', '배송주소', 'Address', 'Delivery Address']),
+    freight_payment: extractLabeledValue(normalized, ['운임여부', '운임', '배송비', 'Freight', 'Shipping Fee']),
+    sales_person: extractLabeledValue(normalized, ['담당자', '영업담당', '영업', '담당', 'Sales', 'Manager', 'Staff']),
+    product_type: inferOption(normalized, PRODUCT_TYPE_OPTIONS) || extractLabeledValue(normalized, ['품명', '제품', '사양', '용도', 'Product', 'Item', 'Spec']),
+    door_type: inferOption(normalized, DOOR_TYPE_OPTIONS) || extractLabeledValue(normalized, ['문짝', '디자인', '도어', 'Door', 'Design']),
+    width: size.width,
+    depth: size.depth,
+    height: size.height,
+    quantity: extractQuantity(normalized),
+    color: inferOption(normalized, COLOR_OPTIONS) || extractLabeledValue(normalized, ['색상', '색깔', '컬러', 'Color', 'Colour']),
+    notes: notes || '',
+    raw_text: normalized,
+  };
+}
+
+function stripInternalOcrFields(data) {
+  const { raw_text: _rawText, ...publicData } = data || {};
+  return publicData;
+}
+
+async function runBrowserOcr(file, onProgress) {
+  const { createWorker } = await import('tesseract.js');
+  let worker = null;
+  const workerOptions = {
+    logger: (message) => {
+      if (message?.status === 'recognizing text' && typeof message.progress === 'number') {
+        onProgress?.(Math.max(1, Math.min(99, Math.round(message.progress * 100))));
+      }
+    },
+  };
+  try {
+    try {
+      worker = await createWorker(['kor', 'eng'], 1, workerOptions);
+    } catch (languageErr) {
+      if (worker) await worker.terminate();
+      worker = await createWorker('eng', 1, workerOptions);
+    }
+    const result = await worker.recognize(file);
+    return parseBrowserOcrText(result?.data?.text || '');
+  } finally {
+    if (worker) await worker.terminate();
+  }
+}
 
 export default function OrderEntryPage() {
   const navigate = useNavigate();
@@ -65,24 +226,7 @@ export default function OrderEntryPage() {
     setSubmitting(true);
     let success = false;
     try {
-      const payload = {
-        order_date: form.order_date || todayStr(),
-        due_date: form.due_date || null,
-        sales_person: form.sales_person || null,
-        client_name: form.client_name.trim(),
-        phone: form.phone || null,
-        product_type: form.product_type.trim(),
-        door_type: form.door_type || null,
-        width: form.width ? Number(form.width) : null,
-        depth: form.depth ? Number(form.depth) : null,
-        height: form.height ? Number(form.height) : null,
-        quantity: form.quantity ? Number(form.quantity) : null,
-        color: form.color || null,
-        sale_amount: form.sale_amount ? Number(form.sale_amount) : null,
-        lead_source: form.lead_source || null,
-        notes: form.notes || null,
-        work_order_image_url: workOrderImageUrl || null,
-      };
+      const payload = buildOrderPayload(form, workOrderImageUrl, todayStr());
 
       const created = await createOrder(payload);
       success = true;
@@ -151,12 +295,14 @@ export default function OrderEntryPage() {
     if (!file) return;
     const imageUrl = URL.createObjectURL(file);
     let uploadedUrl = null;
+    let resizedFile = null;
     setOcrLoading(true);
     setWorkOrderImageUrl(null);
     setToast({ visible: true, message: '작업지시서를 인식하는 중...' });
 
     try {
       const resized = await resizeImage(file);
+      resizedFile = resized;
       const uploaded = await uploadWorkOrderImage(resized);
       uploadedUrl = uploaded.url;
       setWorkOrderImageUrl(uploaded.url);
@@ -181,15 +327,61 @@ export default function OrderEntryPage() {
         throw new Error(err.error?.message || '인식 실패');
       }
 
-      const { data } = await res.json();
+      const { data, success, warning } = await res.json();
+      if (success === false) {
+        setToast({ visible: true, message: 'AI 인식이 막혀 브라우저 OCR로 다시 인식 중...' });
+        const browserData = await runBrowserOcr(resized, (progress) => {
+          setToast({ visible: true, message: `브라우저 OCR 인식 중... ${progress}%` });
+        });
+        setOcrResult({
+          data: { ...EMPTY_OCR_DATA, ...stripInternalOcrFields(browserData) },
+          imageUrl,
+          workOrderImageUrl: uploaded.url,
+          rawText: browserData.raw_text || '',
+        });
+        setToast({ visible: true, message: '브라우저 OCR 인식 완료! 결과를 확인해주세요.' });
+        return;
+      }
+
       setOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
-      setToast({ visible: true, message: '인식 완료! 결과를 확인해주세요.' });
-    } catch (err) {
-      URL.revokeObjectURL(imageUrl);
       setToast({
         visible: true,
+        message: success === false
+          ? (warning || '자동 인식이 지연되어 수동 입력으로 전환했습니다.')
+          : '인식 완료! 결과를 확인해주세요.',
+      });
+    } catch (err) {
+      if (uploadedUrl) {
+        try {
+          setToast({ visible: true, message: '서버 OCR이 막혀 브라우저 OCR로 다시 인식 중...' });
+          const browserData = await runBrowserOcr(resizedFile || file, (progress) => {
+            setToast({ visible: true, message: `브라우저 OCR 인식 중... ${progress}%` });
+          });
+          setOcrResult({
+            data: { ...EMPTY_OCR_DATA, ...stripInternalOcrFields(browserData) },
+            imageUrl,
+            workOrderImageUrl: uploadedUrl,
+            rawText: browserData.raw_text || '',
+          });
+          setToast({ visible: true, message: '브라우저 OCR 인식 완료! 결과를 확인해주세요.' });
+        } catch (browserErr) {
+          setOcrResult({ data: { ...EMPTY_OCR_DATA }, imageUrl, workOrderImageUrl: uploadedUrl });
+          setToast({
+            visible: true,
+            message: '작업지시서 이미지는 첨부되었습니다. 인식값을 확인해서 입력해주세요.',
+          });
+        }
+      } else {
+        URL.revokeObjectURL(imageUrl);
+        setToast({
+          visible: true,
+          message: err.message || '이미지 인식에 실패했습니다',
+        });
+      }
+      if (!uploadedUrl) setToast({
+        visible: true,
         message: uploadedUrl
-          ? '작업지시서 이미지는 첨부되었습니다. 인식 실패로 내용을 직접 입력해주세요.'
+          ? '작업지시서 이미지는 첨부되었습니다. 수동 입력으로 전환했습니다.'
           : (err.message || '이미지 인식에 실패했습니다'),
       });
     } finally {
@@ -253,6 +445,8 @@ export default function OrderEntryPage() {
       order_date: d.order_date || prev.order_date,
       due_date: d.due_date || prev.due_date,
       phone: d.phone || prev.phone,
+      delivery_address: d.delivery_address || prev.delivery_address,
+      freight_payment: d.freight_payment || prev.freight_payment,
       sales_person: d.sales_person || prev.sales_person,
       product_type: d.product_type || prev.product_type,
       door_type: d.door_type || prev.door_type,
@@ -435,7 +629,9 @@ export default function OrderEntryPage() {
                 { key: 'order_date', label: '발주일', type: 'date' },
                 { key: 'due_date', label: '납기일', type: 'date' },
                 { key: 'phone', label: '연락처' },
-                { key: 'sales_person', label: '담당자', dropdown: ['신은철', '이시아'] },
+                { key: 'delivery_address', label: '납품주소' },
+                { key: 'freight_payment', label: '운임여부' },
+                { key: 'sales_person', label: '담당자', dropdown: ['신은철', '이준형'] },
                 { key: 'product_type', label: '품명/사양', dropdown: ['제과', '정육', '반찬', '꽃', '와인', '오픈', '진열', '마카롱', '샌드위치', '음료', '밧트', '토핑', '양념육', '유럽형', '주류'] },
                 { key: 'door_type', label: '문짝/디자인', dropdown: ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운드앞문', '라운드뒷문', '평대'] },
                 { key: 'width', label: '가로(mm)', type: 'number' },

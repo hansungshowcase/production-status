@@ -10,8 +10,17 @@ export default function ProcessUpdatePanel({
   onStart,
   onComplete,
 }) {
+  const processByStep = new Map();
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  (processes || []).forEach((process) => {
+    const current = processByStep.get(process.step_name);
+    if (!current || (priority[process.status] || 0) > (priority[current.status] || 0)) {
+      processByStep.set(process.step_name, process);
+    }
+  });
+
   const getStepStatus = (idx) => {
-    const proc = processes.find((p) => p.step_name === PROCESS_STEPS[idx]);
+    const proc = processByStep.get(PROCESS_STEPS[idx]);
     if (!proc) return 'waiting';
     return proc.status; // 'completed', 'in_progress', 'waiting'
   };

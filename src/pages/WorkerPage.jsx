@@ -17,18 +17,57 @@ import { uploadPhoto } from '../api/photos';
 import { getStats } from '../api/stats';
 import useApi from '../hooks/useApi';
 import useWebSocket from '../hooks/useWebSocket';
-import { formatDueStatus } from '../utils/dateUtils';
+import { extractDueDateFromOrder, formatDueStatus } from '../utils/dateUtils';
 import { PROCESS_STEPS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENT_STEP_MAP } from '../constants';
 
+const WORKER_PAGE_ORDER_PAGE_SIZE = 200;
+
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function normalizeProcesses(order) {
+  if (order?.processes?.length > 0) return order.processes;
+  const summary = parseProcessSummary(order?.process_summary);
+  return PROCESS_STEPS
+    .map((step) => summary[step] ? { step_name: step, ...summary[step] } : null)
+    .filter(Boolean);
+}
+
+function buildProcessByStep(processes) {
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  const processByStep = new Map();
+  (processes || []).forEach((process) => {
+    const current = processByStep.get(process.step_name);
+    if (!current || (priority[process.status] || 0) > (priority[current.status] || 0)) {
+      processByStep.set(process.step_name, process);
+    }
+  });
+  return processByStep;
+}
+
 function mapOrderToTask(order) {
-  const processes = order.processes || [];
-  const completedCount = processes.filter((p) => p.status === 'completed').length;
-  const inProgressProcess = processes.find((p) => p.status === 'in_progress');
-  const currentStepIndex = inProgressProcess
-    ? PROCESS_STEPS.indexOf(inProgressProcess.step_name)
+  const dueDate = extractDueDateFromOrder(order);
+  const processes = normalizeProcesses(order);
+  const processByStep = buildProcessByStep(processes);
+  const currentProcess = PROCESS_STEPS
+    .map((step) => processByStep.get(step))
+    .find((process) => process && process.status !== 'completed');
+  const completedCount = PROCESS_STEPS.filter((step) => processByStep.get(step)?.status === 'completed').length;
+  const inProgressProcess = currentProcess?.status === 'in_progress' ? currentProcess : null;
+  const currentStepIndex = currentProcess
+    ? PROCESS_STEPS.indexOf(currentProcess.step_name)
     : completedCount;
 
-  const isAllCompleted = completedCount === processes.length && processes.length > 0;
+  const isAllCompleted = completedCount === PROCESS_STEPS.length;
   const isInProgress = !!inProgressProcess;
   const isBlocked = !isInProgress && !isAllCompleted && completedCount < currentStepIndex;
 
@@ -45,8 +84,7 @@ function mapOrderToTask(order) {
   }
 
   // Find the active process id (in_progress or next waiting)
-  const activeProcess = inProgressProcess ||
-    processes.find((p) => p.status === 'waiting');
+  const activeProcess = currentProcess || null;
 
   return {
     id: order.id,
@@ -70,11 +108,30 @@ function mapOrderToTask(order) {
     isActive: isInProgress,
     isBlocked: !isInProgress && !isAllCompleted && currentStepIndex > completedCount,
     isCompleted: isAllCompleted,
-    dueDate: order.due_date,
-    dueStatus: formatDueStatus(order.due_date, order.status),
+    dueDate,
+    dueStatus: formatDueStatus(dueDate, order.status),
     workOrderImageUrl: order.work_order_image_url || null,
     processes,
   };
+}
+
+async function fetchAllWorkerPageOrders() {
+  const loaded = [];
+  let offset = 0;
+  let total = null;
+
+  while (true) {
+    const data = await getOrders({ status: 'in_production', limit: WORKER_PAGE_ORDER_PAGE_SIZE, offset });
+    const page = Array.isArray(data) ? data : (data.orders || []);
+    loaded.push(...page);
+    total = Array.isArray(data) ? loaded.length : Number(data.total ?? loaded.length);
+
+    if (page.length === 0 || loaded.length >= total) {
+      return loaded;
+    }
+
+    offset += page.length;
+  }
 }
 
 export default function WorkerPage() {
@@ -94,8 +151,7 @@ export default function WorkerPage() {
 
   const { data: ordersRaw, loading: ordersLoading, error: ordersError, execute: fetchOrders } = useApi(
     async () => {
-      const res = await getOrders({ status: 'in_production', limit: 20 });
-      return Array.isArray(res) ? res : (res.orders || []);
+      return fetchAllWorkerPageOrders();
     }
   );
 
@@ -182,20 +238,29 @@ export default function WorkerPage() {
     setModal({ visible: false, type: null, taskId: null });
   };
 
+  async function getFreshTaskProcesses(task) {
+    const freshOrder = await getOrder(task.orderId);
+    return normalizeProcesses(freshOrder);
+  }
+
   const confirmStart = async () => {
     const taskId = modal.taskId;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    const waitingProcess = task.processes.find((p) => p.status === 'waiting');
-    if (!waitingProcess) {
-      showToast('시작할 수 있는 공정이 없습니다');
-      closeModal();
-      return;
-    }
-
     setActionLoading(true);
     try {
+      const freshProcesses = await getFreshTaskProcesses(task);
+      const waitingProcess = departmentStep
+        ? freshProcesses.find((p) => p.step_name === departmentStep && p.status === 'waiting')
+        : PROCESS_STEPS
+            .map((step) => freshProcesses.find((p) => p.step_name === step))
+            .find((p) => p?.status === 'waiting');
+      if (!waitingProcess) {
+        showToast('시작할 수 있는 공정이 없습니다');
+        closeModal();
+        return;
+      }
       await startProcess(waitingProcess.id, {
         assigned_worker: WORKER_NAME,
         assigned_team: department || '미지정',
@@ -218,15 +283,19 @@ export default function WorkerPage() {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    const inProgressProcess = task.processes.find((p) => p.status === 'in_progress');
-    if (!inProgressProcess) {
-      showToast('완료할 수 있는 공정이 없습니다');
-      closeModal();
-      return;
-    }
-
     setActionLoading(true);
     try {
+      const freshProcesses = await getFreshTaskProcesses(task);
+      const inProgressProcess = departmentStep
+        ? freshProcesses.find((p) => p.step_name === departmentStep && p.status === 'in_progress')
+        : PROCESS_STEPS
+            .map((step) => freshProcesses.find((p) => p.step_name === step))
+            .find((p) => p?.status === 'in_progress');
+      if (!inProgressProcess) {
+        showToast('완료할 수 있는 공정이 없습니다');
+        closeModal();
+        return;
+      }
       await completeProcess(inProgressProcess.id, { actor: WORKER_NAME });
       await fetchOrders();
       await fetchStats();

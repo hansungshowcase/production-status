@@ -9,6 +9,27 @@ import request from '../api/client';
 import { fetchAuthStatus, login, getRole, getToken } from '../utils/authClient';
 import './AdminPage.css';
 
+const ADMIN_ORDER_PAGE_SIZE = 200;
+
+async function fetchAllAdminOrders() {
+  const loaded = [];
+  let offset = 0;
+  let total = null;
+
+  while (true) {
+    const res = await request(`/orders?limit=${ADMIN_ORDER_PAGE_SIZE}&offset=${offset}`);
+    const page = Array.isArray(res) ? res : (res.orders || []);
+    loaded.push(...page);
+    total = Array.isArray(res) ? loaded.length : Number(res.total ?? loaded.length);
+
+    if (page.length === 0 || loaded.length >= total) {
+      return loaded;
+    }
+
+    offset += page.length;
+  }
+}
+
 export default function AdminPage() {
   const navigate = useNavigate();
   const [salesPersons, setSalesPersons] = useState([]);
@@ -40,8 +61,7 @@ export default function AdminPage() {
     if (!authorized) return;
     const fetchSalesPersons = async () => {
       try {
-        const res = await request('/orders');
-        const orders = res.orders || res.data || res || [];
+        const orders = await fetchAllAdminOrders();
         const persons = [...new Set(
           (Array.isArray(orders) ? orders : [])
             .map((o) => o.sales_person)

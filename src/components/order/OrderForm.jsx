@@ -68,6 +68,26 @@ export default function OrderForm({ form, errors, onChange }) {
           <span className="of__label">전화번호</span>
           <input type="tel" className="of__input" value={form.phone || ''} onChange={inp('phone')} placeholder="010-0000-0000" inputMode="tel" />
         </label>
+        <label className="of__field">
+          <span className="of__label">주소</span>
+          <input
+            type="text"
+            className="of__input"
+            value={form.delivery_address || ''}
+            onChange={inp('delivery_address')}
+            placeholder="납품 주소"
+          />
+        </label>
+        <label className="of__field">
+          <span className="of__label">운임여부</span>
+          <input
+            type="text"
+            className="of__input"
+            value={form.freight_payment || ''}
+            onChange={inp('freight_payment')}
+            placeholder="예: 소비자부담"
+          />
+        </label>
       </div>
 
       {/* 제품 정보 */}
@@ -146,6 +166,16 @@ export default function OrderForm({ form, errors, onChange }) {
           <span className="of__label">비고</span>
           <textarea className="of__input of__textarea" value={form.notes || ''} onChange={inp('notes')} placeholder="특이사항" rows={3} />
         </label>
+        <div className="of__row">
+          <label className="of__field">
+            <span className="of__label">판매금액</span>
+            <input type="text" className="of__input" value={form.sale_amount || ''} onChange={inp('sale_amount')} placeholder="예: 1,500,000" inputMode="numeric" />
+          </label>
+          <label className="of__field">
+            <span className="of__label">남은 잔금</span>
+            <input type="text" className="of__input" value={form.balance || ''} onChange={inp('balance')} placeholder="예: 320,000" inputMode="numeric" />
+          </label>
+        </div>
       </div>
     </div>
   );

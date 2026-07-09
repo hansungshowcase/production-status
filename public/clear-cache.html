@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>캐시 정리 중</title>
+    <style>
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        font-family: "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #1e293b;
+        background: #f8fafc;
+      }
+
+      main {
+        width: min(92vw, 420px);
+        padding: 32px 24px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 22px;
+      }
+
+      p {
+        margin: 0;
+        color: #64748b;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>새 버전 준비 중</h1>
+      <p>브라우저 캐시를 정리한 뒤 자동으로 다시 열립니다.</p>
+    </main>
+    <script>
+      (async function clearAppCache() {
+        try {
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map((registration) => registration.unregister()));
+          }
+
+          if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+          }
+
+          sessionStorage.removeItem('chunk-reload-attempted-at');
+        } catch (error) {
+          console.warn('App cache cleanup failed:', error);
+        } finally {
+          location.replace('/?cache-cleared=' + Date.now());
+        }
+      })();
+    </script>
+  </body>
+</html>

@@ -83,6 +83,28 @@
   background: #f8fafc;
 }
 
+/* 고객 화면 보기 — 실제 고객 조회페이지를 새 탭으로 (왼쪽 배치) */
+.order-edit-modal__view-link {
+  margin-right: auto;
+  padding: 10px 14px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  background: #0369a1;
+  color: #fff;
+  border: 1px solid #0369a1;
+}
+.order-edit-modal__view-link:hover:not(:disabled) {
+  background: #025b8a;
+}
+.order-edit-modal__view-link:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .order-edit-modal__cancel,
 .order-edit-modal__save {
   padding: 10px 22px;

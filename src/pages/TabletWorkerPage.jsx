@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import OrderListPanel from '../components/tablet/OrderListPanel';
 import OrderDetailPanel from '../components/tablet/OrderDetailPanel';
-import { getOrders } from '../api/orders';
+import { getOrder, getOrders } from '../api/orders';
 import { startProcess, completeProcess } from '../api/processes';
 import { uploadPhoto } from '../api/photos';
 import { reportIssue } from '../api/issues';
@@ -16,7 +16,27 @@ const ISSUE_TYPES = [
   { value: '기타', label: '기타' },
 ];
 
-const REFRESH_INTERVAL = 30000; // 30 seconds
+const REFRESH_INTERVAL = 180000; // 3 minutes
+const TABLET_ORDER_PAGE_SIZE = 200;
+
+async function fetchAllActiveOrders() {
+  const loaded = [];
+  let offset = 0;
+  let total = null;
+
+  while (true) {
+    const data = await getOrders({ status: 'in_production', limit: TABLET_ORDER_PAGE_SIZE, offset });
+    const page = Array.isArray(data) ? data : (data.orders || []);
+    loaded.push(...page);
+    total = Array.isArray(data) ? loaded.length : Number(data.total ?? loaded.length);
+
+    if (page.length === 0 || loaded.length >= total) {
+      return loaded;
+    }
+
+    offset += page.length;
+  }
+}
 
 export default function TabletWorkerPage() {
   const [orders, setOrders] = useState([]);
@@ -48,8 +68,7 @@ export default function TabletWorkerPage() {
 
   const fetchOrderList = useCallback(async () => {
     try {
-      const data = await getOrders();
-      const list = Array.isArray(data) ? data : (data.orders || []);
+      const list = await fetchAllActiveOrders();
       // Filter to active orders (not shipped)
       const active = list.filter(
         (o) => o.status !== '출고완료'
@@ -63,6 +82,16 @@ export default function TabletWorkerPage() {
     }
   }, []);
 
+  const hydrateSelectedOrder = useCallback(async (orderId) => {
+    if (!orderId) return;
+    try {
+      const detail = await getOrder(orderId);
+      setOrders(prev => prev.map(order => order.id === orderId ? { ...order, ...detail } : order));
+    } catch (err) {
+      console.error('Failed to fetch selected order detail:', err);
+    }
+  }, []);
+
   // Initial load + auto-refresh
   useEffect(() => {
     fetchOrderList();
@@ -70,12 +99,17 @@ export default function TabletWorkerPage() {
     return () => clearInterval(timerRef.current);
   }, [fetchOrderList]);
 
+  useEffect(() => {
+    hydrateSelectedOrder(selectedId);
+  }, [selectedId, hydrateSelectedOrder]);
+
   const selectedOrder = orders.find((o) => o.id === selectedId) || null;
 
   async function handleStartProcess(processId) {
     try {
       await startProcess(processId, { assigned_worker: '현장작업자', actor: '현장작업자' });
       await fetchOrderList();
+      await hydrateSelectedOrder(selectedId);
     } catch (err) {
       console.error('Process start failed:', err);
       showToast('공정 시작에 실패했습니다.', 'error');
@@ -86,6 +120,7 @@ export default function TabletWorkerPage() {
     try {
       await completeProcess(processId, { actor: '현장작업자' });
       await fetchOrderList();
+      await hydrateSelectedOrder(selectedId);
     } catch (err) {
       console.error('Process complete failed:', err);
       showToast('공정 완료에 실패했습니다.', 'error');

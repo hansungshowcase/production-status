@@ -92,13 +92,22 @@ export default cors(async function handler(req, res) {
     args: [id, '작업지시서첨부', `${order.client_name || ''} 작업지시서 이미지가 첨부되었습니다.`, '현장작업자'],
   }).catch((err) => console.warn('[work-order-image] activity log failed:', err?.message || err));
 
+  // 알림 훅: 작업지시서 등록 시점에도 접수 알림 보장 (주문 생성 때 이미 나갔으면 멱등 처리로 중복 없음)
+  try {
+    const { maybeNotify } = await import('../../_lib/notify.js');
+    const { rows: fullRows } = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
+    if (fullRows[0]) await maybeNotify(db, fullRows[0], 'ordered');
+  } catch (err) {
+    console.error('[work-order-image] 접수 알림 훅 실패(무시):', err?.message || err);
+  }
+
   return res.status(201).json({ url: storedImage.url });
 });
 
 async function handleGet(req, res) {
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
-    return res.status(400).json({ error: { message: '?좏슚??二쇰Ц ID媛 ?꾩슂?⑸땲??', status: 400 } });
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 
   const db = getDb();
@@ -110,11 +119,11 @@ async function handleGet(req, res) {
   const order = orderResult.rows[0];
 
   if (!order) {
-    return res.status(404).json({ error: { message: '二쇰Ц??李얠쓣 ???놁뒿?덈떎.', status: 404 } });
+    return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
   }
 
   if (!order.work_order_image_url) {
-    return res.status(404).json({ error: { message: '??ν맂 ?묒뾽吏?쒖꽌 ?대?吏媛 ?놁뒿?덈떎.', status: 404 } });
+    return res.status(404).json({ error: { message: '저장된 작업지시서 이미지가 없습니다.', status: 404 } });
   }
 
   return res.json({ url: order.work_order_image_url });

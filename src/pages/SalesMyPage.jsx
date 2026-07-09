@@ -6,66 +6,53 @@ import SearchBar from '../components/common/SearchBar';
 import { getOrders, deleteOrder, shipOrder } from '../api/orders';
 import OrderEditModal from '../components/order/OrderEditModal';
 import { getFeed } from '../api/feed';
-import { formatDueStatus } from '../utils/dateUtils';
 import useWebSocket from '../hooks/useWebSocket';
 import { safeGet } from '../utils/safeStorage';
-import { PROCESS_STEPS } from '../constants';
+import {
+  countSalesOrders,
+  filterSalesOrders,
+  hasReachedPacking,
+  isOverdue,
+  isShipped,
+} from './salesOrderFilters';
 import './SalesMyPage.css';
 
 const LS_KEY = 'sales_last_person';
-const REFRESH_INTERVAL = 60000; // 60 seconds
+const REFRESH_INTERVAL = 300000; // 5 minutes
+const SALES_ORDER_PAGE_SIZE = 200;
 
-const SALES_PERSONS = ['신은철', '이시아'];
+const SALES_PERSONS = ['신은철', '이준형'];
 
 const FILTER_TABS = [
   { label: '전체', value: 'all' },
   { label: '생산중', value: 'in_production' },
+  { label: '포장완료', value: 'packing_completed' },
   { label: '납기초과', value: 'overdue' },
   { label: '출고완료', value: 'shipped' },
 ];
-
-
-function isShipped(order) {
-  return order.status === 'shipped' || order.status === '출고완료' || !!order.ship_date;
-}
-
-function isOverdue(order) {
-  const ds = formatDueStatus(order.due_date, order.status);
-  return ds.isOverdue;
-}
-
-function isInProduction(order) {
-  return !isShipped(order);
-}
-
-const PACKING_STEP_INDEX = PROCESS_STEPS.indexOf('포장');
-
-function parseProcessSummary(value) {
-  if (!value) return {};
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return {};
-    }
-  }
-  return value;
-}
-
-function hasReachedPacking(order) {
-  if (PACKING_STEP_INDEX < 0) return false;
-  const summary = parseProcessSummary(order?.process_summary);
-  const packing = summary[PROCESS_STEPS[PACKING_STEP_INDEX]];
-  if (packing?.status === 'in_progress' || packing?.status === 'completed') {
-    return true;
-  }
-  return Number(order?.completed_steps || 0) >= PACKING_STEP_INDEX;
-}
 
 function sortByOldestDue(a, b) {
   const aDue = a.due_date || '9999-12-31';
   const bDue = b.due_date || '9999-12-31';
   return String(aDue).localeCompare(String(bDue)) || Number(b.id || 0) - Number(a.id || 0);
+}
+
+async function fetchAllSalesOrders(params) {
+  const loaded = [];
+  let offset = 0;
+  let total = null;
+
+  while (true) {
+    const res = await getOrders({ ...params, limit: SALES_ORDER_PAGE_SIZE, offset });
+    const page = Array.isArray(res) ? res : (res.orders || []);
+    loaded.push(...page);
+    total = Array.isArray(res) ? loaded.length : Number(res.total ?? loaded.length);
+
+    if (page.length === 0 || loaded.length >= total) {
+      return loaded;
+    }
+    offset += page.length;
+  }
 }
 
 export default function SalesMyPage() {
@@ -80,17 +67,16 @@ export default function SalesMyPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [feedItems, setFeedItems] = useState([]);
   const [editingOrder, setEditingOrder] = useState(null);
-  const [overdueAlertDismissed, setOverdueAlertDismissed] = useState(false);
 
   // "다른 담당자 보기" state
   const [viewingPerson, setViewingPerson] = useState(null); // null = viewing own orders
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const intervalRef = useRef(null);
-  const prevOverdueKeyRef = useRef('');
 
   const activePerson = viewingPerson || mySalesPerson;
   const isViewingOther = !!viewingPerson;
+  const canShipOrders = mySalesPerson === '이준형';
 
   // Redirect if no person selected
   useEffect(() => {
@@ -105,8 +91,9 @@ export default function SalesMyPage() {
     if (!activePerson) return;
     try {
       setError(null);
-      const res = await getOrders({ sales_person: activePerson });
-      const list = Array.isArray(res) ? res : (res.orders || []);
+      const list = activePerson === '이준형'
+        ? [...await fetchAllSalesOrders({ sales_person: '이준형' }), ...await fetchAllSalesOrders({ sales_person: '김보수' })]
+        : await fetchAllSalesOrders({ sales_person: activePerson });
       setOrders(list);
     } catch (err) {
       setError(err.message || '데이터를 불러오지 못했습니다');
@@ -146,38 +133,21 @@ export default function SalesMyPage() {
 
   const overdueOrders = orders.filter(isOverdue);
   const prePackingOverdueOrders = overdueOrders.filter(order => !hasReachedPacking(order));
-  const overdueAlertKey = prePackingOverdueOrders.map(o => o.id).sort().join(',');
-
-  useEffect(() => {
-    if (loading) return;
-    if (!overdueAlertKey) {
-      prevOverdueKeyRef.current = '';
-      setOverdueAlertDismissed(false);
-      return;
-    }
-    if (prevOverdueKeyRef.current !== overdueAlertKey) {
-      prevOverdueKeyRef.current = overdueAlertKey;
-    }
-    setOverdueAlertDismissed(false);
-  }, [loading, overdueAlertKey, orders]);
 
   if (!mySalesPerson) return null;
 
   // Compute summary counts (memoized)
-  const { totalCount, shippedCount, inProductionCount, overdueCount } = useMemo(() => ({
-    totalCount: orders.length,
-    shippedCount: orders.filter(isShipped).length,
-    inProductionCount: orders.filter(isInProduction).length,
-    overdueCount: orders.filter(isOverdue).length,
-  }), [orders]);
+  const {
+    totalCount,
+    shippedCount,
+    inProductionCount,
+    overdueCount,
+    packingCompletedCount,
+  } = useMemo(() => countSalesOrders(orders), [orders]);
 
   // Apply status filter (memoized)
   let filtered = useMemo(() => {
-    let result = orders;
-    if (filter === 'in_production') result = orders.filter(isInProduction);
-    else if (filter === 'shipped') result = orders.filter(isShipped);
-    else if (filter === 'overdue') result = orders.filter(isOverdue);
-    return result;
+    return filterSalesOrders(orders, filter);
   }, [orders, filter]);
 
   // Apply search filter
@@ -235,7 +205,7 @@ export default function SalesMyPage() {
 
   async function handleShipOrder(order) {
     try {
-      const updated = await shipOrder(order.id, activePerson || mySalesPerson);
+      const updated = await shipOrder(order.id, mySalesPerson);
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updated } : o));
       fetchFeed();
     } catch (err) {
@@ -330,7 +300,7 @@ export default function SalesMyPage() {
             <span className="sales-my-page__new-order-btn-icon">+</span>
             <span className="sales-my-page__new-order-btn-label">작업 등록하기</span>
           </button>
-          <span className="sales-my-page__refresh-info">30초 자동갱신</span>
+          <span className="sales-my-page__refresh-info">5분 자동갱신</span>
         </div>
       </div>
 
@@ -371,6 +341,7 @@ export default function SalesMyPage() {
       <SalesSummaryCards
         total={totalCount}
         inProduction={inProductionCount}
+        packingCompleted={packingCompletedCount}
         shipped={shippedCount}
         overdue={overdueCount}
         onFilter={setFilter}
@@ -384,6 +355,14 @@ export default function SalesMyPage() {
           let cls = 'sales-my-page__filter-btn';
           if (filter === tab.value) cls += ' sales-my-page__filter-btn--active';
           if (tab.value === 'overdue') cls += ' sales-my-page__filter-btn--overdue';
+          const countMap = {
+            all: totalCount,
+            in_production: inProductionCount,
+            packing_completed: packingCompletedCount,
+            overdue: overdueCount,
+            shipped: shippedCount,
+          };
+          const count = countMap[tab.value] || 0;
           return (
             <button
               key={tab.value}
@@ -391,7 +370,7 @@ export default function SalesMyPage() {
               onClick={() => setFilter(tab.value)}
             >
               {tab.label}
-              {tab.value === 'overdue' && overdueCount > 0 ? ` (${overdueCount})` : ''}
+              {count > 0 ? ` (${count})` : ''}
             </button>
           );
         })}
@@ -425,7 +404,7 @@ export default function SalesMyPage() {
                   key={order.id || idx}
                   order={order}
                   onDelete={handleDeleteOrder}
-                  onShip={handleShipOrder}
+                  onShip={canShipOrders ? handleShipOrder : null}
                   onEdit={handleEditOrder}
                 />
               ))}
@@ -474,47 +453,6 @@ export default function SalesMyPage() {
           )}
         </aside>
       </div>
-
-      {!loading && prePackingOverdueOrders.length > 0 && !overdueAlertDismissed && !editingOrder && (
-        <div className="sales-my-page__overdue-overlay" onClick={() => setOverdueAlertDismissed(true)}>
-          <div className="sales-my-page__overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 발주 알림" onClick={(e) => e.stopPropagation()}>
-            <div className="sales-my-page__overdue-eyebrow">납기 초과 알림</div>
-            <div className="sales-my-page__overdue-title">{activePerson} 담당 납기 초과 {prePackingOverdueOrders.length}건</div>
-            <div className="sales-my-page__overdue-desc">
-              담당 발주 중 납기가 지난 건입니다. 현장 진행 상황을 확인하고 빠른 진행을 요청하세요.
-            </div>
-            <div className="sales-my-page__overdue-list">
-              {prePackingOverdueOrders.slice(0, 5).map(order => {
-                const due = formatDueStatus(order.due_date, order.status);
-                const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '-';
-                return (
-                  <button
-                    key={order.id}
-                    type="button"
-                    className="sales-my-page__overdue-item"
-                    onClick={() => navigate(`/orders/${order.id}`)}
-                  >
-                    <span className="sales-my-page__overdue-client">{order.client_name || '-'}</span>
-                    <span className="sales-my-page__overdue-product">{product}</span>
-                    <span className="sales-my-page__overdue-due">{due.label || order.due_date}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="sales-my-page__overdue-actions">
-              <button
-                className="sales-my-page__overdue-btn sales-my-page__overdue-btn--primary"
-                onClick={() => setFilter('overdue')}
-              >
-                납기초과만 보기
-              </button>
-              <button className="sales-my-page__overdue-btn" onClick={() => setOverdueAlertDismissed(true)}>
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── FAB ── */}
       <button

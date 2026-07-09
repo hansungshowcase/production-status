@@ -5,8 +5,14 @@ import './Pipeline.css';
 export default function Pipeline({ completedSteps, currentStep, processes }) {
   // processes 배열이 있으면 정확한 상태로 표시
   const processMap = {};
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
   if (processes && processes.length > 0) {
-    processes.forEach((p) => { processMap[p.step_name] = p; });
+    processes.forEach((p) => {
+      const current = processMap[p.step_name];
+      if (!current || (priority[p.status] || 0) > (priority[current.status] || 0)) {
+        processMap[p.step_name] = p;
+      }
+    });
   }
 
   return (
@@ -17,9 +23,9 @@ export default function Pipeline({ completedSteps, currentStep, processes }) {
 
         if (proc) {
           status = proc.status; // 'completed', 'in_progress', 'waiting'
-        } else if (idx < completedSteps) {
+        } else if (Object.keys(processMap).length === 0 && idx < completedSteps) {
           status = 'completed';
-        } else if (idx === currentStep) {
+        } else if (Object.keys(processMap).length === 0 && idx === currentStep) {
           status = 'in_progress';
         }
 

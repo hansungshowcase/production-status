@@ -1,6 +1,7 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
+import { requireAuth } from '../_lib/auth.js';
 
 const PRE_PROD_FIELDS = [
   'instruction_check',
@@ -16,6 +17,8 @@ export default cors(async function handler(req, res) {
     return handleGet(req, res);
   } else if (req.method === 'PATCH') {
     if (!rateLimitCheck(req, res)) return;
+    const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
+    if (!auth) return;
     return handlePatch(req, res);
   } else {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -34,8 +37,8 @@ async function handleGet(req, res) {
 
   let preProdResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
   if (preProdResult.rows.length === 0) {
-    await db.execute({ sql: 'INSERT INTO pre_production (order_id) VALUES (?)', args: [orderId] });
-    preProdResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
+    const emptyPreProduction = PRE_PROD_FIELDS.reduce((acc, field) => ({ ...acc, [field]: 0 }), {});
+    return res.json({ ...emptyPreProduction, order_id: Number(orderId), client_name: order.client_name });
   }
 
   return res.json({ ...preProdResult.rows[0], client_name: order.client_name });

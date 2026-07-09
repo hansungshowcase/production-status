@@ -4,6 +4,7 @@ import { del } from '@vercel/blob';
 import { parseMultipart, getFilePart, getFieldValue } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { storeImageFile } from '../_lib/storeImage.js';
+import { requireAuth, requireWorkerAction } from '../_lib/auth.js';
 
 export const config = {
   api: {
@@ -60,6 +61,8 @@ async function handlePost(req, res) {
   const order_id = getFieldValue(parts, 'order_id');
   const process_id = getFieldValue(parts, 'process_id');
   const uploaded_by = getFieldValue(parts, 'uploaded_by');
+
+  if (!authorizePhotoUpload(req, res, { process_id, uploaded_by })) return;
 
   if (!order_id) {
     return res.status(400).json({ error: { message: 'order_id는 필수 항목입니다.', status: 400 } });
@@ -142,4 +145,14 @@ async function handlePost(req, res) {
   });
 
   return res.status(201).json(photoResult.rows[0]);
+}
+
+function authorizePhotoUpload(req, res, { process_id, uploaded_by }) {
+  if (process_id && uploaded_by) {
+    const workerAuth = requireWorkerAction({ ...req, body: { actor: uploaded_by } }, res);
+    return Boolean(workerAuth);
+  }
+
+  const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
+  return Boolean(auth);
 }

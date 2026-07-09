@@ -512,7 +512,7 @@
   background: #fff;
   border-radius: 16px;
   width: 100%;
-  max-width: 520px;
+  max-width: min(96vw, 1500px);
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
@@ -543,7 +543,7 @@
 
 .ocr-confirm__image {
   max-width: 100%;
-  max-height: 200px;
+  max-height: 600px;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
   object-fit: contain;

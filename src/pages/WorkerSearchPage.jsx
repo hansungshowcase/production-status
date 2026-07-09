@@ -6,20 +6,87 @@ import SearchResultCard from '../components/worker/SearchResultCard';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorState from '../components/common/ErrorState';
 import { getOrders } from '../api/orders';
-import { formatDueStatus } from '../utils/dateUtils';
+import { extractDueDateFromOrder, formatDueStatus } from '../utils/dateUtils';
 import { PROCESS_STEPS } from '../constants';
 import useApi from '../hooks/useApi';
 import './WorkerSearchPage.css';
 
+const WORKER_SEARCH_PAGE_SIZE = 100;
+
+async function fetchAllWorkerSearchOrders() {
+  const loaded = [];
+  let offset = 0;
+  let total = null;
+
+  while (true) {
+    const data = await getOrders({ status: 'in_production', limit: WORKER_SEARCH_PAGE_SIZE, offset });
+    const page = Array.isArray(data) ? data : (data.orders || []);
+    loaded.push(...page);
+    total = Array.isArray(data) ? loaded.length : Number(data.total ?? loaded.length);
+
+    if (page.length === 0 || loaded.length >= total) {
+      return { orders: loaded, total };
+    }
+
+    offset += page.length;
+  }
+}
+
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function getCurrentProcess(processes) {
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  const processByStep = new Map();
+  (processes || []).forEach((process) => {
+    const current = processByStep.get(process.step_name);
+    if (!current || (priority[process.status] || 0) > (priority[current.status] || 0)) {
+      processByStep.set(process.step_name, process);
+    }
+  });
+  return PROCESS_STEPS
+    .map((step) => processByStep.get(step))
+    .find((process) => process && process.status !== 'completed') || null;
+}
+
+function buildProcessByStep(processes) {
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  const processByStep = new Map();
+  (processes || []).forEach((process) => {
+    const current = processByStep.get(process.step_name);
+    if (!current || (priority[process.status] || 0) > (priority[current.status] || 0)) {
+      processByStep.set(process.step_name, process);
+    }
+  });
+  return processByStep;
+}
+
 function mapOrderForSearch(order) {
-  const processes = order.processes || [];
-  const completedCount = processes.filter((p) => p.status === 'completed').length;
-  const inProgressProcess = processes.find((p) => p.status === 'in_progress');
-  const currentStepIndex = inProgressProcess
-    ? PROCESS_STEPS.indexOf(inProgressProcess.step_name)
+  const dueDate = extractDueDateFromOrder(order);
+  const summary = parseProcessSummary(order.process_summary);
+  const processes = (order.processes && order.processes.length > 0)
+    ? order.processes
+    : PROCESS_STEPS
+      .map((step) => summary[step] ? { step_name: step, ...summary[step] } : null)
+      .filter(Boolean);
+  const processByStep = buildProcessByStep(processes);
+  const completedCount = PROCESS_STEPS.filter((step) => processByStep.get(step)?.status === 'completed').length;
+  const currentProcess = getCurrentProcess(processes);
+  const inProgressProcess = currentProcess?.status === 'in_progress' ? currentProcess : null;
+  const currentStepIndex = currentProcess
+    ? PROCESS_STEPS.indexOf(currentProcess.step_name)
     : completedCount;
 
-  const isAllCompleted = completedCount === processes.length && processes.length > 0;
+  const isAllCompleted = completedCount === PROCESS_STEPS.length;
   const isInProgress = !!inProgressProcess;
 
   return {
@@ -37,14 +104,14 @@ function mapOrderForSearch(order) {
     clientName: order.client_name || '',
     salesRep: order.sales_person || '',
     currentStep: currentStepIndex,
-    currentStepName: inProgressProcess
-      ? inProgressProcess.step_name
+    currentStepName: currentProcess
+      ? currentProcess.step_name
       : PROCESS_STEPS[currentStepIndex] || '-',
     completedSteps: completedCount,
     isActive: isInProgress,
     isCompleted: isAllCompleted,
-    dueDate: order.due_date,
-    dueStatus: formatDueStatus(order.due_date, order.status),
+    dueDate,
+    dueStatus: formatDueStatus(dueDate, order.status),
     processes,
   };
 }
@@ -56,8 +123,7 @@ export default function WorkerSearchPage() {
 
   const { data: ordersRaw, loading, error, execute: fetchOrders } = useApi(
     async () => {
-      const res = await getOrders({ status: 'in_production', limit: 100 });
-      return Array.isArray(res) ? res : (res.orders || []);
+      return fetchAllWorkerSearchOrders();
     }
   );
 
@@ -70,8 +136,9 @@ export default function WorkerSearchPage() {
   }, [query]);
 
   const allOrders = useMemo(() => {
-    return (ordersRaw || []).map(mapOrderForSearch);
+    return (ordersRaw?.orders || []).map(mapOrderForSearch);
   }, [ordersRaw]);
+  const allOrdersTotalCount = Number(ordersRaw?.total ?? allOrders.length);
 
   const filteredOrders = useMemo(() => {
     if (!debouncedQuery.trim()) return allOrders;
@@ -130,7 +197,7 @@ export default function WorkerSearchPage() {
           <div className="wsp-result-count">
             {debouncedQuery.trim()
               ? `${filteredOrders.length}건 검색됨`
-              : `전체 ${allOrders.length}건`}
+              : `전체 ${allOrdersTotalCount}건`}
           </div>
         </div>
         <div className="wsp-results">

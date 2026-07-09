@@ -1,72 +1,54 @@
 import React, { useState, useEffect } from 'react';
 import './InstallPrompt.css';
 
-const INSTALL_DISMISSED_KEY = 'pwa_install_dismissed';
-const INSTALL_DONE_KEY = 'pwa_installed';
-
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [show, setShow] = useState(false);
 
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-  const [iosGuide, setIosGuide] = useState(false);
+  const [installMode, setInstallMode] = useState(isIos ? 'ios' : 'manual');
 
   useEffect(() => {
-    // 이미 설치했거나 거절한 사용자는 안 보여줌
-    if (localStorage.getItem(INSTALL_DONE_KEY)) return;
-    if (localStorage.getItem(INSTALL_DISMISSED_KEY)) return;
+    if (isStandalone) return;
 
-    // 이미 PWA로 실행 중이면 안 보여줌
-    if (isStandalone) {
-      localStorage.setItem(INSTALL_DONE_KEY, '1');
-      return;
-    }
-
-    // iOS Safari: beforeinstallprompt 없으므로 직접 안내
-    if (isIos) {
-      setIosGuide(true);
-      setShow(true);
-      return;
-    }
+    setShow(true);
 
     const handler = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      setInstallMode('native');
       setShow(true);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
 
-    // 설치 완료 감지
-    window.addEventListener('appinstalled', () => {
-      localStorage.setItem(INSTALL_DONE_KEY, '1');
+    const installedHandler = () => {
       setShow(false);
       setDeferredPrompt(null);
-    });
+    };
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+    window.addEventListener('appinstalled', installedHandler);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installedHandler);
+    };
+  }, [isStandalone]);
 
   const handleInstall = async () => {
-    if (iosGuide) {
-      // iOS는 직접 설치 불가, 안내만
-      localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
-      setShow(false);
+    if (!deferredPrompt) {
+      setInstallMode(isIos ? 'ios' : 'manual');
+      setShow(true);
       return;
     }
-    if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    const result = await deferredPrompt.userChoice;
-    if (result.outcome === 'accepted') {
-      localStorage.setItem(INSTALL_DONE_KEY, '1');
-    }
+    await deferredPrompt.userChoice;
     setShow(false);
     setDeferredPrompt(null);
   };
 
   const handleDismiss = () => {
-    localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
     setShow(false);
     setDeferredPrompt(null);
   };
@@ -76,23 +58,28 @@ export default function InstallPrompt() {
   return (
     <div className="install-prompt">
       <div className="install-prompt__content">
-        <div className="install-prompt__icon">📲</div>
+        <div className="install-prompt__icon" aria-hidden="true">HS</div>
         <div className="install-prompt__info">
           <strong className="install-prompt__title">한성쇼케이스 앱 설치</strong>
-          {iosGuide ? (
+          {installMode === 'ios' ? (
             <p className="install-prompt__desc">
-              하단의 <strong>공유 버튼(⎋)</strong>을 누른 후<br />
-              <strong>"홈 화면에 추가"</strong>를 선택하세요.
+              공유 버튼을 누른 후 <strong>홈 화면에 추가</strong>를 선택하면
+              최신 버전 앱으로 바로 사용할 수 있습니다.
+            </p>
+          ) : installMode === 'manual' ? (
+            <p className="install-prompt__desc">
+              주소창의 설치 아이콘 또는 브라우저 메뉴의 <strong>앱 설치</strong>를 선택하세요.
+              설치 앱은 실행할 때 최신 버전을 자동 확인합니다.
             </p>
           ) : (
             <p className="install-prompt__desc">
-              앱을 설치하면 핸드폰에서 더 빠르고 편리하게 사용할 수 있습니다.
+              앱을 설치하면 PC와 모바일에서 빠르게 열리고 최신 배포가 자동 반영됩니다.
             </p>
           )}
         </div>
         <div className="install-prompt__actions">
           <button className="install-prompt__btn install-prompt__btn--install" onClick={handleInstall}>
-            {iosGuide ? '확인' : '앱 설치'}
+            {deferredPrompt ? '앱 설치' : '설치 방법'}
           </button>
           <button className="install-prompt__btn install-prompt__btn--dismiss" onClick={handleDismiss}>
             나중에

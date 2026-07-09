@@ -57,7 +57,7 @@ export const WORKER_DEPARTMENT_FILTER = {
 
 export const SALES_PERSONS = [
   { name: '신은철', role: '영업 담당', color: '#0ea5e9' },
-  { name: '이시아', role: '영업 담당', color: '#0891b2' },
+  { name: '이준형', role: '영업 담당', color: '#0891b2' },
 ];
 
 export const WORKER_STORAGE_KEY = 'selected_worker';

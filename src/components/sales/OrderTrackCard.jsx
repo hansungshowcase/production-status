@@ -1,7 +1,21 @@
 import React from 'react';
 import Pipeline from './Pipeline';
 import PipelineDetail from './PipelineDetail';
+import { PROCESS_STEPS } from '../../constants';
+import { getVisibleOrderMemo } from '../../utils/orderText';
 import './OrderTrackCard.css';
+
+function buildProcessByStep(processes) {
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  const processByStep = new Map();
+  (processes || []).forEach((process) => {
+    const current = processByStep.get(process.step_name);
+    if (!current || (priority[process.status] || 0) > (priority[current.status] || 0)) {
+      processByStep.set(process.step_name, process);
+    }
+  });
+  return processByStep;
+}
 
 export default function OrderTrackCard({ order, expanded, onToggle, onEdit, onDelete }) {
   const {
@@ -34,6 +48,7 @@ export default function OrderTrackCard({ order, expanded, onToggle, onEdit, onDe
     ? `${productType}${doorType ? ' / ' + doorType : ''}`
     : product;
   const dimensions = width && depth && height ? `${width}x${depth}x${height}` : null;
+  const visibleNotes = getVisibleOrderMemo(notes);
 
   const handleEdit = (e) => {
     e.stopPropagation();
@@ -108,23 +123,27 @@ export default function OrderTrackCard({ order, expanded, onToggle, onEdit, onDe
 
       {(() => {
         const procs = order.processes || [];
-        const inProgress = procs.find(p => p.status === 'in_progress');
-        const completedCount = procs.filter(p => p.status === 'completed').length;
-        const total = procs.length || 8;
+        const processByStep = buildProcessByStep(procs);
+        const currentProcess = PROCESS_STEPS
+          .map((step) => processByStep.get(step))
+          .find((process) => process && process.status !== 'completed');
+        const inProgress = currentProcess?.status === 'in_progress' ? currentProcess : null;
+        const completedCount = PROCESS_STEPS.filter((step) => processByStep.get(step)?.status === 'completed').length;
+        const total = PROCESS_STEPS.length;
         if (order.status === 'shipped' || completedCount === total) {
           return <div className="otc-current-step otc-step-done">전 공정 완료 ({total}/{total})</div>;
         }
         if (inProgress) {
           return <div className="otc-current-step otc-step-progress">현재: <strong>{inProgress.step_name}</strong> 진행중 ({completedCount}/{total})</div>;
         }
-        const nextWaiting = procs.find(p => p.status === 'waiting');
+        const nextWaiting = currentProcess?.status === 'waiting' ? currentProcess : null;
         if (nextWaiting) {
           return <div className="otc-current-step otc-step-waiting">다음: <strong>{nextWaiting.step_name}</strong> 대기 ({completedCount}/{total})</div>;
         }
         return null;
       })()}
 
-      {expanded && (phone || saleAmount || notes) && (
+      {expanded && (phone || saleAmount || visibleNotes) && (
         <div className="otc-details">
           {phone && (
             <div className="otc-detail-row">
@@ -138,10 +157,10 @@ export default function OrderTrackCard({ order, expanded, onToggle, onEdit, onDe
               <span className="otc-detail-value">{saleAmount}</span>
             </div>
           )}
-          {notes && (
+          {visibleNotes && (
             <div className="otc-detail-row">
               <span className="otc-detail-label">비고</span>
-              <span className="otc-detail-value">{notes}</span>
+              <span className="otc-detail-value">{visibleNotes}</span>
             </div>
           )}
         </div>

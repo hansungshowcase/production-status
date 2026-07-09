@@ -26,6 +26,7 @@ export default function TaskCard({ task, onStart, onComplete, onPhoto, onIssue }
     isCompleted,
     dueStatus,
     workOrderImageUrl,
+    processes,
   } = task;
 
   const displayProduct = productType
@@ -39,7 +40,15 @@ export default function TaskCard({ task, onStart, onComplete, onPhoto, onIssue }
     return 'status-waiting';
   };
 
+  const processByStep = new Map((processes || []).map((process) => [process.step_name, process]));
+
   const getStepClass = (idx) => {
+    const process = processByStep.get(PROCESS_STEPS[idx]);
+    if (process) {
+      if (process.status === 'completed') return 'p-step done';
+      if (process.status === 'in_progress') return 'p-step current';
+      return 'p-step';
+    }
     if (idx < completedSteps) return 'p-step done';
     if (idx === currentStep && !isCompleted) return 'p-step current';
     return 'p-step';
@@ -64,7 +73,10 @@ export default function TaskCard({ task, onStart, onComplete, onPhoto, onIssue }
     });
   };
 
-  const progressText = `${Math.max(completedSteps, currentStep)}/${PROCESS_STEPS.length}`;
+  const canonicalCompletedSteps = processByStep.size > 0
+    ? PROCESS_STEPS.filter(step => processByStep.get(step)?.status === 'completed').length
+    : completedSteps;
+  const progressText = `${Math.max(canonicalCompletedSteps, currentStep)}/${PROCESS_STEPS.length}`;
 
   return (
     <div className={`task-card ${isActive ? 'active-task' : ''} ${isCompleted ? 'completed-task' : ''} ${dueStatus?.isOverdue ? 'overdue' : ''} ${dueStatus?.color === 'orange' ? 'due-soon' : ''}`}>

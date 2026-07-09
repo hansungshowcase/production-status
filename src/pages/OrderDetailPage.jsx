@@ -3,9 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getOrder, deleteOrder, shipOrder } from '../api/orders';
 import { resolveIssue } from '../api/issues';
 import { deletePhoto } from '../api/photos';
-import { formatDueStatus } from '../utils/dateUtils';
+import { extractDueDateFromOrder, formatDueStatus } from '../utils/dateUtils';
+import { getVisibleOrderMemo } from '../utils/orderText';
 import { safeGet } from '../utils/safeStorage';
 import { PROCESS_STEPS } from '../constants';
+import {
+  getOrderDetailPhotoDownloadProps,
+  getSalesDetailPreProductionItems,
+} from './orderDetailPresentation';
 import OrderEditModal from '../components/order/OrderEditModal';
 import './OrderDetailPage.css';
 
@@ -17,6 +22,12 @@ function displayProcessWorker(step, processLike, salesPerson) {
   if (processLike.completed_by) return processLike.completed_by;
   if (processLike.started_by && processLike.started_by !== salesPerson) return processLike.started_by;
   return '';
+}
+
+function chooseProcess(current, next) {
+  const priority = { in_progress: 3, waiting: 2, completed: 1 };
+  if (!current) return next;
+  return (priority[next?.status] || 0) > (priority[current?.status] || 0) ? next : current;
 }
 
 export default function OrderDetailPage() {
@@ -117,21 +128,25 @@ export default function OrderDetailPage() {
     );
   }
 
-  const dueStatus = formatDueStatus(order.due_date, order.status);
+  const displayDueDate = extractDueDateFromOrder(order);
+  const visibleNotes = getVisibleOrderMemo(order.notes);
+  const visibleRemarks = getVisibleOrderMemo(order.remarks);
+  const dueStatus = formatDueStatus(displayDueDate, order.status);
   const isOverdue = dueStatus.isOverdue;
   const isShipped = order.status === 'shipped' || order.status === '출고완료' || !!order.ship_date;
-  const completedSteps = (order.processes || []).filter(p => p.status === 'completed').length;
-  const totalSteps = PROCESS_STEPS.length;
-  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-  const stepStatusMap = {};
   const stepHistMap = {};
   (order.processes || []).forEach(p => {
-    stepStatusMap[p.step_name] = p.status;
-    stepHistMap[p.step_name] = p;
+    if (PROCESS_STEPS.includes(p.step_name)) {
+      stepHistMap[p.step_name] = chooseProcess(stepHistMap[p.step_name], p);
+    }
   });
+  const completedSteps = PROCESS_STEPS.filter(step => stepHistMap[step]?.status === 'completed').length;
+  const totalSteps = PROCESS_STEPS.length;
+  const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
   const openIssues = (order.issues || []).filter(i => !i.resolved_at);
   const resolvedIssues = (order.issues || []).filter(i => !!i.resolved_at);
+  const preProductionItems = getSalesDetailPreProductionItems(order.pre_production);
 
   return (
     <div className="odp-page">
@@ -192,8 +207,8 @@ export default function OrderDetailPage() {
         <div className="odp-section-title">공정 타임라인</div>
         <div className="odp-process-list">
           {PROCESS_STEPS.map((step) => {
-            const st = stepStatusMap[step] || 'waiting';
             const p = stepHistMap[step];
+            const st = p?.status || 'waiting';
             const isDone = st === 'completed';
             const isActive = st === 'in_progress';
             const worker = displayProcessWorker(step, p, order.sales_person);
@@ -220,7 +235,7 @@ export default function OrderDetailPage() {
         <div className="odp-section-title">주문 정보</div>
         <div className="odp-info-grid">
           <DetailRow label="발주일" value={order.order_date} />
-          <DetailRow label="납기일" value={order.due_date} />
+          <DetailRow label="납기일" value={displayDueDate} />
           <DetailRow label="담당" value={order.sales_person} />
           <DetailRow label="연락처" value={order.phone} />
           <DetailRow label="사양" value={[order.product_type, order.door_type].filter(Boolean).join(' / ')} />
@@ -229,8 +244,8 @@ export default function OrderDetailPage() {
           <DetailRow label="수량" value={order.quantity ? `${order.quantity}대` : ''} />
           <DetailRow label="색상" value={order.color} />
           {order.ship_date && <DetailRow label="출고일" value={order.ship_date} />}
-          {order.notes && <DetailRow label="비고" value={order.notes} full />}
-          {order.remarks && <DetailRow label="특이사항" value={order.remarks} full />}
+          {visibleNotes && <DetailRow label="비고" value={visibleNotes} full />}
+          {visibleRemarks && <DetailRow label="특이사항" value={visibleRemarks} full />}
         </div>
       </div>
 
@@ -286,7 +301,7 @@ export default function OrderDetailPage() {
           <div className="odp-photo-grid">
             {order.photos.map(ph => (
               <div key={ph.id} className="odp-photo">
-                <a href={ph.file_path} target="_blank" rel="noreferrer">
+                <a {...getOrderDetailPhotoDownloadProps(ph, order)} className="odp-photo-download">
                   <img src={ph.file_path} alt="" loading="lazy" />
                 </a>
                 <button
@@ -302,16 +317,14 @@ export default function OrderDetailPage() {
       </div>
 
       {/* 사전 제작 체크리스트 */}
-      {order.pre_production && (
+      {preProductionItems.length > 0 && (
         <div className="odp-section">
           <div className="odp-section-title">사전 제작 체크리스트</div>
           <div className="odp-pre-grid">
-            {Object.entries(order.pre_production)
-              .filter(([k]) => !['id', 'order_id', 'created_at', 'updated_at'].includes(k))
-              .map(([k, v]) => (
-                <div key={k} className={`odp-pre-item${v ? ' odp-pre-item--ok' : ''}`}>
-                  <span className="odp-pre-check">{v ? '✓' : '·'}</span>
-                  <span>{k}</span>
+            {preProductionItems.map((item) => (
+                <div key={item.key} className={`odp-pre-item${item.checked ? ' odp-pre-item--ok' : ''}`}>
+                  <span className="odp-pre-check">{item.checked ? '✓' : '·'}</span>
+                  <span>{item.label}</span>
                 </div>
               ))}
           </div>

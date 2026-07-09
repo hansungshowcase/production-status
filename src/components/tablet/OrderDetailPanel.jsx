@@ -5,13 +5,41 @@ import './OrderDetailPanel.css';
 
 const STEP_ORDER = PROCESS_STEPS;
 
+function isCompletedStatus(status) {
+  return status === 'completed' || status === 'done';
+}
+
 function getProcessMap(processes) {
   const map = {};
   if (!processes) return map;
+  const priority = { in_progress: 3, waiting: 2, completed: 1, done: 1 };
   processes.forEach((p) => {
-    map[p.step_name] = p;
+    const current = map[p.step_name];
+    if (!current || (priority[p.status] || 0) > (priority[current.status] || 0)) {
+      map[p.step_name] = p;
+    }
   });
   return map;
+}
+
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function normalizeProcesses(order) {
+  if (order?.processes?.length > 0) return order.processes;
+  const summary = parseProcessSummary(order?.process_summary);
+  return STEP_ORDER
+    .map((step) => summary[step] ? { step_name: step, ...summary[step] } : null)
+    .filter(Boolean);
 }
 
 function formatDateTime(dateStr) {
@@ -63,22 +91,22 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
     );
   }
 
-  const processMap = getProcessMap(order.processes);
+  const processMap = getProcessMap(normalizeProcesses(order));
 
   // Determine current step
   let currentStepName = null;
   let currentProcess = null;
   for (const step of STEP_ORDER) {
     const proc = processMap[step];
-    if (!proc || proc.status !== 'done') {
+    if (!proc || !isCompletedStatus(proc.status)) {
       currentStepName = step;
       currentProcess = proc || null;
       break;
     }
   }
 
-  const canStart = currentProcess && currentProcess.status === 'waiting';
-  const canComplete = currentProcess && currentProcess.status === 'in_progress';
+  const canStart = currentProcess?.id && currentProcess.status === 'waiting';
+  const canComplete = currentProcess?.id && currentProcess.status === 'in_progress';
 
   function handleConfirmAction() {
     if (!confirm) return;
@@ -109,7 +137,7 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
     if (!proc) {
       return stepName === currentStepName ? 'active' : 'waiting';
     }
-    if (proc.status === 'done') return 'done';
+    if (isCompletedStatus(proc.status)) return 'done';
     if (proc.status === 'in_progress') return 'active';
     if (stepName === currentStepName) return 'active';
     return 'waiting';

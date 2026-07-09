@@ -12,7 +12,6 @@ export default cors(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-
   const contentLength = Number(req.headers['content-length'] || 0);
   if (contentLength > 10 * 1024 * 1024) {
     return res.status(413).json({ error: { message: '파일 크기는 10MB 이하여야 합니다.', status: 413 } });

@@ -16,9 +16,10 @@ function getAllowedOrigins() {
 const CACHE_POLICIES = {
   // 목록류 — 짧은 fresh + 긴 stale window (UX 응답성 최고)
   '/api/orders': 'no-store',
-  '/api/stats': 'public, s-maxage=60, stale-while-revalidate=300',
+  '/api/stats': 'no-store',
+  '/api/delivery-adherence': 'public, s-maxage=43200, stale-while-revalidate=3600',
   '/api/feed': 'public, s-maxage=30, stale-while-revalidate=120',
-  '/api/processes/by-step': 'public, s-maxage=20, stale-while-revalidate=120',
+  '/api/processes/by-step': 'no-store',
   '/api/workers': 'public, s-maxage=30, stale-while-revalidate=300',
   '/api/health': 'public, s-maxage=60',
   '/api/export/csv': 'public, s-maxage=10, stale-while-revalidate=60',
@@ -69,9 +70,15 @@ export function cors(handler) {
 
     // GET 응답에 CDN edge cache 헤더 자동 추가 (성능 10배: 동일 요청 반복 시 ≈0ms)
     if (req.method === 'GET') {
+      const path = (req.url || '').split('?')[0];
       const policy = pickCachePolicy(req.url);
       if (policy) {
-        res.setHeader('Cache-Control', policy);
+        if (path === '/api/delivery-adherence') {
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('Clear-Site-Data', '"cache"');
+        } else {
+          res.setHeader('Cache-Control', policy);
+        }
         res.setHeader('CDN-Cache-Control', policy);
         res.setHeader('Vercel-CDN-Cache-Control', policy);
       }

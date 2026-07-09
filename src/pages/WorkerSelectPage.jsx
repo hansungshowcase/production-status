@@ -1,9 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
 import { getOrders } from '../api/orders';
 import './WorkerSelectPage.css';
+
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
 
 export default function WorkerSelectPage() {
   const navigate = useNavigate();
@@ -20,10 +32,13 @@ export default function WorkerSelectPage() {
   const [workOrderSearch, setWorkOrderSearch] = useState('');
   const [workOrderResults, setWorkOrderResults] = useState([]);
   const [workOrderLoading, setWorkOrderLoading] = useState(false);
+  const workOrderSearchSeqRef = useRef(0);
   const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
   const delayedOrders = factoryStats?.delayed_orders || [];
   const delayedSteps = factoryStats?.delayed_by_step || [];
   const dueTodayOrders = factoryStats?.due_today_orders || [];
+  const dueTodayOrdersTotalCount = Number(factoryStats?.due_today_count || 0) || dueTodayOrders.length;
+  const delayedOrdersTotalCount = Number(factoryStats?.overdue_count || 0) || delayedOrders.length;
 
   useEffect(() => {
     getStats().then(setFactoryStats).catch(() => {});
@@ -37,15 +52,27 @@ export default function WorkerSelectPage() {
       return undefined;
     }
 
+    const seq = ++workOrderSearchSeqRef.current;
     setWorkOrderLoading(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await getOrders({ search: query, status: 'in_production', limit: 8 });
-        setWorkOrderResults(Array.isArray(res) ? res : (res.orders || []));
+        const activeRes = await getOrders({ search: query, search_mode: 'work_order', status: 'in_production', limit: 12 });
+        let results = Array.isArray(activeRes) ? activeRes : (activeRes.orders || []);
+        if (results.length === 0) {
+          const allRes = await getOrders({ search: query, search_mode: 'work_order', limit: 12 });
+          results = Array.isArray(allRes) ? allRes : (allRes.orders || []);
+        }
+        if (seq === workOrderSearchSeqRef.current) {
+          setWorkOrderResults(results);
+        }
       } catch {
-        setWorkOrderResults([]);
+        if (seq === workOrderSearchSeqRef.current) {
+          setWorkOrderResults([]);
+        }
       } finally {
-        setWorkOrderLoading(false);
+        if (seq === workOrderSearchSeqRef.current) {
+          setWorkOrderLoading(false);
+        }
       }
     }, 250);
 
@@ -80,12 +107,8 @@ export default function WorkerSelectPage() {
   }
 
   function getCurrentStep(order) {
-    const summary = order?.process_summary || {};
-    return (
-      PROCESS_STEPS.find((name) => summary[name]?.status === 'in_progress') ||
-      PROCESS_STEPS.find((name) => summary[name]?.status === 'waiting') ||
-      PROCESS_STEPS[0]
-    );
+    const summary = parseProcessSummary(order?.process_summary);
+    return PROCESS_STEPS.find((name) => summary[name]?.status !== 'completed') || PROCESS_STEPS[PROCESS_STEPS.length - 1];
   }
 
   function handleSelectWorkOrder(order) {
@@ -244,7 +267,7 @@ export default function WorkerSelectPage() {
           <div className="worker-select-page__delay-panel worker-select-page__delay-panel--today">
             <div className="worker-select-page__delay-head">
               <span className="worker-select-page__delay-title">금일 출고건</span>
-              <span className="worker-select-page__delay-count">{dueTodayOrders.length}건</span>
+              <span className="worker-select-page__delay-count">{dueTodayOrdersTotalCount}건</span>
             </div>
             <p className="worker-select-page__delay-message">
               오늘 납기 건입니다. 출고 전까지 현재 공정과 담당자를 확인해 주세요.
@@ -280,12 +303,10 @@ export default function WorkerSelectPage() {
           <div className="worker-select-page__delay-panel">
             <div className="worker-select-page__delay-head">
               <span className="worker-select-page__delay-title">납기초과 작업</span>
-              <span className="worker-select-page__delay-count">{delayedOrders.length}건</span>
+              <span className="worker-select-page__delay-count">{delayedOrdersTotalCount}건</span>
             </div>
             <p className="worker-select-page__delay-message">
-              우리가 늦으면, 고객의 시작도 늦어집니다.<br />
-              오늘 우리의 빠른 대응이 고객의 오픈일을 지킵니다.<br />
-              납기 초과 건은 최우선으로 진행 부탁드립니다.
+              우리가 늦으면, 고객의 시작도 늦어집니다. 오늘 우리의 빠른 대응이 고객의 오픈일을 지킵니다. 납기 초과 건은 최우선으로 진행 부탁드립니다.
             </p>
             {delayedSteps.length > 0 && (
               <div className="worker-select-page__delay-steps">

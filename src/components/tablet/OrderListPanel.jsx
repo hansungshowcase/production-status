@@ -5,13 +5,38 @@ import './OrderListPanel.css';
 
 const STEP_ORDER = PROCESS_STEPS;
 
-function getCurrentStep(processes) {
+function isCompletedStatus(status) {
+  return status === 'completed' || status === 'done';
+}
+
+function parseProcessSummary(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
+function normalizeProcesses(order) {
+  if (order?.processes?.length > 0) return order.processes;
+  const summary = parseProcessSummary(order?.process_summary);
+  return STEP_ORDER
+    .map((step) => summary[step] ? { step_name: step, ...summary[step] } : null)
+    .filter(Boolean);
+}
+
+function getCurrentStep(order) {
+  const processes = normalizeProcesses(order);
   if (!processes || !processes.length) return '도면설계';
   for (const step of STEP_ORDER) {
     const proc = processes.find((p) => p.step_name === step);
-    if (proc && proc.status !== 'done') return step;
+    if (proc && !isCompletedStatus(proc.status)) return step;
   }
-  return '포장';
+  return '전체 완료';
 }
 
 function isOverdue(dueDate) {
@@ -34,7 +59,7 @@ export default function OrderListPanel({ orders = [], selectedId, onSelect }) {
   const ordersWithStep = useMemo(() => {
     return orders.map((order) => ({
       ...order,
-      currentStep: getCurrentStep(order.processes),
+      currentStep: getCurrentStep(order),
     }));
   }, [orders]);
 

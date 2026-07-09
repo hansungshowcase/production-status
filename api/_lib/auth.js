@@ -3,7 +3,22 @@ import crypto from 'crypto';
 // 환경변수 미설정 시 인증 비활성 (opt-in). 빌드/기존 호출 깨지지 않음.
 // 운영자가 Vercel 환경변수에 SALES_PASSWORD / ADMIN_PASSWORD 추가하면 즉시 활성.
 export function authEnabled() {
+  if (process.env.AUTH_DISABLED === 'true') return false;
   return Boolean(process.env.SALES_PASSWORD || process.env.ADMIN_PASSWORD);
+}
+
+export function authRequired() {
+  if (process.env.AUTH_DISABLED === 'true') return false;
+  return process.env.AUTH_REQUIRED === 'true';
+}
+
+export function authConfigurationError(res) {
+  return res.status(500).json({
+    error: {
+      message: '관리자 인증 설정을 확인해 주세요.',
+      status: 500,
+    },
+  });
 }
 
 function getSecret() {
@@ -67,6 +82,9 @@ export function checkPassword(input, expected) {
 export function withAuth(handler, { roles = ['sales', 'admin'] } = {}) {
   return async (req, res) => {
     if (!authEnabled()) {
+      if (authRequired()) {
+        return authConfigurationError(res);
+      }
       // 환경변수 미설정 → 기존 동작 유지 (잘 되는 코드 보호)
       return handler(req, res);
     }
@@ -95,6 +113,10 @@ export function resolveActor(req) {
 // 핸들러는 반환값으로 분기: const auth = requireAuth(req, res, { roles: ['sales'] }); if (!auth) return;
 export function requireAuth(req, res, { roles = ['sales', 'admin'] } = {}) {
   if (!authEnabled()) {
+    if (authRequired()) {
+      authConfigurationError(res);
+      return null;
+    }
     // opt-in: 환경변수 미설정 시 통과 (기존 동작 유지)
     return { role: null, actor: null, _bypass: true };
   }
@@ -110,6 +132,24 @@ export function requireAuth(req, res, { roles = ['sales', 'admin'] } = {}) {
     res.status(403).json({ error: { message: '권한이 없습니다.', status: 403 } });
     return null;
   }
+  req.auth = payload;
+  return payload;
+}
+
+export function requireWorkerAction(req, res) {
+  const body = req.body || {};
+  const rawActor = body.actor || body.assigned_worker || req.headers?.['x-worker-name'];
+  const actor = typeof rawActor === 'string' ? rawActor.trim() : '';
+  if (!actor) {
+    res.status(400).json({
+      error: {
+        message: '작업자 정보가 필요합니다.',
+        status: 400,
+      },
+    });
+    return null;
+  }
+  const payload = { role: 'worker', actor };
   req.auth = payload;
   return payload;
 }

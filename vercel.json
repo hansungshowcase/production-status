@@ -7,6 +7,10 @@
   "functions": {
     "api/**/*.js": { "maxDuration": 30 }
   },
+  "crons": [
+    { "path": "/api/cron/sweep", "schedule": "30 23 * * *" },
+    { "path": "/api/cron/risk-daily", "schedule": "40 23 * * *" }
+  ],
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
@@ -14,7 +18,8 @@
     {
       "source": "/",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Clear-Site-Data", "value": "\"cache\", \"storage\", \"executionContexts\"" }
       ]
     },
     {
@@ -49,6 +54,12 @@
     },
     {
       "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/clear-cache.html",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]

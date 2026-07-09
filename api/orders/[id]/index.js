@@ -6,17 +6,24 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { del } from '@vercel/blob';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
+import { STEPS } from '../../_lib/steps.js';
+import { normalizeOrderMutationInput } from '../../_lib/orderCreateInput.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
 const ORDER_FIELDS = [
   'order_date', 'due_date', 'sales_person', 'client_name',
   'sale_amount', 'lead_source', 'balance',
-  'phone', 'product_type', 'door_type', 'design',
+  'phone', 'delivery_address', 'freight_payment', 'product_type', 'door_type', 'design',
   'width', 'depth', 'height', 'quantity', 'color',
   'notes', 'remarks', 'etc_notes', 'ship_scheduled_date',
   'sms_sent', 'safe_delivery', 'work_order_image_url',
 ];
+
+function stepOrderCase(alias) {
+  const clauses = STEPS.map((step, index) => `WHEN '${String(step).replace(/'/g, "''")}' THEN ${index}`).join(' ');
+  return `CASE ${alias}.step_name ${clauses} ELSE 999 END`;
+}
 
 export default cors(async function handler(req, res) {
   const { id } = req.query;
@@ -52,7 +59,7 @@ async function handleGet(id, req, res) {
   }
 
   const [processesResult, preProdResult, issuesResult, photosResult] = await Promise.all([
-    db.execute({ sql: 'SELECT * FROM processes WHERE order_id = ? ORDER BY id', args: [order.id] }),
+    db.execute({ sql: `SELECT * FROM processes p WHERE order_id = ? ORDER BY ${stepOrderCase('p')}, id`, args: [order.id] }),
     db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [order.id] }),
     db.execute({ sql: 'SELECT * FROM issues WHERE order_id = ? ORDER BY reported_at DESC', args: [order.id] }),
     db.execute({ sql: 'SELECT * FROM photos WHERE order_id = ? ORDER BY uploaded_at DESC', args: [order.id] }),
@@ -75,7 +82,7 @@ async function handleUpdate(id, req, res) {
   }
   const db = getDb();
   await ensureOrderImageColumn(db);
-  const body = sanitizeInput(req.body);
+  const body = normalizeOrderMutationInput(sanitizeInput(req.body));
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
@@ -118,7 +125,27 @@ async function handleUpdate(id, req, res) {
   });
 
   const updatedResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
-  return res.json(updatedResult.rows[0]);
+  const updated = updatedResult.rows[0];
+
+  // 알림 훅: 출고예정일(ship_scheduled_date)이 실제 변경 + 미출고면 → rescheduled
+  // 멱등키가 'rescheduled:날짜'라 같은 날짜 재저장은 중복 발송되지 않음 (실패해도 본 응답에 영향 없음)
+  try {
+    const prevSched = order.ship_scheduled_date || null;
+    const newSched = updated?.ship_scheduled_date || null;
+    if (
+      body.ship_scheduled_date !== undefined &&
+      newSched &&
+      String(newSched) !== String(prevSched || '') &&
+      updated.status !== 'shipped'
+    ) {
+      const { maybeNotify } = await import('../../_lib/notify.js');
+      await maybeNotify(db, updated, 'rescheduled', { date: newSched });
+    }
+  } catch (e) {
+    console.error('[orders PATCH] rescheduled 알림 발송 실패(무시):', e?.message || e);
+  }
+
+  return res.json(updated);
 }
 
 async function handleDelete(id, req, res) {

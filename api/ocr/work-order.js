@@ -1,7 +1,7 @@
 import { cors } from '../_lib/cors.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
-import { requireAuth } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
+import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
 
 export const config = {
   api: {
@@ -12,7 +12,25 @@ export const config = {
 const CURRENT_YEAR = new Date().getFullYear();
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const OPENAI_SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const EMPTY_OCR_DATA = {
+  client_name: '',
+  order_date: '',
+  due_date: '',
+  phone: '',
+  delivery_address: '',
+  freight_payment: '',
+  sales_person: '',
+  product_type: '',
+  door_type: '',
+  width: '',
+  depth: '',
+  height: '',
+  quantity: '',
+  color: '',
+  notes: '',
+};
 const WORK_ORDER_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -21,6 +39,8 @@ const WORK_ORDER_SCHEMA = {
     order_date: { type: ['string', 'null'] },
     due_date: { type: ['string', 'null'] },
     phone: { type: ['string', 'null'] },
+    delivery_address: { type: ['string', 'null'] },
+    freight_payment: { type: ['string', 'null'] },
     sales_person: { type: ['string', 'null'] },
     product_type: { type: ['string', 'null'] },
     door_type: { type: ['string', 'null'] },
@@ -36,6 +56,8 @@ const WORK_ORDER_SCHEMA = {
     'order_date',
     'due_date',
     'phone',
+    'delivery_address',
+    'freight_payment',
     'sales_person',
     'product_type',
     'door_type',
@@ -59,6 +81,8 @@ const PROMPT = `이 이미지는 냉장쇼케이스 제조업체의 작업지시
   "order_date": "발주일 (YYYY-MM-DD 형식, 연도 불분명시 ${CURRENT_YEAR})",
   "due_date": "납기일 (YYYY-MM-DD 형식, 연도 불분명시 ${CURRENT_YEAR})",
   "phone": "연락처/전화번호",
+  "delivery_address": "납품주소/배송주소",
+  "freight_payment": "운임여부 (예: 소비자부담, 본사부담)",
   "sales_person": "담당자/영업담당",
   "product_type": "품명/사양 (제과/정육/반찬/꽃/와인/오픈/진열/마카롱/샌드위치/음료/밧트/토핑/양념육/유럽형/주류 중 하나)",
   "door_type": "문짝/디자인 (앞문/뒷문/양문/여닫이/오픈/라운드앞문/라운드뒷문/평대 중 하나)",
@@ -93,6 +117,25 @@ function extractResponseText(data) {
   return chunks.join('\n');
 }
 
+function extractGeminiText(data) {
+  const chunks = [];
+  for (const candidate of data?.candidates || []) {
+    for (const part of candidate?.content?.parts || []) {
+      if (typeof part?.text === 'string') chunks.push(part.text);
+    }
+  }
+  return chunks.join('\n');
+}
+
+function parseOcrJson(text) {
+  if (!text) throw new Error('OCR 응답에 인식 결과가 없습니다.');
+  let jsonStr = text;
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) jsonStr = jsonMatch[1];
+  jsonStr = jsonStr.trim();
+  return normalizeOcrResult(JSON.parse(jsonStr));
+}
+
 function normalizeOcrResult(parsed) {
   if (parsed.width) parsed.width = parseInt(String(parsed.width).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
@@ -109,16 +152,101 @@ function normalizeOcrResult(parsed) {
     }
   });
 
+  parsed.notes = normalizeOrderMemoForStorage(parsed.notes);
+
   return parsed;
+}
+
+async function callOpenAiOcr({ apiKey, mimeType, filePart }) {
+  const response = await fetch(OPENAI_RESPONSES_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+      input: [{
+        role: 'user',
+        content: [
+          { type: 'input_text', text: PROMPT },
+          {
+            type: 'input_image',
+            image_url: `data:${mimeType};base64,${filePart.data.toString('base64')}`,
+            detail: 'high',
+          },
+        ],
+      }],
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'work_order_ocr',
+          schema: WORK_ORDER_SCHEMA,
+          strict: false,
+        },
+      },
+      max_output_tokens: 1200,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const upstreamMessage = errorData?.error?.message || `OpenAI OCR request failed (${response.status})`;
+    const err = new Error(upstreamMessage);
+    err.status = response.status;
+    err.provider = 'OpenAI';
+    throw err;
+  }
+
+  const responseData = await response.json();
+  return parseOcrJson(extractResponseText(responseData));
+}
+
+async function callGeminiOcr({ apiKey, mimeType, filePart }) {
+  const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: PROMPT },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: filePart.data.toString('base64'),
+            },
+          },
+        ],
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 1200,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const upstreamMessage = errorData?.error?.message || `Gemini OCR request failed (${response.status})`;
+    const err = new Error(upstreamMessage);
+    err.status = response.status;
+    err.provider = 'Gemini';
+    throw err;
+  }
+
+  const responseData = await response.json();
+  return parseOcrJson(extractGeminiText(responseData));
 }
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-  if (!rateLimitCheck(req, res)) return;
-  const auth = requireAuth(req, res, { roles: ['sales'] });
-  if (!auth) return;
+  if (!rateLimitCheck(req, res, { windowMs: 60000, max: 120 })) return;
 
   let parts;
   try {
@@ -134,9 +262,10 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '이미지를 업로드해주세요.', status: 400 } });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey.includes('your-key-here')) {
-    return res.status(500).json({ error: { message: 'OPENAI_API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.', status: 500 } });
+  const openAiKey = process.env.OPENAI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if ((!openAiKey || openAiKey.includes('your-key-here')) && !geminiKey) {
+    return res.status(500).json({ error: { message: 'OCR API 키가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.', status: 500 } });
   }
 
   try {
@@ -145,62 +274,37 @@ export default cors(async function handler(req, res) {
       return res.status(415).json({ error: { message: '이미지 인식은 JPG, PNG, WEBP, GIF 파일만 지원합니다.', status: 415 } });
     }
 
-    const response = await fetch(OPENAI_RESPONSES_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
-        input: [{
-          role: 'user',
-          content: [
-            { type: 'input_text', text: PROMPT },
-            {
-              type: 'input_image',
-              image_url: `data:${mimeType};base64,${filePart.data.toString('base64')}`,
-              detail: 'high',
-            },
-          ],
-        }],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'work_order_ocr',
-            schema: WORK_ORDER_SCHEMA,
-            strict: false,
-          },
-        },
-        max_output_tokens: 1200,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const upstreamMessage = errorData?.error?.message || `OpenAI OCR request failed (${response.status})`;
-      const status = response.status >= 500 ? 502 : response.status;
-      console.error('OpenAI OCR error:', response.status, upstreamMessage);
-      return res.status(status).json({ error: { message: '이미지 인식에 실패했습니다: ' + upstreamMessage, status } });
+    if (openAiKey && !openAiKey.includes('your-key-here')) {
+      try {
+        const parsed = await callOpenAiOcr({ apiKey: openAiKey, mimeType, filePart });
+        return res.json({ success: true, provider: 'openai', data: parsed });
+      } catch (openAiErr) {
+        console.warn('OpenAI OCR failed, trying Gemini fallback:', openAiErr.status, openAiErr.message);
+        if (!geminiKey) {
+          return res.json({
+            success: false,
+            provider: 'manual',
+            warning: '자동 인식이 지연되어 수동 입력으로 전환했습니다. 작업지시서 이미지는 첨부되었습니다.',
+            data: EMPTY_OCR_DATA,
+          });
+        }
+      }
     }
 
-    const responseData = await response.json();
-    const text = extractResponseText(responseData);
-    if (!text) {
-      throw new Error('OpenAI 응답에 인식 결과가 없습니다.');
-    }
-
-    // Extract JSON from response (handle markdown code blocks)
-    let jsonStr = text;
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1];
-    jsonStr = jsonStr.trim();
-
-    const parsed = normalizeOcrResult(JSON.parse(jsonStr));
-
-    return res.json({ success: true, data: parsed });
+    const parsed = await callGeminiOcr({ apiKey: geminiKey, mimeType, filePart });
+    return res.json({ success: true, provider: 'gemini', data: parsed });
   } catch (err) {
+    if (err.provider || err.status === 429) {
+      console.warn('OCR provider unavailable, switching to manual input:', err.provider || 'unknown', err.status, err.message);
+      return res.json({
+        success: false,
+        provider: 'manual',
+        warning: '자동 인식이 지연되어 수동 입력으로 전환했습니다. 작업지시서 이미지는 첨부되었습니다.',
+        data: EMPTY_OCR_DATA,
+      });
+    }
     console.error('OCR error:', err);
-    return res.status(500).json({ error: { message: '이미지 인식에 실패했습니다: ' + (err.message || ''), status: 500 } });
+    const status = err.status >= 500 ? 502 : (err.status || 500);
+    return res.status(status).json({ error: { message: '이미지 인식에 실패했습니다: ' + (err.message || ''), status } });
   }
 });

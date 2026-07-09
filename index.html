@@ -119,6 +119,13 @@
   <script>
     // Service Worker registration
     if ('serviceWorker' in navigator) {
+      let swRefreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (swRefreshing) return;
+        swRefreshing = true;
+        window.location.reload();
+      });
+
       window.addEventListener('load', async () => {
         try {
           const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
@@ -137,6 +144,11 @@
           });
           // Check for updates every 2 minutes
           setInterval(() => reg.update(), 2 * 60 * 1000);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+              reg.update();
+            }
+          });
         } catch (err) {
           console.warn('SW registration failed:', err);
         }

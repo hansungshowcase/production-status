@@ -1,4 +1,4 @@
-const CACHE_VERSION = 48;
+const CACHE_VERSION = 52;
 const CACHE_NAME = `hansung-showcase-v${CACHE_VERSION}`;
 const RUNTIME_CACHE = `hansung-runtime-v${CACHE_VERSION}`;
 
@@ -26,8 +26,9 @@ self.addEventListener('activate', (event) => {
           .map((key) => caches.delete(key))
       )
     )
+      .then(() => self.clients.claim())
+      .then(() => refreshOpenClients())
   );
-  self.clients.claim();
 });
 
 // Fetch strategies
@@ -111,6 +112,23 @@ function isHashedAsset(pathname) {
 // Check if request is a static asset (non-hashed)
 function isStaticAsset(pathname) {
   return /\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf|eot|ico)(\?.*)?$/i.test(pathname);
+}
+
+async function refreshOpenClients() {
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  await Promise.all(
+    clientList.map((client) => {
+      try {
+        const url = new URL(client.url);
+        if (!url.origin || url.origin !== self.location.origin) return Promise.resolve();
+        if (url.searchParams.get('app_update') === String(CACHE_VERSION)) return Promise.resolve();
+        url.searchParams.set('app_update', String(CACHE_VERSION));
+        return client.navigate(url.href);
+      } catch (err) {
+        return Promise.resolve();
+      }
+    })
+  );
 }
 
 // Background sync for offline actions

@@ -1,6 +1,8 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { STEPS } from '../../_lib/steps.js';
+import { requireWorkerAction } from '../../_lib/auth.js';
 
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -9,6 +11,8 @@ export default cors(async function handler(req, res) {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   if (!rateLimitCheck(req, res)) return;
+  const workerAction = requireWorkerAction(req, res);
+  if (!workerAction) return;
 
   const id = req.query.id;
   if (!id || isNaN(Number(id))) {
@@ -34,12 +38,17 @@ export default cors(async function handler(req, res) {
 
   // Check no later steps are started
   const { rows: allProcesses } = await db.execute({
-    sql: 'SELECT * FROM processes WHERE order_id = ? ORDER BY id',
+    sql: 'SELECT * FROM processes WHERE order_id = ?',
     args: [process.order_id]
   });
-  const currentIndex = allProcesses.findIndex(p => Number(p.id) === Number(process.id));
-  const laterSteps = allProcesses.slice(currentIndex + 1);
-  const startedLater = laterSteps.filter(p => p.status !== 'waiting');
+  const currentIndex = STEPS.indexOf(process.step_name);
+  if (currentIndex === -1) {
+    return res.status(400).json({ error: { message: '유효하지 않은 공정입니다.', status: 400 } });
+  }
+  const startedLater = STEPS
+    .slice(currentIndex + 1)
+    .flatMap((step) => allProcesses.filter((p) => p.step_name === step))
+    .filter((p) => p.status !== 'waiting');
   if (startedLater.length > 0) {
     return res.status(400).json({
       error: { message: '이후 공정이 이미 진행/완료되어 되돌릴 수 없습니다.', status: 400 },
@@ -72,7 +81,7 @@ export default cors(async function handler(req, res) {
                 AND description LIKE '%출고 공정 완료%'
               ORDER BY created_at DESC
               LIMIT 1`,
-        args: [process.order_id, process.completed_by || actor || '작업자'],
+        args: [process.order_id, process.completed_by || actor || workerAction.actor],
       });
       if (markerRows.length > 0) {
         await db.execute({
@@ -108,7 +117,7 @@ export default cors(async function handler(req, res) {
           process.order_id,
           '공정되돌리기',
           `${order.client_name} - ${process.step_name} 공정이 되돌려졌습니다.`,
-          actor || '작업자'
+          actor || workerAction.actor
         ]
       });
     } catch (e) {

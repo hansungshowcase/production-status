@@ -152,13 +152,13 @@ export async function attachWorkOrderImage(orderId, file) {
 }
 
 export async function getWorkOrderImage(orderId) {
-  if (!orderId) throw new Error('二쇰Ц ID媛 ?꾩슂?⑸땲??');
+  if (!orderId) throw new Error('주문 ID가 필요합니다.');
 
   const response = await fetch(`/api/orders/${orderId}/work-order-image`, { headers: authHeaders() });
   if (!response.ok) {
     if (response.status === 401) clearToken();
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || '?묒뾽吏?쒖꽌瑜?遺덈윭?????놁뒿?덈떎.');
+    throw new Error(errorData?.error?.message || '작업지시서를 불러올 수 없습니다.');
   }
   return response.json();
 }

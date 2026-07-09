@@ -19,7 +19,7 @@ export function recoverFromChunkLoadError() {
   const now = Date.now();
   if (!lastAttempt || now - lastAttempt > MAX_RELOAD_AGE_MS) {
     sessionStorage.setItem(RELOAD_KEY, String(now));
-    window.location.reload();
+    clearCachesAndReload();
     return true;
   }
   return false;
@@ -27,6 +27,32 @@ export function recoverFromChunkLoadError() {
 
 export function clearChunkReloadAttempt() {
   sessionStorage.removeItem(RELOAD_KEY);
+}
+
+export async function clearAppCaches() {
+  const cleanupTasks = [];
+
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    cleanupTasks.push(...registrations.map((registration) => registration.unregister()));
+  }
+
+  if ('caches' in window) {
+    const cacheNames = await caches.keys();
+    cleanupTasks.push(...cacheNames.map((cacheName) => caches.delete(cacheName)));
+  }
+
+  await Promise.all(cleanupTasks);
+}
+
+export async function clearCachesAndReload() {
+  try {
+    await clearAppCaches();
+  } catch (error) {
+    console.warn('App cache cleanup failed before reload:', error);
+  } finally {
+    window.location.reload();
+  }
 }
 
 export default class ChunkErrorBoundary extends Component {
@@ -47,7 +73,7 @@ export default class ChunkErrorBoundary extends Component {
 
   handleReload = () => {
     clearChunkReloadAttempt();
-    window.location.reload();
+    clearCachesAndReload();
   };
 
   render() {

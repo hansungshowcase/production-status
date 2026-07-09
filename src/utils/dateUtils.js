@@ -25,8 +25,8 @@ export function parseDate(dateStr) {
     return new Date(Number(dotMatch[1]), Number(dotMatch[2]) - 1, Number(dotMatch[3]));
   }
 
-  // Korean month-day format: "3월25일" or "3월25알" (typo in sheet)
-  const monthDayMatch = str.match(/(\d{1,2})월\s*(\d{1,2})[일알]/);
+  // Korean month-day format: "3월25일", "3월25알", "납기일 7월3일도착"
+  const monthDayMatch = str.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*[일알]?/);
   if (monthDayMatch) {
     const now = new Date();
     const month = Number(monthDayMatch[1]) - 1;
@@ -60,6 +60,44 @@ export function parseDate(dateStr) {
   if (!isNaN(fallback.getTime())) return fallback;
 
   return null;
+}
+
+function formatIsoDate(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+export function extractDueDateFromText(text) {
+  const str = String(text || '');
+  if (!str.trim()) return null;
+
+  const isoMatch = str.match(/(?:납기일?|납품일?|출고일?)\s*[:_\-\s]*((?:20)?\d{2}[-./]\d{1,2}[-./]\d{1,2})/);
+  if (isoMatch) {
+    const date = parseDate(isoMatch[1]);
+    return date ? formatIsoDate(date) : null;
+  }
+
+  const monthDayMatch = str.match(/(?:납기일?|납품일?|출고일?)\s*[:_\-\s]*(\d{1,2}\s*월\s*\d{1,2}\s*[일알]?)/);
+  if (monthDayMatch) {
+    const date = parseDate(monthDayMatch[1]);
+    return date ? formatIsoDate(date) : null;
+  }
+
+  return null;
+}
+
+export function extractDueDateFromOrder(order) {
+  if (!order) return null;
+  if (order.due_date) return order.due_date;
+
+  return extractDueDateFromText([
+    order.notes,
+    order.remarks,
+    order.etc_notes,
+  ].filter(Boolean).join('\n'));
 }
 
 /**

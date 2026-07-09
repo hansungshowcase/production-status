@@ -3,12 +3,45 @@ import { cors } from './_lib/cors.js';
 import { STEPS } from './_lib/steps.js';
 import { daysUntilDue } from './_lib/daysUntilDue.js';
 
+function stepOrderCase(alias) {
+  const clauses = STEPS.map((step, index) => `WHEN '${step.replace(/'/g, "''")}' THEN ${index}`).join(' ');
+  return `CASE ${alias}.step_name ${clauses} ELSE 999 END`;
+}
+
+function canonicalProcessesSql() {
+  const stepList = STEPS.map(step => `'${step.replace(/'/g, "''")}'`).join(', ');
+  return `(
+    SELECT *
+    FROM (
+      SELECT p.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY p.order_id, p.step_name
+          ORDER BY
+            CASE p.status
+              WHEN 'in_progress' THEN 0
+              WHEN 'waiting' THEN 1
+              WHEN 'completed' THEN 2
+              ELSE 3
+            END,
+            p.id DESC
+        ) AS rn
+      FROM processes p
+      WHERE p.step_name IN (${stepList})
+    ) ranked_processes
+    WHERE rn = 1
+  )`;
+}
+
 export default cors(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
 
   const db = getDb();
+  const processStepOrder = stepOrderCase('p');
+  const previousStepOrder = stepOrderCase('p2');
+  const doneStepOrder = stepOrderCase('p_done');
+  const canonicalProcesses = canonicalProcessesSql();
 
   // 11개 직렬 await → Promise.all 병렬 (응답 1~3초 → 0.3~0.5초)
   const [
@@ -20,23 +53,23 @@ export default cors(async function handler(req, res) {
     db.execute({ sql: 'SELECT COUNT(*) AS count FROM orders', args: [] }),
     db.execute({ sql: "SELECT COUNT(*) AS count FROM orders WHERE status = 'in_production'", args: [] }),
     db.execute({ sql: "SELECT COUNT(*) AS count FROM orders WHERE status = 'shipped'", args: [] }),
-    db.execute({ sql: "SELECT COUNT(*) AS count FROM processes WHERE status = 'waiting'", args: [] }),
-    db.execute({ sql: "SELECT COUNT(*) AS count FROM processes WHERE status = 'in_progress'", args: [] }),
-    db.execute({ sql: "SELECT COUNT(*) AS count FROM processes WHERE status = 'completed'", args: [] }),
+    db.execute({ sql: `SELECT COUNT(*) AS count FROM ${canonicalProcesses} cp WHERE cp.status = 'waiting'`, args: [] }),
+    db.execute({ sql: `SELECT COUNT(*) AS count FROM ${canonicalProcesses} cp WHERE cp.status = 'in_progress'`, args: [] }),
+    db.execute({ sql: `SELECT COUNT(*) AS count FROM ${canonicalProcesses} cp WHERE cp.status = 'completed'`, args: [] }),
     db.execute({ sql: 'SELECT COUNT(*) AS count FROM issues WHERE resolved_at IS NULL', args: [] }),
     db.execute({
       sql: `SELECT step_name,
         SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) AS waiting,
         SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
-      FROM processes
+      FROM ${canonicalProcesses} cp
       GROUP BY step_name
-      ORDER BY MIN(id)`,
+      ORDER BY MIN(${stepOrderCase('cp')})`,
       args: [],
     }),
     db.execute({
       sql: `SELECT p.step_name, COUNT(*) AS cnt
-            FROM processes p
+            FROM ${canonicalProcesses} p
             JOIN orders o ON o.id = p.order_id
             WHERE p.status IN ('waiting', 'in_progress')
               AND o.status = 'in_production'
@@ -44,9 +77,15 @@ export default cors(async function handler(req, res) {
                 SELECT 1 FROM processes p2
                 WHERE p2.order_id = p.order_id
                   AND p2.status != 'completed'
-                  AND p2.id < p.id
-                  AND p2.step_name != p.step_name
+                  AND ${previousStepOrder} < ${processStepOrder}
               )
+              AND (
+                SELECT COUNT(DISTINCT p_done.step_name)
+                FROM processes p_done
+                WHERE p_done.order_id = p.order_id
+                  AND p_done.status = 'completed'
+                  AND ${doneStepOrder} < ${processStepOrder}
+              ) = ${processStepOrder}
             GROUP BY p.step_name`,
       args: [],
     }),
@@ -78,7 +117,7 @@ export default cors(async function handler(req, res) {
         COUNT(*) AS delayed,
         SUM(CASE WHEN p.status = 'in_progress' THEN 1 ELSE 0 END) AS delayed_in_progress,
         SUM(CASE WHEN p.status = 'waiting' THEN 1 ELSE 0 END) AS delayed_waiting
-      FROM processes p
+      FROM ${canonicalProcesses} p
       JOIN orders o ON o.id = p.order_id
       WHERE o.status != 'shipped'
         AND o.due_date IS NOT NULL
@@ -89,8 +128,15 @@ export default cors(async function handler(req, res) {
           FROM processes p2
           WHERE p2.order_id = p.order_id
             AND p2.status != 'completed'
-            AND p2.id < p.id
+            AND ${previousStepOrder} < ${processStepOrder}
         )
+        AND (
+          SELECT COUNT(DISTINCT p_done.step_name)
+          FROM processes p_done
+          WHERE p_done.order_id = p.order_id
+            AND p_done.status = 'completed'
+            AND ${doneStepOrder} < ${processStepOrder}
+        ) = ${processStepOrder}
       GROUP BY p.step_name`,
       args: [],
     }),
@@ -111,9 +157,9 @@ export default cors(async function handler(req, res) {
           p.step_name,
           p.status AS process_status,
           p.started_by,
-          ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY p.id) AS rn
+          ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY ${processStepOrder}) AS rn
         FROM orders o
-        JOIN processes p ON p.order_id = o.id
+        JOIN ${canonicalProcesses} p ON p.order_id = o.id
         WHERE o.status != 'shipped'
           AND o.due_date IS NOT NULL
           AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')
@@ -143,9 +189,9 @@ export default cors(async function handler(req, res) {
           p.step_name,
           p.status AS process_status,
           p.started_by,
-          ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY p.id) AS rn
+          ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY ${processStepOrder}) AS rn
         FROM orders o
-        JOIN processes p ON p.order_id = o.id
+        JOIN ${canonicalProcesses} p ON p.order_id = o.id
         WHERE o.status != 'shipped'
           AND o.due_date IS NOT NULL
           AND o.due_date = to_char(CURRENT_DATE, 'YYYY-MM-DD')

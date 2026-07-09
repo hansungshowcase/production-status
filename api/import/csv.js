@@ -3,6 +3,7 @@ import { cors } from '../_lib/cors.js';
 import { STEPS } from '../_lib/steps.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { requireAuth } from '../_lib/auth.js';
+import { normalizeOrderMutationInput } from '../_lib/orderCreateInput.js';
 
 export const config = {
   api: {
@@ -171,7 +172,7 @@ export default cors(async function handler(req, res) {
     candidates.push({
       rowIndex: i + 1,
       dedupeKey: `${clientName}||${orderDate ?? ''}||${productType ?? ''}||${quantity ?? ''}`,
-      values: {
+      values: normalizeOrderMutationInput({
         order_date: orderDate,
         due_date: get('due_date'),
         sales_person: get('sales_person'),
@@ -187,7 +188,7 @@ export default cors(async function handler(req, res) {
         color: get('color'),
         notes: get('notes'),
         status,
-      },
+      }),
     });
   }
 
@@ -247,6 +248,7 @@ export default cors(async function handler(req, res) {
     }
 
     // ---- 2-b: orders 배치 INSERT (RETURNING id) ----
+    let insertedIds = [];
     try {
       const cols = [
         'order_date', 'due_date', 'sales_person', 'client_name', 'ship_date',
@@ -264,7 +266,7 @@ export default cors(async function handler(req, res) {
         args,
       });
 
-      const insertedIds = orderResult.rows.map(r => Number(r.id));
+      insertedIds = orderResult.rows.map(r => Number(r.id));
 
       // ---- 2-c: processes 배치 INSERT (orders × STEPS) ----
       if (insertedIds.length > 0 && STEPS.length > 0) {
@@ -293,6 +295,17 @@ export default cors(async function handler(req, res) {
 
       importedCount += insertedIds.length;
     } catch (err) {
+      if (insertedIds.length > 0) {
+        try {
+          const placeholders = insertedIds.map(() => '?').join(',');
+          await db.execute({
+            sql: `DELETE FROM orders WHERE id IN (${placeholders})`,
+            args: insertedIds,
+          });
+        } catch (cleanupErr) {
+          errors.push(`청크 실패 후 정리 실패: ${cleanupErr.message}`);
+        }
+      }
       // 청크 실패 시 해당 청크 행 번호 범위로 에러 기록
       const first = toInsert[0]?.rowIndex;
       const last = toInsert[toInsert.length - 1]?.rowIndex;

@@ -2,6 +2,19 @@ import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { STEPS } from '../../_lib/steps.js';
 
+function sqlString(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function stepOrderCase(alias) {
+  const clauses = STEPS.map((step, index) => `WHEN ${sqlString(step)} THEN ${index}`).join(' ');
+  return `CASE ${alias}.step_name ${clauses} ELSE 999 END`;
+}
+
+function stepListSql() {
+  return STEPS.map(sqlString).join(', ');
+}
+
 export default cors(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -29,8 +42,15 @@ export default cors(async function handler(req, res) {
         WHERE p3.order_id = p.order_id
           AND p3.step_name IN (${placeholders})
           AND p3.status != 'completed'
-      )`;
-      args.push(...prevSteps);
+      )
+      AND (
+        SELECT COUNT(DISTINCT p4.step_name)
+        FROM processes p4
+        WHERE p4.order_id = p.order_id
+          AND p4.step_name IN (${placeholders})
+          AND p4.status = 'completed'
+      ) = ${prevSteps.length}`;
+      args.push(...prevSteps, ...prevSteps);
     }
 
     const { rows } = await db.execute({
@@ -48,11 +68,29 @@ export default cors(async function handler(req, res) {
               WHERE pp.order_id = o.id AND pp.step_name = '포장'
               ORDER BY ph.uploaded_at DESC
               LIMIT 1) AS packing_photo_url,
-             (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id AND p2.status = 'completed') AS completed_steps,
-             (SELECT COUNT(*) FROM processes p2 WHERE p2.order_id = o.id) AS total_steps,
+             (SELECT COUNT(DISTINCT p2.step_name) FROM processes p2 WHERE p2.order_id = o.id AND p2.step_name IN (${stepListSql()}) AND p2.status = 'completed') AS completed_steps,
+             (SELECT COUNT(DISTINCT p2.step_name) FROM processes p2 WHERE p2.order_id = o.id AND p2.step_name IN (${stepListSql()})) AS total_steps,
              (SELECT COUNT(*) FROM issues i WHERE i.order_id = o.id AND i.resolved_at IS NULL) AS open_issues,
              COALESCE(ph.step_history, '[]'::jsonb) AS step_history
-      FROM processes p
+      FROM (
+        SELECT *
+        FROM (
+          SELECT p.*,
+            ROW_NUMBER() OVER (
+              PARTITION BY p.order_id, p.step_name
+              ORDER BY
+                CASE p.status
+                  WHEN 'in_progress' THEN 0
+                  WHEN 'waiting' THEN 1
+                  ELSE 2
+                END,
+                p.id DESC
+            ) AS rn
+          FROM processes p
+          WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
+        ) ranked_current
+        WHERE rn = 1
+      ) p
       JOIN orders o ON o.id = p.order_id
       LEFT JOIN (
         SELECT order_id,
@@ -65,13 +103,12 @@ export default cors(async function handler(req, res) {
               'completed_by', completed_by,
               'completed_at', completed_at
             )
-            ORDER BY id
+            ORDER BY ${stepOrderCase('processes')}, id
           ) AS step_history
         FROM processes
         GROUP BY order_id
       ) ph ON ph.order_id = o.id
-      WHERE p.step_name = ? AND p.status IN ('waiting', 'in_progress')
-        AND o.status = 'in_production'
+      WHERE o.status = 'in_production'
         ${filterClause}
       ORDER BY
         CASE WHEN o.due_date IS NULL OR o.due_date = '' THEN 1 ELSE 0 END,

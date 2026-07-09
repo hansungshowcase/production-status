@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getOrders } from '../../api/orders';
 import { PROCESS_STEPS } from '../../constants';
+import { extractDueDateFromOrder } from '../../utils/dateUtils';
 import './SearchBar.css';
 
 export default function SearchBar({ placeholder = '검색', onSelect, onSearch }) {
@@ -78,10 +79,11 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
   }, []);
 
   const getDueInfo = (order) => {
-    if (!order.due_date) return { label: '-', className: '' };
+    const dueDate = extractDueDateFromOrder(order);
+    if (!dueDate) return { label: '-', className: '' };
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    const due = new Date(order.due_date);
+    const due = new Date(dueDate);
     due.setHours(0, 0, 0, 0);
     const diff = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
     const dateStr = due.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
@@ -92,8 +94,8 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
   };
 
   const getStepInfo = (order) => {
-    const completed = order.completed_steps || 0;
-    const total = order.total_steps || PROCESS_STEPS.length;
+    const completed = Math.min(Number(order.completed_steps || 0), PROCESS_STEPS.length);
+    const total = PROCESS_STEPS.length;
     if (completed >= total) return '완료';
     return `${completed}/${total}`;
   };

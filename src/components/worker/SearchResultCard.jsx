@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDaysUntilDue } from '../../utils/dateUtils';
 import { PROCESS_STEPS } from '../../constants';
+import { getSearchResultNavigation } from './searchResultNavigation';
 import './SearchResultCard.css';
 
 export default function SearchResultCard({ order }) {
@@ -32,7 +33,8 @@ export default function SearchResultCard({ order }) {
   };
 
   const handleClick = () => {
-    navigate(`/worker/update/${order.id}`);
+    const target = getSearchResultNavigation(order);
+    navigate(target.path, target.state ? { state: target.state } : undefined);
   };
 
   const displaySpec = order.productType

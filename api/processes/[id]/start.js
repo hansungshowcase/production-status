@@ -1,12 +1,19 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { STEPS } from '../../_lib/steps.js';
+import { requireWorkerAction } from '../../_lib/auth.js';
+
+// 핸들러 안에서 지역변수 process(공정 row)가 Node 전역 process를 가리므로 환경변수는 모듈 레벨에서 읽는다
+const NOTIFY_STARTED_ENABLED = process.env.NOTIFY_STARTED === '1';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   if (!rateLimitCheck(req, res)) return;
+  const workerAction = requireWorkerAction(req, res);
+  if (!workerAction) return;
 
   const id = req.query.id;
   if (!id || isNaN(Number(id))) {
@@ -40,13 +47,20 @@ export default cors(async function handler(req, res) {
 
   // Validate that all previous steps are completed
   const { rows: allProcesses } = await db.execute({
-    sql: 'SELECT * FROM processes WHERE order_id = ? ORDER BY id',
+    sql: 'SELECT * FROM processes WHERE order_id = ?',
     args: [process.order_id]
   });
 
-  const currentIndex = allProcesses.findIndex(p => Number(p.id) === Number(process.id));
-  const previousSteps = allProcesses.slice(0, currentIndex);
-  const incompletePrereqs = previousSteps.filter(p => p.status !== 'completed');
+  const currentIndex = STEPS.indexOf(process.step_name);
+  if (currentIndex === -1) {
+    return res.status(400).json({ error: { message: '유효하지 않은 공정입니다.', status: 400 } });
+  }
+  const incompletePrereqs = STEPS
+    .slice(0, currentIndex)
+    .filter((step) => {
+      const matches = allProcesses.filter((p) => p.step_name === step);
+      return matches.length === 0 || matches.some((p) => p.status !== 'completed');
+    });
   if (incompletePrereqs.length > 0) {
     return res.status(400).json({
       error: {
@@ -57,7 +71,7 @@ export default cors(async function handler(req, res) {
   }
 
   const now = new Date().toISOString();
-  const requestedWorker = actor || assigned_worker || '작업자';
+  const requestedWorker = actor || assigned_worker || workerAction.actor;
   const workerName = process.step_name === '도면설계' ? '김보수 팀장' : requestedWorker;
 
   // Atomic update: only update if still 'waiting' (prevents double-click race condition)
@@ -88,6 +102,17 @@ export default cors(async function handler(req, res) {
       });
     } catch (e) {
       console.error('활동 로그 기록 실패:', e);
+    }
+  }
+
+  // 알림 훅: 해당 주문의 최초 공정 시작 + NOTIFY_STARTED=1 → started (실패해도 본 응답에 영향 없음)
+  // allProcesses는 UPDATE 이전 스냅샷 — 전부 waiting이었다면 이번이 첫 시작
+  if (NOTIFY_STARTED_ENABLED && order && allProcesses.every((p) => p.status === 'waiting')) {
+    try {
+      const { maybeNotify } = await import('../../_lib/notify.js');
+      await maybeNotify(db, order, 'started');
+    } catch (e) {
+      console.error('[start] started 알림 발송 실패(무시):', e?.message || e);
     }
   }
 

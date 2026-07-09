@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import DeliveryAdherenceCard from '../components/home/DeliveryAdherenceCard';
 import './HomePage.css';
 
 const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM/edit?gid=0#gid=0';
@@ -35,6 +36,8 @@ export default function HomePage() {
           <div className="home-hero-order__cta">작업 등록하기 &rarr;</div>
         </button>
 
+        <DeliveryAdherenceCard />
+
         <button
           className="home-sheet-link"
           onClick={() => window.open(GOOGLE_SHEET_URL, '_blank', 'noopener,noreferrer')}
@@ -56,12 +59,15 @@ export default function HomePage() {
             }}
           >
             <div className="home-card-icon">&#x1F477;</div>
-            <div className="home-card-title">현장 작업자</div>
-            <div className="home-card-desc">
-              공정 시작/완료 처리<br />
-              작업 사진 첨부 및 이슈 보고<br />
-              내 담당 작업 현황 확인
+            <div className="home-card-copy">
+              <div className="home-card-title">현장 작업자</div>
+              <div className="home-card-desc">
+                공정 시작/완료 처리<br />
+                작업 사진 첨부 및 이슈 보고<br />
+                내 담당 작업 현황 확인
+              </div>
             </div>
+            <div className="home-card-divider" aria-hidden="true" />
             <div className="home-card-arrow">&rarr;</div>
           </button>
 
@@ -70,12 +76,15 @@ export default function HomePage() {
             onClick={() => navigate('/sales')}
           >
             <div className="home-card-icon">&#x1F4BC;</div>
-            <div className="home-card-title">영업 관리</div>
-            <div className="home-card-desc">
-              전체 발주 현황 추적<br />
-              납기일 관리 및 진행률 확인<br />
-              실시간 피드 및 거래처 정보
+            <div className="home-card-copy">
+              <div className="home-card-title">영업 관리</div>
+              <div className="home-card-desc">
+                전체 발주 현황 추적<br />
+                납기일 관리 및 진행률 확인<br />
+                실시간 피드 및 거래처 정보
+              </div>
             </div>
+            <div className="home-card-divider" aria-hidden="true" />
             <div className="home-card-arrow">&rarr;</div>
           </button>
         </div>

@@ -1,12 +1,14 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
+import { requireAuth, requireWorkerAction } from '../../_lib/auth.js';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   if (!rateLimitCheck(req, res)) return;
+  if (!authorizeIssueResolve(req, res)) return;
 
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
@@ -54,3 +56,15 @@ export default cors(async function handler(req, res) {
 
   return res.json({ ...updated, client_name: order ? order.client_name : null });
 });
+
+function authorizeIssueResolve(req, res) {
+  const header = req.headers?.authorization || '';
+  const actor = req.body?.actor;
+  if (!header && actor) {
+    const workerAuth = requireWorkerAction(req, res);
+    return Boolean(workerAuth);
+  }
+
+  const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
+  return Boolean(auth);
+}
