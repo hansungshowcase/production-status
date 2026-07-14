@@ -1,13 +1,18 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
-import { sanitizeInput } from '../../_lib/sanitize.js';
+import { pickOwnAllowedFields, sanitizeInput } from '../../_lib/sanitize.js';
 import { requireAuth, resolveActor } from '../../_lib/auth.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { del } from '@vercel/blob';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
 import { STEPS } from '../../_lib/steps.js';
-import { normalizeOrderMutationInput } from '../../_lib/orderCreateInput.js';
+import {
+  assertImageBackedOrderHasCanonicalDueDate,
+  mutationTouchesImageDueInvariant,
+  normalizeOrderMutationInput,
+  OrderCreateInputValidationError,
+} from '../../_lib/orderCreateInput.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -82,7 +87,8 @@ async function handleUpdate(id, req, res) {
   }
   const db = getDb();
   await ensureOrderImageColumn(db);
-  const body = normalizeOrderMutationInput(sanitizeInput(req.body));
+  const normalizedBody = normalizeOrderMutationInput(sanitizeInput(req.body));
+  const mutation = pickOwnAllowedFields(normalizedBody, ORDER_FIELDS);
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
@@ -94,26 +100,45 @@ async function handleUpdate(id, req, res) {
   const updates = [];
   const values = [];
 
-  for (const field of ORDER_FIELDS) {
-    if (body[field] !== undefined) {
-      updates.push(`${field} = ?`);
-      values.push(body[field]);
-    }
+  for (const [field, value] of Object.entries(mutation)) {
+    updates.push(`${field} = ?`);
+    values.push(value);
   }
 
   if (updates.length === 0) {
     return res.status(400).json({ error: { message: '수정할 필드가 없습니다.', status: 400 } });
   }
 
+  try {
+    assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation });
+  } catch (err) {
+    if (err instanceof OrderCreateInputValidationError) {
+      return res.status(400).json({ error: { message: err.message, status: 400 } });
+    }
+    throw err;
+  }
+
   updates.push("updated_at = CURRENT_TIMESTAMP");
 
-  await db.execute({
-    sql: `UPDATE orders SET ${updates.join(', ')} WHERE id = ?`,
-    args: [...values, id],
+  const guardInvariantState = mutationTouchesImageDueInvariant(mutation);
+  const invariantWhere = guardInvariantState
+    ? ' AND due_date IS NOT DISTINCT FROM ? AND work_order_image_url IS NOT DISTINCT FROM ?'
+    : '';
+  const updateResult = await db.execute({
+    sql: `UPDATE orders SET ${updates.join(', ')} WHERE id = ?${invariantWhere} RETURNING *`,
+    args: guardInvariantState
+      ? [...values, id, order.due_date ?? null, order.work_order_image_url ?? null]
+      : [...values, id],
   });
+  if (!updateResult.rows || updateResult.rows.length === 0) {
+    return res.status(409).json({
+      error: { message: '주문 정보가 변경되어 수정하지 못했습니다. 다시 시도해주세요.', status: 409 },
+    });
+  }
+  const updated = updateResult.rows[0];
 
   // Log activity
-  const changedFields = Object.keys(body).filter(k => ORDER_FIELDS.includes(k));
+  const changedFields = Object.keys(mutation);
   await db.execute({
     sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
     args: [
@@ -124,16 +149,13 @@ async function handleUpdate(id, req, res) {
     ],
   });
 
-  const updatedResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
-  const updated = updatedResult.rows[0];
-
   // 알림 훅: 출고예정일(ship_scheduled_date)이 실제 변경 + 미출고면 → rescheduled
   // 멱등키가 'rescheduled:날짜'라 같은 날짜 재저장은 중복 발송되지 않음 (실패해도 본 응답에 영향 없음)
   try {
     const prevSched = order.ship_scheduled_date || null;
     const newSched = updated?.ship_scheduled_date || null;
     if (
-      body.ship_scheduled_date !== undefined &&
+      mutation.ship_scheduled_date !== undefined &&
       newSched &&
       String(newSched) !== String(prevSched || '') &&
       updated.status !== 'shipped'

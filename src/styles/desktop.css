@@ -26,19 +26,18 @@ html, body {
   display: contents;
 }
 
-/* PC 데스크톱(1024px+)에서만 full-viewport 높이 강제 */
 @media (min-width: 1024px) {
   html, body {
-    height: 100%;
+    min-height: 100%;
   }
   #root {
-    height: 100%;
+    min-height: 100%;
   }
   .app-container {
     width: 100% !important;
     max-width: none !important;
-    height: 100vh;
-    height: 100dvh;
+    min-height: 100vh;
+    min-height: 100dvh;
     margin: 0 !important;
     border: 0;
     box-shadow: none;

@@ -7,7 +7,10 @@ import { resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { appendOrderToSheet } from '../_lib/googleSheets.js';
-import { normalizeOrderCreateInput } from '../_lib/orderCreateInput.js';
+import {
+  normalizeOrderCreateInput,
+  OrderCreateInputValidationError,
+} from '../_lib/orderCreateInput.js';
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -306,7 +309,15 @@ async function handleGet(req, res) {
 }
 
 async function handlePost(req, res) {
-  const body = normalizeOrderCreateInput(sanitizeInput(req.body));
+  let body;
+  try {
+    body = normalizeOrderCreateInput(sanitizeInput(req.body));
+  } catch (err) {
+    if (err instanceof OrderCreateInputValidationError) {
+      return res.status(400).json({ error: { message: err.message, status: 400 } });
+    }
+    throw err;
+  }
   const {
     client_name, width, depth, height, quantity, product_type, door_type, color,
   } = body;

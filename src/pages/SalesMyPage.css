@@ -578,6 +578,32 @@
   padding-top: 4px;
 }
 
+.sales-my-page__load-more {
+  width: 100%;
+  min-height: 48px;
+  margin: 12px 0 4px;
+  border: 1px solid var(--border, #d8e1ec);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2563eb;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sales-my-page__load-more span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sales-my-page__load-more:active {
+  transform: translateY(1px);
+}
+
 .sales-my-page__empty {
   text-align: center;
   padding: 60px 20px;

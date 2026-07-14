@@ -77,13 +77,15 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
   const 수량 = `${order.quantity || 1}대`;
   const 예상출고일 = fmtDate(order.due_date);
   const 조회링크 = trackUrl || '';
+  // 알림톡 웹링크 버튼이 https://.../track/#{토큰} 형태라 토큰 변수도 함께 넘긴다
+  const 토큰 = trackUrl ? (String(trackUrl).split('/track/')[1] || '') : '';
 
   const footer = ['', '문의: 한성쇼케이스 고객센터'];
   const linkBlock = 조회링크 ? ['', '제작 진행 상황 실시간 조회', `▶ ${조회링크}`] : [];
 
   let subject = '';
   let lines = [];
-  const variables = { 고객명, 주문번호, 제품: order.product_type || '주문 제품', 규격: 제품규격, 수량, 예상출고일, 조회링크 };
+  const variables = { 고객명, 주문번호, 제품: order.product_type || '주문 제품', 규격: 제품규격, 수량, 예상출고일, 조회링크, 토큰 };
 
   switch (milestone) {
     case 'ordered':

@@ -12,3 +12,15 @@ export function sanitizeInput(obj) {
   }
   return obj;
 }
+
+export function pickOwnAllowedFields(input, allowedFields) {
+  const picked = {};
+  if (!input || typeof input !== 'object') return picked;
+
+  for (const field of allowedFields) {
+    if (Object.hasOwn(input, field) && input[field] !== undefined) {
+      picked[field] = input[field];
+    }
+  }
+  return picked;
+}

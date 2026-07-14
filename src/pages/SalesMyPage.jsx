@@ -11,6 +11,7 @@ import { safeGet } from '../utils/safeStorage';
 import {
   countSalesOrders,
   filterSalesOrders,
+  getVisibleSalesOrders,
   hasReachedPacking,
   isOverdue,
   isShipped,
@@ -20,6 +21,8 @@ import './SalesMyPage.css';
 const LS_KEY = 'sales_last_person';
 const REFRESH_INTERVAL = 300000; // 5 minutes
 const SALES_ORDER_PAGE_SIZE = 200;
+const INITIAL_VISIBLE_ORDER_COUNT = 40;
+const VISIBLE_ORDER_INCREMENT = 40;
 
 const SALES_PERSONS = ['신은철', '이준형'];
 
@@ -67,6 +70,7 @@ export default function SalesMyPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [feedItems, setFeedItems] = useState([]);
   const [editingOrder, setEditingOrder] = useState(null);
+  const [visibleOrderCount, setVisibleOrderCount] = useState(INITIAL_VISIBLE_ORDER_COUNT);
 
   // "다른 담당자 보기" state
   const [viewingPerson, setViewingPerson] = useState(null); // null = viewing own orders
@@ -177,7 +181,24 @@ export default function SalesMyPage() {
     });
   }
 
+  const { visibleOrders, hiddenOrderCount } = getVisibleSalesOrders(filtered, visibleOrderCount);
+
+  function resetVisibleOrders() {
+    setVisibleOrderCount(INITIAL_VISIBLE_ORDER_COUNT);
+  }
+
+  function handleFilterChange(nextFilter) {
+    resetVisibleOrders();
+    setFilter(nextFilter);
+  }
+
+  function handleSearchChange(nextSearchQuery) {
+    resetVisibleOrders();
+    setSearchQuery(nextSearchQuery);
+  }
+
   function handleSelectPerson(person) {
+    resetVisibleOrders();
     if (person === mySalesPerson) {
       setViewingPerson(null);
     } else {
@@ -189,6 +210,7 @@ export default function SalesMyPage() {
   }
 
   function handleReturnToOwn() {
+    resetVisibleOrders();
     setViewingPerson(null);
     setFilter('all');
     setSearchQuery('');
@@ -231,7 +253,7 @@ export default function SalesMyPage() {
       navigate(`/orders/${target.id}`);
       return;
     }
-    setFilter('overdue');
+    handleFilterChange('overdue');
   }
 
   return (
@@ -333,7 +355,7 @@ export default function SalesMyPage() {
       <div style={{ padding: '12px 20px 0' }}>
         <SearchBar
           placeholder="거래처, 사양, 색상으로 검색"
-          onSearch={setSearchQuery}
+          onSearch={handleSearchChange}
         />
       </div>
 
@@ -344,7 +366,7 @@ export default function SalesMyPage() {
         packingCompleted={packingCompletedCount}
         shipped={shippedCount}
         overdue={overdueCount}
-        onFilter={setFilter}
+        onFilter={handleFilterChange}
         onOverdueClick={handleOverdueSummaryClick}
         activeFilter={filter}
       />
@@ -367,7 +389,7 @@ export default function SalesMyPage() {
             <button
               key={tab.value}
               className={cls}
-              onClick={() => setFilter(tab.value)}
+              onClick={() => handleFilterChange(tab.value)}
             >
               {tab.label}
               {count > 0 ? ` (${count})` : ''}
@@ -399,7 +421,7 @@ export default function SalesMyPage() {
             </div>
           ) : (
             <div className="sales-my-page__order-list">
-              {filtered.map((order, idx) => (
+              {visibleOrders.map((order, idx) => (
                 <SalesOrderCard
                   key={order.id || idx}
                   order={order}
@@ -408,6 +430,15 @@ export default function SalesMyPage() {
                   onEdit={handleEditOrder}
                 />
               ))}
+              {hiddenOrderCount > 0 && (
+                <button
+                  className="sales-my-page__load-more"
+                  onClick={() => setVisibleOrderCount(count => count + VISIBLE_ORDER_INCREMENT)}
+                >
+                  더 보기 {Math.min(VISIBLE_ORDER_INCREMENT, hiddenOrderCount)}건
+                  <span>남은 {hiddenOrderCount}건</span>
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -73,3 +73,13 @@ export function countSalesOrders(orders) {
     packingCompletedCount: list.filter(isPackingCompletedForShipping).length,
   };
 }
+
+export function getVisibleSalesOrders(orders, visibleCount) {
+  const list = Array.isArray(orders) ? orders : [];
+  const limit = Math.max(0, Number(visibleCount) || 0);
+  const visibleOrders = list.slice(0, limit);
+  return {
+    visibleOrders,
+    hiddenOrderCount: Math.max(0, list.length - visibleOrders.length),
+  };
+}

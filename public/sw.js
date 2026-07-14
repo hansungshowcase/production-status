@@ -1,4 +1,4 @@
-const CACHE_VERSION = 52;
+const CACHE_VERSION = 53;
 const CACHE_NAME = `hansung-showcase-v${CACHE_VERSION}`;
 const RUNTIME_CACHE = `hansung-runtime-v${CACHE_VERSION}`;
 
@@ -78,14 +78,18 @@ self.addEventListener('fetch', (event) => {
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (response.ok && isCacheableResponse(request, response)) {
       const cache = await caches.open(RUNTIME_CACHE);
       cache.put(request, response.clone());
+    }
+    if (isCodeAssetRequest(request) && (!response.ok || !isCacheableResponse(request, response))) {
+      const cached = await caches.match(request);
+      if (isValidCachedResponse(request, cached)) return cached;
     }
     return response;
   } catch (e) {
     const cached = await caches.match(request);
-    return cached;
+    return isValidCachedResponse(request, cached) ? cached : undefined;
   }
 }
 
@@ -93,15 +97,16 @@ async function networkFirst(request) {
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   const cached = await cache.match(request);
+  const validCached = isValidCachedResponse(request, cached) ? cached : undefined;
 
   const fetchPromise = fetch(request).then((response) => {
-    if (response.ok) {
+    if (response.ok && isCacheableResponse(request, response)) {
       cache.put(request, response.clone());
     }
     return response;
-  }).catch(() => cached);
+  }).catch(() => validCached);
 
-  return cached || fetchPromise;
+  return validCached || fetchPromise;
 }
 
 // Vite hashed assets (e.g., index-gqID3pyv.js, styles-Ab3Cd.css)
@@ -112,6 +117,32 @@ function isHashedAsset(pathname) {
 // Check if request is a static asset (non-hashed)
 function isStaticAsset(pathname) {
   return /\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf|eot|ico)(\?.*)?$/i.test(pathname);
+}
+
+function isCacheableResponse(request, response) {
+  const pathname = new URL(request.url).pathname;
+  const mediaType = (response.headers.get('content-type') || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+
+  if (/\.js$/i.test(pathname)) {
+    return mediaType === 'application/javascript' || mediaType === 'text/javascript';
+  }
+  if (/\.css$/i.test(pathname)) {
+    return mediaType === 'text/css';
+  }
+  return true;
+}
+
+function isCodeAssetRequest(request) {
+  return /\.(js|css)$/i.test(new URL(request.url).pathname);
+}
+
+function isValidCachedResponse(request, response) {
+  if (!response) return false;
+  if (!isCodeAssetRequest(request)) return true;
+  return response.ok && isCacheableResponse(request, response);
 }
 
 async function refreshOpenClients() {

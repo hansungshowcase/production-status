@@ -6,7 +6,8 @@ import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
-import { buildOrderPayload } from './orderEntryPayload';
+import { extractDueDateFromText } from '../utils/dateUtils';
+import { buildOrderPayload, validateOrderEntryForm } from './orderEntryPayload';
 import './OrderEntryPage.css';
 
 function todayStr() {
@@ -140,7 +141,9 @@ function parseBrowserOcrText(text) {
   const size = extractSize(normalized);
   const dateMatches = Array.from(normalized.matchAll(/\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/g)).map((match) => match[0]);
   const orderDate = normalizeDateValue(extractLabeledValue(normalized, ['발주일', '주문일', '작성일', '등록일', 'Order Date', 'Order'])) || normalizeDateValue(dateMatches[0]);
-  const dueDate = normalizeDateValue(extractLabeledValue(normalized, ['납기일', '납품일', '출고일', '납기', '납품', 'Due Date', 'Due', 'Ship Date'])) || normalizeDateValue(dateMatches[1]);
+  const dueDate = extractDueDateFromText(normalized)
+    || normalizeDateValue(extractLabeledValue(normalized, ['납기일자', '납품일자', '출고일자', '납기일', '납품일', '출고일', '납기', '납품', 'Due Date', 'Due', 'Ship Date']))
+    || normalizeDateValue(dateMatches[1]);
   const notes = extractLabeledValue(normalized, ['비고', '특이사항', '요청사항', '메모', 'Note', 'Notes', 'Memo']);
 
   return {
@@ -208,16 +211,10 @@ export default function OrderEntryPage() {
   const fileInputRef = useRef(null);
 
   const validate = useCallback(() => {
-    const newErrors = {};
-    if (!form.client_name || !form.client_name.trim()) {
-      newErrors.client_name = '거래처를 입력해주세요';
-    }
-    if (!form.product_type || !form.product_type.trim()) {
-      newErrors.product_type = '사양을 선택해주세요';
-    }
+    const newErrors = validateOrderEntryForm(form, Boolean(workOrderImageUrl));
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [form]);
+  }, [form, workOrderImageUrl]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -485,6 +482,9 @@ export default function OrderEntryPage() {
     }
     if (errors.product_type && newForm.product_type) {
       setErrors((prev) => ({ ...prev, product_type: undefined }));
+    }
+    if (errors.due_date && newForm.due_date) {
+      setErrors((prev) => ({ ...prev, due_date: undefined }));
     }
   };
 

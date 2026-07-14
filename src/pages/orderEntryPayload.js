@@ -1,4 +1,5 @@
 import { normalizeOrderMemoForStorage } from '../utils/orderText.js';
+import { isCanonicalCalendarDate } from '../utils/dateUtils.js';
 
 export function normalizeOptionalPositiveNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -20,11 +21,34 @@ export function normalizeOrderNotes(value) {
   return normalizeOrderMemoForStorage(value);
 }
 
+export function normalizeSalesPerson(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const compact = trimmed.replace(/\s+/g, '');
+  if (compact.includes('김보수')) return '이준형';
+  return trimmed;
+}
+
+export function validateOrderEntryForm(form, hasWorkOrderImage = false) {
+  const errors = {};
+  if (!form.client_name || !form.client_name.trim()) {
+    errors.client_name = '거래처를 입력해주세요';
+  }
+  if (!form.product_type || !form.product_type.trim()) {
+    errors.product_type = '사양을 선택해주세요';
+  }
+  if (hasWorkOrderImage && !isCanonicalCalendarDate(form.due_date)) {
+    errors.due_date = '작업지시서 등록은 납기일을 입력해주세요';
+  }
+  return errors;
+}
+
 export function buildOrderPayload(form, workOrderImageUrl, fallbackOrderDate) {
   return {
     order_date: form.order_date || fallbackOrderDate,
     due_date: form.due_date || null,
-    sales_person: form.sales_person || null,
+    sales_person: normalizeSalesPerson(form.sales_person),
     client_name: form.client_name.trim(),
     phone: form.phone || null,
     product_type: form.product_type.trim(),

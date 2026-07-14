@@ -1,4 +1,5 @@
 import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
+import { isCanonicalCalendarDate } from '../../src/utils/dateUtils.js';
 
 function normalizeOptionalPositiveNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -22,8 +23,38 @@ function normalizeOptionalText(value) {
   return trimmed || null;
 }
 
+function normalizeSalesPerson(value) {
+  if (value === undefined || value === null) return value;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const compact = trimmed.replace(/\s+/g, '');
+  if (compact.includes('김보수')) return '이준형';
+  return trimmed;
+}
+
+export class OrderCreateInputValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'OrderCreateInputValidationError';
+  }
+}
+
+export function assertImageBackedOrderHasCanonicalDueDate(order) {
+  if (order.work_order_image_url && !isCanonicalCalendarDate(order.due_date)) {
+    throw new OrderCreateInputValidationError(
+      'work_order_image_url이 있는 주문은 due_date를 실제 YYYY-MM-DD 날짜로 입력해야 합니다.',
+    );
+  }
+}
+
+export function mutationTouchesImageDueInvariant(mutation) {
+  return Object.hasOwn(mutation, 'due_date') || Object.hasOwn(mutation, 'work_order_image_url');
+}
+
 export function normalizeOrderCreateInput(input) {
   const body = normalizeOrderMutationInput(input);
+
+  assertImageBackedOrderHasCanonicalDueDate(body);
 
   body.width = normalizeOptionalPositiveNumber(body.width);
   body.depth = normalizeOptionalPositiveNumber(body.depth);
@@ -46,6 +77,10 @@ export function normalizeOrderMutationInput(input) {
 
   if (body.freight_payment !== undefined) {
     body.freight_payment = normalizeOptionalText(body.freight_payment);
+  }
+
+  if (body.sales_person !== undefined) {
+    body.sales_person = normalizeSalesPerson(body.sales_person);
   }
 
   if (body.notes !== undefined) {

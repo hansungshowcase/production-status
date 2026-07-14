@@ -23,7 +23,7 @@ test('installed app checks for the latest service worker immediately and on resu
   assert.match(indexSource, /navigator\.serviceWorker\.addEventListener\('controllerchange'/);
   assert.match(indexSource, /document\.addEventListener\('visibilitychange'/);
   assert.match(indexSource, /reg\.update\(\)/);
-  assert.match(serviceWorkerSource, /const CACHE_VERSION = 52;/);
+  assert.match(serviceWorkerSource, /const CACHE_VERSION = 53;/);
   assert.match(serviceWorkerSource, /self\.skipWaiting\(\)/);
   assert.match(serviceWorkerSource, /self\.clients\.claim\(\)/);
   assert.match(serviceWorkerSource, /refreshOpenClients/);

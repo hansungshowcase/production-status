@@ -65,12 +65,19 @@ export default cors(async function handler(req, res) {
     args: [staleBefore],
   });
 
+  // 발송 켜기 이전에 쌓인 backlog(막혀서 failed 로 남은 과거 건)를 소급 발송하지 않도록 하는 컷오프.
+  // NOTIFY_RETRY_AFTER(ISO) 보다 오래된 queued/failed 는 재발송 대상에서 제외 → "지금부터 새로".
+  const retryAfter = String(process.env.NOTIFY_RETRY_AFTER || '').trim();
+
   for (const order of pendingOrders) {
     const state = (order.notify_state && typeof order.notify_state === 'object') ? order.notify_state : {};
     for (const [key, val] of Object.entries(state)) {
       const status = val?.status;
       const staleSending = status === 'sending' && String(val?.at || '') < staleBefore;
       if (status !== 'queued' && status !== 'failed' && !staleSending) continue;
+
+      // 컷오프 이전(발송 켜기 전) 건은 소급 발송 안 함
+      if (retryAfter && String(val?.at || '') < retryAfter) { summary.skipped += 1; continue; }
 
       if (status === 'failed' || staleSending) {
         // 재시도 상한: notification_log 기준 failed 3회 이상이면 포기 (고객 스팸 방지)

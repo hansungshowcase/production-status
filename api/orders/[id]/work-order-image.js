@@ -5,6 +5,10 @@ import { parseMultipart, getFilePart } from '../../_lib/parseBody.js';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { storeImageFile } from '../../_lib/storeImage.js';
+import {
+  assertImageBackedOrderHasCanonicalDueDate,
+  OrderCreateInputValidationError,
+} from '../../_lib/orderCreateInput.js';
 
 export const config = {
   api: {
@@ -57,10 +61,22 @@ export default cors(async function handler(req, res) {
   const db = getDb();
   await ensureOrderImageColumn(db);
 
-  const orderResult = await db.execute({ sql: 'SELECT id, client_name FROM orders WHERE id = ?', args: [id] });
+  const orderResult = await db.execute({ sql: 'SELECT id, client_name, due_date, work_order_image_url FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
   if (!order) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
+  }
+
+  try {
+    assertImageBackedOrderHasCanonicalDueDate({
+      ...order,
+      work_order_image_url: 'pending-upload',
+    });
+  } catch (err) {
+    if (err instanceof OrderCreateInputValidationError) {
+      return res.status(400).json({ error: { message: err.message, status: 400 } });
+    }
+    throw err;
   }
 
   const extMatch = (filePart.filename || '').match(/\.[^.]+$/);
@@ -76,10 +92,23 @@ export default cors(async function handler(req, res) {
   }
 
   try {
-    await db.execute({
-      sql: 'UPDATE orders SET work_order_image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      args: [storedImage.url, id],
+    const updateResult = await db.execute({
+      sql: `UPDATE orders
+            SET work_order_image_url = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND due_date IS NOT DISTINCT FROM ?
+              AND work_order_image_url IS NOT DISTINCT FROM ?
+            RETURNING *`,
+      args: [storedImage.url, id, order.due_date ?? null, order.work_order_image_url ?? null],
     });
+    if (!updateResult.rows || updateResult.rows.length === 0) {
+      if (storedImage.rollbackUrl) {
+        try { await del(storedImage.rollbackUrl); } catch (deleteErr) { console.warn('[work-order-image] blob rollback failed:', deleteErr?.message || deleteErr); }
+      }
+      return res.status(409).json({
+        error: { message: '주문 정보가 변경되어 작업지시서 이미지를 저장하지 못했습니다. 다시 시도해주세요.', status: 409 },
+      });
+    }
   } catch (err) {
     if (storedImage.rollbackUrl) {
       try { await del(storedImage.rollbackUrl); } catch (deleteErr) { console.warn('[work-order-image] blob rollback failed:', deleteErr?.message || deleteErr); }

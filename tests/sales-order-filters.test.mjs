@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   countSalesOrders,
   filterSalesOrders,
+  getVisibleSalesOrders,
   isPackingCompletedForShipping,
 } from '../src/pages/salesOrderFilters.js';
 
@@ -54,4 +55,17 @@ test('sales order counts include packing completed count separately from shipped
 test('sales filter tabs render the packing completed count as button text', () => {
   assert.equal(salesPageSource.includes('packing_completed: packingCompletedCount'), true);
   assert.equal(salesPageSource.includes('` (${count})`'), true);
+});
+
+test('visible sales orders limit rendering without changing full-data counts', () => {
+  const orders = Array.from({ length: 165 }, (_, index) => order(index + 1, {}));
+  const counts = countSalesOrders(orders);
+  const initial = getVisibleSalesOrders(orders, 40);
+  const next = getVisibleSalesOrders(orders, initial.visibleOrders.length + 40);
+
+  assert.equal(counts.totalCount, 165);
+  assert.equal(initial.visibleOrders.length, 40);
+  assert.equal(initial.hiddenOrderCount, 125);
+  assert.equal(next.visibleOrders.length, 80);
+  assert.equal(next.hiddenOrderCount, 85);
 });

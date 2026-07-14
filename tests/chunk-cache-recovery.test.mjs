@@ -30,7 +30,7 @@ test('manual cache clear page unregisters stale app caches and returns to the ap
 });
 
 test('cache recovery assets are forced fresh after deploy', () => {
-  assert.match(serviceWorkerSource, /const CACHE_VERSION = 52;/);
+  assert.match(serviceWorkerSource, /const CACHE_VERSION = 53;/);
 
   const rootHeader = vercelConfig.headers.find((header) => header.source === '/');
   assert.ok(rootHeader);
@@ -38,7 +38,7 @@ test('cache recovery assets are forced fresh after deploy', () => {
     rootHeader.headers.some(
       (header) =>
         header.key === 'Clear-Site-Data' &&
-        header.value === '"cache", "storage", "executionContexts"',
+        header.value === '"cache"',
     ),
   );
 

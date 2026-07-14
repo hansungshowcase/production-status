@@ -6,6 +6,14 @@
 /**
  * 다양한 형식의 날짜 문자열을 Date 객체로 파싱
  */
+export function isCanonicalCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (value.startsWith('0000-')) return false;
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export function parseDate(dateStr) {
   if (!dateStr) return null;
   if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
@@ -74,16 +82,22 @@ export function extractDueDateFromText(text) {
   const str = String(text || '');
   if (!str.trim()) return null;
 
-  const isoMatch = str.match(/(?:납기일?|납품일?|출고일?)\s*[:_\-\s]*((?:20)?\d{2}[-./]\d{1,2}[-./]\d{1,2})/);
+  const dueLabel = '(?:납기(?:일자|일)?|납품(?:일자|일)?|출고(?:일자|일)?)';
+  const isoMatch = str.match(new RegExp(`${dueLabel}\\s*[:_\\-\\s]*((?:20)?\\d{2}\\s*[-./]\\s*\\d{1,2}\\s*[-./]\\s*\\d{1,2})`));
   if (isoMatch) {
-    const date = parseDate(isoMatch[1]);
-    return date ? formatIsoDate(date) : null;
+    const [rawYear, rawMonth, rawDay] = isoMatch[1].replace(/\s/g, '').split(/[-./]/);
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+    const candidate = `${year}-${rawMonth.padStart(2, '0')}-${rawDay.padStart(2, '0')}`;
+    return isCanonicalCalendarDate(candidate) ? candidate : null;
   }
 
-  const monthDayMatch = str.match(/(?:납기일?|납품일?|출고일?)\s*[:_\-\s]*(\d{1,2}\s*월\s*\d{1,2}\s*[일알]?)/);
+  const monthDayMatch = str.match(new RegExp(`${dueLabel}\\s*[:_\\-\\s]*(\\d{1,2}\\s*월\\s*\\d{1,2}\\s*[일알]?)`));
   if (monthDayMatch) {
     const date = parseDate(monthDayMatch[1]);
-    return date ? formatIsoDate(date) : null;
+    const parts = monthDayMatch[1].match(/(\d{1,2})\s*월\s*(\d{1,2})/);
+    if (!date || !parts) return null;
+    if (date.getMonth() + 1 !== Number(parts[1]) || date.getDate() !== Number(parts[2])) return null;
+    return formatIsoDate(date);
   }
 
   return null;

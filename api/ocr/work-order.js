@@ -2,6 +2,7 @@ import { cors } from '../_lib/cors.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
+import { parseWorkOrderJson } from '../_lib/ocrParse.js';
 
 export const config = {
   api: {
@@ -128,12 +129,8 @@ function extractGeminiText(data) {
 }
 
 function parseOcrJson(text) {
-  if (!text) throw new Error('OCR 응답에 인식 결과가 없습니다.');
-  let jsonStr = text;
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) jsonStr = jsonMatch[1];
-  jsonStr = jsonStr.trim();
-  return normalizeOcrResult(JSON.parse(jsonStr));
+  // 잘리거나 깨진 JSON 도 복구해서 읽는다(담당자·납기 등 앞쪽 필드 우선 확보).
+  return normalizeOcrResult(parseWorkOrderJson(text));
 }
 
 function normalizeOcrResult(parsed) {
@@ -185,8 +182,9 @@ async function callOpenAiOcr({ apiKey, mimeType, filePart }) {
           strict: false,
         },
       },
-      max_output_tokens: 1200,
+      max_output_tokens: 3000,
     }),
+    signal: AbortSignal.timeout(20000), // 지연 시 매달리지 않고 폴백(Gemini→수동)으로 넘어감
   });
 
   if (!response.ok) {
@@ -224,9 +222,10 @@ async function callGeminiOcr({ apiKey, mimeType, filePart }) {
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.1,
-        maxOutputTokens: 1200,
+        maxOutputTokens: 3000,
       },
     }),
+    signal: AbortSignal.timeout(20000), // 지연 시 매달리지 않고 수동입력으로 폴백
   });
 
   if (!response.ok) {
@@ -294,17 +293,14 @@ export default cors(async function handler(req, res) {
     const parsed = await callGeminiOcr({ apiKey: geminiKey, mimeType, filePart });
     return res.json({ success: true, provider: 'gemini', data: parsed });
   } catch (err) {
-    if (err.provider || err.status === 429) {
-      console.warn('OCR provider unavailable, switching to manual input:', err.provider || 'unknown', err.status, err.message);
-      return res.json({
-        success: false,
-        provider: 'manual',
-        warning: '자동 인식이 지연되어 수동 입력으로 전환했습니다. 작업지시서 이미지는 첨부되었습니다.',
-        data: EMPTY_OCR_DATA,
-      });
-    }
-    console.error('OCR error:', err);
-    const status = err.status >= 500 ? 502 : (err.status || 500);
-    return res.status(status).json({ error: { message: '이미지 인식에 실패했습니다: ' + (err.message || ''), status } });
+    // OCR 은 편의 기능 — 어떤 실패(파싱 실패·provider 오류·타임아웃)든 하드 에러(500) 대신
+    // '수동입력'으로 우아하게 강등한다. 작업지시서 이미지는 이미 첨부되어 있으므로 작업 흐름은 안 끊긴다.
+    console.warn('OCR 실패 → 수동입력 전환:', err.provider || 'unknown', err.status || '', err.message || err);
+    return res.json({
+      success: false,
+      provider: 'manual',
+      warning: '자동 인식이 어려워 수동 입력으로 전환했습니다. 작업지시서 이미지는 첨부되었습니다.',
+      data: EMPTY_OCR_DATA,
+    });
   }
 });

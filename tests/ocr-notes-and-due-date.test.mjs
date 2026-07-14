@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { buildOrderPayload } from '../src/pages/orderEntryPayload.js';
 import { getVisibleOrderMemo, normalizeOrderMemoForStorage } from '../src/utils/orderText.js';
-import { extractDueDateFromOrder, parseDate } from '../src/utils/dateUtils.js';
+import { extractDueDateFromOrder, extractDueDateFromText, parseDate } from '../src/utils/dateUtils.js';
 import { normalizeOrderCreateInput } from '../api/_lib/orderCreateInput.js';
 
 test('order payload does not save fallback OCR raw text as work memo', () => {
@@ -58,6 +58,32 @@ test('due date can be extracted from OCR raw text when due_date was not saved', 
 
   assert.equal(due, '2026-07-03');
   assert.equal(parseDate(due).toISOString().slice(0, 10), '2026-07-03');
+});
+
+test('due date can be extracted from natural OCR due-date labels', () => {
+  assert.equal(
+    extractDueDateFromOrder({
+      due_date: null,
+      order_date: '2026-06-24',
+      notes: 'OCR \uC6D0\uBB38:\n\uBE44\uACE0 \uB0A9\uAE30\uC77C\uC790 7\uC6D41\uC77C \uC800\uB141\nLED \uBC31\uC0C9',
+    }),
+    '2026-07-01'
+  );
+
+  assert.equal(
+    extractDueDateFromOrder({
+      due_date: null,
+      order_date: '2026-06-24',
+      notes: '\uB0A9\uAE30 2026. 7. 2 \uC624\uD6C4 \uCD9C\uACE0',
+    }),
+    '2026-07-02'
+  );
+});
+
+test('impossible OCR due dates are rejected instead of rolling into another month', () => {
+  assert.equal(extractDueDateFromText('납기일: 2026-02-29'), null);
+  assert.equal(extractDueDateFromText('납기일: 2026-04-31'), null);
+  assert.equal(extractDueDateFromText('납기일: 2028-02-29'), '2028-02-29');
 });
 
 test('OCR raw text is not rendered as a visible work memo', () => {

@@ -57,6 +57,10 @@ export default cors(async function handler(req, res) {
         est_remain: assessment.estRemain,
         slack: assessment.slack,
         current_step: assessment.currentStep,
+        predicted_ship: assessment.predictedShip,
+        checkpoint_started: assessment.checkpointStarted,
+        reason: (assessment.reasons && assessment.reasons[0]) || '',
+        reasons: assessment.reasons || [],
         level: assessment.level,
       });
     }

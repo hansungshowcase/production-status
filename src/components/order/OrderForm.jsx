@@ -38,7 +38,13 @@ export default function OrderForm({ form, errors, onChange }) {
           </label>
           <label className="of__field">
             <span className="of__label">납기일</span>
-            <input type="date" className="of__input" value={form.due_date || ''} onChange={inp('due_date')} />
+            <input
+              type="date"
+              className={`of__input ${errors.due_date ? 'of__input--error' : ''}`}
+              value={form.due_date || ''}
+              onChange={inp('due_date')}
+            />
+            {errors.due_date && <span className="of__error">{errors.due_date}</span>}
           </label>
         </div>
         <label className="of__field">

@@ -1,13 +1,16 @@
-// 납기 리스크 일일 리포트 크론 — 매일 23:40 UTC (= KST 08:40)
-// in_production 전건 평가 후 지연위험(red)/납기경과(overdue) 요약을 ADMIN_PHONES 로 LMS 발송.
-// 솔라피 env 없으면 dry_run (notification_log 에 기록만). 위험 0건이면 발송하지 않음.
+// 분체 미착수 경보 크론 — 매일 23:40 UTC (= KST 08:40)
+// in_production 전건 평가 후 "출고 5일 이내인데 분체작업 미착수" 건만 LMS 발송.
+// 영업담당자(sales_person)별로 라우팅 — 각 담당자 번호로 본인 담당 건만 발송 (alertRoutes.js).
+// (그 외 납기경과·미마감 등은 문자로 안 보내고 관리자 화면에서만 확인 — 대표 지정)
+// 솔라피 env 없으면 dry_run (notification_log 에 기록만). 대상 0건이면 발송하지 않음.
 // 인증: Authorization: Bearer {CRON_SECRET}
 import crypto from 'crypto';
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { sendAdminLms } from '../_lib/notify.js';
-import { assessOrder, kstToday } from '../_lib/risk.js';
+import { assessOrder, isShipRiskAlert, isKstWeekend, kstToday } from '../_lib/risk.js';
+import { routeAlerts } from '../_lib/alertRoutes.js';
 
 // 상수시간 비교 (타이밍 사이드채널 방지)
 function timingSafeMatch(a, b) {
@@ -25,12 +28,18 @@ export default cors(async function handler(req, res) {
     return res.status(401).json({ error: { message: 'Unauthorized', status: 401 } });
   }
 
+  // 주말(토·일, KST)엔 발송하지 않는다 — 평일 오전에만 1회.
+  // 크론 스케줄(UTC 일~목)로도 막지만, 스케줄이 바뀌어도 여기서 최종 차단.
+  if (isKstWeekend()) {
+    return res.json({ ok: true, sent: 0, skipped: 'weekend' });
+  }
+
   const db = getDb();
   await ensureNotifySchema(db);
 
   const [ordersResult, procResult] = await Promise.all([
     db.execute({
-      sql: `SELECT id, client_name, due_date, ship_scheduled_date, status
+      sql: `SELECT id, client_name, sales_person, due_date, ship_scheduled_date, status
               FROM orders WHERE status = 'in_production'`,
       args: [],
     }),
@@ -52,72 +61,51 @@ export default cors(async function handler(req, res) {
   }
 
   const today = kstToday();
-  const overdue = [];
-  const red = [];
-  let amber = 0;
-  let unknown = 0;
+  const alerts = [];
 
   for (const order of ordersResult.rows) {
     const a = assessOrder(order, procByOrder.get(Number(order.id)) || [], today);
-    const item = {
-      client_name: order.client_name || `주문 ${order.id}`,
-      days_left: a.daysLeft,
-      est_remain: a.estRemain,
-      current_step: a.currentStep || '-',
-    };
-    if (a.level === 'overdue') overdue.push(item);
-    else if (a.level === 'red') red.push({ ...item, slack: a.slack });
-    else if (a.level === 'amber') amber += 1;
-    else if (a.level === 'unknown') unknown += 1;
+    // 대상: 출고 5일 이내인데 분체작업 미착수 — 이것만 문자 발송
+    if (isShipRiskAlert(a)) {
+      alerts.push({
+        sales_person: order.sales_person || null,
+        client_name: order.client_name || `주문 ${order.id}`,
+        days_left: a.daysLeft,
+        current_step: a.currentStep || '-',
+      });
+    }
   }
 
-  overdue.sort((a, b) => (a.days_left ?? 0) - (b.days_left ?? 0)); // 가장 오래 경과한 순
-  red.sort((a, b) => (a.slack ?? 0) - (b.slack ?? 0));             // 여유 적은 순
+  const counts = { alerts: alerts.length, scanned: ordersResult.rows.length };
 
-  const counts = {
-    overdue: overdue.length, red: red.length, amber, unknown,
-    total: ordersResult.rows.length,
-  };
-
-  // 위험 0건이면 미발송 (알림 피로 방지)
-  if (counts.overdue === 0 && counts.red === 0) {
-    return res.json({ ok: true, sent: 0, skipped: 'no_risk', counts });
+  // 대상 0건이면 미발송 (알림 피로 방지)
+  if (alerts.length === 0) {
+    return res.json({ ok: true, sent: 0, skipped: 'no_alert', counts });
   }
 
-  // 상위 5건: overdue 우선, 나머지를 red 로 채움
-  const top = [
-    ...overdue.map(o => `- ${o.client_name} +${Math.abs(o.days_left ?? 0)}일 경과 | ${o.current_step}`),
-    ...red.map(r => `- ${r.client_name} D-${r.days_left} · 잔여 약 ${r.est_remain}일 | ${r.current_step}`),
-  ].slice(0, 5);
-
-  const lines = [
-    `지연위험 ${counts.red}건 / 납기경과 ${counts.overdue}건 / 주의 ${counts.amber}건 (진행중 ${counts.total}건)`,
-    '',
-    ...top,
-  ];
-  const extraCount = counts.overdue + counts.red - top.length;
-  if (extraCount > 0) lines.push(`외 ${extraCount}건 — 관리자 화면에서 전체 확인`);
-  if (unknown > 0) lines.push(`납기미입력 ${unknown}건`);
-
-  const subject = `[한성쇼케이스 납기리포트 ${today}]`;
-  const text = [subject, '', ...lines].join('\n');
-
-  const phones = String(process.env.ADMIN_PHONES || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  if (phones.length === 0) {
-    return res.json({ ok: true, sent: 0, skipped: 'no_admin_phones', counts });
-  }
+  // 담당자(sales_person)별 라우팅 — 각 담당자 번호로 본인 담당 건만 발송
+  const { byPhone, unrouted } = routeAlerts(alerts);
+  const MAX = 20;
+  const subject = `[한성쇼케이스 분체 미착수 경보 ${today}]`;
 
   const results = [];
-  for (const phone of phones) {
+  for (const [phone, group] of byPhone) {
+    const items = group.items.slice().sort((x, y) => (x.days_left ?? 0) - (y.days_left ?? 0)); // 임박한 순
+    const persons = [...group.persons].join(', ');
+    const listed = items.slice(0, MAX).map(a => `- ${a.client_name} D-${a.days_left} | 현재 ${a.current_step}`);
+    const lines = [
+      `${persons}님 담당 — 출고 5일 이내인데 분체작업 미착수 ${items.length}건 (현장 확인 요망)`,
+      '',
+      ...listed,
+    ];
+    if (items.length > MAX) lines.push(`외 ${items.length - MAX}건 — 관리자 화면에서 전체 확인`);
+    const text = [subject, '', ...lines].join('\n');
+    const masked = phone.slice(0, 3) + '****' + phone.slice(-4);
     try {
-      const r = await sendAdminLms(db, { to: phone, subject, text, tag: 'admin_daily' });
-      results.push({ ok: Boolean(r.ok), dryRun: Boolean(r.dryRun), error: r.error || null });
+      const r = await sendAdminLms(db, { to: phone, subject, text, tag: 'chonbe_alert' });
+      results.push({ phone: masked, persons, count: items.length, ok: Boolean(r.ok), dryRun: Boolean(r.dryRun), error: r.error || null });
     } catch (err) {
-      results.push({ ok: false, error: err?.message || String(err) });
+      results.push({ phone: masked, persons, count: items.length, ok: false, error: err?.message || String(err) });
     }
   }
 
@@ -126,6 +114,7 @@ export default cors(async function handler(req, res) {
     sent: results.filter(r => r.ok).length,
     dryRun: results.some(r => r.dryRun),
     counts,
-    results,
+    routed: results,
+    unrouted: unrouted.map(u => ({ person: u.person, client_name: u.client_name, days_left: u.days_left })),
   });
 });
