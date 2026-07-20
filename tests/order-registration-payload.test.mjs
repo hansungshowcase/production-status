@@ -192,7 +192,32 @@ test('order create input permits an omitted due date without an image and real c
   assert.doesNotThrow(() => normalizeOrderCreateInput({
     due_date: '2028-02-29',
     work_order_image_url: 'https://example.com/work-order.jpg',
+    sales_person: '신은철',
   }));
+});
+
+test('work-order image registrations require an assigned sales person (신은철·이준형)', () => {
+  // 이미지 있는데 담당자 미지정/미허용 → 등록 차단
+  for (const sales_person of [undefined, null, '', '홍길동']) {
+    assert.throws(
+      () => normalizeOrderCreateInput({
+        due_date: '2028-02-29',
+        work_order_image_url: 'https://example.com/work-order.jpg',
+        sales_person,
+      }),
+      /work_order_image_url.*담당자/,
+    );
+  }
+
+  // 김보수는 이준형으로 정규화되어 통과
+  assert.doesNotThrow(() => normalizeOrderCreateInput({
+    due_date: '2028-02-29',
+    work_order_image_url: 'https://example.com/work-order.jpg',
+    sales_person: '김보수',
+  }));
+
+  // 이미지 없는 일반 등록은 담당자 없어도 허용 (규칙 영향 없음)
+  assert.doesNotThrow(() => normalizeOrderCreateInput({ sales_person: '' }));
 });
 
 test('order mutation input sanitizes OCR boilerplate before DB update', () => {

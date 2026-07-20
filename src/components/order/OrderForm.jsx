@@ -49,10 +49,11 @@ export default function OrderForm({ form, errors, onChange }) {
         </div>
         <label className="of__field">
           <span className="of__label">담당자</span>
-          <select className="of__input of__select" value={form.sales_person || ''} onChange={inp('sales_person')}>
+          <select className={`of__input of__select ${errors.sales_person ? 'of__input--error' : ''}`} value={form.sales_person || ''} onChange={inp('sales_person')}>
             <option value="">선택</option>
             {SALES_PERSONS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
+          {errors.sales_person && <span className="of__error">{errors.sales_person}</span>}
         </label>
       </div>
 

@@ -41,6 +41,9 @@ export function validateOrderEntryForm(form, hasWorkOrderImage = false) {
   if (hasWorkOrderImage && !isCanonicalCalendarDate(form.due_date)) {
     errors.due_date = '작업지시서 등록은 납기일을 입력해주세요';
   }
+  if (hasWorkOrderImage && !['신은철', '이준형'].includes(normalizeSalesPerson(form.sales_person))) {
+    errors.sales_person = '작업지시서 등록은 담당자를 선택해주세요';
+  }
   return errors;
 }
 
