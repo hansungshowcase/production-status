@@ -213,12 +213,17 @@ export default function OrderEntryPage() {
   const validate = useCallback(() => {
     const newErrors = validateOrderEntryForm(form, Boolean(workOrderImageUrl));
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
   }, [form, workOrderImageUrl]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    const validationErrors = validate();
+    const missingMessages = Object.values(validationErrors).filter(Boolean);
+    if (missingMessages.length > 0) {
+      setToast({ visible: true, message: `등록할 수 없습니다 — ${missingMessages.join('  ·  ')}` });
+      return;
+    }
 
     setSubmitting(true);
     let success = false;
