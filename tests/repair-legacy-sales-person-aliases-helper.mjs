@@ -7,7 +7,6 @@ export const repairModuleUrl = new URL(
 export const repair = await import(repairModuleUrl);
 
 const NORMALIZER_ALIAS = '\uAE40\uBCF4\uC218';
-const ROUTE_ALIAS = '\uC2E0\uC740\uC808';
 
 export const EXPECTED_IDENTITY = Object.freeze({
   database: 'expected_database',
@@ -25,7 +24,7 @@ export function makeRow(id, overrides = {}) {
     id,
     order_date: '2026-07-01',
     due_date: '2026-07-31',
-    sales_person: id % 2 === 0 ? NORMALIZER_ALIAS : ROUTE_ALIAS,
+    sales_person: NORMALIZER_ALIAS,
     work_order_image_url: `https://example.invalid/work-order-${id}.jpg`,
     id_type: 'integer',
     order_date_type: 'text',

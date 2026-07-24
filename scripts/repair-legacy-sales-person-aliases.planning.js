@@ -1,10 +1,10 @@
-import { ALERT_ROUTES } from '../api/_lib/alertRoutes.js';
 import {
   ALLOWED_SALES_PERSONS,
   normalizeOrderMutationInput,
 } from '../api/_lib/orderCreateInput.js';
 import {
   APPROVED_ALIAS_FINGERPRINTS,
+  APPROVED_REPLACEMENT_SALES_PERSON,
 } from './repair-legacy-sales-person-aliases.constants.js';
 import {
   assertExactTargetIds,
@@ -21,20 +21,11 @@ export function resolveCurrentSourceMapping(
     const normalized = normalizeOrderMutationInput({
       sales_person: currentValue,
     }).sales_person;
-    return normalized !== currentValue && ALLOWED_SALES_PERSONS.includes(normalized)
+    return normalized !== currentValue
+      && normalized === APPROVED_REPLACEMENT_SALES_PERSON
+      && ALLOWED_SALES_PERSONS.includes(normalized)
       ? normalized
       : null;
-  }
-
-  if (
-    fingerprint === APPROVED_ALIAS_FINGERPRINTS[1]
-    && Object.hasOwn(ALERT_ROUTES, currentValue)
-  ) {
-    const route = ALERT_ROUTES[currentValue];
-    const candidates = ALLOWED_SALES_PERSONS.filter(
-      canonicalValue => ALERT_ROUTES[canonicalValue] === route,
-    );
-    return candidates.length === 1 ? candidates[0] : null;
   }
 
   return null;
@@ -69,6 +60,7 @@ export function buildRepairPlan(
       );
       guard(
         ALLOWED_SALES_PERSONS.includes(replacementSalesPerson)
+          && replacementSalesPerson === APPROVED_REPLACEMENT_SALES_PERSON
           && replacementSalesPerson !== row.sales_person,
         'SOURCE_MAPPING_MISMATCH',
         row.id,

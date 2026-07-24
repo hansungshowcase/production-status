@@ -10,8 +10,9 @@ export const REPAIR_ORDER_IDS = Object.freeze([203, 204, 205, 206, 207, 208]);
 
 export const APPROVED_ALIAS_FINGERPRINTS = Object.freeze([
   'c257f49e680b',
-  'fe0c69469f49',
 ]);
+
+export const APPROVED_REPLACEMENT_SALES_PERSON = '\uC774\uC900\uD615';
 
 export const POSTGRES_TEXT_FIELDS = Object.freeze([
   'order_date',

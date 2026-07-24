@@ -8,12 +8,12 @@ import {
   requiredFunction,
 } from './repair-legacy-sales-person-aliases-helper.mjs';
 
-test('repair boundary contains only IDs 203 through 208 and two approved fingerprints', () => {
+test('repair boundary contains only IDs 203 through 208 and one approved fingerprint', () => {
   assert.deepEqual(repair.REPAIR_ORDER_IDS, [203, 204, 205, 206, 207, 208]);
   assert.equal(Object.isFrozen(repair.REPAIR_ORDER_IDS), true);
   assert.deepEqual(
     [...repair.APPROVED_ALIAS_FINGERPRINTS].sort(),
-    ['c257f49e680b', 'fe0c69469f49'],
+    ['c257f49e680b'],
   );
 });
 
@@ -52,12 +52,12 @@ test('preflight is bounded and compare-and-set changes only sales_person', () =>
   );
 });
 
-test('preflight resolves both approved fingerprints through current mappings', () => {
+test('preflight resolves the approved fingerprint through the current mapping', () => {
   const plan = requiredFunction('buildRepairPlan')(makeRows());
   assert.deepEqual(plan.map(item => item.id), [203, 204, 205, 206, 207, 208]);
   assert.deepEqual(
     [...new Set(plan.map(item => item.fingerprint))].sort(),
-    ['c257f49e680b', 'fe0c69469f49'],
+    ['c257f49e680b'],
   );
   assert.equal(
     plan.every(item => repair.ALLOWED_SALES_PERSONS.includes(
@@ -68,6 +68,31 @@ test('preflight resolves both approved fingerprints through current mappings', (
   assert.equal(
     plan.every(item => item.originalSalesPerson !== item.replacementSalesPerson),
     true,
+  );
+});
+
+test('preflight accepts only the approved replacement and rejects alternate mappings', () => {
+  const buildRepairPlan = requiredFunction('buildRepairPlan');
+  const plan = buildRepairPlan(makeRows());
+  assert.equal(
+    plan.length === 6
+      && plan.every(item => item.replacementSalesPerson === repair.ALLOWED_SALES_PERSONS[1]),
+    true,
+  );
+
+  assert.throws(
+    () => buildRepairPlan(makeRows(), {
+      resolveSourceMapping: () => repair.ALLOWED_SALES_PERSONS[0],
+    }),
+    error => error?.code === 'SOURCE_MAPPING_MISMATCH',
+  );
+  assert.throws(
+    () => buildRepairPlan(makeRows().map((row, index) => (
+      index === 0
+        ? { ...row, sales_person: '\uC2E0\uC740\uC808' }
+        : row
+    ))),
+    error => error?.code === 'ALIAS_FINGERPRINT_MISMATCH',
   );
 });
 
