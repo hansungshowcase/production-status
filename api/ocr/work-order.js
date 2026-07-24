@@ -194,18 +194,12 @@ export function hasCompleteOcrEssentials(data) {
     && data.quantity > 0;
 }
 
-function normalizeOcrResult(parsed) {
+export function normalizeOcrResult(parsed) {
   if (parsed.width) parsed.width = parseInt(String(parsed.width).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.height) parsed.height = parseInt(String(parsed.height).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.quantity) parsed.quantity = extractQuantityFromOcrValue(parsed.quantity);
 
-  if (parsed.order_date && typeof parsed.order_date === 'string') {
-    const m = parsed.order_date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m && parseInt(m[1], 10) < CURRENT_YEAR) {
-      parsed.order_date = `${CURRENT_YEAR}-${m[2]}-${m[3]}`;
-    }
-  }
   parsed.due_date = normalizeOcrDueDate(parsed.due_date);
   parsed.sales_person = normalizeOcrSalesPerson(parsed.sales_person);
 

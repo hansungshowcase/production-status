@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   extractQuantityFromOcrValue,
   hasCompleteOcrEssentials,
+  normalizeOcrResult,
   normalizeOcrDueDate,
   normalizeOcrSalesPerson,
 } from '../api/ocr/work-order.js';
@@ -44,6 +45,19 @@ test('prefers stated total quantity over an item annotation', () => {
 
   // Then: the explicit total is preserved.
   assert.equal(quantity, 2);
+});
+
+test('preserves an explicitly recognized historical order date', () => {
+  const normalized = normalizeOcrResult({
+    client_name: 'OK정육점2',
+    order_date: '2025-12-31',
+    due_date: '2026-01-07',
+    sales_person: '이준형',
+    product_type: '정육',
+    quantity: 2,
+  });
+
+  assert.equal(normalized.order_date, '2025-12-31');
 });
 
 test('marks OCR data usable only when every essential field is canonical', () => {
