@@ -9,6 +9,7 @@ import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
 import { STEPS } from '../../_lib/steps.js';
 import {
   assertImageBackedOrderHasCanonicalDueDate,
+  assertImageBackedOrderHasSalesPerson,
   mutationTouchesImageDueInvariant,
   normalizeOrderMutationInput,
   OrderCreateInputValidationError,
@@ -111,6 +112,7 @@ async function handleUpdate(id, req, res) {
 
   try {
     assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation });
+    assertImageBackedOrderHasSalesPerson({ ...order, ...mutation });
   } catch (err) {
     if (err instanceof OrderCreateInputValidationError) {
       return res.status(400).json({ error: { message: err.message, status: 400 } });

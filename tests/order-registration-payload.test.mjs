@@ -351,6 +351,14 @@ test('order update routes validate final image-backed state before upload or UPD
   );
   assert.ok(patchValidation >= 0, 'PATCH should validate the combined current and requested state');
   assert.ok(patchValidation < patchSource.indexOf('UPDATE orders SET'));
+  const patchSalesPersonValidation = patchSource.indexOf(
+    'assertImageBackedOrderHasSalesPerson({ ...order, ...mutation })',
+  );
+  assert.ok(
+    patchSalesPersonValidation >= 0,
+    'PATCH should retain an assignee for an image-backed order',
+  );
+  assert.ok(patchSalesPersonValidation < patchSource.indexOf('UPDATE orders SET'));
   assert.match(patchSource, /OrderCreateInputValidationError[\s\S]*res\.status\(400\)/);
 
   assert.match(imageSource, /SELECT id, client_name, due_date, work_order_image_url FROM orders/);
