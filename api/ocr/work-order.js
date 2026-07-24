@@ -15,6 +15,13 @@ const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const OPENAI_SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const CANONICAL_SALES_PERSONS = new Set(['신은철', '이준형']);
+const SALES_PERSON_ALIASES = [
+  ['신은철', '신은철'],
+  ['신은절', '신은철'],
+  ['이준형', '이준형'],
+  ['김보수', '이준형'],
+];
 const EMPTY_OCR_DATA = {
   client_name: '',
   order_date: '',
@@ -98,6 +105,13 @@ const PROMPT = `이 이미지는 냉장쇼케이스 제조업체의 작업지시
 
 JSON만 반환하세요. 다른 텍스트 없이 순수 JSON만 반환하세요.`;
 
+const ESSENTIAL_FIELD_PROMPT = `
+
+필수 정확도 규칙:
+- sales_person은 신은철 또는 이준형만 반환한다. 김보수(김보수 팀장 포함)는 이준형으로, 신은절은 신은철로 정규화한다. 판독 불가하면 null로 둔다.
+- due_date는 납기/납기일/납기일자 라벨 바로 뒤의 날짜를 우선 읽고 반드시 실제 YYYY-MM-DD 날짜로 반환한다. 연도가 없으면 ${CURRENT_YEAR}년을 사용하며, 읽지 못하면 null로 둔다.
+- quantity에 여러 숫자가 있으면 "총 N대"의 N을 우선 반환한다. 확실하지 않으면 null로 둔다.`;
+
 function getImageMimeType(filePart) {
   let mimeType = filePart.contentType || 'image/jpeg';
   if (mimeType === 'application/octet-stream' || !mimeType.startsWith('image/')) {
@@ -140,21 +154,56 @@ export function extractQuantityFromOcrValue(value) {
   return parseInt(String(value || '').replace(/[^0-9]/g, ''), 10) || null;
 }
 
+export function normalizeOcrSalesPerson(value) {
+  const compact = String(value || '').replace(/\s+/g, '');
+  for (const [alias, canonical] of SALES_PERSON_ALIASES) {
+    if (compact.includes(alias)) return canonical;
+  }
+  return '';
+}
+
+function toIsoDate(year, month, day) {
+  const normalizedYear = Number(year);
+  const normalizedMonth = Number(month);
+  const normalizedDay = Number(day);
+  if (!Number.isInteger(normalizedYear) || !Number.isInteger(normalizedMonth) || !Number.isInteger(normalizedDay)) return '';
+  const date = new Date(Date.UTC(normalizedYear, normalizedMonth - 1, normalizedDay));
+  if (date.getUTCFullYear() !== normalizedYear || date.getUTCMonth() !== normalizedMonth - 1 || date.getUTCDate() !== normalizedDay) return '';
+  return `${String(normalizedYear).padStart(4, '0')}-${String(normalizedMonth).padStart(2, '0')}-${String(normalizedDay).padStart(2, '0')}`;
+}
+
+export function normalizeOcrDueDate(value) {
+  const source = String(value || '').trim();
+  const fullDateMatch = source.match(/(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*(?:일)?/);
+  if (fullDateMatch) return toIsoDate(fullDateMatch[1], fullDateMatch[2], fullDateMatch[3]);
+
+  const labeledDateMatch = source.match(/납기(?:일자|일)?\s*[:：-]?\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?/);
+  if (labeledDateMatch) return toIsoDate(CURRENT_YEAR, labeledDateMatch[1], labeledDateMatch[2]);
+  return '';
+}
+
+export function hasCompleteOcrEssentials(data) {
+  return CANONICAL_SALES_PERSONS.has(data?.sales_person)
+    && Boolean(data?.due_date)
+    && normalizeOcrDueDate(data?.due_date) === data?.due_date
+    && Number.isInteger(data?.quantity)
+    && data.quantity > 0;
+}
+
 function normalizeOcrResult(parsed) {
   if (parsed.width) parsed.width = parseInt(String(parsed.width).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.height) parsed.height = parseInt(String(parsed.height).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.quantity) parsed.quantity = extractQuantityFromOcrValue(parsed.quantity);
 
-  const thisYear = String(CURRENT_YEAR);
-  ['order_date', 'due_date'].forEach(field => {
-    if (parsed[field] && typeof parsed[field] === 'string') {
-      const m = parsed[field].match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (m && parseInt(m[1], 10) < CURRENT_YEAR) {
-        parsed[field] = thisYear + '-' + m[2] + '-' + m[3];
-      }
+  if (parsed.order_date && typeof parsed.order_date === 'string') {
+    const m = parsed.order_date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m && parseInt(m[1], 10) < CURRENT_YEAR) {
+      parsed.order_date = `${CURRENT_YEAR}-${m[2]}-${m[3]}`;
     }
-  });
+  }
+  parsed.due_date = normalizeOcrDueDate(parsed.due_date);
+  parsed.sales_person = normalizeOcrSalesPerson(parsed.sales_person);
 
   parsed.notes = normalizeOrderMemoForStorage(parsed.notes);
 
@@ -173,7 +222,7 @@ async function callOpenAiOcr({ apiKey, mimeType, filePart }) {
       input: [{
         role: 'user',
         content: [
-          { type: 'input_text', text: PROMPT },
+          { type: 'input_text', text: PROMPT + ESSENTIAL_FIELD_PROMPT },
           {
             type: 'input_image',
             image_url: `data:${mimeType};base64,${filePart.data.toString('base64')}`,
@@ -217,7 +266,7 @@ async function callGeminiOcr({ apiKey, mimeType, filePart }) {
       contents: [{
         role: 'user',
         parts: [
-          { text: PROMPT },
+          { text: PROMPT + ESSENTIAL_FIELD_PROMPT },
           {
             inline_data: {
               mime_type: mimeType,
@@ -283,7 +332,24 @@ export default cors(async function handler(req, res) {
     if (openAiKey && !openAiKey.includes('your-key-here')) {
       try {
         const parsed = await callOpenAiOcr({ apiKey: openAiKey, mimeType, filePart });
-        return res.json({ success: true, provider: 'openai', data: parsed });
+        if (hasCompleteOcrEssentials(parsed)) {
+          return res.json({
+            success: true,
+            provider: 'openai',
+            essentials_complete: true,
+            data: parsed,
+          });
+        }
+        if (!hasCompleteOcrEssentials(parsed) && geminiKey) {
+          console.warn('OpenAI OCR returned incomplete essentials, trying Gemini fallback');
+        } else {
+          return res.json({
+            success: false,
+            provider: 'manual',
+            warning: 'OCR 핵심 항목을 모두 읽지 못해 브라우저 OCR로 다시 인식합니다.',
+            data: parsed,
+          });
+        }
       } catch (openAiErr) {
         console.warn('OpenAI OCR failed, trying Gemini fallback:', openAiErr.status, openAiErr.message);
         if (!geminiKey) {
@@ -298,7 +364,12 @@ export default cors(async function handler(req, res) {
     }
 
     const parsed = await callGeminiOcr({ apiKey: geminiKey, mimeType, filePart });
-    return res.json({ success: true, provider: 'gemini', data: parsed });
+    return res.json({
+      success: hasCompleteOcrEssentials(parsed),
+      provider: hasCompleteOcrEssentials(parsed) ? 'gemini' : 'manual',
+      essentials_complete: hasCompleteOcrEssentials(parsed),
+      data: parsed,
+    });
   } catch (err) {
     // OCR 은 편의 기능 — 어떤 실패(파싱 실패·provider 오류·타임아웃)든 하드 에러(500) 대신
     // '수동입력'으로 우아하게 강등한다. 작업지시서 이미지는 이미 첨부되어 있으므로 작업 흐름은 안 끊긴다.

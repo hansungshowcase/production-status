@@ -7,6 +7,7 @@ import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
 import { extractDueDateFromText } from '../utils/dateUtils';
+import { extractBrowserOcrEssentialFields } from './browserOcrEssentialFields';
 import { buildOrderPayload, validateOrderEntryForm } from './orderEntryPayload';
 import './OrderEntryPage.css';
 
@@ -141,9 +142,11 @@ function inferOption(text, options) {
 function parseBrowserOcrText(text) {
   const normalized = normalizeOcrText(text);
   const size = extractSize(normalized);
+  const essentialFields = extractBrowserOcrEssentialFields(normalized);
   const dateMatches = Array.from(normalized.matchAll(/\b\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/g)).map((match) => match[0]);
   const orderDate = normalizeDateValue(extractLabeledValue(normalized, ['발주일', '주문일', '작성일', '등록일', 'Order Date', 'Order'])) || normalizeDateValue(dateMatches[0]);
-  const dueDate = extractDueDateFromText(normalized)
+  const dueDate = essentialFields.due_date
+    || extractDueDateFromText(normalized)
     || normalizeDateValue(extractLabeledValue(normalized, ['납기일자', '납품일자', '출고일자', '납기일', '납품일', '출고일', '납기', '납품', 'Due Date', 'Due', 'Ship Date']))
     || normalizeDateValue(dateMatches[1]);
   const notes = extractLabeledValue(normalized, ['비고', '특이사항', '요청사항', '메모', 'Note', 'Notes', 'Memo']);
@@ -155,7 +158,7 @@ function parseBrowserOcrText(text) {
     phone: extractPhone(normalized) || extractLabeledValue(normalized, ['연락처', '전화', '휴대폰', '핸드폰', 'Phone', 'Tel', 'Mobile']),
     delivery_address: extractLabeledValue(normalized, ['납품주소', '주소', '배송주소', 'Address', 'Delivery Address']),
     freight_payment: extractLabeledValue(normalized, ['운임여부', '운임', '배송비', 'Freight', 'Shipping Fee']),
-    sales_person: extractLabeledValue(normalized, ['담당자', '영업담당', '영업', '담당', 'Sales', 'Manager', 'Staff']),
+    sales_person: essentialFields.sales_person,
     product_type: inferOption(normalized, PRODUCT_TYPE_OPTIONS) || extractLabeledValue(normalized, ['품명', '제품', '사양', '용도', 'Product', 'Item', 'Spec']),
     door_type: inferOption(normalized, DOOR_TYPE_OPTIONS) || extractLabeledValue(normalized, ['문짝', '디자인', '도어', 'Door', 'Design']),
     width: size.width,
