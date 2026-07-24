@@ -1,0 +1,67 @@
+﻿COMMAND=npm.cmd run build
+
+> hansung-showcase@1.0.0 build
+> vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 184 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                   6.16 kB │ gzip:  2.21 kB
+dist/assets/Toast-BZBDuJQg.css                    0.87 kB │ gzip:  0.44 kB
+dist/assets/Modal-BhjgSyIn.css                    2.02 kB │ gzip:  0.77 kB
+dist/assets/OrderEditModal-blTYArBW.css           2.36 kB │ gzip:  0.78 kB
+dist/assets/useApi-BiiDYana.css                   2.51 kB │ gzip:  0.82 kB
+dist/assets/useWebSocket-BVIla9cZ.css             2.66 kB │ gzip:  0.92 kB
+dist/assets/OrderForm-BURbfTiP.css                2.72 kB │ gzip:  1.02 kB
+dist/assets/WorkerStationPage-BEi8EIt6.css        2.77 kB │ gzip:  0.83 kB
+dist/assets/WorkerSearchPage-vlfo6DVk.css         4.45 kB │ gzip:  1.27 kB
+dist/assets/WorkerUpdatePage-TjWcEL2p.css         5.66 kB │ gzip:  1.43 kB
+dist/assets/OrderDetailPage--ME3duUP.css          5.72 kB │ gzip:  1.66 kB
+dist/assets/SalesLoginPage-Cvd1LseV.css           6.32 kB │ gzip:  1.71 kB
+dist/assets/WorkerPage-ekxB2G0-.css               7.85 kB │ gzip:  2.27 kB
+dist/assets/TrackPage-Cy0gqCP0.css               10.86 kB │ gzip:  2.70 kB
+dist/assets/OrderEntryPage-86g_2KCl.css          11.43 kB │ gzip:  2.92 kB
+dist/assets/AdminPage-CcD0yQpi.css               11.86 kB │ gzip:  2.34 kB
+dist/assets/WorkerSelectPage-FJe1wUaR.css        12.96 kB │ gzip:  2.57 kB
+dist/assets/HomePage-DbQhiHLD.css                13.02 kB │ gzip:  2.99 kB
+dist/assets/TabletWorkerPage-Bu9GQqFP.css        14.35 kB │ gzip:  3.00 kB
+dist/assets/index-Dm8cKwWQ.css                   20.34 kB │ gzip:  4.95 kB
+dist/assets/SalesMyPage-z6gbv559.css             39.61 kB │ gzip:  7.31 kB
+dist/assets/WorkerStationViewPage-BXay9eWp.css   68.25 kB │ gzip: 11.62 kB
+dist/assets/stats-Bo90U5f-.js                     0.09 kB │ gzip:  0.10 kB
+dist/assets/Toast-DLnXaKmM.js                     0.27 kB │ gzip:  0.23 kB
+dist/assets/issues-B_ih99S2.js                    0.55 kB │ gzip:  0.34 kB
+dist/assets/processes-Crva4QEB.js                 0.59 kB │ gzip:  0.27 kB
+dist/assets/orders-BUptSbNg.js                    1.02 kB │ gzip:  0.45 kB
+dist/assets/Modal-CyWEdZru.js                     1.02 kB │ gzip:  0.54 kB
+dist/assets/authClient-B7ACCWTX.js                1.58 kB │ gzip:  0.88 kB
+dist/assets/client-Do4lo7ue.js                    1.65 kB │ gzip:  0.97 kB
+dist/assets/photos-Dvcng-CT.js                    1.65 kB │ gzip:  0.87 kB
+dist/assets/WorkerStationPage-4Sv6p9IJ.js         1.91 kB │ gzip:  0.77 kB
+dist/assets/constants-Bl_jvaYd.js                 2.28 kB │ gzip:  0.71 kB
+dist/assets/dateUtils-DuAw0uEO.js                 2.64 kB │ gzip:  1.12 kB
+dist/assets/useApi-DUmkEq-5.js                    2.98 kB │ gzip:  1.36 kB
+dist/assets/orderText-CF142Pxw.js                 3.08 kB │ gzip:  1.49 kB
+dist/assets/workOrderImages-ZjVKWWTB.js           3.15 kB │ gzip:  1.34 kB
+dist/assets/OrderEditModal-CyaGd0hC.js            3.32 kB │ gzip:  1.53 kB
+dist/assets/useWebSocket-DEEzQFXT.js              3.86 kB │ gzip:  1.67 kB
+dist/assets/SalesLoginPage-CgXoQBeK.js            4.30 kB │ gzip:  1.57 kB
+dist/assets/HomePage-Dr6w-ixv.js                  5.58 kB │ gzip:  2.12 kB
+dist/assets/WorkerSearchPage-B0_6pQJ1.js          6.55 kB │ gzip:  2.64 kB
+dist/assets/OrderForm-BQ2P90Dz.js                 7.03 kB │ gzip:  1.53 kB
+dist/assets/WorkerUpdatePage-DDHfT5wb.js          8.66 kB │ gzip:  3.14 kB
+dist/assets/OrderDetailPage-B4JOWPv2.js           9.68 kB │ gzip:  3.23 kB
+dist/assets/WorkerSelectPage-B4UJX3vZ.js         11.15 kB │ gzip:  2.96 kB
+dist/assets/TrackPage-BzOA4eYH.js                13.38 kB │ gzip:  4.69 kB
+dist/assets/AdminPage-jeyp2iLT.js                15.65 kB │ gzip:  5.30 kB
+dist/assets/index-qEfrVXE3.js                    15.83 kB │ gzip:  6.83 kB
+dist/assets/TabletWorkerPage-BL00aLDp.js         16.62 kB │ gzip:  5.48 kB
+dist/assets/WorkerPage-BXUUP-4C.js               17.28 kB │ gzip:  6.06 kB
+dist/assets/OrderEntryPage-BiGxeQZS.js           20.75 kB │ gzip:  7.51 kB
+dist/assets/SalesMyPage-BP4s70w5.js              42.58 kB │ gzip: 12.04 kB
+dist/assets/WorkerStationViewPage-C_vSMCB2.js    44.65 kB │ gzip: 11.19 kB
+dist/assets/index-FqK5msS-.js                   176.18 kB │ gzip: 58.14 kB
+✓ built in 1.89s
+EXIT_CODE=0

@@ -1,0 +1,13 @@
+﻿COMMAND=node --test tests/orders-get-schema-init.test.mjs
+✔ orders GET executes only read queries and never schema DDL (1.7669ms)
+✔ orders POST prepares the optional schema before opening its write transaction (1.1632ms)
+✔ migration runner executes all five optional columns with exact schema types (77.7734ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 201.7865
+EXIT_CODE=0

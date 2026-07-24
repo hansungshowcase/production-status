@@ -1,0 +1,20 @@
+﻿COMMAND=git diff --check
+git.exe : warning: in the working copy of 'api/
+orders/index.js', LF will be replaced by CRLF t
+he next time Git touches it
+At line:4 char:11
++ $output = & git diff --check 2>&1
++           ~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (w
+   arning: in the... Git touches it:String) [
+  ], RemoteException
+    + FullyQualifiedErrorId : NativeCommandErr
+   or
+
+warning: in the working copy of 'scripts/migrat
+e.js', LF will be replaced by CRLF the next tim
+e Git touches it
+warning: in the working copy of 'tests/orders-g
+et-schema-init.test.mjs', LF will be replaced b
+y CRLF the next time Git touches it
+EXIT_CODE=0

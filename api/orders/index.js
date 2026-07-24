@@ -71,8 +71,7 @@ export default cors(async function handler(req, res) {
   }
 });
 
-async function handleGet(req, res) {
-  const db = getDb();
+export async function handleGet(req, res, db = getDb()) {
   const processStepOrder = stepOrderCase('p');
   const {
     sales_person, status, client_name, product_type, search,
@@ -307,7 +306,7 @@ async function handleGet(req, res) {
   return res.json({ orders, total });
 }
 
-async function handlePost(req, res) {
+export async function handlePost(req, res, db) {
   let body;
   try {
     body = normalizeOrderCreateInput(sanitizeInput(req.body));
@@ -333,7 +332,7 @@ async function handlePost(req, res) {
     ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url,
   } = body;
 
-  const db = getDb();
+  db ??= getDb();
   await ensureOrderImageColumn(db);
   const tx = await db.transaction('write');
   let createdOrderId = null; // 부분 실패 시 cleanup용

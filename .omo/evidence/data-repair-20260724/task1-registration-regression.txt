@@ -1,0 +1,28 @@
+﻿COMMAND=node --test tests/order-registration-payload.test.mjs
+✔ order entry payload tolerates OCR numeric text and non-positive optional sizes (2.5396ms)
+✔ numeric normalizers convert invalid OCR values without blocking registration (0.2649ms)
+✔ work orders marked with Kim Bosu manager are assigned to Lee Junhyeong sales (1.1801ms)
+✔ work-order image registrations require a real canonical due date before submit (4.0852ms)
+✔ work-order image registrations require a real canonical order date before submit (0.5216ms)
+✔ work-order image registrations require a positive quantity before submit or persistence (1.3125ms)
+✔ order create input normalizes numeric fields before server validation and insert (0.2676ms)
+✔ order create input rejects missing or invalid due dates when a work-order image is present (0.6336ms)
+✔ order create input permits an omitted due date without an image and real canonical dates with one (0.4231ms)
+✔ work-order image registrations require an assigned sales person (신은철·이준형) (0.6123ms)
+✔ order mutation input sanitizes OCR boilerplate before DB update (1.5513ms)
+✔ order mutation final state preserves the image-backed canonical due-date invariant (0.4801ms)
+✔ order PATCH mutation selection ignores inherited fields and preserves own normalized fields (0.8066ms)
+✔ only own due-date or image mutations require an invariant write guard (0.9796ms)
+✔ due-date and image writes use optimistic invariant guards and clean up conflicted uploads (15.9949ms)
+✔ order update routes validate final image-backed state before upload or UPDATE (6.6228ms)
+✔ order creation insert keeps column and value counts aligned (1.1501ms)
+✔ order POST returns a structured due-date 400 before database access (33.1687ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 253.2355
+EXIT_CODE=0

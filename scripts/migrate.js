@@ -1,9 +1,8 @@
 import { neon } from '@neondatabase/serverless';
+import { pathToFileURL } from 'node:url';
 
-async function migrate() {
-  const sql = neon(process.env.POSTGRES_URL);
-
-  const statements = [
+function migrationStatements() {
+  return [
     `CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
       order_date TEXT,
@@ -167,16 +166,24 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_photos_process_id ON photos(process_id)`,
     `CREATE INDEX IF NOT EXISTS idx_issues_order_resolved ON issues(order_id, resolved_at)`,
   ];
+}
 
-  for (const stmt of statements) {
+export async function runMigrationStatements(sql) {
+  for (const stmt of migrationStatements()) {
     await sql.query(stmt);
     console.log('OK:', stmt.slice(0, 60) + '...');
   }
+}
 
+async function migrate() {
+  const sql = neon(process.env.POSTGRES_URL);
+  await runMigrationStatements(sql);
   console.log('Migration complete!');
 }
 
-migrate().catch(err => {
-  console.error('Migration failed:', err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  migrate().catch(err => {
+    console.error('Migration failed:', err);
+    process.exit(1);
+  });
+}
