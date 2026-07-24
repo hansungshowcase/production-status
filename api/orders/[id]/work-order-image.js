@@ -7,6 +7,8 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { storeImageFile } from '../../_lib/storeImage.js';
 import {
   assertImageBackedOrderHasCanonicalDueDate,
+  assertImageBackedOrderHasPositiveQuantity,
+  assertImageBackedOrderHasSalesPerson,
   OrderCreateInputValidationError,
 } from '../../_lib/orderCreateInput.js';
 
@@ -61,7 +63,7 @@ export default cors(async function handler(req, res) {
   const db = getDb();
   await ensureOrderImageColumn(db);
 
-  const orderResult = await db.execute({ sql: 'SELECT id, client_name, due_date, work_order_image_url FROM orders WHERE id = ?', args: [id] });
+  const orderResult = await db.execute({ sql: 'SELECT id, client_name, due_date, sales_person, quantity, work_order_image_url FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
   if (!order) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
@@ -69,6 +71,14 @@ export default cors(async function handler(req, res) {
 
   try {
     assertImageBackedOrderHasCanonicalDueDate({
+      ...order,
+      work_order_image_url: 'pending-upload',
+    });
+    assertImageBackedOrderHasPositiveQuantity({
+      ...order,
+      work_order_image_url: 'pending-upload',
+    });
+    assertImageBackedOrderHasSalesPerson({
       ...order,
       work_order_image_url: 'pending-upload',
     });
@@ -97,9 +107,11 @@ export default cors(async function handler(req, res) {
             SET work_order_image_url = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
               AND due_date IS NOT DISTINCT FROM ?
+              AND sales_person IS NOT DISTINCT FROM ?
+              AND quantity IS NOT DISTINCT FROM ?
               AND work_order_image_url IS NOT DISTINCT FROM ?
             RETURNING *`,
-      args: [storedImage.url, id, order.due_date ?? null, order.work_order_image_url ?? null],
+      args: [storedImage.url, id, order.due_date ?? null, order.sales_person ?? null, order.quantity ?? null, order.work_order_image_url ?? null],
     });
     if (!updateResult.rows || updateResult.rows.length === 0) {
       if (storedImage.rollbackUrl) {

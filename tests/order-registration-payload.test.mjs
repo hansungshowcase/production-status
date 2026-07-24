@@ -120,7 +120,7 @@ test('work-order image registrations require a real canonical due date before su
     width: '',
     depth: '',
     height: '',
-    quantity: '',
+    quantity: '1',
     color: '',
     sale_amount: '',
     balance: '',
@@ -137,6 +137,36 @@ test('work-order image registrations require a real canonical due date before su
   }
   assert.deepEqual(validateOrderEntryForm(validBaseForm, false), {});
   assert.deepEqual(validateOrderEntryForm({ ...validBaseForm, due_date: '2026-07-20' }, true), {});
+});
+
+test('work-order image registrations require a positive quantity before submit or persistence', () => {
+  const imageBackedForm = {
+    order_date: '2026-07-14',
+    due_date: '2026-07-20',
+    sales_person: '이준형',
+    client_name: '한성거래처',
+    product_type: '수납장',
+    quantity: '1',
+  };
+
+  for (const quantity of [undefined, null, '', '0', '-1', '수량 미기재']) {
+    assert.throws(
+      () => normalizeOrderCreateInput({
+        work_order_image_url: 'https://example.com/work-order.jpg',
+        due_date: '2026-07-20',
+        sales_person: '이준형',
+        quantity,
+      }),
+      /work_order_image_url.*quantity.*positive/,
+    );
+    assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity }, true), {
+      quantity: '작업지시서 등록은 수량을 1 이상 입력해주세요',
+    });
+  }
+
+  assert.doesNotThrow(() => normalizeOrderCreateInput({ quantity: '' }));
+  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity: '' }, false), {});
+  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity: '2대' }, true), {});
 });
 
 test('order create input normalizes numeric fields before server validation and insert', () => {
@@ -193,6 +223,7 @@ test('order create input permits an omitted due date without an image and real c
     due_date: '2028-02-29',
     work_order_image_url: 'https://example.com/work-order.jpg',
     sales_person: '신은철',
+    quantity: 1,
   }));
 });
 
@@ -214,6 +245,7 @@ test('work-order image registrations require an assigned sales person (신은철
     due_date: '2028-02-29',
     work_order_image_url: 'https://example.com/work-order.jpg',
     sales_person: '김보수',
+    quantity: 1,
   }));
 
   // 이미지 없는 일반 등록은 담당자 없어도 허용 (규칙 영향 없음)
@@ -310,6 +342,7 @@ test('only own due-date or image mutations require an invariant write guard', ()
   );
   assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ client_name: 'unchanged invariant' }), false);
   assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ due_date: null }), true);
+  assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ quantity: null }), true);
   assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ work_order_image_url: null }), true);
   assert.equal(
     orderCreateInput.mutationTouchesImageDueInvariant(
@@ -331,8 +364,10 @@ test('due-date and image writes use optimistic invariant guards and clean up con
   assert.match(patchSource, /RETURNING \*/);
   assert.match(patchSource, /updateResult\.rows\.length === 0[\s\S]*res\.status\(409\)/);
 
-  assert.match(imageSource, /SELECT id, client_name, due_date, work_order_image_url FROM orders/);
+  assert.match(imageSource, /SELECT id, client_name, due_date, sales_person, quantity, work_order_image_url FROM orders/);
   assert.match(imageSource, /due_date IS NOT DISTINCT FROM \?/);
+  assert.match(imageSource, /sales_person IS NOT DISTINCT FROM \?/);
+  assert.match(imageSource, /quantity IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /work_order_image_url IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /RETURNING \*/);
   assert.match(imageSource, /updateResult\.rows\.length === 0[\s\S]*del\(storedImage\.rollbackUrl\)[\s\S]*res\.status\(409\)/);
@@ -359,14 +394,29 @@ test('order update routes validate final image-backed state before upload or UPD
     'PATCH should retain an assignee for an image-backed order',
   );
   assert.ok(patchSalesPersonValidation < patchSource.indexOf('UPDATE orders SET'));
+  const patchQuantityValidation = patchSource.indexOf(
+    'assertImageBackedOrderHasPositiveQuantity({ ...order, ...mutation })',
+  );
+  assert.ok(
+    patchQuantityValidation >= 0,
+    'PATCH should retain a positive quantity for an image-backed order',
+  );
+  assert.ok(patchQuantityValidation < patchSource.indexOf('UPDATE orders SET'));
   assert.match(patchSource, /OrderCreateInputValidationError[\s\S]*res\.status\(400\)/);
 
-  assert.match(imageSource, /SELECT id, client_name, due_date, work_order_image_url FROM orders/);
+  assert.match(imageSource, /SELECT id, client_name, due_date, sales_person, quantity, work_order_image_url FROM orders/);
+  assert.match(imageSource, /assertImageBackedOrderHasSalesPerson/);
   const imageValidation = imageSource.indexOf('assertImageBackedOrderHasCanonicalDueDate({');
+  const imageSalesPersonValidation = imageSource.indexOf('assertImageBackedOrderHasSalesPerson({');
+  const imageQuantityValidation = imageSource.indexOf('assertImageBackedOrderHasPositiveQuantity({');
   const imageUpdate = imageSource.indexOf('UPDATE orders');
   assert.ok(imageValidation >= 0, 'image attachment should validate the resulting image-backed state');
   assert.ok(imageValidation < imageSource.indexOf('storeImageFile('));
   assert.ok(imageValidation < imageUpdate);
+  assert.ok(imageSalesPersonValidation >= 0, 'image attachment should require an assigned sales person');
+  assert.ok(imageSalesPersonValidation < imageSource.indexOf('storeImageFile('));
+  assert.ok(imageQuantityValidation >= 0, 'image attachment should require a positive quantity');
+  assert.ok(imageQuantityValidation < imageSource.indexOf('storeImageFile('));
   assert.match(imageSource, /OrderCreateInputValidationError[\s\S]*res\.status\(400\)/);
 });
 

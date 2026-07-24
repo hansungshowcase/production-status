@@ -58,8 +58,22 @@ export function assertImageBackedOrderHasSalesPerson(order) {
   }
 }
 
+export function assertImageBackedOrderHasPositiveQuantity(order) {
+  const quantityText = String(order.quantity ?? '').trim();
+  if (
+    order.work_order_image_url
+    && (quantityText.startsWith('-') || normalizeOptionalPositiveNumber(order.quantity) === null)
+  ) {
+    throw new OrderCreateInputValidationError(
+      'work_order_image_url이 있는 주문은 quantity를 positive number로 입력해야 합니다.',
+    );
+  }
+}
+
 export function mutationTouchesImageDueInvariant(mutation) {
-  return Object.hasOwn(mutation, 'due_date') || Object.hasOwn(mutation, 'work_order_image_url');
+  return Object.hasOwn(mutation, 'due_date')
+    || Object.hasOwn(mutation, 'quantity')
+    || Object.hasOwn(mutation, 'work_order_image_url');
 }
 
 export function normalizeOrderCreateInput(input) {
@@ -67,6 +81,7 @@ export function normalizeOrderCreateInput(input) {
 
   assertImageBackedOrderHasCanonicalDueDate(body);
   assertImageBackedOrderHasSalesPerson(body);
+  assertImageBackedOrderHasPositiveQuantity(body);
 
   body.width = normalizeOptionalPositiveNumber(body.width);
   body.depth = normalizeOptionalPositiveNumber(body.depth);

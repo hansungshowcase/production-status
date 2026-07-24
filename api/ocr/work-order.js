@@ -75,6 +75,7 @@ const PROMPT = `이 이미지는 냉장쇼케이스 제조업체의 작업지시
 이미지에서 다음 정보를 추출해서 JSON으로 반환하세요.
 반드시 아래 필드명을 사용하세요. 값이 없으면 null로 반환하세요.
 숫자 필드(width, depth, height, quantity)는 반드시 숫자만 반환하세요.
+수량 표기에 "총 N대"가 있으면 앞의 개별 표기보다 총 N대를 quantity로 반환하세요.
 날짜는 반드시 YYYY-MM-DD 형식으로 반환하세요. 연도가 불분명하면 ${CURRENT_YEAR}년으로 설정하세요.
 
 {
@@ -133,11 +134,17 @@ function parseOcrJson(text) {
   return normalizeOcrResult(parseWorkOrderJson(text));
 }
 
+export function extractQuantityFromOcrValue(value) {
+  const totalMatch = String(value || '').match(/총\s*(\d+)\s*대/);
+  if (totalMatch) return parseInt(totalMatch[1], 10) || null;
+  return parseInt(String(value || '').replace(/[^0-9]/g, ''), 10) || null;
+}
+
 function normalizeOcrResult(parsed) {
   if (parsed.width) parsed.width = parseInt(String(parsed.width).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.height) parsed.height = parseInt(String(parsed.height).replace(/[^0-9]/g, ''), 10) || null;
-  if (parsed.quantity) parsed.quantity = parseInt(String(parsed.quantity).replace(/[^0-9]/g, ''), 10) || null;
+  if (parsed.quantity) parsed.quantity = extractQuantityFromOcrValue(parsed.quantity);
 
   const thisYear = String(CURRENT_YEAR);
   ['order_date', 'due_date'].forEach(field => {

@@ -9,6 +9,7 @@ import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
 import { STEPS } from '../../_lib/steps.js';
 import {
   assertImageBackedOrderHasCanonicalDueDate,
+  assertImageBackedOrderHasPositiveQuantity,
   assertImageBackedOrderHasSalesPerson,
   mutationTouchesImageDueInvariant,
   normalizeOrderMutationInput,
@@ -113,6 +114,7 @@ async function handleUpdate(id, req, res) {
   try {
     assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation });
     assertImageBackedOrderHasSalesPerson({ ...order, ...mutation });
+    assertImageBackedOrderHasPositiveQuantity({ ...order, ...mutation });
   } catch (err) {
     if (err instanceof OrderCreateInputValidationError) {
       return res.status(400).json({ error: { message: err.message, status: 400 } });
@@ -124,12 +126,12 @@ async function handleUpdate(id, req, res) {
 
   const guardInvariantState = mutationTouchesImageDueInvariant(mutation);
   const invariantWhere = guardInvariantState
-    ? ' AND due_date IS NOT DISTINCT FROM ? AND work_order_image_url IS NOT DISTINCT FROM ?'
+    ? ' AND due_date IS NOT DISTINCT FROM ? AND quantity IS NOT DISTINCT FROM ? AND work_order_image_url IS NOT DISTINCT FROM ?'
     : '';
   const updateResult = await db.execute({
     sql: `UPDATE orders SET ${updates.join(', ')} WHERE id = ?${invariantWhere} RETURNING *`,
     args: guardInvariantState
-      ? [...values, id, order.due_date ?? null, order.work_order_image_url ?? null]
+      ? [...values, id, order.due_date ?? null, order.quantity ?? null, order.work_order_image_url ?? null]
       : [...values, id],
   });
   if (!updateResult.rows || updateResult.rows.length === 0) {

@@ -44,6 +44,12 @@ export function validateOrderEntryForm(form, hasWorkOrderImage = false) {
   if (hasWorkOrderImage && !['신은철', '이준형'].includes(normalizeSalesPerson(form.sales_person))) {
     errors.sales_person = '작업지시서 등록은 담당자를 선택해주세요';
   }
+  if (
+    hasWorkOrderImage
+    && (String(form.quantity ?? '').trim().startsWith('-') || normalizeOptionalPositiveNumber(form.quantity) === null)
+  ) {
+    errors.quantity = '작업지시서 등록은 수량을 1 이상 입력해주세요';
+  }
   return errors;
 }
 

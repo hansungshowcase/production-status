@@ -91,6 +91,34 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date)`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS work_order_image_url TEXT`,
+    `CREATE OR REPLACE FUNCTION enforce_image_backed_order_integrity()
+      RETURNS TRIGGER AS $image_order_guard$
+      BEGIN
+        IF NULLIF(BTRIM(NEW.work_order_image_url), '') IS NOT NULL THEN
+          IF NEW.sales_person IS NULL OR NEW.sales_person NOT IN ('신은철', '이준형') THEN
+            RAISE EXCEPTION 'Image-backed orders require an assigned sales person';
+          END IF;
+
+          IF NEW.due_date IS NULL
+            OR NEW.due_date !~ '^\\d{4}-\\d{2}-\\d{2}$'
+            OR to_char(to_date(NEW.due_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.due_date THEN
+            RAISE EXCEPTION 'Image-backed orders require a canonical due date';
+          END IF;
+
+          IF NEW.quantity IS NULL OR NEW.quantity <= 0 THEN
+            RAISE EXCEPTION 'Image-backed orders require a positive quantity';
+          END IF;
+        END IF;
+
+        RETURN NEW;
+      END;
+      $image_order_guard$ LANGUAGE plpgsql`,
+    `DROP TRIGGER IF EXISTS image_backed_order_integrity_guard ON orders`,
+    `CREATE TRIGGER image_backed_order_integrity_guard
+      BEFORE INSERT OR UPDATE OF work_order_image_url, sales_person, due_date, quantity
+      ON orders
+      FOR EACH ROW
+      EXECUTE FUNCTION enforce_image_backed_order_integrity()`,
     // FK 컬럼 인덱스 (Postgres는 FK에 자동 인덱스 안 만듦 — orders 목록 풀스캔 방지)
     `CREATE INDEX IF NOT EXISTS idx_processes_order_id ON processes(order_id)`,
     `CREATE INDEX IF NOT EXISTS idx_processes_step_status ON processes(step_name, status)`,

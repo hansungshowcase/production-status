@@ -107,6 +107,8 @@ function extractFirstNumber(value) {
 }
 
 function extractQuantity(text) {
+  const total = String(text || '').match(/총\s*(\d+)\s*대/);
+  if (total) return total[1];
   const labeled = extractFirstNumber(extractLabeledValue(text, ['수량', '개수', 'Quantity', 'Qty', 'QTY']));
   if (labeled) return labeled;
   const match = String(text || '').match(/(?:Quantity|Quantit\w+|Qty|QTY|\bEA\b|\bea\b)\D{0,24}(\d+)/i);
