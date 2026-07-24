@@ -91,6 +91,10 @@ async function migrate() {
     `CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`,
     `CREATE INDEX IF NOT EXISTS idx_orders_due_date ON orders(due_date)`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS work_order_image_url TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS sale_amount DOUBLE PRECISION`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION`,
+    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS freight_payment TEXT`,
     `CREATE OR REPLACE FUNCTION enforce_image_backed_order_integrity()
       RETURNS TRIGGER AS $image_order_guard$
       BEGIN

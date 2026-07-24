@@ -73,7 +73,6 @@ export default cors(async function handler(req, res) {
 
 async function handleGet(req, res) {
   const db = getDb();
-  await ensureOrderImageColumn(db);
   const processStepOrder = stepOrderCase('p');
   const {
     sales_person, status, client_name, product_type, search,
