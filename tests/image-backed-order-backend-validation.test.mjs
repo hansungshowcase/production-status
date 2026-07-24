@@ -246,7 +246,7 @@ test('migration trigger enforces every essential on future image-backed writes w
   const source = await readFile(new URL('../scripts/migrate.js', import.meta.url), 'utf8');
 
   assert.match(source, /NULLIF\(BTRIM\(NEW\.client_name\), ''\) IS NULL/);
-  assert.match(source, /NEW\.order_date !~ '\^\\\\d\{4\}-\\\\d\{2\}-\\\\d\{2\}\$'/);
+  assert.match(source, /NEW\.order_date !~ '\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$'/);
   assert.match(
     source,
     /to_char\(to_date\(NEW\.order_date, 'YYYY-MM-DD'\), 'YYYY-MM-DD'\) <> NEW\.order_date/,

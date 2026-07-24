@@ -111,7 +111,7 @@ async function migrate() {
           END IF;
 
           IF NEW.order_date IS NULL
-            OR NEW.order_date !~ '^\\d{4}-\\d{2}-\\d{2}$'
+            OR NEW.order_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
             OR to_char(to_date(NEW.order_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.order_date THEN
             RAISE EXCEPTION 'Image-backed orders require a canonical order date';
           END IF;
@@ -121,7 +121,7 @@ async function migrate() {
           END IF;
 
           IF NEW.due_date IS NULL
-            OR NEW.due_date !~ '^\\d{4}-\\d{2}-\\d{2}$'
+            OR NEW.due_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
             OR to_char(to_date(NEW.due_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.due_date THEN
             RAISE EXCEPTION 'Image-backed orders require a canonical due date';
           END IF;

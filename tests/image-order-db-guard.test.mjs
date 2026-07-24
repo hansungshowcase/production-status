@@ -17,10 +17,10 @@ test('migration installs a database guard for image-backed order essentials only
   assert.match(source, /OLD\.work_order_image_url IS NOT DISTINCT FROM NEW\.work_order_image_url/);
   assert.match(source, /NULLIF\(BTRIM\(NEW\.work_order_image_url\), ''\) IS NOT NULL/);
   assert.match(source, /NULLIF\(BTRIM\(NEW\.client_name\), ''\) IS NULL/);
-  assert.match(source, /NEW\.order_date !~ '\^\\\\d\{4\}-\\\\d\{2\}-\\\\d\{2\}\$'/);
+  assert.match(source, /NEW\.order_date !~ '\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$'/);
   assert.match(source, /to_char\(to_date\(NEW\.order_date, 'YYYY-MM-DD'\), 'YYYY-MM-DD'\) <> NEW\.order_date/);
   assert.match(source, /NEW\.sales_person NOT IN \('\uC2E0\uC740\uCCA0', '\uC774\uC900\uD615'\)/);
-  assert.match(source, /NEW\.due_date !~ '\^\\\\d\{4\}-\\\\d\{2\}-\\\\d\{2\}\$'/);
+  assert.match(source, /NEW\.due_date !~ '\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$'/);
   assert.match(source, /to_char\(to_date\(NEW\.due_date, 'YYYY-MM-DD'\), 'YYYY-MM-DD'\) <> NEW\.due_date/);
   assert.match(source, /NULLIF\(BTRIM\(NEW\.product_type\), ''\) IS NULL/);
   assert.match(source, /NEW\.quantity <= 0/);
