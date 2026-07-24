@@ -89,6 +89,20 @@ git commit -m "Keep orders GET schema-read-only"
 - Create: `scripts/repair-legacy-sales-person-aliases.js`
 - Test: `tests/repair-legacy-sales-person-aliases.test.mjs`
 
+**Safety-review amendment (before any production use):**
+
+- Keep the original CLI/import path as a thin explicit facade, but split the
+  implementation into focused `constants`, `guards`, `planning`, `manifest`,
+  and `transaction` modules. Split the test suite into focused test files plus
+  a shared helper. Every new production or test module must be at most 250
+  non-comment LOC.
+- On Windows, restrict the rollback-manifest directory ACL before the manifest
+  is created or raw preimages are written; retain exclusive creation and
+  verify that no broad ACE can read the completed file.
+- Add behavior coverage for exact facade exports/direct CLI invocation, real
+  CAS parameter binding, postflight preimage drift, and failed fresh
+  verification after both normal and ambiguous commits.
+
 **Interfaces:**
 - Consumes: `POSTGRES_URL`, explicit `{ id, expectedSalesPerson, replacementSalesPerson }` manifest.
 - Produces: a transactionally applied JSON rollback manifest containing preimage and affected IDs; exits before any mutation when an ID/value predicate does not match.
