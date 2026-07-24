@@ -2,6 +2,7 @@ import { cors } from '../_lib/cors.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
+import { isCanonicalCalendarDate } from '../../src/utils/dateUtils.js';
 import { parseWorkOrderJson } from '../_lib/ocrParse.js';
 
 export const config = {
@@ -183,9 +184,12 @@ export function normalizeOcrDueDate(value) {
 }
 
 export function hasCompleteOcrEssentials(data) {
-  return CANONICAL_SALES_PERSONS.has(data?.sales_person)
+  return Boolean(String(data?.client_name || '').trim())
+    && isCanonicalCalendarDate(data?.order_date)
+    && CANONICAL_SALES_PERSONS.has(data?.sales_person)
     && Boolean(data?.due_date)
     && normalizeOcrDueDate(data?.due_date) === data?.due_date
+    && Boolean(String(data?.product_type || '').trim())
     && Number.isInteger(data?.quantity)
     && data.quantity > 0;
 }

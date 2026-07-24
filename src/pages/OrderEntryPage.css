@@ -536,6 +536,29 @@
   margin: 4px 0 0;
 }
 
+.ocr-confirm__notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 20px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ocr-confirm__notice--error {
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+}
+
+.ocr-confirm__notice--warning {
+  color: #92400e;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+}
+
 .ocr-confirm__image-wrap {
   padding: 12px 20px;
   text-align: center;
@@ -563,12 +586,33 @@
   min-width: 0;
 }
 
+.ocr-confirm__field--error {
+  align-items: flex-start;
+}
+
 .ocr-confirm__label {
   font-size: 13px;
   font-weight: 700;
   color: #475569;
   min-width: 72px;
   flex-shrink: 0;
+}
+
+.ocr-confirm__field--error .ocr-confirm__label {
+  color: #b91c1c;
+}
+
+.ocr-confirm__required {
+  margin-left: 2px;
+  color: #dc2626;
+}
+
+.ocr-confirm__control {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .ocr-confirm__input {
@@ -590,6 +634,22 @@
   outline: none;
   border-color: #0ea5e9;
   background: #fff;
+}
+
+.ocr-confirm__input--error {
+  border-color: #ef4444;
+  background: #fff7f7;
+}
+
+.ocr-confirm__input--error:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.ocr-confirm__field-error {
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .ocr-confirm__select {
@@ -634,6 +694,12 @@
   background: linear-gradient(135deg, #0ea5e9, #0284c7);
   color: #fff;
   box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+}
+
+.ocr-confirm__btn--confirm:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* 드래그 앤 드롭 영역 */

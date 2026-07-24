@@ -39,6 +39,26 @@ export class OrderCreateInputValidationError extends Error {
   }
 }
 
+function isNonBlankText(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export function assertImageBackedOrderHasClientName(order) {
+  if (order.work_order_image_url && !isNonBlankText(order.client_name)) {
+    throw new OrderCreateInputValidationError(
+      'work_order_image_url이 있는 주문은 client_name을 비워둘 수 없습니다.',
+    );
+  }
+}
+
+export function assertImageBackedOrderHasCanonicalOrderDate(order) {
+  if (order.work_order_image_url && !isCanonicalCalendarDate(order.order_date)) {
+    throw new OrderCreateInputValidationError(
+      'work_order_image_url이 있는 주문은 order_date를 실제 YYYY-MM-DD 날짜로 입력해야 합니다.',
+    );
+  }
+}
+
 export function assertImageBackedOrderHasCanonicalDueDate(order) {
   if (order.work_order_image_url && !isCanonicalCalendarDate(order.due_date)) {
     throw new OrderCreateInputValidationError(
@@ -58,6 +78,14 @@ export function assertImageBackedOrderHasSalesPerson(order) {
   }
 }
 
+export function assertImageBackedOrderHasProductType(order) {
+  if (order.work_order_image_url && !isNonBlankText(order.product_type)) {
+    throw new OrderCreateInputValidationError(
+      'work_order_image_url이 있는 주문은 product_type을 비워둘 수 없습니다.',
+    );
+  }
+}
+
 export function assertImageBackedOrderHasPositiveQuantity(order) {
   const quantityText = String(order.quantity ?? '').trim();
   if (
@@ -70,17 +98,52 @@ export function assertImageBackedOrderHasPositiveQuantity(order) {
   }
 }
 
+const IMAGE_ORDER_INVARIANT_FIELDS = [
+  'client_name',
+  'order_date',
+  'due_date',
+  'sales_person',
+  'product_type',
+  'quantity',
+  'work_order_image_url',
+];
+
 export function mutationTouchesImageDueInvariant(mutation) {
-  return Object.hasOwn(mutation, 'due_date')
-    || Object.hasOwn(mutation, 'quantity')
-    || Object.hasOwn(mutation, 'work_order_image_url');
+  return IMAGE_ORDER_INVARIANT_FIELDS.some(field => Object.hasOwn(mutation, field));
+}
+
+export function mutationChangesImageOrderInvariant(order, mutation) {
+  return IMAGE_ORDER_INVARIANT_FIELDS.some((field) => {
+    if (!Object.hasOwn(mutation, field)) return false;
+
+    const currentValue = order[field] ?? null;
+    const nextValue = mutation[field] ?? null;
+    if (field !== 'quantity' || currentValue === null || nextValue === null) {
+      return currentValue !== nextValue;
+    }
+
+    const currentText = String(currentValue).trim();
+    const nextText = String(nextValue).trim();
+    if (!currentText || !nextText) return currentValue !== nextValue;
+
+    const currentNumber = Number(currentText);
+    const nextNumber = Number(nextText);
+    if (!Number.isFinite(currentNumber) || !Number.isFinite(nextNumber)) {
+      return currentValue !== nextValue;
+    }
+
+    return currentNumber !== nextNumber;
+  });
 }
 
 export function normalizeOrderCreateInput(input) {
   const body = normalizeOrderMutationInput(input);
 
+  assertImageBackedOrderHasClientName(body);
+  assertImageBackedOrderHasCanonicalOrderDate(body);
   assertImageBackedOrderHasCanonicalDueDate(body);
   assertImageBackedOrderHasSalesPerson(body);
+  assertImageBackedOrderHasProductType(body);
   assertImageBackedOrderHasPositiveQuantity(body);
 
   body.width = normalizeOptionalPositiveNumber(body.width);

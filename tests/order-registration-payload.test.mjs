@@ -139,6 +139,26 @@ test('work-order image registrations require a real canonical due date before su
   assert.deepEqual(validateOrderEntryForm({ ...validBaseForm, due_date: '2026-07-20' }, true), {});
 });
 
+test('work-order image registrations require a real canonical order date before submit', () => {
+  const imageBackedForm = {
+    order_date: '2026-07-14',
+    due_date: '2026-07-20',
+    sales_person: '이준형',
+    client_name: '한성 거래처',
+    product_type: '냉장고',
+    quantity: '1',
+  };
+
+  for (const order_date of ['', '2026-7-14', '2026-02-29', '2026-04-31']) {
+    assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, order_date }, true), {
+      order_date: '작업지시서 등록은 실제 발주일을 입력해주세요',
+    });
+  }
+
+  assert.deepEqual(validateOrderEntryForm(imageBackedForm, true), {});
+  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, order_date: '' }, false), {});
+});
+
 test('work-order image registrations require a positive quantity before submit or persistence', () => {
   const imageBackedForm = {
     order_date: '2026-07-14',
@@ -153,8 +173,11 @@ test('work-order image registrations require a positive quantity before submit o
     assert.throws(
       () => normalizeOrderCreateInput({
         work_order_image_url: 'https://example.com/work-order.jpg',
+        client_name: '한성 거래처',
+        order_date: '2026-07-14',
         due_date: '2026-07-20',
         sales_person: '이준형',
+        product_type: '정육',
         quantity,
       }),
       /work_order_image_url.*quantity.*positive/,
@@ -209,7 +232,12 @@ test('order create input rejects missing or invalid due dates when a work-order 
     assert.throws(
       () => normalizeOrderCreateInput({
         work_order_image_url: 'https://example.com/work-order.jpg',
+        client_name: '한성 거래처',
+        order_date: '2026-07-14',
         due_date,
+        sales_person: '이준형',
+        product_type: '정육',
+        quantity: 1,
       }),
       /work_order_image_url.*due_date.*YYYY-MM-DD/,
     );
@@ -220,9 +248,12 @@ test('order create input permits an omitted due date without an image and real c
   assert.doesNotThrow(() => normalizeOrderCreateInput({ due_date: undefined }));
   assert.doesNotThrow(() => normalizeOrderCreateInput({ due_date: null, work_order_image_url: null }));
   assert.doesNotThrow(() => normalizeOrderCreateInput({
+    client_name: '한성 거래처',
+    order_date: '2026-07-14',
     due_date: '2028-02-29',
     work_order_image_url: 'https://example.com/work-order.jpg',
     sales_person: '신은철',
+    product_type: '정육',
     quantity: 1,
   }));
 });
@@ -232,9 +263,13 @@ test('work-order image registrations require an assigned sales person (신은철
   for (const sales_person of [undefined, null, '', '홍길동']) {
     assert.throws(
       () => normalizeOrderCreateInput({
+        client_name: '한성 거래처',
+        order_date: '2026-07-14',
         due_date: '2028-02-29',
         work_order_image_url: 'https://example.com/work-order.jpg',
         sales_person,
+        product_type: '정육',
+        quantity: 1,
       }),
       /work_order_image_url.*담당자/,
     );
@@ -242,9 +277,12 @@ test('work-order image registrations require an assigned sales person (신은철
 
   // 김보수는 이준형으로 정규화되어 통과
   assert.doesNotThrow(() => normalizeOrderCreateInput({
+    client_name: '한성 거래처',
+    order_date: '2026-07-14',
     due_date: '2028-02-29',
     work_order_image_url: 'https://example.com/work-order.jpg',
     sales_person: '김보수',
+    product_type: '정육',
     quantity: 1,
   }));
 
@@ -340,7 +378,7 @@ test('only own due-date or image mutations require an invariant write guard', ()
     'function',
     'the invariant mutation classifier should be exported',
   );
-  assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ client_name: 'unchanged invariant' }), false);
+  assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ client_name: 'unchanged invariant' }), true);
   assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ due_date: null }), true);
   assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ quantity: null }), true);
   assert.equal(orderCreateInput.mutationTouchesImageDueInvariant({ work_order_image_url: null }), true);
@@ -364,9 +402,12 @@ test('due-date and image writes use optimistic invariant guards and clean up con
   assert.match(patchSource, /RETURNING \*/);
   assert.match(patchSource, /updateResult\.rows\.length === 0[\s\S]*res\.status\(409\)/);
 
-  assert.match(imageSource, /SELECT id, client_name, due_date, sales_person, quantity, work_order_image_url FROM orders/);
+  assert.match(imageSource, /SELECT id, client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url FROM orders/);
+  assert.match(imageSource, /client_name IS NOT DISTINCT FROM \?/);
+  assert.match(imageSource, /order_date IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /due_date IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /sales_person IS NOT DISTINCT FROM \?/);
+  assert.match(imageSource, /product_type IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /quantity IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /work_order_image_url IS NOT DISTINCT FROM \?/);
   assert.match(imageSource, /RETURNING \*/);
@@ -404,8 +445,11 @@ test('order update routes validate final image-backed state before upload or UPD
   assert.ok(patchQuantityValidation < patchSource.indexOf('UPDATE orders SET'));
   assert.match(patchSource, /OrderCreateInputValidationError[\s\S]*res\.status\(400\)/);
 
-  assert.match(imageSource, /SELECT id, client_name, due_date, sales_person, quantity, work_order_image_url FROM orders/);
+  assert.match(imageSource, /SELECT id, client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url FROM orders/);
+  assert.match(imageSource, /assertImageBackedOrderHasClientName/);
+  assert.match(imageSource, /assertImageBackedOrderHasCanonicalOrderDate/);
   assert.match(imageSource, /assertImageBackedOrderHasSalesPerson/);
+  assert.match(imageSource, /assertImageBackedOrderHasProductType/);
   const imageValidation = imageSource.indexOf('assertImageBackedOrderHasCanonicalDueDate({');
   const imageSalesPersonValidation = imageSource.indexOf('assertImageBackedOrderHasSalesPerson({');
   const imageQuantityValidation = imageSource.indexOf('assertImageBackedOrderHasPositiveQuantity({');
@@ -451,6 +495,7 @@ test('order POST returns a structured due-date 400 before database access', asyn
         client_name: '한성거래처',
         product_type: '제과',
         work_order_image_url: 'https://example.com/work-order.jpg',
+        order_date: '2026-07-14',
         due_date: '0000-01-01',
       },
     };

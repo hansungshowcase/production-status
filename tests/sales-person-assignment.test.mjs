@@ -5,7 +5,7 @@ import test from 'node:test';
 const filesToCheck = [
   'src/constants.js',
   'src/pages/SalesMyPage.jsx',
-  'src/pages/OrderEntryPage.jsx',
+  'src/pages/ocrConfirmationValidation.js',
 ];
 
 test('sales management people are Shin Euncheol and Lee Junhyeong only', () => {

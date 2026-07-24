@@ -38,6 +38,9 @@ export function validateOrderEntryForm(form, hasWorkOrderImage = false) {
   if (!form.product_type || !form.product_type.trim()) {
     errors.product_type = '사양을 선택해주세요';
   }
+  if (hasWorkOrderImage && !isCanonicalCalendarDate(form.order_date)) {
+    errors.order_date = '작업지시서 등록은 실제 발주일을 입력해주세요';
+  }
   if (hasWorkOrderImage && !isCanonicalCalendarDate(form.due_date)) {
     errors.due_date = '작업지시서 등록은 납기일을 입력해주세요';
   }

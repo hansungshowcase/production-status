@@ -49,8 +49,11 @@ test('prefers stated total quantity over an item annotation', () => {
 test('marks OCR data usable only when every essential field is canonical', () => {
   // Given: complete and incomplete OCR outputs.
   const complete = {
+    client_name: 'OK정육점2',
+    order_date: '2026-07-20',
     sales_person: '이준형',
     due_date: '2026-07-22',
+    product_type: '정육',
     quantity: 2,
   };
 
@@ -59,6 +62,9 @@ test('marks OCR data usable only when every essential field is canonical', () =>
   assert.equal(hasCompleteOcrEssentials({ ...complete, due_date: '' }), false);
   assert.equal(hasCompleteOcrEssentials({ ...complete, sales_person: '김보수' }), false);
   assert.equal(hasCompleteOcrEssentials({ ...complete, quantity: 0 }), false);
+  assert.equal(hasCompleteOcrEssentials({ ...complete, client_name: '' }), false);
+  assert.equal(hasCompleteOcrEssentials({ ...complete, order_date: '2026-02-29' }), false);
+  assert.equal(hasCompleteOcrEssentials({ ...complete, product_type: '  ' }), false);
 });
 
 test('retries the configured secondary OCR provider when OpenAI returns incomplete essentials', async () => {

@@ -9,6 +9,13 @@ import { clearToken, getToken } from '../utils/authClient';
 import { extractDueDateFromText } from '../utils/dateUtils';
 import { extractBrowserOcrEssentialFields } from './browserOcrEssentialFields';
 import { buildOrderPayload, validateOrderEntryForm } from './orderEntryPayload';
+import {
+  COLOR_OPTIONS,
+  DOOR_TYPE_OPTIONS,
+  OCR_CONFIRMATION_FIELD_DEFINITIONS,
+  PRODUCT_TYPE_OPTIONS,
+  getOcrConfirmationValidation,
+} from './ocrConfirmationValidation';
 import './OrderEntryPage.css';
 
 function todayStr() {
@@ -55,9 +62,6 @@ const EMPTY_OCR_DATA = {
   notes: '',
 };
 
-const PRODUCT_TYPE_OPTIONS = ['제과', '정육', '반찬', '꽃', '대면', '오픈', '진열', '마카롱', '샌드위치', '쇼케이스', '버티칼', '냉장고', '냉동고'];
-const DOOR_TYPE_OPTIONS = ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운드앞문', '라운드뒷문', '평대'];
-const COLOR_OPTIONS = ['화이트', '올백색', '올스텐', '올검정', '블랙', '골드스텐', '골드미러'];
 const CURRENT_YEAR = new Date().getFullYear();
 
 function normalizeOcrText(text) {
@@ -220,6 +224,7 @@ export default function OrderEntryPage() {
     setErrors(newErrors);
     return newErrors;
   }, [form, workOrderImageUrl]);
+  const ocrValidation = getOcrConfirmationValidation(ocrResult?.data);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -445,6 +450,13 @@ export default function OrderEntryPage() {
 
   const handleOcrConfirm = () => {
     if (!ocrResult) return;
+    if (!ocrValidation.isValid) {
+      setToast({
+        visible: true,
+        message: `핵심 필수값 ${ocrValidation.invalidCoreFields.length}개가 누락되었거나 올바르지 않습니다. 표시된 항목을 수정해주세요.`,
+      });
+      return;
+    }
     const d = ocrResult.data;
     setForm((prev) => ({
       ...prev,
@@ -627,6 +639,21 @@ export default function OrderEntryPage() {
               <p className="ocr-confirm__desc">인식된 정보를 확인하고 수정하세요</p>
             </div>
 
+            {ocrValidation.invalidCoreFields.length > 0 && (
+              <div className="ocr-confirm__notice ocr-confirm__notice--error" role="alert" aria-live="assertive">
+                <strong>
+                  핵심 필수값 {ocrValidation.invalidCoreFields.length}개가 누락되었거나 올바르지 않습니다.
+                </strong>
+                <span>표시된 항목을 수정해야 확인할 수 있습니다.</span>
+              </div>
+            )}
+
+            {ocrValidation.blankOptionalFields.length > 0 && (
+              <div className="ocr-confirm__notice ocr-confirm__notice--warning" role="status" aria-live="polite">
+                선택 항목 {ocrValidation.blankOptionalFields.length}개가 비어 있습니다. 필요하면 입력 후 진행하세요.
+              </div>
+            )}
+
             {ocrResult.imageUrl && (
               <div className="ocr-confirm__image-wrap">
                 <img src={ocrResult.imageUrl} alt="작업지시서" className="ocr-confirm__image" />
@@ -634,63 +661,75 @@ export default function OrderEntryPage() {
             )}
 
             <div className="ocr-confirm__fields">
-              {[
-                { key: 'client_name', label: '거래처' },
-                { key: 'order_date', label: '발주일', type: 'date' },
-                { key: 'due_date', label: '납기일', type: 'date' },
-                { key: 'phone', label: '연락처' },
-                { key: 'delivery_address', label: '납품주소' },
-                { key: 'freight_payment', label: '운임여부' },
-                { key: 'sales_person', label: '담당자', dropdown: ['신은철', '이준형'] },
-                { key: 'product_type', label: '품명/사양', dropdown: ['제과', '정육', '반찬', '꽃', '와인', '오픈', '진열', '마카롱', '샌드위치', '음료', '밧트', '토핑', '양념육', '유럽형', '주류'] },
-                { key: 'door_type', label: '문짝/디자인', dropdown: ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운드앞문', '라운드뒷문', '평대'] },
-                { key: 'width', label: '가로(mm)', type: 'number' },
-                { key: 'depth', label: '세로(mm)', type: 'number' },
-                { key: 'height', label: '높이(mm)', type: 'number' },
-                { key: 'quantity', label: '수량', type: 'number' },
-                { key: 'color', label: '색상', dropdown: ['화이트', '올백색', '올스텐', '올검정', '블랙', '골드스텐', '골드미러'] },
-                { key: 'notes', label: '비고', textarea: true },
-              ].map(({ key, label, type, dropdown, textarea }) => (
-                <div key={key} className="ocr-confirm__field">
-                  <span className="ocr-confirm__label">{label}</span>
-                  {dropdown ? (
-                    <select
-                      className="ocr-confirm__input ocr-confirm__select"
-                      value={ocrResult.data[key] || ''}
-                      onChange={(e) => handleOcrEdit(key, e.target.value)}
-                    >
-                      <option value="">선택</option>
-                      {dropdown.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                      {ocrResult.data[key] && !dropdown.includes(ocrResult.data[key]) && (
-                        <option value={ocrResult.data[key]}>{ocrResult.data[key]} (인식값)</option>
+              {OCR_CONFIRMATION_FIELD_DEFINITIONS.map(({ key, label, required, type, dropdown, textarea }) => {
+                const fieldError = ocrValidation.invalidCoreFields.find((field) => field.key === key);
+                const fieldId = `ocr-confirm-${key}`;
+                return (
+                  <div key={key} className={`ocr-confirm__field${fieldError ? ' ocr-confirm__field--error' : ''}`}>
+                    <label className="ocr-confirm__label" htmlFor={fieldId}>
+                      {label}
+                      {required && <span className="ocr-confirm__required" aria-hidden="true">*</span>}
+                    </label>
+                    <div className="ocr-confirm__control">
+                      {dropdown ? (
+                        <select
+                          id={fieldId}
+                          className={`ocr-confirm__input ocr-confirm__select${fieldError ? ' ocr-confirm__input--error' : ''}`}
+                          value={ocrResult.data[key] || ''}
+                          onChange={(e) => handleOcrEdit(key, e.target.value)}
+                          aria-invalid={Boolean(fieldError)}
+                          aria-describedby={fieldError ? `${fieldId}-error` : undefined}
+                        >
+                          <option value="">선택</option>
+                          {dropdown.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                          {ocrResult.data[key] && !dropdown.includes(ocrResult.data[key]) && (
+                            <option value={ocrResult.data[key]}>{ocrResult.data[key]} (인식값)</option>
+                          )}
+                        </select>
+                      ) : textarea ? (
+                        <textarea
+                          id={fieldId}
+                          className={`ocr-confirm__input ocr-confirm__textarea${fieldError ? ' ocr-confirm__input--error' : ''}`}
+                          value={ocrResult.data[key] || ''}
+                          onChange={(e) => handleOcrEdit(key, e.target.value)}
+                          rows={2}
+                          aria-invalid={Boolean(fieldError)}
+                          aria-describedby={fieldError ? `${fieldId}-error` : undefined}
+                        />
+                      ) : (
+                        <input
+                          id={fieldId}
+                          type={type || 'text'}
+                          className={`ocr-confirm__input${fieldError ? ' ocr-confirm__input--error' : ''}`}
+                          value={ocrResult.data[key] || ''}
+                          onChange={(e) => handleOcrEdit(key, type === 'number' ? Number(e.target.value) || '' : e.target.value)}
+                          aria-invalid={Boolean(fieldError)}
+                          aria-describedby={fieldError ? `${fieldId}-error` : undefined}
+                        />
                       )}
-                    </select>
-                  ) : textarea ? (
-                    <textarea
-                      className="ocr-confirm__input ocr-confirm__textarea"
-                      value={ocrResult.data[key] || ''}
-                      onChange={(e) => handleOcrEdit(key, e.target.value)}
-                      rows={2}
-                    />
-                  ) : (
-                    <input
-                      type={type || 'text'}
-                      className="ocr-confirm__input"
-                      value={ocrResult.data[key] || ''}
-                      onChange={(e) => handleOcrEdit(key, type === 'number' ? Number(e.target.value) || '' : e.target.value)}
-                    />
-                  )}
-                </div>
-              ))}
+                      {fieldError && (
+                        <span className="ocr-confirm__field-error" id={`${fieldId}-error`}>
+                          {fieldError.message}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="ocr-confirm__actions">
-              <button className="ocr-confirm__btn ocr-confirm__btn--cancel" onClick={handleOcrCancel}>
+              <button type="button" className="ocr-confirm__btn ocr-confirm__btn--cancel" onClick={handleOcrCancel}>
                 취소
               </button>
-              <button className="ocr-confirm__btn ocr-confirm__btn--confirm" onClick={handleOcrConfirm}>
+              <button
+                type="button"
+                className="ocr-confirm__btn ocr-confirm__btn--confirm"
+                onClick={handleOcrConfirm}
+                disabled={!ocrValidation.isValid}
+              >
                 확인 후 입력
               </button>
             </div>

@@ -94,7 +94,28 @@ async function migrate() {
     `CREATE OR REPLACE FUNCTION enforce_image_backed_order_integrity()
       RETURNS TRIGGER AS $image_order_guard$
       BEGIN
+        IF TG_OP = 'UPDATE'
+          AND OLD.client_name IS NOT DISTINCT FROM NEW.client_name
+          AND OLD.order_date IS NOT DISTINCT FROM NEW.order_date
+          AND OLD.due_date IS NOT DISTINCT FROM NEW.due_date
+          AND OLD.sales_person IS NOT DISTINCT FROM NEW.sales_person
+          AND OLD.product_type IS NOT DISTINCT FROM NEW.product_type
+          AND OLD.quantity IS NOT DISTINCT FROM NEW.quantity
+          AND OLD.work_order_image_url IS NOT DISTINCT FROM NEW.work_order_image_url THEN
+          RETURN NEW;
+        END IF;
+
         IF NULLIF(BTRIM(NEW.work_order_image_url), '') IS NOT NULL THEN
+          IF NULLIF(BTRIM(NEW.client_name), '') IS NULL THEN
+            RAISE EXCEPTION 'Image-backed orders require a client name';
+          END IF;
+
+          IF NEW.order_date IS NULL
+            OR NEW.order_date !~ '^\\d{4}-\\d{2}-\\d{2}$'
+            OR to_char(to_date(NEW.order_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.order_date THEN
+            RAISE EXCEPTION 'Image-backed orders require a canonical order date';
+          END IF;
+
           IF NEW.sales_person IS NULL OR NEW.sales_person NOT IN ('신은철', '이준형') THEN
             RAISE EXCEPTION 'Image-backed orders require an assigned sales person';
           END IF;
@@ -103,6 +124,10 @@ async function migrate() {
             OR NEW.due_date !~ '^\\d{4}-\\d{2}-\\d{2}$'
             OR to_char(to_date(NEW.due_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.due_date THEN
             RAISE EXCEPTION 'Image-backed orders require a canonical due date';
+          END IF;
+
+          IF NULLIF(BTRIM(NEW.product_type), '') IS NULL THEN
+            RAISE EXCEPTION 'Image-backed orders require a product type';
           END IF;
 
           IF NEW.quantity IS NULL OR NEW.quantity <= 0 THEN
@@ -115,7 +140,7 @@ async function migrate() {
       $image_order_guard$ LANGUAGE plpgsql`,
     `DROP TRIGGER IF EXISTS image_backed_order_integrity_guard ON orders`,
     `CREATE TRIGGER image_backed_order_integrity_guard
-      BEFORE INSERT OR UPDATE OF work_order_image_url, sales_person, due_date, quantity
+      BEFORE INSERT OR UPDATE OF client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url
       ON orders
       FOR EACH ROW
       EXECUTE FUNCTION enforce_image_backed_order_integrity()`,

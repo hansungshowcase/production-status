@@ -8,9 +8,13 @@ import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { deleteOrderFromSheet } from '../../_lib/googleSheets.js';
 import { STEPS } from '../../_lib/steps.js';
 import {
+  assertImageBackedOrderHasCanonicalOrderDate,
   assertImageBackedOrderHasCanonicalDueDate,
+  assertImageBackedOrderHasClientName,
   assertImageBackedOrderHasPositiveQuantity,
+  assertImageBackedOrderHasProductType,
   assertImageBackedOrderHasSalesPerson,
+  mutationChangesImageOrderInvariant,
   mutationTouchesImageDueInvariant,
   normalizeOrderMutationInput,
   OrderCreateInputValidationError,
@@ -111,27 +115,49 @@ async function handleUpdate(id, req, res) {
     return res.status(400).json({ error: { message: '수정할 필드가 없습니다.', status: 400 } });
   }
 
-  try {
-    assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation });
-    assertImageBackedOrderHasSalesPerson({ ...order, ...mutation });
-    assertImageBackedOrderHasPositiveQuantity({ ...order, ...mutation });
-  } catch (err) {
-    if (err instanceof OrderCreateInputValidationError) {
-      return res.status(400).json({ error: { message: err.message, status: 400 } });
+  const guardInvariantState = mutationTouchesImageDueInvariant(mutation);
+  const validateInvariantState = mutationChangesImageOrderInvariant(order, mutation);
+  if (validateInvariantState) {
+    try {
+      assertImageBackedOrderHasClientName({ ...order, ...mutation });
+      assertImageBackedOrderHasCanonicalOrderDate({ ...order, ...mutation });
+      assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation });
+      assertImageBackedOrderHasSalesPerson({ ...order, ...mutation });
+      assertImageBackedOrderHasProductType({ ...order, ...mutation });
+      assertImageBackedOrderHasPositiveQuantity({ ...order, ...mutation });
+    } catch (err) {
+      if (err instanceof OrderCreateInputValidationError) {
+        return res.status(400).json({ error: { message: err.message, status: 400 } });
+      }
+      throw err;
     }
-    throw err;
   }
 
   updates.push("updated_at = CURRENT_TIMESTAMP");
 
-  const guardInvariantState = mutationTouchesImageDueInvariant(mutation);
   const invariantWhere = guardInvariantState
-    ? ' AND due_date IS NOT DISTINCT FROM ? AND quantity IS NOT DISTINCT FROM ? AND work_order_image_url IS NOT DISTINCT FROM ?'
+    ? ` AND client_name IS NOT DISTINCT FROM ?
+        AND order_date IS NOT DISTINCT FROM ?
+        AND due_date IS NOT DISTINCT FROM ?
+        AND sales_person IS NOT DISTINCT FROM ?
+        AND product_type IS NOT DISTINCT FROM ?
+        AND quantity IS NOT DISTINCT FROM ?
+        AND work_order_image_url IS NOT DISTINCT FROM ?`
     : '';
   const updateResult = await db.execute({
     sql: `UPDATE orders SET ${updates.join(', ')} WHERE id = ?${invariantWhere} RETURNING *`,
     args: guardInvariantState
-      ? [...values, id, order.due_date ?? null, order.quantity ?? null, order.work_order_image_url ?? null]
+      ? [
+        ...values,
+        id,
+        order.client_name ?? null,
+        order.order_date ?? null,
+        order.due_date ?? null,
+        order.sales_person ?? null,
+        order.product_type ?? null,
+        order.quantity ?? null,
+        order.work_order_image_url ?? null,
+      ]
       : [...values, id],
   });
   if (!updateResult.rows || updateResult.rows.length === 0) {
