@@ -5,6 +5,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwIcl2eMEutqooqlERMOiLZAjo3SkuZDuKkaRpYN_75FjDl6ke2hlugkqJlmf2QutRv/exec';
 const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
+const WEBHOOK_TIMEOUT_MS = 15_000;
 
 let cachedToken = null;
 
@@ -43,7 +44,7 @@ async function appendViaWebhook(order) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
   try {
     const response = await fetch(webhookUrl, {
@@ -74,7 +75,7 @@ async function deleteViaWebhook(order) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
   try {
     const response = await fetch(webhookUrl, {
