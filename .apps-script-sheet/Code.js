@@ -55,17 +55,20 @@ function findTargetSheet(spreadsheet, requestedSheetId) {
 }
 
 function nextInputRow(sheet) {
-  const lastRow = Math.max(sheet.getLastRow(), 1);
-  const values = sheet.getRange(1, 1, lastRow, WRITE_WIDTH).getDisplayValues();
+  const startRow = firstDataRow(sheet);
+  const lastRow = Math.max(sheet.getLastRow(), startRow);
+  const values = sheet
+    .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
+    .getDisplayValues();
 
-  for (let rowIndex = values.length - 1; rowIndex >= 0; rowIndex -= 1) {
-    const hasValue = values[rowIndex].some((value) => String(value).trim() !== '');
-    if (hasValue) {
-      return rowIndex + 2;
+  for (let rowIndex = 0; rowIndex < values.length; rowIndex += 1) {
+    const isBlank = values[rowIndex].every((value) => String(value).trim() === '');
+    if (isBlank) {
+      return startRow + rowIndex;
     }
   }
 
-  return firstDataRow(sheet);
+  return lastRow + 1;
 }
 
 function normalizeDate(value) {

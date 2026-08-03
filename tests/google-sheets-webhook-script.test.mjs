@@ -186,6 +186,34 @@ test('identical visible values with distinct IDs append as distinct rows', async
   assert.equal(harness.sheet.setValuesCalls.length, 2);
 });
 
+test('append fills the earliest blank A:T row before later historical rows', async () => {
+  const harness = await createAppsScriptHarness();
+  const blankRow = Array(20).fill('');
+  harness.sheet.rows.push(
+    blankRow,
+    [...visibleValues('2026-08-02'), 3423],
+  );
+
+  const result = harness.post({ orderId: 3430, values: visibleValues('2026-08-03') });
+
+  assert.equal(result.row, 2);
+  assert.equal(harness.sheet.rows[1][19], 3430);
+  assert.equal(harness.sheet.rows[2][19], 3423);
+});
+
+test('a hidden T-only order ID makes the row occupied', async () => {
+  const harness = await createAppsScriptHarness();
+  const hiddenIdRow = Array(20).fill('');
+  hiddenIdRow[19] = 3440;
+  harness.sheet.rows.push(hiddenIdRow);
+
+  const result = harness.post({ orderId: 3441, values: visibleValues('2026-08-03') });
+
+  assert.equal(result.row, 3);
+  assert.equal(harness.sheet.rows[1][19], 3440);
+  assert.equal(harness.sheet.rows[2][19], 3441);
+});
+
 test('all mutating actions use one bounded script lock and contention performs no mutation', async () => {
   const actions = [
     { orderId: 301, values: visibleValues('2026-08-03') },
