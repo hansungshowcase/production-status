@@ -53,6 +53,7 @@ async function appendViaWebhook(order) {
       body: JSON.stringify({
         secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
         sheetId: 0,
+        orderId: Number(order.id),
         values: orderValues(order),
       }),
       signal: controller.signal,
@@ -62,7 +63,22 @@ async function appendViaWebhook(order) {
       throw new Error(`Google Sheets webhook failed: ${response.status}`);
     }
 
-    return { skipped: false };
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error('Google Sheets webhook returned invalid JSON');
+    }
+
+    if (result?.ok !== true || !Number.isInteger(result.row) || result.row <= 0) {
+      throw new Error('Google Sheets webhook returned an invalid success response');
+    }
+
+    return {
+      skipped: false,
+      row: result.row,
+      deduplicated: result.deduplicated === true,
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -85,6 +101,7 @@ async function deleteViaWebhook(order) {
         secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
         sheetId: 0,
         action: 'deleteOrder',
+        orderId: Number(order.id),
         values: orderValues(order),
       }),
       signal: controller.signal,

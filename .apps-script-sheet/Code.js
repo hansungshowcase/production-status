@@ -2,6 +2,9 @@ const SECRET = 'hansung-production-status';
 const SPREADSHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const TARGET_SHEET_ID = 0;
 const WRITE_WIDTH = 19;
+const ID_COLUMN = 20;
+const ROW_WIDTH = 20;
+const LOCK_TIMEOUT_MS = 5000;
 const REQUIRED_HEADERS = ['발주일', '납기일', '담당', '거래처', '전화번호'];
 const KEY_COLUMNS = [0, 1, 2, 3, 8, 10, 12, 14, 16, 17, 18];
 
@@ -89,17 +92,26 @@ function isMatchingOrderRow(rowValues, targetValues) {
   ));
 }
 
-function findMatchingOrderRow(sheet, targetValues) {
+function normalizeOrderId(value) {
+  const orderId = Number(value);
+  return Number.isInteger(orderId) && orderId > 0 ? orderId : null;
+}
+
+function findOrderRowById(sheet, orderId) {
+  const normalizedOrderId = normalizeOrderId(orderId);
+  if (!normalizedOrderId) return null;
+
   const startRow = firstDataRow(sheet);
   const lastRow = sheet.getLastRow();
   if (lastRow < startRow) return null;
 
   const rows = sheet
-    .getRange(startRow, 1, lastRow - startRow + 1, WRITE_WIDTH)
+    .getRange(startRow, ID_COLUMN, lastRow - startRow + 1, 1)
     .getValues();
 
   for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
-    if (isMatchingOrderRow(rows[rowIndex], targetValues)) {
+    const value = rows[rowIndex][0];
+    if (String(value ?? '').trim() !== '' && Number(value) === normalizedOrderId) {
       return startRow + rowIndex;
     }
   }
@@ -107,12 +119,45 @@ function findMatchingOrderRow(sheet, targetValues) {
   return null;
 }
 
-function deleteMatchingOrder(sheet, targetValues) {
-  const matchingRow = findMatchingOrderRow(sheet, targetValues);
+function findMatchingLegacyOrderRow(sheet, targetValues) {
+  const startRow = firstDataRow(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return null;
+
+  const rows = sheet
+    .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
+    .getValues();
+
+  for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+    const hasOrderId = String(rows[rowIndex][ID_COLUMN - 1] ?? '').trim() !== '';
+    if (!hasOrderId && isMatchingOrderRow(rows[rowIndex], targetValues)) {
+      return startRow + rowIndex;
+    }
+  }
+
+  return null;
+}
+
+function deleteMatchingOrder(sheet, orderId, targetValues) {
+  const matchingRow = findOrderRowById(sheet, orderId)
+    || findMatchingLegacyOrderRow(sheet, targetValues);
   if (!matchingRow) return null;
 
   sheet.deleteRow(matchingRow);
   return matchingRow;
+}
+
+function withMutationLock(callback) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_TIMEOUT_MS)) {
+    throw new Error('Unable to acquire script lock');
+  }
+
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function sortOrdersByDate(sheet) {
@@ -121,7 +166,7 @@ function sortOrdersByDate(sheet) {
   if (lastRow < startRow) return;
 
   sheet
-    .getRange(startRow, 1, lastRow - startRow + 1, WRITE_WIDTH)
+    .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
     .sort({ column: 1, ascending: true });
 }
 
@@ -142,7 +187,7 @@ function doPost(e) {
       lastRow: item.getLastRow(),
       nextRow: nextInputRow(item),
     }));
-    return jsonOutput({ ok: true, sheets });
+    return jsonOutput({ ok: true, spreadsheetId: SPREADSHEET_ID, sheets });
   }
 
   const sheet = findTargetSheet(spreadsheet, targetSheetId);
@@ -161,6 +206,7 @@ function doPost(e) {
   if (data.action === 'status') {
     return jsonOutput({
       ok: true,
+      spreadsheetId: SPREADSHEET_ID,
       sheetName: sheet.getName(),
       sheetId: sheet.getSheetId(),
       nextRow: nextInputRow(sheet),
@@ -168,17 +214,21 @@ function doPost(e) {
   }
 
   if (data.action === 'sort') {
-    sortOrdersByDate(sheet);
-    return jsonOutput({ ok: true, sorted: true });
+    return withMutationLock(() => {
+      sortOrdersByDate(sheet);
+      return jsonOutput({ ok: true, sorted: true, spreadsheetId: SPREADSHEET_ID });
+    });
   }
 
   if (data.action === 'deleteRow') {
-    const row = Number(data.row);
-    if (!Number.isInteger(row) || row < firstDataRow(sheet)) {
-      return jsonOutput({ ok: false, error: 'invalid row' });
-    }
-    sheet.deleteRow(row);
-    return jsonOutput({ ok: true, deletedRow: row });
+    return withMutationLock(() => {
+      const row = Number(data.row);
+      if (!Number.isInteger(row) || row < firstDataRow(sheet)) {
+        return jsonOutput({ ok: false, error: 'invalid row' });
+      }
+      sheet.deleteRow(row);
+      return jsonOutput({ ok: true, deletedRow: row });
+    });
   }
 
   const values = Array.isArray(data.values) ? data.values.slice(0, WRITE_WIDTH) : [];
@@ -187,18 +237,37 @@ function doPost(e) {
   }
 
   if (data.action === 'deleteOrder') {
-    const deletedRow = deleteMatchingOrder(sheet, values);
-    return jsonOutput({ ok: true, deletedRow });
+    return withMutationLock(() => {
+      const deletedRow = deleteMatchingOrder(sheet, data.orderId, values);
+      return jsonOutput({ ok: true, deletedRow });
+    });
   }
 
-  const matchingRow = findMatchingOrderRow(sheet, values);
-  if (matchingRow) {
-    return jsonOutput({ ok: true, deduplicated: true, row: matchingRow });
+  const orderId = normalizeOrderId(data.orderId);
+  if (!orderId) {
+    return jsonOutput({ ok: false, error: 'invalid orderId' });
   }
 
-  const inputRow = nextInputRow(sheet);
-  sheet.getRange(inputRow, 1, 1, WRITE_WIDTH).setValues([values]);
-  sortOrdersByDate(sheet);
+  return withMutationLock(() => {
+    const matchingRow = findOrderRowById(sheet, orderId);
+    if (matchingRow) {
+      return jsonOutput({
+        ok: true,
+        row: matchingRow,
+        deduplicated: true,
+        spreadsheetId: SPREADSHEET_ID,
+      });
+    }
 
-  return jsonOutput({ ok: true, row: inputRow });
+    const inputRow = nextInputRow(sheet);
+    sheet.hideColumns(ID_COLUMN);
+    sheet.getRange(inputRow, 1, 1, ROW_WIDTH).setValues([[...values, orderId]]);
+
+    return jsonOutput({
+      ok: true,
+      row: inputRow,
+      deduplicated: false,
+      spreadsheetId: SPREADSHEET_ID,
+    });
+  });
 }

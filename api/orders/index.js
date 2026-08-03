@@ -7,6 +7,8 @@ import { resolveActor } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { appendOrderToSheet } from '../_lib/googleSheets.js';
+import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
+import { syncOrderToSheet } from '../_lib/sheetSync.js';
 import {
   normalizeOrderCreateInput,
   OrderCreateInputValidationError,
@@ -306,7 +308,7 @@ export async function handleGet(req, res, db = getDb()) {
   return res.json({ orders, total });
 }
 
-export async function handlePost(req, res, db) {
+export async function handlePost(req, res, db, { append = appendOrderToSheet } = {}) {
   let body;
   try {
     body = normalizeOrderCreateInput(sanitizeInput(req.body));
@@ -338,14 +340,24 @@ export async function handlePost(req, res, db) {
   let createdOrderId = null; // 부분 실패 시 cleanup용
 
   try {
+    await ensureSheetSyncSchema(tx);
     const orderResult = await tx.execute({
-      sql: `INSERT INTO orders (
-        order_date, due_date, sales_person, client_name,
-        product_type, door_type, design, width, depth, height,
-        quantity, color, phone, delivery_address, freight_payment, notes, remarks, etc_notes,
-        sale_amount, lead_source, balance,
-        ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id`,
+      sql: `WITH inserted_order AS (
+        INSERT INTO orders (
+          order_date, due_date, sales_person, client_name,
+          product_type, door_type, design, width, depth, height,
+          quantity, color, phone, delivery_address, freight_payment, notes, remarks, etc_notes,
+          sale_amount, lead_source, balance,
+          ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id
+      ), inserted_sheet_sync_job AS (
+        INSERT INTO sheet_sync_jobs (order_id, status)
+        SELECT id, 'pending' FROM inserted_order
+        RETURNING order_id
+      )
+      SELECT inserted_order.id
+      FROM inserted_order
+      JOIN inserted_sheet_sync_job ON inserted_sheet_sync_job.order_id = inserted_order.id`,
       args: [
         // 숫자 컬럼은 0 보존 (`||` 사용 시 0이 falsy로 변조됨 → `??` 또는 undefined 체크)
         order_date || null, due_date || null, sales_person || null, client_name,
@@ -395,6 +407,7 @@ export async function handlePost(req, res, db) {
       processes: processRows.rows,
       pre_production: preProdRow.rows[0] || null,
     };
+    created.sheet_sync = await syncOrderToSheet(db, created, { append });
 
     // 알림 훅: 주문 생성 → track_token 발급 + 접수 알림 (실패해도 본 응답에 영향 없음)
     try {
@@ -408,12 +421,6 @@ export async function handlePost(req, res, db) {
       await maybeNotify(db, created, 'ordered');
     } catch (notifyErr) {
       console.error('[orders POST] ordered 알림 발송 실패(무시):', notifyErr?.message || notifyErr);
-    }
-
-    try {
-      await appendOrderToSheet(created);
-    } catch (sheetErr) {
-      console.warn('Google Sheets order append skipped:', sheetErr?.message || sheetErr);
     }
 
     return res.status(201).json(created);

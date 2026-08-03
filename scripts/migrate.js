@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { pathToFileURL } from 'node:url';
+import { SHEET_SYNC_SCHEMA_SQL } from '../api/_lib/sheetSyncSchema.js';
 
 function migrationStatements() {
   return [
@@ -33,6 +34,7 @@ function migrationStatements() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )`,
+    SHEET_SYNC_SCHEMA_SQL,
     `CREATE TABLE IF NOT EXISTS processes (
       id SERIAL PRIMARY KEY,
       order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
