@@ -16,6 +16,13 @@ function makeRange(sheet, row, column, rowCount, columnCount) {
         })
       ));
     },
+    getFormulas() {
+      return Array.from({ length: rowCount }, (_, rowOffset) => (
+        Array.from({ length: columnCount }, (_, columnOffset) => (
+          sheet.formulaRows?.[row - 1 + rowOffset]?.[column - 1 + columnOffset] ?? ''
+        ))
+      ));
+    },
     getValues() {
       return Array.from({ length: rowCount }, (_, rowOffset) => (
         Array.from({ length: columnCount }, (_, columnOffset) => (
@@ -51,6 +58,7 @@ function makeRange(sheet, row, column, rowCount, columnCount) {
 function makeSheet(headers) {
   return {
     rows: [[...headers]],
+    formulaRows: [],
     setValuesCalls: [],
     sortCalls: [],
     deleteCalls: [],
@@ -148,6 +156,14 @@ function visibleValues(orderDate) {
   ];
 }
 
+function blankRow() {
+  return Array(20).fill('');
+}
+
+function occupiedRow(orderId) {
+  return [...visibleValues('2026-08-01'), orderId];
+}
+
 test('append uses the hidden order ID for replay safety and preserves append order', async () => {
   const harness = await createAppsScriptHarness();
   const firstValues = visibleValues('2026-09-02');
@@ -186,32 +202,89 @@ test('identical visible values with distinct IDs append as distinct rows', async
   assert.equal(harness.sheet.setValuesCalls.length, 2);
 });
 
-test('append fills the earliest blank A:T row before later historical rows', async () => {
+test('append chooses the earliest interior run of three blank rows before later history', async () => {
   const harness = await createAppsScriptHarness();
-  const blankRow = Array(20).fill('');
-  harness.sheet.rows.push(
-    blankRow,
-    [...visibleValues('2026-08-02'), 3423],
-  );
+  harness.sheet.rows.push(...Array.from({ length: 3422 }, (_, index) => (
+    index + 2 <= 2952 ? occupiedRow(index + 2) : blankRow()
+  )));
+  harness.sheet.rows[1620] = blankRow();
+  harness.sheet.rows[2952] = blankRow();
+  harness.sheet.rows[2953] = blankRow();
+  harness.sheet.rows[2954] = blankRow();
+  harness.sheet.rows[3422] = occupiedRow(3423);
 
-  const result = harness.post({ orderId: 3430, values: visibleValues('2026-08-03') });
+  const first = harness.post({ orderId: 3430, values: visibleValues('2026-08-03') });
+  const second = harness.post({ orderId: 3431, values: visibleValues('2026-08-04') });
 
-  assert.equal(result.row, 2);
-  assert.equal(harness.sheet.rows[1][19], 3430);
-  assert.equal(harness.sheet.rows[2][19], 3423);
+  assert.equal(first.row, 2953);
+  assert.equal(second.row, 2954);
+  assert.equal(harness.sheet.rows[2952][19], 3430);
+  assert.equal(harness.sheet.rows[2953][19], 3431);
+  assert.equal(harness.sheet.rows[1620][19], '');
 });
 
-test('a hidden T-only order ID makes the row occupied', async () => {
+test('occupancy trims whitespace and counts 0, false, and hidden T-only IDs', async () => {
   const harness = await createAppsScriptHarness();
-  const hiddenIdRow = Array(20).fill('');
-  hiddenIdRow[19] = 3440;
-  harness.sheet.rows.push(hiddenIdRow);
+  const whitespace = blankRow();
+  whitespace[0] = '   ';
+  const zero = blankRow();
+  zero[0] = 0;
+  const falseValue = blankRow();
+  falseValue[0] = false;
+  const hiddenId = blankRow();
+  hiddenId[19] = 3440;
+  harness.sheet.rows.push(
+    whitespace,
+    blankRow(),
+    blankRow(),
+    zero,
+    falseValue,
+    blankRow(),
+    blankRow(),
+    blankRow(),
+    hiddenId,
+  );
 
-  const result = harness.post({ orderId: 3441, values: visibleValues('2026-08-03') });
+  const first = harness.post({ orderId: 3441, values: visibleValues('2026-08-03') });
+  const second = harness.post({ orderId: 3442, values: visibleValues('2026-08-04') });
 
-  assert.equal(result.row, 3);
-  assert.equal(harness.sheet.rows[1][19], 3440);
-  assert.equal(harness.sheet.rows[2][19], 3441);
+  assert.equal(first.row, 2);
+  assert.equal(second.row, 7);
+  assert.equal(harness.sheet.rows[4][0], 0);
+  assert.equal(harness.sheet.rows[5][0], false);
+  assert.equal(harness.sheet.rows[9][19], 3440);
+});
+
+test('formula returning an empty display value still makes the row occupied', async () => {
+  const harness = await createAppsScriptHarness();
+  harness.sheet.rows.push(blankRow(), occupiedRow(3450));
+  harness.sheet.formulaRows[1] = blankRow();
+  harness.sheet.formulaRows[1][0] = '=IF(TRUE,"","")';
+
+  const result = harness.post({ orderId: 3451, values: visibleValues('2026-08-03') });
+
+  assert.equal(result.row, 4);
+  assert.equal(harness.sheet.rows[1][0], '');
+  assert.equal(harness.sheet.rows[2][19], 3450);
+});
+
+test('without a qualifying interior run, append follows the last occupied row', async () => {
+  const harness = await createAppsScriptHarness();
+  harness.sheet.rows.push(
+    occupiedRow(3460),
+    blankRow(),
+    occupiedRow(3461),
+    blankRow(),
+    blankRow(),
+    occupiedRow(3462),
+    blankRow(),
+    blankRow(),
+  );
+
+  const result = harness.post({ orderId: 3463, values: visibleValues('2026-08-03') });
+
+  assert.equal(result.row, 8);
+  assert.equal(harness.sheet.rows[7][19], 3463);
 });
 
 test('all mutating actions use one bounded script lock and contention performs no mutation', async () => {

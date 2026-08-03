@@ -57,18 +57,33 @@ function findTargetSheet(spreadsheet, requestedSheetId) {
 function nextInputRow(sheet) {
   const startRow = firstDataRow(sheet);
   const lastRow = Math.max(sheet.getLastRow(), startRow);
-  const values = sheet
-    .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
-    .getDisplayValues();
+  const range = sheet.getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH);
+  const values = range.getDisplayValues();
+  const formulas = range.getFormulas();
+  let lastOccupiedRow = startRow - 1;
+  let blankRunStart = null;
+  let blankRunLength = 0;
 
   for (let rowIndex = 0; rowIndex < values.length; rowIndex += 1) {
-    const isBlank = values[rowIndex].every((value) => String(value).trim() === '');
-    if (isBlank) {
-      return startRow + rowIndex;
+    const hasValue = values[rowIndex].some((value, columnIndex) => (
+      String(value).trim() !== '' || String(formulas[rowIndex][columnIndex] || '').trim() !== ''
+    ));
+    if (hasValue) {
+      lastOccupiedRow = startRow + rowIndex;
+      if (blankRunLength >= 3) {
+        return blankRunStart;
+      }
+      blankRunStart = null;
+      blankRunLength = 0;
+    } else {
+      if (blankRunLength === 0) {
+        blankRunStart = startRow + rowIndex;
+      }
+      blankRunLength += 1;
     }
   }
 
-  return lastRow + 1;
+  return lastOccupiedRow + 1;
 }
 
 function normalizeDate(value) {
