@@ -37,3 +37,10 @@ export function shipOrder(id, actor) {
   if (!id) throw new Error('주문 ID가 필요합니다');
   return request(`/orders/${id}/ship`, { method: 'PATCH', body: { actor: actor || '시스템' } });
 }
+
+export function shipOrderFromWorker(id, actor) {
+  if (!id) throw new Error('주문 ID가 필요합니다');
+  const worker = String(actor || '').trim();
+  if (!worker) throw new Error('작업자 정보가 필요합니다');
+  return request(`/orders/${id}/worker-ship`, { method: 'PATCH', body: { actor: worker } });
+}

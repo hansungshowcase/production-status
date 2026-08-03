@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getProcessesByStep, startProcess, completeProcess, revertProcess } from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages';
 import { getStats } from '../api/stats';
+import { shipOrderFromWorker } from '../api/orders';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
 import { extractDueDateFromOrder, getDaysUntilDue, parseDate } from '../utils/dateUtils';
@@ -97,6 +99,7 @@ export default function WorkerStationViewPage() {
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null); // { processId, clientName, status, orderId }
+  const [directShipTarget, setDirectShipTarget] = useState(null); // { orderId, clientName }
   const [completedIds, setCompletedIds] = useState(new Set()); // 완료 애니메이션용
   const [issueModal, setIssueModal] = useState(null);
   const [issueDesc, setIssueDesc] = useState('');
@@ -179,6 +182,7 @@ export default function WorkerStationViewPage() {
   // 모달 하나 열면 나머지 전부 닫기
   function closeAllModals() {
     setConfirmTarget(null);
+    setDirectShipTarget(null);
     setIssueModal(null);
     setPhotoModal(null);
     setIssueListModal(null);
@@ -194,6 +198,30 @@ export default function WorkerStationViewPage() {
     const status = item?.status || item?.process_status || 'waiting';
     setPackingPhotoFile(null);
     setConfirmTarget({ processId, clientName, status, orderId: item?.order_id, item });
+  }
+
+  function requestDirectShip(item) {
+    if (actionLoading || !item?.order_id) return;
+    closeAllModals();
+    setDirectShipTarget({ orderId: item.order_id, clientName: item.client_name || '거래처' });
+  }
+
+  async function executeDirectShip() {
+    if (!directShipTarget || actionLoading) return;
+    setActionLoading(`ship-${directShipTarget.orderId}`);
+    try {
+      await shipOrderFromWorker(directShipTarget.orderId, workerName);
+      const clientName = directShipTarget.clientName;
+      setDirectShipTarget(null);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToast({ type: 'complete', client: clientName, step: '출고', message: '출고 처리 완료!' });
+      toastTimerRef.current = setTimeout(() => setToast(null), 3500);
+      await fetchData();
+    } catch (err) {
+      alert(err.message || '출고 처리에 실패했습니다.');
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function executeComplete(selectedNextStep) {
@@ -1077,6 +1105,7 @@ export default function WorkerStationViewPage() {
         {!loading && !error && sorted.map((item) => {
           const sKey = statusKey(item.status);
           const isActioning = actionLoading === item.process_id;
+          const isDirectShipping = actionLoading === `ship-${item.order_id}`;
           const displayDueDate = extractDueDateFromOrder(item);
           const overdue = isOverdueDue(displayDueDate);
           const dday = getDday(displayDueDate);
@@ -1215,8 +1244,18 @@ export default function WorkerStationViewPage() {
                     onClick={() => requestComplete(item.process_id)}
                     disabled={isActioning || !!actionLoading}
                   >
-                    {isActioning ? '...' : <><span className="station-view__btn-text--mobile">{decodedStep === '출고' ? '출고' : '완료'}</span><span className="station-view__btn-text--pc">{decodedStep === '출고' ? '출고완료' : '공정완료'}</span></>}
+                    {isActioning ? '...' : <><span className="station-view__btn-text--mobile">{decodedStep === '출고' ? '출고완료' : '공정완료'}</span><span className="station-view__btn-text--pc">{decodedStep === '출고' ? '출고완료' : '공정완료'}</span></>}
                   </button>
+                  {!isLastStep && (
+                    <button
+                      type="button"
+                      className="station-view__row-btn station-view__row-btn--direct-ship"
+                      onClick={() => requestDirectShip(item)}
+                      disabled={!!actionLoading}
+                    >
+                      {isDirectShipping ? '...' : <><span className="station-view__btn-text--mobile">출고완료</span><span className="station-view__btn-text--pc">출고완료</span></>}
+                    </button>
+                  )}
                 </span>
               </div>
 
@@ -1401,7 +1440,22 @@ export default function WorkerStationViewPage() {
         </>
       )}
 
-      {!loading && overdueAlertItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !issueModal && !workOrderViewer && (
+      {directShipTarget && createPortal(
+        <>
+          <div className="sv-overlay" onClick={() => setDirectShipTarget(null)} />
+          <div className="sv-card-popup" role="dialog" aria-modal="true" aria-label="출고완료 확인">
+            <div className="sv-card-popup__title">{directShipTarget.clientName}</div>
+            <div className="sv-card-popup__desc">현재 공정과 관계없이 바로 출고 처리하시겠습니까?</div>
+            <div className="sv-card-popup__actions">
+              <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={executeDirectShip}>출고완료</button>
+              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setDirectShipTarget(null)}>취소</button>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {!loading && overdueAlertItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !directShipTarget && !issueModal && !workOrderViewer && (
         <>
           <div className="sv-overlay sv-overdue-overlay" onClick={() => setOverdueAlertDismissed(true)} />
           <div className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림">

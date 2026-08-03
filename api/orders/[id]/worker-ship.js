@@ -1,8 +1,7 @@
 import { getDb } from '../../_lib/db.js';
 import { cors } from '../../_lib/cors.js';
-import { requireAuth, resolveActor } from '../../_lib/auth.js';
+import { requireWorkerAction } from '../../_lib/auth.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
-import { canShipFromSales } from '../../_lib/shippingPermission.js';
 import { completeOrderShipping } from '../../_lib/directShipping.js';
 
 export default cors(async function handler(req, res) {
@@ -11,19 +10,14 @@ export default cors(async function handler(req, res) {
   }
   if (!rateLimitCheck(req, res)) return;
 
-  const auth = requireAuth(req, res, { roles: ['sales'] });
-  if (!auth) return;
+  const worker = requireWorkerAction(req, res);
+  if (!worker) return;
 
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 
-  const actor = resolveActor(req);
-  if (!canShipFromSales(actor)) {
-    return res.status(403).json({ error: { message: '발주현황에서 출고 처리할 권한이 없습니다.', status: 403 } });
-  }
-
-  const result = await completeOrderShipping({ db: getDb(), orderId: id, actor });
+  const result = await completeOrderShipping({ db: getDb(), orderId: id, actor: worker.actor });
   return res.status(result.status).json(result.body);
 });

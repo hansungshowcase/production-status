@@ -1507,6 +1507,11 @@
   color: #ffffff;
 }
 
+.station-view__row-btn--direct-ship {
+  background: var(--blue, #2563eb);
+  color: #ffffff;
+}
+
 .station-view__row-btn--issue {
   background: #fef3c7;
   color: #92400e;
@@ -2753,7 +2758,7 @@
   /* PC: actions */
   .station-view__row-actions {
     width: 232px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 6px;
     justify-content: flex-end;
   }
@@ -2775,6 +2780,7 @@
 
   .station-view__row-btn--work-order {
     flex: 0 0 52px;
+    min-width: 0;
   }
 
   .station-view__row-btn--packing-photo {
@@ -2785,9 +2791,33 @@
     flex: 0 0 84px;
   }
 
+  .station-view__row-btn--direct-ship {
+    flex: 0 0 76px;
+  }
+
   /* PC: issue popup wider */
   .sv-card-popup {
     width: 420px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .station-view__table-header,
+  .station-view__row {
+    grid-template-columns: 6px minmax(130px, 1.45fr) minmax(72px, 0.8fr) minmax(82px, 0.85fr) minmax(94px, 0.78fr) 322px;
+  }
+
+  .station-view__row-actions,
+  .station-view__th--actions {
+    width: 322px;
+  }
+
+  .station-view__row-actions {
+    flex-wrap: nowrap;
+  }
+
+  .station-view__row-btn--direct-ship {
+    flex: 0 0 84px;
   }
 }
 

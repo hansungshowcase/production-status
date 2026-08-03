@@ -27,12 +27,15 @@ test('sales management exposes shipping to both approved sales managers', () => 
   assert.doesNotMatch(source, /shipOrder\(order\.id, activePerson \|\| mySalesPerson\)/);
 });
 
-test('sales shipping API enforces approved sales-manager permission before shipping', () => {
+test('sales shipping API keeps Sales authorization before its shared shipment mutation', () => {
   const source = readFileSync(new URL('../api/orders/[id]/ship.js', import.meta.url), 'utf8');
 
   assert.match(source, /import \{ canShipFromSales \}/);
+  assert.match(source, /import \{ completeOrderShipping \}/);
+  assert.match(source, /requireAuth\(req, res, \{ roles: \['sales'\] \}\)/);
   assert.match(source, /const actor = resolveActor\(req\)/);
   assert.match(source, /if \(!canShipFromSales\(actor\)\)/);
   assert.match(source, /status\(403\)/);
-  assert.match(source, /if \(incompleteStep && !canShipFromSales\(actor\)\)/);
+  assert.match(source, /await completeOrderShipping\(\{ db: getDb\(\), orderId: id, actor \}\)/);
+  assert.doesNotMatch(source, /incompleteStep/);
 });
