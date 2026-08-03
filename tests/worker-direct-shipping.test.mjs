@@ -254,6 +254,15 @@ test('the exact worker-station action area has separate worker shipping and norm
   assert.match(workerPage, /onClick=\{\(\) => requestComplete\(item\.process_id\)\}/);
   assert.match(workerPage, /setDirectShipTarget\(null\)/);
   assert.match(workerPage, /!directShipTarget/);
+  const actionAreaStart = workerPage.indexOf('className="station-view__row-actions"');
+  const workOrderIndex = workerPage.indexOf('station-view__row-btn--work-order', actionAreaStart);
+  const directShipIndex = workerPage.indexOf('station-view__row-btn--direct-ship', actionAreaStart);
+  const completeIndex = workerPage.indexOf('station-view__row-btn--complete', actionAreaStart);
+  const undoIndex = workerPage.indexOf('station-view__row-btn--undo', actionAreaStart);
+  assert.ok(
+    actionAreaStart >= 0 && workOrderIndex < directShipIndex && directShipIndex < completeIndex && completeIndex < undoIndex,
+    'worker action controls must be ordered as view/attach, direct ship, normal completion, then optional undo'
+  );
   assert.match(salesRoute, /requireAuth\(req, res, \{ roles: \['sales'\] \}\)/);
   assert.match(salesRoute, /canShipFromSales\(actor\)/);
 });

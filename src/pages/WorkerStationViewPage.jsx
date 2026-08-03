@@ -1229,14 +1229,14 @@ export default function WorkerStationViewPage() {
                       사진없음
                     </button>
                   )}
-                  {canUndoThisItem && (
+                  {!isLastStep && (
                     <button
                       type="button"
-                      className="station-view__row-btn station-view__row-btn--undo"
-                      onClick={() => handleUndoItemToPrevious(item)}
-                      disabled={isUndoingThisItem || !!actionLoading}
+                      className="station-view__row-btn station-view__row-btn--direct-ship"
+                      onClick={() => requestDirectShip(item)}
+                      disabled={!!actionLoading}
                     >
-                      {isUndoingThisItem ? '되돌리는 중...' : '되돌리기'}
+                      {isDirectShipping ? '...' : <><span className="station-view__btn-text--mobile">출고완료</span><span className="station-view__btn-text--pc">출고완료</span></>}
                     </button>
                   )}
                   <button
@@ -1246,14 +1246,14 @@ export default function WorkerStationViewPage() {
                   >
                     {isActioning ? '...' : <><span className="station-view__btn-text--mobile">{decodedStep === '출고' ? '출고완료' : '공정완료'}</span><span className="station-view__btn-text--pc">{decodedStep === '출고' ? '출고완료' : '공정완료'}</span></>}
                   </button>
-                  {!isLastStep && (
+                  {canUndoThisItem && (
                     <button
                       type="button"
-                      className="station-view__row-btn station-view__row-btn--direct-ship"
-                      onClick={() => requestDirectShip(item)}
-                      disabled={!!actionLoading}
+                      className="station-view__row-btn station-view__row-btn--undo"
+                      onClick={() => handleUndoItemToPrevious(item)}
+                      disabled={isUndoingThisItem || !!actionLoading}
                     >
-                      {isDirectShipping ? '...' : <><span className="station-view__btn-text--mobile">출고완료</span><span className="station-view__btn-text--pc">출고완료</span></>}
+                      {isUndoingThisItem ? '되돌리는 중...' : '되돌리기'}
                     </button>
                   )}
                 </span>
