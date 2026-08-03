@@ -24,6 +24,7 @@ const SALES_ORDER_PAGE_SIZE = 200;
 const INITIAL_VISIBLE_ORDER_COUNT = 40;
 const VISIBLE_ORDER_INCREMENT = 40;
 
+const SALES_SHIPPING_MANAGERS = ['신은철', '이준형'];
 const SALES_PERSONS = ['신은철', '이준형'];
 
 const FILTER_TABS = [
@@ -80,7 +81,7 @@ export default function SalesMyPage() {
 
   const activePerson = viewingPerson || mySalesPerson;
   const isViewingOther = !!viewingPerson;
-  const canShipOrders = mySalesPerson === '이준형';
+  const canShipOrders = SALES_SHIPPING_MANAGERS.includes(mySalesPerson);
 
   // Redirect if no person selected
   useEffect(() => {
