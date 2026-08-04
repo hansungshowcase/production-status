@@ -4,6 +4,10 @@ import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
 import { retryPendingSheetSync } from '../_lib/sheetSync.js';
 import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
+import { retryPendingShippingSheetSync } from '../_lib/shippingSheetSync.js';
+import { ensureShippingSheetSyncSchema } from '../_lib/shippingSheetSyncSchema.js';
+
+const SYNC_DEADLINE_MS = 20_000;
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -16,7 +20,10 @@ export async function handleSheetSyncCron(
   req,
   res,
   db,
-  { retry = retryPendingSheetSync } = {},
+  {
+    retry = retryPendingSheetSync,
+    retryShipping = retryPendingShippingSheetSync,
+  } = {},
 ) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -29,8 +36,21 @@ export async function handleSheetSyncCron(
 
   db ??= getDb();
   await ensureSheetSyncSchema(db);
-  const summary = await retry(db, { limit: 10, deadlineMs: 20_000 });
-  return res.json({ ok: true, ...summary });
+  await ensureShippingSheetSyncSchema(db);
+
+  const startedAt = Date.now();
+  const appendSummary = await retry(db, { limit: 10, deadlineMs: SYNC_DEADLINE_MS });
+  const remainingDeadlineMs = Math.max(0, SYNC_DEADLINE_MS - (Date.now() - startedAt));
+  const shippingSummary = await retryShipping(db, {
+    limit: 10,
+    deadlineMs: remainingDeadlineMs,
+  });
+  return res.json({
+    ok: true,
+    ...appendSummary,
+    append: appendSummary,
+    shipping: shippingSummary,
+  });
 }
 
 export default cors(async function handler(req, res) {

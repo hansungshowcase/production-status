@@ -3,13 +3,24 @@ import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { STEPS } from '../../_lib/steps.js';
+import { kstTodayStr } from '../../_lib/notify.js';
+import { syncShippedOrderToSheet } from '../../_lib/shippingSheetSync.js';
+import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
 
-export default cors(async function handler(req, res) {
+async function defaultNotify(db, order, milestone) {
+  const { maybeNotify } = await import('../../_lib/notify.js');
+  await maybeNotify(db, order, milestone);
+}
+
+export async function handleCompleteProcess(req, res, dependencies = {}) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-  if (!rateLimitCheck(req, res)) return;
-  const workerAction = requireWorkerAction(req, res);
+  const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
+  if (!checkRateLimit(req, res)) return;
+  const workerAction = dependencies.requireWorkerAction
+    ? dependencies.requireWorkerAction(req, res)
+    : requireWorkerAction(req, res);
   if (!workerAction) return;
 
   const id = req.query.id;
@@ -17,7 +28,9 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
   }
 
-  const db = getDb();
+  const db = dependencies.db || getDb();
+  const notify = dependencies.notify || defaultNotify;
+  const syncShippingSheet = dependencies.syncShippingSheet || syncShippedOrderToSheet;
   const { completed_date, actor, start_next_step, assigned_worker } = req.body || {};
 
   // Find process
@@ -79,6 +92,10 @@ export default cors(async function handler(req, res) {
     }
   }
 
+  if (process.step_name === '출고') {
+    await ensureShippingSheetSyncSchema(db);
+  }
+
   const now = new Date().toISOString();
   const completeWorker = actor || assigned_worker || workerAction.actor;
 
@@ -116,8 +133,7 @@ export default cors(async function handler(req, res) {
   // 알림 훅: 포장 완료 → packed (실패해도 본 응답에 영향 없음)
   if (order && process.step_name === '포장') {
     try {
-      const { maybeNotify } = await import('../../_lib/notify.js');
-      await maybeNotify(db, order, 'packed');
+      await notify(db, order, 'packed');
     } catch (e) {
       console.error('[complete] packed 알림 발송 실패(무시):', e?.message || e);
     }
@@ -176,12 +192,35 @@ export default cors(async function handler(req, res) {
   }
 
   if (process.step_name === '출고' && order) {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = kstTodayStr();
     const { rows: shippedRows } = await db.execute({
-      sql: `UPDATE orders SET status = 'shipped', ship_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status != 'shipped' RETURNING id`,
-      args: [today, process.order_id],
+      sql: `WITH claimed_order AS (
+              UPDATE orders
+                 SET status = 'shipped', ship_date = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND status != 'shipped'
+               RETURNING *
+            ),
+            queued_sheet_sync AS (
+              INSERT INTO sheet_shipping_sync_jobs (order_id, ship_date, status)
+              SELECT id, ?, 'pending'
+                FROM claimed_order
+              ON CONFLICT (order_id) DO UPDATE
+                 SET ship_date = EXCLUDED.ship_date,
+                     status = 'pending',
+                     last_error = NULL,
+                     last_attempt_at = NULL,
+                     synced_at = NULL,
+                     sheet_row = NULL,
+                     updated_at = NOW()
+               WHERE sheet_shipping_sync_jobs.status != 'synced'
+                  OR sheet_shipping_sync_jobs.ship_date IS DISTINCT FROM EXCLUDED.ship_date
+              RETURNING order_id
+            )
+            SELECT * FROM claimed_order`,
+      args: [today, process.order_id, today],
     });
     if (shippedRows.length > 0) {
+      const shippedOrder = shippedRows[0];
       try {
         await db.execute({
           sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
@@ -198,10 +237,24 @@ export default cors(async function handler(req, res) {
 
       // 알림 훅: 출고 공정 완료로 shipped 전환 → shipped (실패해도 본 응답에 영향 없음)
       try {
-        const { maybeNotify } = await import('../../_lib/notify.js');
-        await maybeNotify(db, { ...order, status: 'shipped', ship_date: today }, 'shipped');
+        await notify(db, shippedOrder, 'shipped');
       } catch (e) {
         console.error('[complete] shipped 알림 발송 실패(무시):', e?.message || e);
+      }
+
+      try {
+        const syncResult = await syncShippingSheet(db, shippedOrder);
+        if (syncResult?.status !== 'synced' && !syncResult?.skipped) {
+          console.warn(
+            `[complete] shipping Sheet immediate sync failed for order ${shippedOrder.id} (${today}); job remains retryable:`,
+            syncResult?.error || 'pending',
+          );
+        }
+      } catch (e) {
+        console.warn(
+          `[complete] shipping Sheet immediate sync failed for order ${shippedOrder.id} (${today}); job remains retryable:`,
+          e?.message || e,
+        );
       }
     }
   }
@@ -216,4 +269,6 @@ export default cors(async function handler(req, res) {
     started_next_process_id: startedNextProcessId,
     completed_intermediate_processes: completedIntermediateProcesses,
   });
-});
+}
+
+export default cors(handleCompleteProcess);

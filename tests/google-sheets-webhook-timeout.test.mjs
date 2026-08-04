@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { appendOrderToSheet, deleteOrderFromSheet } from '../api/_lib/googleSheets.js';
+import {
+  appendOrderToSheet,
+  deleteOrderFromSheet,
+  markOrderShippedOnSheet,
+} from '../api/_lib/googleSheets.js';
 
 const sourcePath = new URL('../api/_lib/googleSheets.js', import.meta.url);
 
@@ -21,10 +25,21 @@ const order = {
   color: 'white',
 };
 
-async function withWebhookFetch(fetchImpl, run) {
+async function withWebhookFetch(fetchImpl, run, {
+  webhookUrl = 'https://example.test/sheet-webhook',
+  shippingWebhookUrl = 'https://example.test/shipping-webhook',
+  webhookSecret,
+} = {}) {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-  process.env.GOOGLE_SHEETS_WEBHOOK_URL = 'https://example.test/sheet-webhook';
+  const originalShippingUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+  const originalSecret = process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
+  if (webhookUrl === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+  else process.env.GOOGLE_SHEETS_WEBHOOK_URL = webhookUrl;
+  if (shippingWebhookUrl === null) delete process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+  else process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL = shippingWebhookUrl;
+  if (webhookSecret === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
+  else process.env.GOOGLE_SHEETS_WEBHOOK_SECRET = webhookSecret;
   globalThis.fetch = fetchImpl;
   try {
     return await run();
@@ -32,6 +47,10 @@ async function withWebhookFetch(fetchImpl, run) {
     globalThis.fetch = originalFetch;
     if (originalUrl === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_URL;
     else process.env.GOOGLE_SHEETS_WEBHOOK_URL = originalUrl;
+    if (originalShippingUrl === undefined) delete process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+    else process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL = originalShippingUrl;
+    if (originalSecret === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_SECRET;
+    else process.env.GOOGLE_SHEETS_WEBHOOK_SECRET = originalSecret;
   }
 }
 
@@ -84,6 +103,133 @@ test('delete sends the stable orderId alongside legacy visible values', async ()
   assert.deepEqual(result, { skipped: false, deletedRow: 9 });
 });
 
+test('shipping uses only its dedicated URL and sends the exact markShipped payload', async () => {
+  let request;
+  const result = await withWebhookFetch(async (url, init) => {
+    request = { url, body: JSON.parse(init.body) };
+    return jsonResponse({ ok: true, updatedRow: 23 });
+  }, () => markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'), {
+    webhookUrl: 'https://example.test/append-only',
+    shippingWebhookUrl: 'https://example.test/shipping-only',
+    webhookSecret: 'shipping-secret',
+  });
+
+  assert.equal(request.url, 'https://example.test/shipping-only');
+  assert.deepEqual(request.body, {
+    secret: 'shipping-secret',
+    action: 'markShipped',
+    sheetId: 0,
+    orderId: 73,
+    shippingValue: '출고완료 · 2026-08-04',
+    values: [
+      '2026-08-03', '2026-08-10', 'manager', 'client', '', '', '', '',
+      '010-0000-0000', '', 'door', '', 100, '*', 200, '*', 300, 1, 'white',
+    ],
+  });
+  assert.deepEqual(result, { updatedRow: 23 });
+});
+
+test('the shipping payload carries the same visible A~S values the append webhook sends', async () => {
+  const bodies = [];
+  await withWebhookFetch(async (url, init) => {
+    bodies.push(JSON.parse(init.body));
+    const body = JSON.parse(init.body);
+    return body.action === 'markShipped'
+      ? jsonResponse({ ok: true, updatedRow: 23 })
+      : jsonResponse({ ok: true, row: 12, deduplicated: false });
+  }, async () => {
+    await appendOrderToSheet(order);
+    await markOrderShippedOnSheet(order, '2026-08-04');
+  });
+
+  const [appendBody, shippingBody] = bodies;
+  assert.equal(shippingBody.values.length, 19);
+  assert.deepEqual(shippingBody.values, appendBody.values);
+});
+
+test('append and delete never send to the shipment-only URL', async () => {
+  const urls = [];
+  await withWebhookFetch(async (url, init) => {
+    urls.push(url);
+    const body = JSON.parse(init.body);
+    return body.action === 'deleteOrder'
+      ? jsonResponse({ ok: true, deletedRow: 9 })
+      : jsonResponse({ ok: true, row: 12, deduplicated: false });
+  }, async () => {
+    await appendOrderToSheet(order);
+    await deleteOrderFromSheet(order);
+  }, {
+    webhookUrl: 'https://example.test/append-delete',
+    shippingWebhookUrl: 'https://example.test/shipping-only',
+  });
+
+  assert.deepEqual(urls, [
+    'https://example.test/append-delete',
+    'https://example.test/append-delete',
+  ]);
+});
+
+test('shipping rejects a missing URL without attempting a fallback request', async () => {
+  let fetchCalls = 0;
+  await withWebhookFetch(async () => {
+    fetchCalls += 1;
+    throw new Error('fetch must not run');
+  }, async () => {
+    await assert.rejects(
+      markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'),
+      /GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL/,
+    );
+  }, {
+    webhookUrl: 'https://example.test/append-only',
+    shippingWebhookUrl: null,
+  });
+  assert.equal(fetchCalls, 0);
+});
+
+test('shipping rejects invalid order IDs before sending a request', async () => {
+  for (const orderId of [0, -1, 1.5, 'not-an-id']) {
+    let fetchCalls = 0;
+    await withWebhookFetch(async () => {
+      fetchCalls += 1;
+      return jsonResponse({ ok: true, updatedRow: 23 });
+    }, async () => {
+      await assert.rejects(
+        markOrderShippedOnSheet({ ...order, id: orderId }, '2026-08-04'),
+        /order ID/i,
+      );
+    });
+    assert.equal(fetchCalls, 0);
+  }
+});
+
+test('shipping rejects network, non-2xx, malformed, empty, non-object, and non-strict responses', async () => {
+  const invalidResponses = [
+    ['network failure', async () => { throw new Error('socket closed'); }],
+    ['non-2xx response', async () => jsonResponse({ ok: true, updatedRow: 23 }, 503)],
+    ['malformed JSON', async () => new Response('not json', { status: 200 })],
+    ['empty response', async () => new Response('', { status: 200 })],
+    ['null response', async () => jsonResponse(null)],
+    ['boolean response', async () => jsonResponse(true)],
+    ['string response', async () => jsonResponse('ok')],
+    ['array response', async () => jsonResponse([{ ok: true, updatedRow: 23 }])],
+    ['explicit failure', async () => jsonResponse({ ok: false, updatedRow: 23 })],
+    ['missing updated row', async () => jsonResponse({ ok: true })],
+    ['zero updated row', async () => jsonResponse({ ok: true, updatedRow: 0 })],
+    ['string updated row', async () => jsonResponse({ ok: true, updatedRow: '23' })],
+    ['fractional updated row', async () => jsonResponse({ ok: true, updatedRow: 1.5 })],
+  ];
+
+  for (const [label, fetchImpl] of invalidResponses) {
+    await withWebhookFetch(fetchImpl, async () => {
+      await assert.rejects(
+        markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'),
+        undefined,
+        label,
+      );
+    });
+  }
+});
+
 test('Google Sheets webhook keeps the bounded Apps Script cold-start timeout', async () => {
   const source = await readFile(sourcePath, 'utf8');
 
@@ -91,5 +237,38 @@ test('Google Sheets webhook keeps the bounded Apps Script cold-start timeout', a
   assert.match(
     source,
     /async function appendViaWebhook[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), WEBHOOK_TIMEOUT_MS\)/,
+  );
+  assert.match(
+    source,
+    /function markOrderShippedOnSheet[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), SHIPPING_WEBHOOK_TIMEOUT_MS\)/,
+  );
+});
+
+test('the shipping webhook outwaits the Apps Script lock so contention never fails early', async () => {
+  const backendSource = await readFile(sourcePath, 'utf8');
+  const scriptSource = await readFile(
+    new URL('../.apps-script-shipping/Code.js', import.meta.url),
+    'utf8',
+  );
+
+  const backendTimeoutMs = Number(
+    /const SHIPPING_WEBHOOK_TIMEOUT_MS = ([\d_]+);/.exec(backendSource)[1].replace(/_/g, ''),
+  );
+  const lockTimeoutMs = Number(
+    /const LOCK_TIMEOUT_MS = ([\d_]+);/.exec(scriptSource)[1].replace(/_/g, ''),
+  );
+
+  assert.equal(backendTimeoutMs, 30_000);
+  assert.equal(lockTimeoutMs, 25_000);
+  assert.ok(
+    lockTimeoutMs < backendTimeoutMs,
+    'lock wait must finish before the backend aborts, otherwise contention always fails',
+  );
+  // Apps Script 실행 한도 6분 안에서 락 대기 + 시트 읽기/쓰기가 모두 끝나야 한다.
+  assert.ok(lockTimeoutMs < 6 * 60 * 1000);
+  // 공용 append/delete 타임아웃은 그대로 유지되어야 한다.
+  assert.match(
+    backendSource,
+    /async function deleteViaWebhook[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), WEBHOOK_TIMEOUT_MS\)/,
   );
 });
