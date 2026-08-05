@@ -34,8 +34,13 @@ async function loadSheetSync() {
   return import('../api/_lib/sheetSync.js');
 }
 
+let sheetSyncSchemaLoads = 0;
+
+// ensureSheetSyncSchema 는 모듈 단위로 "이미 보정했음" 플래그를 들고 있다.
+// 테스트마다 새 인스턴스를 받아야 보정 SQL 을 실제로 관찰할 수 있다.
 async function loadSheetSyncSchema() {
-  return import('../api/_lib/sheetSyncSchema.js');
+  sheetSyncSchemaLoads += 1;
+  return import(`../api/_lib/sheetSyncSchema.js?load=${sheetSyncSchemaLoads}`);
 }
 
 class FakeOutboxDb {
@@ -82,6 +87,15 @@ class FakeOutboxDb {
     this.statements.push({ sql, args });
 
     if (/^CREATE TABLE IF NOT EXISTS sheet_sync_jobs\b/i.test(sql)) {
+      return { rows: [] };
+    }
+
+    // 레거시 테이블 보정 SQL. 이 하네스는 신규 스키마를 흉내내므로 action 컬럼은 없다.
+    if (/^ALTER TABLE sheet_sync_jobs\b/i.test(sql)) {
+      return { rows: [] };
+    }
+
+    if (/information_schema\.columns/i.test(sql)) {
       return { rows: [] };
     }
 
@@ -159,6 +173,15 @@ class FakeOrderDb extends FakeOutboxDb {
     this.statements.push({ sql, args, transaction: true });
 
     if (/^CREATE TABLE IF NOT EXISTS sheet_sync_jobs\b/i.test(sql)) {
+      return { rows: [] };
+    }
+
+    // 레거시 테이블 보정 SQL. 이 하네스는 신규 스키마를 흉내내므로 action 컬럼은 없다.
+    if (/^ALTER TABLE sheet_sync_jobs\b/i.test(sql)) {
+      return { rows: [] };
+    }
+
+    if (/information_schema\.columns/i.test(sql)) {
       return { rows: [] };
     }
 
@@ -256,7 +279,6 @@ test('schema and migration install the durable order-keyed job with FK cascade',
     },
   });
 
-  assert.equal(statements.length, 1);
   assert.match(statements[0], /order_id INTEGER PRIMARY KEY REFERENCES orders\(id\) ON DELETE CASCADE/i);
   for (const column of [
     'status', 'attempts', 'last_error', 'last_attempt_at', 'synced_at',
@@ -269,6 +291,71 @@ test('schema and migration install the durable order-keyed job with FK cascade',
   const migrated = [];
   await runMigrationStatements({ async query(sql) { migrated.push(compactSql(sql)); } });
   assert.equal(migrated.filter((sql) => /^CREATE TABLE IF NOT EXISTS sheet_sync_jobs\b/i.test(sql)).length, 1);
+});
+
+// 2026-08-04 등록 장애: 프로덕션 테이블이 예전 스키마(action NOT NULL, 기본값 없음,
+// last_attempt_at/synced_at/sheet_row 없음)로 남아 있어 주문 등록이 통째로 실패했다.
+test('a legacy table gets its missing columns and an action default so order inserts survive', async () => {
+  const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
+  const statements = [];
+  await ensureSheetSyncSchema({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      statements.push(sql);
+      // 레거시 테이블에는 action 컬럼이 있다.
+      if (/information_schema\.columns/i.test(sql)) return { rows: [{ present: 1 }] };
+      return { rows: [] };
+    },
+  });
+
+  for (const column of ['last_attempt_at', 'synced_at', 'sheet_row']) {
+    assert.equal(
+      statements.filter((sql) => new RegExp(`ADD COLUMN IF NOT EXISTS ${column}\\b`, 'i').test(sql)).length,
+      1,
+      `${column} 보정이 정확히 한 번 실행되어야 한다`,
+    );
+  }
+  assert.equal(
+    statements.filter((sql) => /ALTER COLUMN action SET DEFAULT 'upsertOrder'/i.test(sql)).length,
+    1,
+  );
+  // 테이블 생성이 컬럼 보정보다 먼저여야 한다.
+  assert.ok(statements.findIndex((s) => /CREATE TABLE IF NOT EXISTS/i.test(s))
+    < statements.findIndex((s) => /ADD COLUMN IF NOT EXISTS/i.test(s)));
+});
+
+test('a fresh table has no action column so the legacy default is never attempted', async () => {
+  const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
+  const statements = [];
+  await ensureSheetSyncSchema({
+    async execute(query) {
+      statements.push(compactSql(querySql(query)));
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(statements.filter((sql) => /ALTER COLUMN action/i.test(sql)).length, 0);
+  assert.equal(statements.filter((sql) => /ADD COLUMN IF NOT EXISTS/i.test(sql)).length, 3);
+});
+
+test('schema reconciliation never drops or rewrites existing job data', async () => {
+  const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
+  const statements = [];
+  await ensureSheetSyncSchema({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      statements.push(sql);
+      if (/information_schema\.columns/i.test(sql)) return { rows: [{ present: 1 }] };
+      return { rows: [] };
+    },
+  });
+
+  for (const sql of statements) {
+    assert.doesNotMatch(sql, /\bDROP\b/i);
+    assert.doesNotMatch(sql, /\bTRUNCATE\b/i);
+    assert.doesNotMatch(sql, /\bDELETE\s+FROM\b/i);
+    assert.doesNotMatch(sql, /\bUPDATE\s+sheet_sync_jobs\s+SET\b/i);
+  }
 });
 
 test('order creation executes the order insert and pending job insert in one data-modifying CTE', async () => {
