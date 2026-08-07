@@ -258,7 +258,13 @@ test('migration trigger enforces every essential on future image-backed writes w
     source,
     /BEFORE INSERT OR UPDATE OF client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url/,
   );
-  assert.match(source, /IF TG_OP = 'UPDATE'/);
+  // INSERT 와 "이미지를 새로 붙이는 UPDATE" 는 전 항목 검사.
+  assert.match(
+    source,
+    /check_all := TG_OP <> 'UPDATE'\s*OR NEW\.work_order_image_url IS DISTINCT FROM OLD\.work_order_image_url/,
+  );
+  // 그 외 UPDATE 는 실제로 바뀌는 필드만 검사한다 — 결손인 채 저장된 기존 주문의
+  // 관계없는 항목 수정까지 막지 않기 위함이다.
   for (const field of [
     'client_name',
     'order_date',
@@ -266,14 +272,17 @@ test('migration trigger enforces every essential on future image-backed writes w
     'sales_person',
     'product_type',
     'quantity',
-    'work_order_image_url',
   ]) {
-    assert.match(source, new RegExp(`OLD\\.${field} IS NOT DISTINCT FROM NEW\\.${field}`));
+    assert.match(
+      source,
+      new RegExp(`IF check_all OR NEW\\.${field} IS DISTINCT FROM OLD\\.${field} THEN`),
+      `${field} 는 바뀔 때만 검사해야 한다`,
+    );
   }
+  // 이미지가 없는 주문은 애초에 검사 대상이 아니다.
   assert.match(
     source,
-    /OLD\.work_order_image_url IS NOT DISTINCT FROM NEW\.work_order_image_url[\s\S]*RETURN NEW;[\s\S]*END IF;[\s\S]*IF NULLIF\(BTRIM\(NEW\.work_order_image_url\), ''\) IS NOT NULL/,
-    'unchanged invariant values should return before validating legacy rows',
+    /IF NULLIF\(BTRIM\(NEW\.work_order_image_url\), ''\) IS NULL THEN\s*RETURN NEW;/,
   );
   assert.doesNotMatch(source, /\bUPDATE\s+orders\s+SET\b/i);
 });

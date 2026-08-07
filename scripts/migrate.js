@@ -96,45 +96,59 @@ function migrationStatements() {
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS sale_amount DOUBLE PRECISION`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS balance DOUBLE PRECISION`,
     `ALTER TABLE orders ADD COLUMN IF NOT EXISTS freight_payment TEXT`,
+    // 작업지시서(이미지)가 붙은 주문의 필수값 보증.
+    // INSERT 와 "이미지를 새로 붙이는 UPDATE" 는 전 항목을 검사한다.
+    // 그 외 UPDATE 는 **실제로 바뀌는 필드만** 검사한다 — 예전에 결손인 채 저장된 주문(2026-08-07 기준 24건,
+    // 납기일 없음 22 / 담당자 없음 14)이 관계없는 항목 수정조차 못 하게 막히던 문제 때문이다.
+    // (수정 모달이 빈 수량을 1 로 채워 보내는 등 정규화로 값이 달라지면 예전 로직의 '전부 미변경' 조건이 깨졌다.)
+    // 결손을 새로 만들거나 더 나쁘게 바꾸는 것은 여전히 막힌다.
     `CREATE OR REPLACE FUNCTION enforce_image_backed_order_integrity()
       RETURNS TRIGGER AS $image_order_guard$
+      DECLARE
+        check_all BOOLEAN;
       BEGIN
-        IF TG_OP = 'UPDATE'
-          AND OLD.client_name IS NOT DISTINCT FROM NEW.client_name
-          AND OLD.order_date IS NOT DISTINCT FROM NEW.order_date
-          AND OLD.due_date IS NOT DISTINCT FROM NEW.due_date
-          AND OLD.sales_person IS NOT DISTINCT FROM NEW.sales_person
-          AND OLD.product_type IS NOT DISTINCT FROM NEW.product_type
-          AND OLD.quantity IS NOT DISTINCT FROM NEW.quantity
-          AND OLD.work_order_image_url IS NOT DISTINCT FROM NEW.work_order_image_url THEN
+        IF NULLIF(BTRIM(NEW.work_order_image_url), '') IS NULL THEN
           RETURN NEW;
         END IF;
 
-        IF NULLIF(BTRIM(NEW.work_order_image_url), '') IS NOT NULL THEN
+        check_all := TG_OP <> 'UPDATE'
+          OR NEW.work_order_image_url IS DISTINCT FROM OLD.work_order_image_url;
+
+        IF check_all OR NEW.client_name IS DISTINCT FROM OLD.client_name THEN
           IF NULLIF(BTRIM(NEW.client_name), '') IS NULL THEN
             RAISE EXCEPTION 'Image-backed orders require a client name';
           END IF;
+        END IF;
 
+        IF check_all OR NEW.order_date IS DISTINCT FROM OLD.order_date THEN
           IF NEW.order_date IS NULL
             OR NEW.order_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
             OR to_char(to_date(NEW.order_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.order_date THEN
             RAISE EXCEPTION 'Image-backed orders require a canonical order date';
           END IF;
+        END IF;
 
+        IF check_all OR NEW.sales_person IS DISTINCT FROM OLD.sales_person THEN
           IF NEW.sales_person IS NULL OR NEW.sales_person NOT IN ('신은철', '이준형') THEN
             RAISE EXCEPTION 'Image-backed orders require an assigned sales person';
           END IF;
+        END IF;
 
+        IF check_all OR NEW.due_date IS DISTINCT FROM OLD.due_date THEN
           IF NEW.due_date IS NULL
             OR NEW.due_date !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
             OR to_char(to_date(NEW.due_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') <> NEW.due_date THEN
             RAISE EXCEPTION 'Image-backed orders require a canonical due date';
           END IF;
+        END IF;
 
+        IF check_all OR NEW.product_type IS DISTINCT FROM OLD.product_type THEN
           IF NULLIF(BTRIM(NEW.product_type), '') IS NULL THEN
             RAISE EXCEPTION 'Image-backed orders require a product type';
           END IF;
+        END IF;
 
+        IF check_all OR NEW.quantity IS DISTINCT FROM OLD.quantity THEN
           IF NEW.quantity IS NULL OR NEW.quantity <= 0 THEN
             RAISE EXCEPTION 'Image-backed orders require a positive quantity';
           END IF;
