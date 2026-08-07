@@ -452,6 +452,83 @@ test('a replay after status-write loss repeats only the idempotent markShipped d
   );
 });
 
+test('a DATE-typed ship_date returned as a Date object still claims the job and delivers the KST date', async () => {
+  const { syncShippedOrderToSheet } = await loadShippingSheetSync();
+  // Neon 드라이버가 DATE 컬럼을 JS Date 로 돌려주는 실측 형태 (KST 2026-08-04 = UTC 2026-08-03T15:00Z)
+  const db = new FakeShippingOutboxDb({ shipDate: new Date('2026-08-03T15:00:00.000Z') });
+  const deliveries = [];
+
+  const result = await syncShippedOrderToSheet(db, db.orders.get(73), {
+    markShipped: async (receivedOrder, shipDate) => {
+      deliveries.push([receivedOrder.id, shipDate]);
+      return { updatedRow: 101 };
+    },
+  });
+
+  assert.deepEqual(deliveries, [[73, '2026-08-04']], 'UTC 자정 해석으로 하루 밀리면 안 된다');
+  assert.deepEqual(result, { status: 'synced', updatedRow: 101 });
+  assert.equal(db.jobs.get(73).status, 'synced');
+  assert.equal(db.jobs.get(73).attempts, 1);
+  assert.equal(db.jobs.get(73).sheet_row, 101);
+});
+
+test('a Date-typed ship_date retried by the cron increments attempts instead of stalling at pending', async () => {
+  const { retryPendingShippingSheetSync } = await loadShippingSheetSync();
+  const db = new FakeShippingOutboxDb({ shipDate: new Date('2026-08-03T15:00:00.000Z') });
+  const deliveries = [];
+
+  const firstSweep = await retryPendingShippingSheetSync(db, {
+    limit: 10,
+    deadlineMs: 20_000,
+    markShipped: async (receivedOrder, shipDate) => {
+      deliveries.push(shipDate);
+      throw new Error('shipping webhook unavailable');
+    },
+  });
+
+  assert.equal(firstSweep.attempted, 1);
+  assert.equal(firstSweep.failed, 1);
+  assert.equal(db.jobs.get(73).attempts, 1, 'claimJob 에 도달하지 못하면 attempts 가 영원히 안 오른다');
+  assert.equal(db.jobs.get(73).status, 'failed');
+
+  const secondSweep = await retryPendingShippingSheetSync(db, {
+    limit: 10,
+    deadlineMs: 20_000,
+    markShipped: async (receivedOrder, shipDate) => {
+      deliveries.push(shipDate);
+      return { updatedRow: 102 };
+    },
+  });
+
+  assert.equal(secondSweep.synced, 1);
+  assert.deepEqual(deliveries, ['2026-08-04', '2026-08-04']);
+  assert.equal(db.jobs.get(73).attempts, 2);
+  assert.equal(db.jobs.get(73).status, 'synced');
+  assert.equal(db.jobs.get(73).sheet_row, 102);
+});
+
+test('unusable ship dates are still rejected before any claim', async () => {
+  const { syncShippedOrderToSheet } = await loadShippingSheetSync();
+
+  for (const shipDate of [null, undefined, '', '2026/08/04', new Date('nonsense'), 1_754_265_600_000, {}]) {
+    const db = new FakeShippingOutboxDb();
+    let deliveries = 0;
+    const result = await syncShippedOrderToSheet(db, { ...db.orders.get(73), ship_date: shipDate }, {
+      shipDate,
+      markShipped: async () => {
+        deliveries += 1;
+        return { updatedRow: 103 };
+      },
+    });
+
+    assert.equal(result.status, 'pending', String(shipDate));
+    assert.match(result.error, /Invalid ship date/);
+    assert.equal(deliveries, 0);
+    assert.equal(db.jobs.get(73).attempts, 0);
+    assert.equal(db.jobs.get(73).status, 'pending');
+  }
+});
+
 test('retry client failures persist a durable failed state', async () => {
   const { retryPendingShippingSheetSync } = await loadShippingSheetSync();
   const db = new FakeShippingOutboxDb();

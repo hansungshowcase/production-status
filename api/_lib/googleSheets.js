@@ -114,7 +114,22 @@ async function deleteViaWebhook(order) {
       throw new Error(`Google Sheets webhook delete failed: ${response.status}`);
     }
 
-    const result = await response.json().catch(() => ({}));
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error('Google Sheets webhook delete returned invalid JSON');
+    }
+
+    // Apps Script 는 실패도 HTTP 200 + {ok:false, error} 로 돌려준다 → ok 만이 성공 기준.
+    // deletedRow 가 null 인 것은 시트에 원래 행이 없던 정상 케이스이므로 실패로 보지 않는다.
+    if (!result || typeof result !== 'object' || Array.isArray(result) || result.ok !== true) {
+      const detail = result && typeof result === 'object' && !Array.isArray(result) && result.error
+        ? `: ${String(result.error)}`
+        : '';
+      throw new Error(`Google Sheets webhook delete failed${detail}`);
+    }
+
     return { skipped: false, deletedRow: result.deletedRow ?? null };
   } finally {
     clearTimeout(timeout);

@@ -6,7 +6,6 @@
 import crypto from 'crypto';
 import { ensureNotifySchema } from './notifySchema.js';
 import { ensureTrackToken } from './trackToken.js';
-import { authEnabled } from './auth.js';
 
 const SOLAPI_ENDPOINT = 'https://api.solapi.com/messages/v4/send';
 // 종결 상태 = success/dry_run/skipped (claim SQL 에 인라인) — queued/failed/sending(stale) 은 스윕이 재처리
@@ -232,19 +231,10 @@ async function sendCustomerMessage({ to, subject, text, variables, templateEnv }
     return { ok: true, dryRun: true, channel: pfId && templateId ? 'alimtalk' : 'lms', msgId: null };
   }
 
-  // 보안 게이트: 인증(opt-in)이 비활성인 배포에서는 고객 실발송 차단.
-  // SALES_PASSWORD/ADMIN_PASSWORD 미설정 시 requireAuth 가 _bypass 로 통과되므로,
-  // 무인증 API 호출(POST /orders 등)로 임의 번호에 실 SMS/알림톡이 나가는 것을 여기서 최종 차단.
-  // (관리자 LMS 는 수신처가 env 의 ADMIN_PHONES 라 별도 — sendAdminLms 는 이 게이트를 타지 않음)
-  if (!authEnabled()) {
-    return {
-      ok: false,
-      channel: pfId && templateId ? 'alimtalk' : 'lms',
-      msgId: null,
-      error: '인증 비활성(SALES_PASSWORD/ADMIN_PASSWORD 미설정) — 고객 실발송 차단. 운영 배포 시 비밀번호 env 설정 필요',
-    };
-  }
-
+  // 실발송 여부는 위 solapiConfigured() 하나로만 판단한다.
+  // 2026-07-09 dca9af0 이 여기에 영업/관리자 인증 활성 여부를 보는 게이트를 추가했는데,
+  // 그 비밀번호를 쓰지 않는 이 배포에서는 항상 막혀 고객 알림이 한 달간 전량 차단됐다
+  // (notification_log 실패 506건). 인증 설정과 고객 문자 발송은 별개 관심사이므로 결합을 되돌린다.
   if (pfId && templateId) {
     const kakaoVariables = {};
     for (const [k, v] of Object.entries(variables || {})) {

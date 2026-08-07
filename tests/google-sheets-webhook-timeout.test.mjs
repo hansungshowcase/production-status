@@ -103,6 +103,42 @@ test('delete sends the stable orderId alongside legacy visible values', async ()
   assert.deepEqual(result, { skipped: false, deletedRow: 9 });
 });
 
+test('delete rejects an HTTP-200 Apps Script failure and surfaces its error text', async () => {
+  await withWebhookFetch(
+    async () => jsonResponse({ ok: false, error: 'unauthorized' }),
+    async () => {
+      await assert.rejects(deleteOrderFromSheet(order), /unauthorized/);
+    },
+  );
+});
+
+test('delete rejects every HTTP-200 response that is not a strict JSON ok', async () => {
+  const invalidResponses = [
+    ['explicit failure without text', () => jsonResponse({ ok: false })],
+    ['missing ok', () => jsonResponse({ deletedRow: 9 })],
+    ['string ok', () => jsonResponse({ ok: 'true', deletedRow: 9 })],
+    ['null response', () => jsonResponse(null)],
+    ['array response', () => jsonResponse([{ ok: true, deletedRow: 9 }])],
+    ['non-JSON body', () => new Response('not json', { status: 200 })],
+    ['empty response', () => new Response('', { status: 200 })],
+  ];
+
+  for (const [label, response] of invalidResponses) {
+    await withWebhookFetch(async () => response(), async () => {
+      await assert.rejects(deleteOrderFromSheet(order), /delete/i, label);
+    });
+  }
+});
+
+test('delete treats an ok response with no matching row as success', async () => {
+  const result = await withWebhookFetch(
+    async () => jsonResponse({ ok: true, deletedRow: null }),
+    () => deleteOrderFromSheet(order),
+  );
+
+  assert.deepEqual(result, { skipped: false, deletedRow: null });
+});
+
 test('shipping uses only its dedicated URL and sends the exact markShipped payload', async () => {
   let request;
   const result = await withWebhookFetch(async (url, init) => {

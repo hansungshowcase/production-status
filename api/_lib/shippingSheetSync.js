@@ -16,10 +16,19 @@ function normalizedOrderId(orderId) {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+// Postgres DATE 컬럼(sheet_shipping_sync_jobs.ship_date)은 Neon 드라이버가 JS Date 로 돌려준다.
+// 시간대 없는 날짜를 UTC 자정으로 해석하므로 KST(UTC+9) 벽시계로 읽어야 원래 날짜가 나온다.
+// (notify.js kstTodayStr() 과 동일한 +9h offset 방식 — '2026-08-03T15:00:00.000Z' → '2026-08-04')
 function normalizedShipDate(shipDate) {
-  return typeof shipDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(shipDate)
-    ? shipDate
-    : null;
+  if (typeof shipDate === 'string') {
+    return /^\d{4}-\d{2}-\d{2}$/.test(shipDate) ? shipDate : null;
+  }
+  if (shipDate instanceof Date) {
+    const time = shipDate.getTime();
+    if (!Number.isFinite(time)) return null;
+    return new Date(time + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+  return null;
 }
 
 async function claimJob(db, orderId) {
