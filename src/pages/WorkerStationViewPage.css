@@ -4582,3 +4582,18 @@
   color: #92400e !important;
   -webkit-text-fill-color: #92400e !important;
 }
+
+/* 작업자 본인 확인 팝업 — 다른 팝업/토스트보다 항상 위에 있어야 하고, 배경을 눌러도 닫히지 않는다. */
+.sv-identity-overlay {
+  z-index: 299;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.sv-identity-overlay + .sv-card-popup {
+  z-index: 300;
+}
+
+.sv-identity-overlay + .sv-card-popup .sv-card-popup__title {
+  font-size: 18px;
+  line-height: 1.4;
+}

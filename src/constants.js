@@ -62,4 +62,7 @@ export const SALES_PERSONS = [
 
 export const WORKER_STORAGE_KEY = 'selected_worker';
 export const DEPARTMENT_STORAGE_KEY = 'selected_department';
+// 공정 화면 진입 시 "본인이 맞는지" 한 번 확인받은 작업자 이름.
+// 이름을 저장해 두므로 다른 작업자로 바뀌면 다시 물어본다.
+export const WORKER_CONFIRMED_KEY = 'confirmed_worker';
 export const LAST_STATION_KEY = 'worker_last_station';

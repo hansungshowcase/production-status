@@ -8,7 +8,8 @@ import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages'
 import { getStats } from '../api/stats';
 import { shipOrderFromWorker } from '../api/orders';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
-import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY } from '../constants';
+import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY } from '../constants';
+import { shouldAskWorkerIdentity } from './workerIdentityConfirm';
 import { extractDueDateFromOrder, getDaysUntilDue, parseDate } from '../utils/dateUtils';
 import { getVisibleOrderMemo } from '../utils/orderText';
 import './WorkerStationViewPage.css';
@@ -92,6 +93,15 @@ export default function WorkerStationViewPage() {
   const icon = STEP_ICONS[decodedStep] || '';
   const workerName = sessionStorage.getItem(WORKER_STORAGE_KEY) || '현장작업자';
   const department = sessionStorage.getItem(DEPARTMENT_STORAGE_KEY) || '';
+
+  // 공정 화면 진입 시 본인 확인. 다른 사람 이름으로 작업이 기록되는 것을 막는다.
+  const [identityAsked, setIdentityAsked] = useState(() => {
+    try {
+      return !shouldAskWorkerIdentity(workerName, sessionStorage.getItem(WORKER_CONFIRMED_KEY));
+    } catch {
+      return true; // 저장소를 못 쓰는 환경에서 매번 막히지 않도록
+    }
+  });
 
   const [items, setItems] = useState([]);
   const [factoryStats, setFactoryStats] = useState(null);
@@ -1641,6 +1651,45 @@ export default function WorkerStationViewPage() {
         </div>
       )}
       {/* 이슈 목록은 상단 버튼 옆 드롭다운으로 이동됨 */}
+
+      {!identityAsked && (
+        <>
+          {/* 오버레이를 눌러서는 닫히지 않는다 — 반드시 확인 또는 재선택을 고르게 한다. */}
+          <div className="sv-overlay sv-identity-overlay" />
+          <div className="sv-card-popup" role="dialog" aria-modal="true" aria-label="작업자 확인">
+            <div className="sv-card-popup__icon">👤</div>
+            <div className="sv-card-popup__title">작업자 {workerName} 님이 맞으실까요?</div>
+            <div className="sv-card-popup__desc">
+              이 이름으로 공정 시작·완료가 기록됩니다.
+            </div>
+            <div className="sv-card-popup__actions">
+              <button
+                type="button"
+                className="sv-card-popup__btn sv-card-popup__btn--ok"
+                onClick={() => {
+                  try { sessionStorage.setItem(WORKER_CONFIRMED_KEY, workerName); } catch { /* 저장 실패해도 진행 */ }
+                  setIdentityAsked(true);
+                }}
+              >
+                확인
+              </button>
+              <button
+                type="button"
+                className="sv-card-popup__btn sv-card-popup__btn--cancel"
+                onClick={() => {
+                  try {
+                    sessionStorage.removeItem(WORKER_CONFIRMED_KEY);
+                    sessionStorage.removeItem(WORKER_STORAGE_KEY);
+                  } catch { /* 무시 */ }
+                  navigate('/worker/select', { state: { redirectTo: '/worker/station' } });
+                }}
+              >
+                재선택
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
