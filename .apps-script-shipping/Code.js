@@ -206,8 +206,15 @@ function handleSortRangeByColumn(data) {
     return jsonOutput({ ok: false, error: 'invalid sortColumn' });
   }
 
-  const lastRow = sheet.getLastRow();
+  const sheetLastRow = sheet.getLastRow();
   const lastColumn = sheet.getLastColumn();
+  // getLastRow() 는 서식만 남은 빈 행까지 센다. endRow 를 주면 실제 데이터 구간만 정렬해
+  // 빈 행 수백 개의 서식이 함께 움직이는 것을 피한다.
+  const requestedEnd = data.endRow == null ? sheetLastRow : Number(data.endRow);
+  if (!Number.isInteger(requestedEnd) || requestedEnd < startRow) {
+    return jsonOutput({ ok: false, error: 'invalid endRow' });
+  }
+  const lastRow = Math.min(requestedEnd, sheetLastRow);
   const rowCount = lastRow - startRow + 1;
   if (rowCount <= 1) {
     return jsonOutput({ ok: true, sorted: 0, startRow: startRow, lastRow: lastRow, lastColumn: lastColumn });
@@ -252,6 +259,46 @@ function handleInsertMarkerRow(data) {
   });
 }
 
+// 열 표시 서식 변경. 값은 건드리지 않고 보이는 형태만 바꾼다.
+// 발주일(A)은 연도가 안 보이는 서식이라 2025/2026 건을 눈으로 구분할 수 없었다.
+// 날짜가 아니라 글자로 들어간 칸은 서식과 무관하게 원문 그대로 남는다.
+function handleSetColumnDateFormat(data) {
+  const sheet = resolveSheetForMaintenance(data);
+  if (!sheet) return jsonOutput({ ok: false, error: 'target sheet not found' });
+
+  const column = Number(data.column);
+  const startRow = Number(data.startRow);
+  const format = String(data.format == null ? '' : data.format);
+  if (!Number.isInteger(column) || column < 1) {
+    return jsonOutput({ ok: false, error: 'invalid column' });
+  }
+  if (!Number.isInteger(startRow) || startRow < 2) {
+    return jsonOutput({ ok: false, error: 'invalid startRow' });
+  }
+  if (!format.trim()) return jsonOutput({ ok: false, error: 'invalid format' });
+
+  const lastRow = sheet.getLastRow();
+  const rowCount = lastRow - startRow + 1;
+  if (rowCount <= 0) {
+    return jsonOutput({ ok: true, formatted: 0, startRow: startRow, lastRow: lastRow });
+  }
+
+  const range = sheet.getRange(startRow, column, rowCount, 1);
+  const before = range.getDisplayValues().slice(0, 3).map(function (row) { return row[0]; });
+
+  if (data.dryRun === true) {
+    return jsonOutput({ ok: true, dryRun: true, wouldFormat: rowCount, startRow: startRow, lastRow: lastRow, sampleBefore: before });
+  }
+
+  return withMaintenanceLock(function () {
+    range.setNumberFormat(format);
+    SpreadsheetApp.flush();
+    const after = sheet.getRange(startRow, column, Math.min(3, rowCount), 1)
+      .getDisplayValues().map(function (row) { return row[0]; });
+    return jsonOutput({ ok: true, formatted: rowCount, startRow: startRow, lastRow: lastRow, sampleBefore: before, sampleAfter: after });
+  });
+}
+
 function withMaintenanceLock(callback) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(LOCK_TIMEOUT_MS)) {
@@ -283,6 +330,9 @@ function doPost(event) {
   }
   if (data.action === 'insertMarkerRow') {
     return handleInsertMarkerRow(data);
+  }
+  if (data.action === 'setColumnDateFormat') {
+    return handleSetColumnDateFormat(data);
   }
 
   // clearShipped 는 되돌리기 전용. 행 탐색 규칙은 markShipped 와 완전히 동일하고 E열 계산만 다르다.

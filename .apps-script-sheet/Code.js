@@ -187,14 +187,14 @@ function withMutationLock(callback) {
   }
 }
 
+// 이 정렬은 A~T(ROW_WIDTH=20)만 옮긴다. 실제 시트는 AQ(43)열까지 쓰고 있어
+// (파트 2,934행 / 자재 발주·입고 2,100행 / AD열 2,548행), 실행하면 왼쪽 주문 정보만
+// 자리를 옮기고 오른쪽 자재·파트 정보는 제자리에 남아 3천 행이 통째로 어긋난다.
+// 되돌리기가 사실상 불가능해서 비활성화한다. (2026-08-07)
+// 정렬이 필요하면 구글시트 화면에서 직접 하거나, 출고용 스크립트의 sortRangeByColumn 을 쓴다.
+// 그쪽은 마지막 사용 열까지 포함하고 시작·끝 행을 지정할 수 있다.
 function sortOrdersByDate(sheet) {
-  const startRow = firstDataRow(sheet);
-  const lastRow = sheet.getLastRow();
-  if (lastRow < startRow) return;
-
-  sheet
-    .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
-    .sort({ column: 1, ascending: true });
+  throw new Error('sort disabled: 이 정렬은 A~T 20칸만 옮겨 나머지 열이 어긋납니다. 시트에서 직접 정렬하거나 출고용 스크립트의 sortRangeByColumn 을 사용하세요.');
 }
 
 function doPost(e) {
@@ -240,10 +240,11 @@ function doPost(e) {
     });
   }
 
+  // 정렬 요청은 락을 잡거나 시트를 건드리기 전에 거절한다.
   if (data.action === 'sort') {
-    return withMutationLock(() => {
-      sortOrdersByDate(sheet);
-      return jsonOutput({ ok: true, sorted: true, spreadsheetId: SPREADSHEET_ID });
+    return jsonOutput({
+      ok: false,
+      error: 'sort disabled: A~T 20칸만 옮겨 나머지 열이 어긋납니다. 출고용 스크립트의 sortRangeByColumn 을 사용하세요.',
     });
   }
 

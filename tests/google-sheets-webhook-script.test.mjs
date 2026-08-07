@@ -288,9 +288,9 @@ test('without a qualifying interior run, append follows the last occupied row', 
 });
 
 test('all mutating actions use one bounded script lock and contention performs no mutation', async () => {
+  // sort 는 비활성화되어 락을 잡기 전에 거절되므로 이 목록에서 뺀다(아래 별도 테스트로 검증).
   const actions = [
     { orderId: 301, values: visibleValues('2026-08-03') },
-    { action: 'sort' },
     { action: 'deleteRow', row: 2 },
     { action: 'deleteOrder', orderId: 301, values: visibleValues('2026-08-03') },
   ];
@@ -326,20 +326,23 @@ test('the script lock is released when a sheet mutation throws', async () => {
   assert.equal(harness.lockState.releases, 2);
 });
 
-test('explicit sort covers A:T and keeps each hidden ID aligned with its visible row', async () => {
+// 이 정렬은 A~T 20칸만 옮긴다. 실제 시트는 AQ(43)열까지 쓰고 있어(파트·자재 발주/입고 등
+// 2,000~2,900행) 실행하면 오른쪽 열이 제자리에 남아 3천 행이 통째로 어긋난다.
+// 되돌리기가 사실상 불가능해 비활성화했다. 정렬은 출고용 스크립트의 sortRangeByColumn 을 쓴다.
+test('sort 요청은 시트를 건드리지 않고 거절된다', async () => {
   const harness = await createAppsScriptHarness();
   harness.post({ orderId: 501, values: visibleValues('2026-09-02') });
   harness.post({ orderId: 502, values: visibleValues('2026-08-01') });
+  const before = structuredClone(harness.sheet.rows);
 
   const result = harness.post({ action: 'sort' });
 
-  assert.deepEqual(result, { ok: true, sorted: true, spreadsheetId });
-  assert.equal(harness.sheet.sortCalls.length, 1);
-  assert.equal(harness.sheet.sortCalls[0].columnCount, 20);
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => [row[0], row[19]]), [
-    ['2026-08-01', 502],
-    ['2026-09-02', 501],
-  ]);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /sort disabled/);
+  assert.equal(harness.sheet.sortCalls.length, 0, '정렬을 실제로 실행하면 안 된다');
+  assert.deepEqual(harness.sheet.rows, before, '행 순서가 그대로여야 한다');
+  // 락조차 잡지 않고 거절해야 다른 요청을 막지 않는다.
+  assert.equal(harness.lockState.releases, 2, '앞선 append 2건 외에는 락을 쓰지 않는다');
 });
 
 test('deleteOrder prefers the hidden ID and only falls back to visible fields for legacy blank-ID rows', async () => {
