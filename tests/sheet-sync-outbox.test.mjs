@@ -590,6 +590,72 @@ test('order cleanup deletes its CTE-created job through the cascade lifecycle', 
   assert.equal(db.jobs.has(801), false);
 });
 
+// 필수 INSERT 가 아직 끝나지 않았다면 보상 삭제는 그대로 살아 있어야 한다 (마지막 필수 INSERT 기준).
+test('a failure on the last required insert still cleans up the order it created', async () => {
+  const db = new FakeOrderDb();
+  const originalExecuteTransaction = db.executeTransaction.bind(db);
+  db.executeTransaction = async (query) => {
+    const sql = compactSql(querySql(query));
+    if (/^INSERT INTO activity_feed\b/i.test(sql)) {
+      throw new Error('simulated activity feed insert failure');
+    }
+    return originalExecuteTransaction(query);
+  };
+
+  await assert.rejects(
+    () => handlePost({ body: { client_name: 'cleanup order' } }, mockResponse(), db),
+    /simulated activity feed insert failure/,
+  );
+
+  assert.equal(db.cleanupDeletes, 1);
+  assert.equal(db.orders.has(801), false);
+  assert.equal(db.jobs.has(801), false);
+});
+
+// 2026-08 데이터 손실: 모든 필수 INSERT 가 끝난 뒤 순수 조회 SELECT 가 Neon 한도 오류를 내면
+// catch 의 보상 삭제가 멀쩡한 주문을 CASCADE 로 통째 지웠다.
+test('a read-back failure after the required inserts keeps the order alive', async () => {
+  const db = new FakeOrderDb();
+  const readFailure = new Error('Your account or project has exceeded the data transfer quota');
+  readFailure.status = 503;
+  const originalExecute = db.execute.bind(db);
+  db.execute = async (query) => {
+    const sql = compactSql(querySql(query));
+    if (/^SELECT \* FROM orders WHERE id = \?/i.test(sql)) throw readFailure;
+    return originalExecute(query);
+  };
+
+  await assert.rejects(
+    () => handlePost({ body: { client_name: 'atomic order' } }, mockResponse(), db),
+    (error) => error === readFailure,
+  );
+
+  assert.equal(db.cleanupDeletes, 0, '조회 실패로는 절대 주문을 지우면 안 된다');
+  assert.equal(db.orders.has(801), true);
+  assert.equal(db.jobs.has(801), true);
+});
+
+// 필수 INSERT 이후 단계(토큰/알림/시트)는 각자 삼키지만, 그 경계 자체도 삭제 대상 밖이어야 한다.
+test('a failure after the required inserts never deletes the created order', async () => {
+  const db = new FakeOrderDb();
+  const originalExecute = db.execute.bind(db);
+  db.execute = async (query) => {
+    const sql = compactSql(querySql(query));
+    if (/^SELECT \* FROM pre_production WHERE order_id = \?/i.test(sql)) {
+      throw new Error('simulated read outage');
+    }
+    return originalExecute(query);
+  };
+
+  await assert.rejects(
+    () => handlePost({ body: { client_name: 'atomic order' } }, mockResponse(), db),
+    /simulated read outage/,
+  );
+
+  assert.equal(db.cleanupDeletes, 0);
+  assert.equal(db.orders.has(801), true);
+});
+
 test('dedicated sheet-sync cron is CRON_SECRET protected and leaves notification sweep unchanged', async () => {
   const { handleSheetSyncCron } = await import('../api/cron/sheet-sync.js');
   const originalSecret = process.env.CRON_SECRET;

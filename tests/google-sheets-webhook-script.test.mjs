@@ -361,3 +361,56 @@ test('deleteOrder prefers the hidden ID and only falls back to visible fields fo
   assert.equal(noModernFallback.deletedRow, null);
   assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), [601]);
 });
+
+test('a single unambiguous legacy candidate is still deleted', async () => {
+  const harness = await createAppsScriptHarness();
+  const values = visibleValues('2026-08-03');
+  harness.sheet.rows.push([...values, '']);
+
+  const result = harness.post({ action: 'deleteOrder', orderId: 701, values });
+
+  assert.deepEqual(result, { ok: true, deletedRow: 2 });
+  assert.deepEqual(harness.sheet.deleteCalls, [2]);
+  assert.equal(harness.sheet.rows.length, 1);
+});
+
+// KEY_COLUMNS 는 출고완료(E)·문/디자인·비고를 보지 않는다. 같은 거래처가 같은 날 같은 사양으로 2건
+// 발주하면 레거시 행을 구분할 수 없어, 예전에는 조용히 맨 아래(출고완료가 기록된) 행을 지웠다.
+test('deleteOrder deletes nothing when several legacy rows match the same visible values', async () => {
+  const harness = await createAppsScriptHarness();
+  const values = visibleValues('2026-08-03');
+  harness.sheet.rows.push([...values, ''], [...values, '']);
+  const before = structuredClone(harness.sheet.rows);
+
+  const result = harness.post({ action: 'deleteOrder', orderId: 702, values });
+
+  assert.deepEqual(result, { ok: false, error: 'ambiguous legacy match' });
+  assert.deepEqual(harness.sheet.deleteCalls, [], 'ambiguous match must not delete any row');
+  assert.deepEqual(harness.sheet.rows, before);
+  assert.equal(harness.lockState.held, false);
+  assert.equal(harness.lockState.releases, 1);
+});
+
+test('a hidden order ID still wins even when the legacy candidates are ambiguous', async () => {
+  const harness = await createAppsScriptHarness();
+  const values = visibleValues('2026-08-03');
+  harness.sheet.rows.push([...values, ''], [...values, 703], [...values, '']);
+
+  const result = harness.post({ action: 'deleteOrder', orderId: 703, values });
+
+  assert.deepEqual(result, { ok: true, deletedRow: 3 });
+  assert.deepEqual(harness.sheet.deleteCalls, [3]);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), ['', '']);
+});
+
+test('deleteOrder reports no deletion when no row matches at all', async () => {
+  const harness = await createAppsScriptHarness();
+  const values = visibleValues('2026-08-03');
+  harness.sheet.rows.push([...visibleValues('2026-01-01'), '']);
+
+  const result = harness.post({ action: 'deleteOrder', orderId: 704, values });
+
+  assert.deepEqual(result, { ok: true, deletedRow: null });
+  assert.deepEqual(harness.sheet.deleteCalls, []);
+  assert.equal(harness.sheet.rows.length, 2);
+});

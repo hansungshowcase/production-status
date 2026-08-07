@@ -137,32 +137,41 @@ function findOrderRowById(sheet, orderId) {
   return null;
 }
 
-function findMatchingLegacyOrderRow(sheet, targetValues) {
+// KEY_COLUMNS 가 출고완료(E)·문/디자인·비고를 보지 않으므로 같은 거래처의 같은 날 같은 사양 발주는
+// 레거시 행끼리 구별되지 않는다. 후보가 여러 개면 지우지 않고 호출자에게 모호함을 알린다.
+function findMatchingLegacyOrderRows(sheet, targetValues) {
   const startRow = firstDataRow(sheet);
   const lastRow = sheet.getLastRow();
-  if (lastRow < startRow) return null;
+  if (lastRow < startRow) return [];
 
   const rows = sheet
     .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
     .getValues();
 
+  const matches = [];
   for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
     const hasOrderId = String(rows[rowIndex][ID_COLUMN - 1] ?? '').trim() !== '';
     if (!hasOrderId && isMatchingOrderRow(rows[rowIndex], targetValues)) {
-      return startRow + rowIndex;
+      matches.push(startRow + rowIndex);
     }
   }
 
-  return null;
+  return matches;
 }
 
 function deleteMatchingOrder(sheet, orderId, targetValues) {
-  const matchingRow = findOrderRowById(sheet, orderId)
-    || findMatchingLegacyOrderRow(sheet, targetValues);
-  if (!matchingRow) return null;
+  const rowById = findOrderRowById(sheet, orderId);
+  if (rowById) {
+    sheet.deleteRow(rowById);
+    return { deletedRow: rowById };
+  }
 
-  sheet.deleteRow(matchingRow);
-  return matchingRow;
+  const legacyMatches = findMatchingLegacyOrderRows(sheet, targetValues);
+  if (legacyMatches.length === 0) return { deletedRow: null };
+  if (legacyMatches.length > 1) return { error: 'ambiguous legacy match' };
+
+  sheet.deleteRow(legacyMatches[0]);
+  return { deletedRow: legacyMatches[0] };
 }
 
 function withMutationLock(callback) {
@@ -256,8 +265,11 @@ function doPost(e) {
 
   if (data.action === 'deleteOrder') {
     return withMutationLock(() => {
-      const deletedRow = deleteMatchingOrder(sheet, data.orderId, values);
-      return jsonOutput({ ok: true, deletedRow });
+      const result = deleteMatchingOrder(sheet, data.orderId, values);
+      if (result.error) {
+        return jsonOutput({ ok: false, error: result.error });
+      }
+      return jsonOutput({ ok: true, deletedRow: result.deletedRow });
     });
   }
 

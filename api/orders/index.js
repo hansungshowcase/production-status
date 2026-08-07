@@ -394,6 +394,9 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
     });
 
     await tx.commit();
+    // 필수 레코드(processes/pre_production/activity_feed)가 모두 들어간 시점부터는
+    // 보상 삭제 대상에서 제외한다. 이후 단계(조회/토큰/알림/시트)의 실패로 멀쩡한 주문을 지우면 안 된다.
+    createdOrderId = null;
 
     // 관련 데이터 병렬 SELECT (3개 직렬 → Promise.all)
     const [orderRow, processRows, preProdRow] = await Promise.all([
