@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import request from '../../api/client';
+import { describeTableColumn } from '../../utils/fieldLabels';
 import './DiagnosticsSection.css';
 
 export default function DiagnosticsSection() {
@@ -43,7 +44,7 @@ export default function DiagnosticsSection() {
           <div className="diag-section__meta">검사: {new Date(result.scanned_at).toLocaleString('ko-KR')}</div>
           {Object.entries(result.results).map(([key, r]) => (
             <div key={key} className="diag-section__group">
-              <div className="diag-section__group-title">{key}</div>
+              <div className="diag-section__group-title">{describeTableColumn(key)}</div>
               {r.error ? (
                 <div className="diag-section__group-err">에러: {r.error}</div>
               ) : r.suspectCount === 0 ? (

@@ -41,12 +41,12 @@ function mockResponse() {
 
 test('create validation requires every image-backed order essential while preserving image-free normalization', () => {
   const invalidCases = [
-    ['client_name', '   ', /client_name/],
-    ['order_date', '2026-02-29', /order_date.*YYYY-MM-DD/],
-    ['due_date', '2026-04-31', /due_date.*YYYY-MM-DD/],
+    ['client_name', '   ', /거래처/],
+    ['order_date', '2026-02-29', /발주일.*실제 날짜/],
+    ['due_date', '2026-04-31', /납기일.*실제 날짜/],
     ['sales_person', '홍길동', /담당자/],
-    ['product_type', '\t', /product_type/],
-    ['quantity', 0, /quantity.*positive/],
+    ['product_type', '\t', /사양/],
+    ['quantity', 0, /수량.*1 이상/],
   ];
 
   for (const [field, value, expectedMessage] of invalidCases) {
@@ -97,12 +97,12 @@ test('orders POST returns a field-specific 400 for every invalid image-backed es
   try {
     const { default: ordersHandler } = await import('../api/orders/index.js');
     const invalidCases = [
-      ['client_name', ' ', /client_name/],
-      ['order_date', '2026-02-29', /order_date/],
-      ['due_date', '2026-04-31', /due_date/],
+      ['client_name', ' ', /거래처/],
+      ['order_date', '2026-02-29', /발주일/],
+      ['due_date', '2026-04-31', /납기일/],
       ['sales_person', '홍길동', /담당자/],
-      ['product_type', ' ', /product_type/],
-      ['quantity', 0, /quantity/],
+      ['product_type', ' ', /사양/],
+      ['quantity', 0, /수량/],
     ];
 
     for (const [index, [field, value, expectedMessage]] of invalidCases.entries()) {

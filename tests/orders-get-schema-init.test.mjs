@@ -12,6 +12,14 @@ const OPTIONAL_ORDER_COLUMN_STATEMENTS = [
   'ALTER TABLE orders ADD COLUMN IF NOT EXISTS freight_payment TEXT',
 ];
 
+// 고객 조회 링크(track_token)는 주문 INSERT 가 직접 채우므로,
+// 쓰기 트랜잭션 전에 컬럼/인덱스 보정이 끝나 있어야 한다.
+const TRACK_TOKEN_SCHEMA_STATEMENTS = [
+  'ALTER TABLE orders ADD COLUMN IF NOT EXISTS track_token TEXT',
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_track_token ON orders (track_token)',
+  "ALTER TABLE orders ADD COLUMN IF NOT EXISTS notify_state JSONB DEFAULT '{}'::jsonb",
+];
+
 const SCHEMA_DDL_PATTERN = /\b(?:ALTER|CREATE|DROP|TRUNCATE|RENAME|COMMENT|GRANT|REVOKE)\b/i;
 
 function querySql(query) {
@@ -84,10 +92,22 @@ test('orders POST prepares the optional schema before opening its write transact
     (error) => error === transactionReached,
   );
 
+  const executedBeforeTransaction = events
+    .filter((event) => event.kind === 'execute')
+    .map((event) => event.sql);
   assert.deepEqual(
-    events.filter((event) => event.kind === 'execute').map((event) => event.sql),
+    executedBeforeTransaction.slice(0, OPTIONAL_ORDER_COLUMN_STATEMENTS.length),
     OPTIONAL_ORDER_COLUMN_STATEMENTS,
   );
+  for (const statement of TRACK_TOKEN_SCHEMA_STATEMENTS) {
+    assert.ok(
+      executedBeforeTransaction.includes(statement),
+      `쓰기 트랜잭션 전에 실행되어야 한다: ${statement}`,
+    );
+  }
+  for (const statement of executedBeforeTransaction) {
+    assert.match(statement, /^(?:ALTER TABLE|CREATE UNIQUE INDEX|CREATE TABLE) /i);
+  }
   assert.deepEqual(events.at(-1), { kind: 'transaction', mode: 'write' });
 });
 

@@ -14,7 +14,7 @@ const importSectionSource = readFileSync(
 const ORDER_COLUMNS = [
   'order_date', 'due_date', 'sales_person', 'client_name', 'ship_date',
   'product_type', 'door_type', 'design', 'width', 'depth', 'height',
-  'quantity', 'color', 'notes', 'status',
+  'quantity', 'color', 'notes', 'status', 'track_token',
 ];
 
 function makeDb({ existingOrders = [], failDuplicateLookup = false } = {}) {
@@ -34,6 +34,10 @@ function makeDb({ existingOrders = [], failDuplicateLookup = false } = {}) {
       state.statements.push({ sql: statement, args });
 
       if (/^CREATE TABLE IF NOT EXISTS sheet_sync_jobs\b/i.test(statement)) return { rows: [] };
+      // 고객 조회 링크(track_token) 컬럼/인덱스 보정 — 발송이 아니라 스키마 준비다.
+      if (/^ALTER TABLE orders ADD COLUMN IF NOT EXISTS (?:track_token|notify_state)\b/i.test(statement)) return { rows: [] };
+      if (/^CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_track_token\b/i.test(statement)) return { rows: [] };
+      if (/^CREATE TABLE IF NOT EXISTS notification_log\b/i.test(statement)) return { rows: [] };
       if (/^ALTER TABLE sheet_sync_jobs\b/i.test(statement)) return { rows: [] };
       if (/information_schema\.columns/i.test(statement)) return { rows: [] };
 
@@ -237,10 +241,13 @@ test('CSV 대량 임포트는 고객 알림을 보내지 않는다', async () =>
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.imported, 1);
 
-  // 알림 경로는 notification/track_token 테이블을 건드린다. 가짜 DB 는 모르는 SQL 에서 던지므로
-  // 여기까지 왔다는 것 자체가 알림 호출이 없었다는 뜻이지만, 명시적으로도 확인한다.
+  // 알림 "발송"은 notification_log INSERT / notify_state UPDATE / sms 로 드러난다.
+  // 가짜 DB 는 모르는 SQL 에서 던지므로 여기까지 왔다는 것 자체가 발송이 없었다는 뜻이지만,
+  // 명시적으로도 확인한다. (track_token 스키마 보정·발급은 발송이 아니므로 허용)
   const executed = db.state.statements.map(({ sql }) => sql).join('\n');
-  assert.doesNotMatch(executed, /notification|track_token|sms/i);
+  assert.doesNotMatch(executed, /INSERT INTO notification_log/i);
+  assert.doesNotMatch(executed, /UPDATE orders SET notify_state/i);
+  assert.doesNotMatch(executed, /sms/i);
 
   assert.doesNotMatch(csvSource, /maybeNotify\s*\(/, 'CSV 임포트는 maybeNotify 를 부르면 안 된다');
   assert.doesNotMatch(csvSource, /from\s+'[^']*notify\.js'/, 'CSV 임포트는 notify 모듈을 import 하면 안 된다');

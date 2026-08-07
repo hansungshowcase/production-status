@@ -183,6 +183,87 @@ function removeShippingValue(existingValue, shippingValue) {
   return `${existing.slice(0, start)}${existing.slice(end)}`.trim();
 }
 
+function resolveSheetForMaintenance(data) {
+  const requestedSheetId = normalizeSheetId(data.sheetId == null ? TARGET_SHEET_ID : data.sheetId);
+  if (requestedSheetId === null) return null;
+  return SpreadsheetApp.openById(SPREADSHEET_ID)
+    .getSheets()
+    .find(function (item) { return Number(item.getSheetId()) === requestedSheetId; }) || null;
+}
+
+// startRow 이상만 정렬한다. 폭은 sheet.getLastColumn() 전체를 쓴다 — 일부만 옮기면 나머지가 어긋난다.
+// dryRun 이면 아무것도 바꾸지 않고 대상 규모만 돌려준다.
+function handleSortRangeByColumn(data) {
+  const sheet = resolveSheetForMaintenance(data);
+  if (!sheet) return jsonOutput({ ok: false, error: 'target sheet not found' });
+
+  const startRow = Number(data.startRow);
+  const sortColumn = Number(data.sortColumn);
+  if (!Number.isInteger(startRow) || startRow < 2) {
+    return jsonOutput({ ok: false, error: 'invalid startRow' });
+  }
+  if (!Number.isInteger(sortColumn) || sortColumn < 1) {
+    return jsonOutput({ ok: false, error: 'invalid sortColumn' });
+  }
+
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
+  const rowCount = lastRow - startRow + 1;
+  if (rowCount <= 1) {
+    return jsonOutput({ ok: true, sorted: 0, startRow: startRow, lastRow: lastRow, lastColumn: lastColumn });
+  }
+  if (sortColumn > lastColumn) {
+    return jsonOutput({ ok: false, error: 'sortColumn beyond last column' });
+  }
+
+  if (data.dryRun === true) {
+    return jsonOutput({ ok: true, dryRun: true, wouldSort: rowCount, startRow: startRow, lastRow: lastRow, lastColumn: lastColumn });
+  }
+
+  return withMaintenanceLock(function () {
+    sheet
+      .getRange(startRow, 1, rowCount, lastColumn)
+      .sort({ column: sortColumn, ascending: data.ascending === false ? false : true });
+    return jsonOutput({ ok: true, sorted: rowCount, startRow: startRow, lastRow: lastRow, lastColumn: lastColumn });
+  });
+}
+
+// 구분선 행 삽입. 지정 행 위에 한 줄 넣고 배경색과 안내 문구를 넣는다.
+function handleInsertMarkerRow(data) {
+  const sheet = resolveSheetForMaintenance(data);
+  if (!sheet) return jsonOutput({ ok: false, error: 'target sheet not found' });
+
+  const atRow = Number(data.atRow);
+  if (!Number.isInteger(atRow) || atRow < 2) {
+    return jsonOutput({ ok: false, error: 'invalid atRow' });
+  }
+  const text = String(data.text == null ? '' : data.text);
+  if (!text.trim()) return jsonOutput({ ok: false, error: 'invalid text' });
+
+  const background = String(data.background || '#ffe680');
+  const lastColumn = Math.max(sheet.getLastColumn(), 1);
+
+  return withMaintenanceLock(function () {
+    sheet.insertRowBefore(atRow);
+    const range = sheet.getRange(atRow, 1, 1, lastColumn);
+    range.setBackground(background);
+    sheet.getRange(atRow, 1).setValue(text);
+    return jsonOutput({ ok: true, insertedRow: atRow, width: lastColumn });
+  });
+}
+
+function withMaintenanceLock(callback) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_TIMEOUT_MS)) {
+    return jsonOutput({ ok: false, error: 'lock unavailable' });
+  }
+  try {
+    return callback();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function doPost(event) {
   const data = parseRequest(event);
   if (!data) {
@@ -191,6 +272,17 @@ function doPost(event) {
 
   if (data.secret !== SECRET) {
     return jsonOutput({ ok: false, error: 'unauthorized' });
+  }
+
+  // 운영자 수동 정비용(백엔드는 호출하지 않는다).
+  // 기존 등록 스크립트의 sort 는 A~T 20칸만 옮겨, 그 오른쪽(파트·자재 발주/입고 등)
+  // 데이터가 제자리에 남아 전 행이 어긋난다. 여기서는 반드시 마지막 사용 열까지 포함해
+  // 시트 기본 정렬(서식까지 함께 이동)을 쓴다. 시작 행을 지정해 완료 구간은 건드리지 않는다.
+  if (data.action === 'sortRangeByColumn') {
+    return handleSortRangeByColumn(data);
+  }
+  if (data.action === 'insertMarkerRow') {
+    return handleInsertMarkerRow(data);
   }
 
   // clearShipped 는 되돌리기 전용. 행 탐색 규칙은 markShipped 와 완전히 동일하고 E열 계산만 다르다.

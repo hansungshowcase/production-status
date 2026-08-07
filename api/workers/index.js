@@ -44,11 +44,11 @@ async function handlePost(req, res) {
 
   // Validation
   if (!name || typeof name !== 'string') {
-    return res.status(400).json({ error: { message: 'name은 필수 항목입니다.', status: 400 } });
+    return res.status(400).json({ error: { message: '이름은 필수 항목입니다.', status: 400 } });
   }
   if (!department || !DEPARTMENTS.includes(department)) {
     return res.status(400).json({
-      error: { message: `department은 다음 중 하나여야 합니다: ${DEPARTMENTS.join(', ')}`, status: 400 },
+      error: { message: `부서는 다음 중 하나여야 합니다: ${DEPARTMENTS.join(', ')}`, status: 400 },
     });
   }
 

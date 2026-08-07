@@ -2,6 +2,7 @@ import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { requireAuth } from '../_lib/auth.js';
+import { changedFieldKeys, describeFieldChanges } from '../../src/utils/fieldLabels.js';
 
 const PRE_PROD_FIELDS = [
   'instruction_check',
@@ -58,6 +59,9 @@ async function handlePatch(req, res) {
   if (preProdResult.rows.length === 0) {
     await db.execute({ sql: 'INSERT INTO pre_production (order_id) VALUES (?)', args: [orderId] });
   }
+  // 행이 없어 방금 INSERT 한 경우의 기준값은 전 항목 미체크(0)다.
+  const beforeRow = preProdResult.rows[0]
+    || PRE_PROD_FIELDS.reduce((acc, field) => ({ ...acc, [field]: 0 }), {});
 
   const updates = [];
   const values = [];
@@ -80,20 +84,22 @@ async function handlePatch(req, res) {
     args: values,
   });
 
-  // Log activity
-  const changedFields = Object.keys(req.body).filter(k => PRE_PROD_FIELDS.includes(k));
+  const updatedResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
+
+  // Log activity — 요청에 담겨온 필드 전부가 아니라 저장 전/후로 실제 바뀐 항목만,
+  // DB 컬럼명이 아닌 한국어 라벨로 남긴다.
+  const touchedFields = Object.keys(req.body).filter(k => PRE_PROD_FIELDS.includes(k));
+  const changedFields = changedFieldKeys(beforeRow, updatedResult.rows[0], touchedFields);
   await db.execute({
     sql: `INSERT INTO activity_feed (order_id, action_type, description, actor)
           VALUES (?, ?, ?, ?)`,
     args: [
       order.id,
       '사전생산수정',
-      `${order.client_name} 사전생산 체크리스트가 수정되었습니다. (${changedFields.join(', ')})`,
+      describeFieldChanges(`${order.client_name} 사전생산 체크리스트가 수정되었습니다.`, changedFields),
       req.body.actor || '시스템',
     ],
   });
-
-  const updatedResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
 
   return res.json({ ...updatedResult.rows[0], client_name: order.client_name });
 }

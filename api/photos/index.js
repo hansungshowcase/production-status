@@ -65,7 +65,7 @@ async function handlePost(req, res) {
   if (!authorizePhotoUpload(req, res, { process_id, uploaded_by })) return;
 
   if (!order_id) {
-    return res.status(400).json({ error: { message: 'order_id는 필수 항목입니다.', status: 400 } });
+    return res.status(400).json({ error: { message: '주문 번호는 필수 항목입니다.', status: 400 } });
   }
 
   if (!filePart) {
@@ -97,7 +97,7 @@ async function handlePost(req, res) {
       args: [process_id, order_id],
     });
     if (processResult.rows.length === 0) {
-      return res.status(400).json({ error: { message: 'process_id가 해당 주문에 속하지 않습니다.', status: 400 } });
+      return res.status(400).json({ error: { message: '해당 주문에 속하지 않은 공정입니다.', status: 400 } });
     }
   }
 

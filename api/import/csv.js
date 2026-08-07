@@ -5,6 +5,8 @@ import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { requireAuth } from '../_lib/auth.js';
 import { normalizeOrderMutationInput } from '../_lib/orderCreateInput.js';
 import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
+import { ensureNotifySchema } from '../_lib/notifySchema.js';
+import { generateTrackToken } from '../_lib/trackToken.js';
 
 export const config = {
   api: {
@@ -165,6 +167,7 @@ export async function handleCsvImport(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const ensureSyncSchema = dependencies.ensureSheetSyncSchema || ensureSheetSyncSchema;
+  const ensureTokenSchema = dependencies.ensureNotifySchema || ensureNotifySchema;
   let importedCount = 0;
   let skippedCount = 0;
   const errors = [];
@@ -240,6 +243,9 @@ export async function handleCsvImport(req, res, dependencies = {}) {
   // 잡 INSERT 전에 스키마 보정이 끝나 있어야 한다. (dry-run 은 쓰지 않으므로 제외)
   if (!dryRun && candidates.length > 0) {
     await ensureSyncSchema(db);
+    // 고객 조회 링크는 등록 경로와 동일하게 CSV 주문에도 발급한다(발송은 하지 않는다).
+    // 컬럼/유니크 인덱스가 있어야 INSERT 가 track_token 을 채울 수 있다.
+    await ensureTokenSchema(db);
   }
 
   // ---- 2단계: 청크 단위 처리 (100행) ----
@@ -318,13 +324,14 @@ export async function handleCsvImport(req, res, dependencies = {}) {
       const cols = [
         'order_date', 'due_date', 'sales_person', 'client_name', 'ship_date',
         'product_type', 'door_type', 'design', 'width', 'depth', 'height',
-        'quantity', 'color', 'notes', 'status',
+        'quantity', 'color', 'notes', 'status', 'track_token',
       ];
       const rowPh = `(${cols.map(() => '?').join(', ')})`;
       const valuesSql = toInsert.map(() => rowPh).join(', ');
       const args = [];
       for (const cand of toInsert) {
-        for (const col of cols) args.push(cand.values[col]);
+        // 고객 조회 링크 토큰은 행마다 새로 뽑는다(순수 CPU, 실패 없음).
+        for (const col of cols) args.push(col === 'track_token' ? generateTrackToken() : cand.values[col]);
       }
       const orderResult = await db.execute({
         sql: `INSERT INTO orders (${cols.join(', ')}) VALUES ${valuesSql} RETURNING id`,

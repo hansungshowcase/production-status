@@ -19,6 +19,7 @@ import {
   normalizeOrderMutationInput,
   OrderCreateInputValidationError,
 } from '../../_lib/orderCreateInput.js';
+import { changedFieldKeys, describeFieldChanges } from '../../../src/utils/fieldLabels.js';
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -167,14 +168,15 @@ async function handleUpdate(id, req, res) {
   }
   const updated = updateResult.rows[0];
 
-  // Log activity
-  const changedFields = Object.keys(mutation);
+  // Log activity — 수정 모달이 전 필드를 보내므로, 저장 전/후를 비교해 실제로 바뀐 필드만 남긴다.
+  // 화면(영업 실시간 활동로그)에 노출되는 문구라 DB 컬럼명 대신 한국어 라벨을 쓴다.
+  const changedFields = changedFieldKeys(order, updated, Object.keys(mutation));
   await db.execute({
     sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
     args: [
       order.id,
       '주문수정',
-      `${order.client_name} 주문이 수정되었습니다. (${changedFields.join(', ')})`,
+      describeFieldChanges(`${order.client_name} 주문이 수정되었습니다.`, changedFields),
       resolveActor(req),
     ],
   });

@@ -41,16 +41,16 @@ async function handlePost(req, res) {
 
   // Validation
   if (!order_id) {
-    return res.status(400).json({ error: { message: 'order_id는 필수 항목입니다.', status: 400 } });
+    return res.status(400).json({ error: { message: '주문 번호는 필수 항목입니다.', status: 400 } });
   }
   if (!issue_type) {
-    return res.status(400).json({ error: { message: 'issue_type은 필수 항목입니다.', status: 400 } });
+    return res.status(400).json({ error: { message: '이슈 유형은 필수 항목입니다.', status: 400 } });
   }
   if (!VALID_ISSUE_TYPES.includes(issue_type)) {
-    return res.status(400).json({ error: { message: `issue_type은 다음 중 하나여야 합니다: ${VALID_ISSUE_TYPES.join(', ')}`, status: 400 } });
+    return res.status(400).json({ error: { message: `이슈 유형은 다음 중 하나여야 합니다: ${VALID_ISSUE_TYPES.join(', ')}`, status: 400 } });
   }
   if (!reported_by) {
-    return res.status(400).json({ error: { message: 'reported_by는 필수 항목입니다.', status: 400 } });
+    return res.status(400).json({ error: { message: '등록자는 필수 항목입니다.', status: 400 } });
   }
   if (!authorizeIssueReport(req, res, { reported_by })) return;
 

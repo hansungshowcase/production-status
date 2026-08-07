@@ -25,10 +25,10 @@ export default cors(async function handler(req, res) {
 
   // Validate required fields
   if (assigned_worker !== undefined && typeof assigned_worker !== 'string') {
-    return res.status(400).json({ error: { message: 'assigned_worker must be a string', status: 400 } });
+    return res.status(400).json({ error: { message: '담당 작업자는 글자로 입력해야 합니다.', status: 400 } });
   }
   if (assigned_team !== undefined && typeof assigned_team !== 'string') {
-    return res.status(400).json({ error: { message: 'assigned_team must be a string', status: 400 } });
+    return res.status(400).json({ error: { message: '담당 팀은 글자로 입력해야 합니다.', status: 400 } });
   }
 
   // Find process

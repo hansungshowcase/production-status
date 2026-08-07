@@ -46,7 +46,7 @@ function isNonBlankText(value) {
 export function assertImageBackedOrderHasClientName(order) {
   if (order.work_order_image_url && !isNonBlankText(order.client_name)) {
     throw new OrderCreateInputValidationError(
-      'work_order_image_url이 있는 주문은 client_name을 비워둘 수 없습니다.',
+      '작업지시서가 등록된 주문은 거래처를 비워둘 수 없습니다.',
     );
   }
 }
@@ -54,7 +54,7 @@ export function assertImageBackedOrderHasClientName(order) {
 export function assertImageBackedOrderHasCanonicalOrderDate(order) {
   if (order.work_order_image_url && !isCanonicalCalendarDate(order.order_date)) {
     throw new OrderCreateInputValidationError(
-      'work_order_image_url이 있는 주문은 order_date를 실제 YYYY-MM-DD 날짜로 입력해야 합니다.',
+      '작업지시서가 등록된 주문은 발주일을 실제 날짜(예: 2026-08-04)로 입력해야 합니다.',
     );
   }
 }
@@ -62,7 +62,7 @@ export function assertImageBackedOrderHasCanonicalOrderDate(order) {
 export function assertImageBackedOrderHasCanonicalDueDate(order) {
   if (order.work_order_image_url && !isCanonicalCalendarDate(order.due_date)) {
     throw new OrderCreateInputValidationError(
-      'work_order_image_url이 있는 주문은 due_date를 실제 YYYY-MM-DD 날짜로 입력해야 합니다.',
+      '작업지시서가 등록된 주문은 납기일을 실제 날짜(예: 2026-08-04)로 입력해야 합니다.',
     );
   }
 }
@@ -73,7 +73,7 @@ export const ALLOWED_SALES_PERSONS = ['신은철', '이준형'];
 export function assertImageBackedOrderHasSalesPerson(order) {
   if (order.work_order_image_url && !ALLOWED_SALES_PERSONS.includes(order.sales_person)) {
     throw new OrderCreateInputValidationError(
-      'work_order_image_url이 있는 주문은 담당자(신은철·이준형)를 지정해야 합니다.',
+      '작업지시서가 등록된 주문은 담당자(신은철·이준형)를 지정해야 합니다.',
     );
   }
 }
@@ -81,7 +81,7 @@ export function assertImageBackedOrderHasSalesPerson(order) {
 export function assertImageBackedOrderHasProductType(order) {
   if (order.work_order_image_url && !isNonBlankText(order.product_type)) {
     throw new OrderCreateInputValidationError(
-      'work_order_image_url이 있는 주문은 product_type을 비워둘 수 없습니다.',
+      '작업지시서가 등록된 주문은 사양을 비워둘 수 없습니다.',
     );
   }
 }
@@ -93,7 +93,7 @@ export function assertImageBackedOrderHasPositiveQuantity(order) {
     && (quantityText.startsWith('-') || normalizeOptionalPositiveNumber(order.quantity) === null)
   ) {
     throw new OrderCreateInputValidationError(
-      'work_order_image_url이 있는 주문은 quantity를 positive number로 입력해야 합니다.',
+      '작업지시서가 등록된 주문은 수량을 1 이상의 숫자로 입력해야 합니다.',
     );
   }
 }

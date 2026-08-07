@@ -180,7 +180,7 @@ test('work-order image registrations require a positive quantity before submit o
         product_type: '정육',
         quantity,
       }),
-      /work_order_image_url.*quantity.*positive/,
+      /작업지시서.*수량.*1 이상/,
     );
     assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity }, true), {
       quantity: '작업지시서 등록은 수량을 1 이상 입력해주세요',
@@ -239,7 +239,7 @@ test('order create input rejects missing or invalid due dates when a work-order 
         product_type: '정육',
         quantity: 1,
       }),
-      /work_order_image_url.*due_date.*YYYY-MM-DD/,
+      /작업지시서.*납기일.*실제 날짜/,
     );
   }
 });
@@ -271,7 +271,7 @@ test('work-order image registrations require an assigned sales person (신은철
         product_type: '정육',
         quantity: 1,
       }),
-      /work_order_image_url.*담당자/,
+      /작업지시서.*담당자/,
     );
   }
 
@@ -316,7 +316,7 @@ test('order mutation final state preserves the image-backed canonical due-date i
         ...imageBackedOrder,
         ...mutation,
       }),
-      /work_order_image_url.*due_date.*YYYY-MM-DD/,
+      /작업지시서.*납기일.*실제 날짜/,
     );
   }
 
@@ -325,7 +325,7 @@ test('order mutation final state preserves the image-backed canonical due-date i
       due_date: null,
       work_order_image_url: 'https://example.com/new-work-order.jpg',
     }),
-    /work_order_image_url.*due_date.*YYYY-MM-DD/,
+    /작업지시서.*납기일.*실제 날짜/,
   );
 
   assert.doesNotThrow(() => orderCreateInput.assertImageBackedOrderHasCanonicalDueDate({
@@ -506,7 +506,7 @@ test('order POST returns a structured due-date 400 before database access', asyn
     assert.equal(res.statusCode, 400);
     assert.deepEqual(res.body, {
       error: {
-        message: 'work_order_image_url이 있는 주문은 due_date를 실제 YYYY-MM-DD 날짜로 입력해야 합니다.',
+        message: '작업지시서가 등록된 주문은 납기일을 실제 날짜(예: 2026-08-04)로 입력해야 합니다.',
         status: 400,
       },
     });

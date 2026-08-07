@@ -9,6 +9,8 @@ import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { appendOrderToSheet } from '../_lib/googleSheets.js';
 import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
 import { syncOrderToSheet } from '../_lib/sheetSync.js';
+import { ensureNotifySchema } from '../_lib/notifySchema.js';
+import { generateTrackToken } from '../_lib/trackToken.js';
 import {
   normalizeOrderCreateInput,
   OrderCreateInputValidationError,
@@ -324,7 +326,7 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
 
   // Validation
   if (!client_name) {
-    return res.status(400).json({ error: { message: 'client_name은 필수 항목입니다.', status: 400 } });
+    return res.status(400).json({ error: { message: '거래처는 필수 항목입니다.', status: 400 } });
   }
 
   const {
@@ -336,6 +338,9 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
 
   db ??= getDb();
   await ensureOrderImageColumn(db);
+  // 고객 조회 링크는 주문의 필수 데이터다. INSERT 에서 직접 넣기 위해
+  // track_token 컬럼/유니크 인덱스를 먼저 보장한다(모듈 캐시라 인스턴스당 1회).
+  await ensureNotifySchema(db);
   const tx = await db.transaction('write');
   let createdOrderId = null; // 부분 실패 시 cleanup용
 
@@ -348,8 +353,8 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
           product_type, door_type, design, width, depth, height,
           quantity, color, phone, delivery_address, freight_payment, notes, remarks, etc_notes,
           sale_amount, lead_source, balance,
-          ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id
+          ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, track_token, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id
       ), inserted_sheet_sync_job AS (
         INSERT INTO sheet_sync_jobs (order_id, status)
         SELECT id, 'pending' FROM inserted_order
@@ -367,6 +372,9 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
         notes || null, remarks || null, etc_notes || null,
         sale_amount ?? null, lead_source || null, balance ?? null,
         ship_scheduled_date || null, sms_sent ?? null, safe_delivery ?? 0, work_order_image_url || null,
+        // 고객 조회 링크 토큰 — 사후 훅(실패 시 무시)이 아니라 INSERT 값으로 넣어야
+        // 미발급 주문이 생기지 않는다.
+        generateTrackToken(),
       ],
     });
     if (!orderResult.rows || orderResult.rows.length === 0) {
