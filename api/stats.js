@@ -58,12 +58,19 @@ export default cors(async function handler(req, res) {
     db.execute({ sql: `SELECT COUNT(*) AS count FROM ${canonicalProcesses} cp WHERE cp.status = 'completed'`, args: [] }),
     db.execute({ sql: 'SELECT COUNT(*) AS count FROM issues WHERE resolved_at IS NULL', args: [] }),
     db.execute({
-      sql: `SELECT step_name,
-        SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) AS waiting,
-        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+      // 출고완료 주문은 제외한다. 출고 시 앞 공정을 완료 처리하지 않는 경로가 있어
+      // 이미 나간 주문의 waiting/in_progress 가 남는데, 이게 집계에 섞이면
+      // 작업자 화면의 '공장 전체 현황' 숫자가 실제 작업 목록보다 부풀려진다.
+      // (실측: 분체작업 진행 14 vs 작업목록 11 — 차이 3건이 전부 출고완료 주문)
+      // 아래 지연 집계도 동일하게 o.status = 'in_production' 을 쓴다.
+      sql: `SELECT cp.step_name,
+        SUM(CASE WHEN cp.status = 'waiting' THEN 1 ELSE 0 END) AS waiting,
+        SUM(CASE WHEN cp.status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
+        SUM(CASE WHEN cp.status = 'completed' THEN 1 ELSE 0 END) AS completed
       FROM ${canonicalProcesses} cp
-      GROUP BY step_name
+      JOIN orders o ON o.id = cp.order_id
+      WHERE o.status = 'in_production'
+      GROUP BY cp.step_name
       ORDER BY MIN(${stepOrderCase('cp')})`,
       args: [],
     }),

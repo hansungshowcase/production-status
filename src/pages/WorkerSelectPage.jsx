@@ -347,10 +347,12 @@ export default function WorkerSelectPage() {
         <div className="worker-select-page__factory-steps">
           {PROCESS_STEPS.map((s) => {
             const st = (factoryStats?.by_step || []).find(x => x.step_name === s);
-            const w = st?.waiting || 0;
-            const p = st?.in_progress || 0;
-            const c = st?.completed || 0;
-            const d = st?.delayed || 0;
+            // Postgres COUNT/SUM 은 bigint 라 드라이버가 문자열로 돌려준다.
+            // Number() 로 감싸지 않으면 3+1+6 이 '316' 이 되어 "6/316", 진행률 2% 로 표시된다.
+            const w = Number(st?.waiting) || 0;
+            const p = Number(st?.in_progress) || 0;
+            const c = Number(st?.completed) || 0;
+            const d = Number(st?.delayed) || 0;
             const total = w + p + c;
             const pct = total > 0 ? Math.round((c / total) * 100) : 0;
             return (
