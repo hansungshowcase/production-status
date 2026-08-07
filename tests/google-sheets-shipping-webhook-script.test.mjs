@@ -705,6 +705,246 @@ test('invalid secret is rejected before any SpreadsheetApp access or sheet write
   assert.equal(sheet.setValuesCalls.length, 0);
 });
 
+// ── 되돌리기(clearShipped): E열에서 해당 출고완료 값만 걷어낸다 ──
+
+// 되돌리기 payload 는 행 대조 값을 matchValues 로 보낸다(values 는 보내지 않는다).
+function clearPayload(overrides = {}) {
+  return {
+    action: 'clearShipped',
+    values: undefined,
+    matchValues: ORDER_VALUES,
+    ...overrides,
+  };
+}
+
+test('clearShipped removes only the shipping value and preserves the handwritten memo', async () => {
+  const sheet = makeSheet({
+    dataRows: [dataRow({ orderId: 101, shipping: `8월4일 하나화물 · ${SHIPPING_VALUE}` })],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const result = harness.post(clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), '8월4일 하나화물');
+});
+
+test('clearShipped empties an E cell that held nothing but the shipping value', async () => {
+  const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping: SHIPPING_VALUE })] });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const result = harness.post(clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), '');
+});
+
+test('clearShipped removes exactly one of two shipping values and keeps the older one', async () => {
+  const sheet = makeSheet({
+    dataRows: [dataRow({ orderId: 101, shipping: `출고완료 · 2026-07-27 · ${SHIPPING_VALUE}` })],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const result = harness.post(clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), '출고완료 · 2026-07-27');
+});
+
+test('clearShipped leaves a trailing memo intact when the shipping value came first', async () => {
+  const sheet = makeSheet({
+    dataRows: [dataRow({ orderId: 101, shipping: `${SHIPPING_VALUE} · 8월4일 하나화물` })],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const result = harness.post(clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), '8월4일 하나화물');
+});
+
+test('clearShipped reports unchanged without writing when the value is not on the row', async () => {
+  for (const shipping of ['', '   ', '8월4일 하나화물', '출고완료 · 2026-07-27']) {
+    const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping })] });
+    const harness = await createAppsScriptHarness({ sheets: [sheet] });
+    const before = structuredClone(sheet.rows);
+
+    const result = harness.post(clearPayload({ orderId: 101 }));
+
+    assert.deepEqual(result, { ok: true, updatedRow: 6, unchanged: true }, shipping);
+    assert.equal(sheet.setValuesCalls.length, 0, shipping);
+    assert.deepEqual(sheet.rows, before, shipping);
+  }
+});
+
+test('clearShipped finds a legacy row by its visible values exactly like markShipped does', async () => {
+  const sheet = makeSheet({
+    dataRows: [
+      dataRow({ orderId: 'ㅇ', shipping: SHIPPING_VALUE, values: OTHER_ORDER_VALUES }),
+      dataRow({ orderId: 'ㅇ', shipping: `8월4일 하나화물 · ${SHIPPING_VALUE}` }),
+    ],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const result = harness.post(clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: true, updatedRow: 7 });
+  assert.equal(sheet.shippingCell(7), '8월4일 하나화물');
+  assert.equal(sheet.shippingCell(6), SHIPPING_VALUE, '다른 거래처 행은 건드리지 않는다');
+});
+
+test('clearShipped writes nothing when two legacy candidates are ambiguous', async () => {
+  const sheet = makeSheet({
+    dataRows: [
+      dataRow({ orderId: 'ㅇ', shipping: SHIPPING_VALUE }),
+      dataRow({ orderId: '', shipping: SHIPPING_VALUE }),
+    ],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+  const before = structuredClone(sheet.rows);
+
+  const result = harness.post(clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: false, error: 'ambiguous legacy match' });
+  assert.deepEqual(sheet.rows, before);
+  assert.equal(sheet.setValuesCalls.length, 0);
+  assert.equal(harness.lockState.releases, 1);
+});
+
+test('clearShipped also refuses duplicate T IDs and a missing order', async () => {
+  const duplicates = makeSheet({
+    dataRows: [
+      dataRow({ orderId: 101, shipping: SHIPPING_VALUE }),
+      dataRow({ orderId: 101, shipping: SHIPPING_VALUE }),
+    ],
+  });
+  const duplicateHarness = await createAppsScriptHarness({ sheets: [duplicates] });
+  assert.deepEqual(
+    duplicateHarness.post(clearPayload({ orderId: 101 })),
+    { ok: false, error: 'duplicate orderId' },
+  );
+  assert.equal(duplicates.setValuesCalls.length, 0);
+
+  const missing = makeSheet({
+    dataRows: [dataRow({ orderId: 'ㅇ', shipping: SHIPPING_VALUE, values: OTHER_ORDER_VALUES })],
+  });
+  const missingHarness = await createAppsScriptHarness({ sheets: [missing] });
+  assert.deepEqual(
+    missingHarness.post(clearPayload({ orderId: 101 })),
+    { ok: false, error: 'orderId not found' },
+  );
+  assert.equal(missing.setValuesCalls.length, 0);
+});
+
+test('a clearShipped T column hit never triggers the wide legacy read either', async () => {
+  const sheet = makeSheet({
+    dataRows: [dataRow({ orderId: 'ㅇ' }), dataRow({ orderId: 101, shipping: SHIPPING_VALUE })],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  assert.deepEqual(harness.post(clearPayload({ orderId: 101 })), { ok: true, updatedRow: 7 });
+  const wideReads = sheet.readCalls.filter((call) => call.kind === 'values' && call.columnCount > 1);
+  assert.deepEqual(wideReads, []);
+});
+
+test('clearShipped rejects a blank shipping value and an invalid order ID before any sheet access', async () => {
+  for (const shippingValue of ['', '   ', null, undefined]) {
+    const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping: SHIPPING_VALUE })] });
+    const harness = await createAppsScriptHarness({ sheets: [sheet] });
+    assert.deepEqual(
+      harness.post(clearPayload({ orderId: 101, shippingValue })),
+      { ok: false, error: 'invalid shippingValue' },
+    );
+    assert.equal(harness.spreadsheetAccess.length, 0);
+    assert.equal(sheet.setValuesCalls.length, 0);
+  }
+
+  const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping: SHIPPING_VALUE })] });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+  assert.deepEqual(
+    harness.post(clearPayload({ orderId: 'ㅇ' })),
+    { ok: false, error: 'invalid orderId' },
+  );
+  assert.equal(sheet.setValuesCalls.length, 0);
+});
+
+test('clearShipped rejects a wrong secret before any SpreadsheetApp access', async () => {
+  const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping: SHIPPING_VALUE })] });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const result = harness.postWithSecret('wrong-secret', clearPayload({ orderId: 101 }));
+
+  assert.deepEqual(result, { ok: false, error: 'unauthorized' });
+  assert.equal(harness.spreadsheetAccess.length, 0);
+  assert.equal(sheet.setValuesCalls.length, 0);
+});
+
+test('five overlapping clearShipped requests write exactly once and stay idempotent', async () => {
+  const sheet = makeSheet({
+    dataRows: [dataRow({ orderId: 101, shipping: `8월4일 하나화물 · ${SHIPPING_VALUE}` })],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  const results = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    results.push(harness.post(clearPayload({ orderId: 101 })));
+  }
+
+  assert.deepEqual(results, [
+    { ok: true, updatedRow: 6 },
+    { ok: true, updatedRow: 6, unchanged: true },
+    { ok: true, updatedRow: 6, unchanged: true },
+    { ok: true, updatedRow: 6, unchanged: true },
+    { ok: true, updatedRow: 6, unchanged: true },
+  ]);
+  assert.equal(sheet.shippingCell(6), '8월4일 하나화물');
+  assert.equal(sheet.setValuesCalls.length, 1, '첫 요청만 써야 한다');
+});
+
+test('mark then clear returns the E cell to its exact pre-shipment content', async () => {
+  for (const shipping of ['', '8월4일 하나화물', '출고완료 · 2026-07-27']) {
+    const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping })] });
+    const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+    assert.deepEqual(harness.post({ orderId: 101 }), { ok: true, updatedRow: 6 });
+    assert.deepEqual(harness.post(clearPayload({ orderId: 101 })), { ok: true, updatedRow: 6 });
+
+    assert.equal(sheet.shippingCell(6), shipping, `'${shipping}' 이 그대로 돌아와야 한다`);
+  }
+});
+
+test('a cleared row can be shipped again, proving the cycle is repeatable', async () => {
+  const sheet = makeSheet({ dataRows: [dataRow({ orderId: 101, shipping: '8월4일 하나화물' })] });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  assert.deepEqual(harness.post({ orderId: 101 }), { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), `8월4일 하나화물 · ${SHIPPING_VALUE}`);
+
+  assert.deepEqual(harness.post(clearPayload({ orderId: 101 })), { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), '8월4일 하나화물', '되돌린 뒤에는 출고완료 표시가 없어야 한다');
+
+  assert.deepEqual(harness.post({ orderId: 101 }), { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), `8월4일 하나화물 · ${SHIPPING_VALUE}`);
+  assert.equal(sheet.setValuesCalls.length, 3, '출고 -> 되돌리기 -> 재출고가 각각 한 번씩 써야 한다');
+});
+
+test('markShipped keeps ignoring matchValues so its row matching is unchanged', async () => {
+  const sheet = makeSheet({
+    dataRows: [
+      dataRow({ orderId: 'ㅇ' }),
+      dataRow({ orderId: 'ㅇ', values: OTHER_ORDER_VALUES }),
+    ],
+  });
+  const harness = await createAppsScriptHarness({ sheets: [sheet] });
+
+  // markShipped 는 values 만 본다. matchValues 가 다른 행을 가리켜도 무시해야 한다.
+  const result = harness.post({ orderId: 101, values: ORDER_VALUES, matchValues: OTHER_ORDER_VALUES });
+
+  assert.deepEqual(result, { ok: true, updatedRow: 6 });
+  assert.equal(sheet.shippingCell(6), SHIPPING_VALUE);
+  assert.equal(sheet.shippingCell(7), '');
+});
+
 test('the shipping script never appends, deletes, hides, or sorts rows', async () => {
   const sheet = makeSheet({
     dataRows: [dataRow({ orderId: 101 }), dataRow({ orderId: 102, values: OTHER_ORDER_VALUES })],

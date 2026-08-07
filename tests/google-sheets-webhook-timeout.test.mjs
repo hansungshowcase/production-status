@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   appendOrderToSheet,
+  clearShippedOnSheet,
   deleteOrderFromSheet,
   markOrderShippedOnSheet,
 } from '../api/_lib/googleSheets.js';
@@ -266,6 +267,115 @@ test('shipping rejects network, non-2xx, malformed, empty, non-object, and non-s
   }
 });
 
+test('the revert clear uses only the shipping URL and sends the exact clearShipped payload', async () => {
+  let request;
+  const result = await withWebhookFetch(async (url, init) => {
+    request = { url, body: JSON.parse(init.body) };
+    return jsonResponse({ ok: true, updatedRow: 23 });
+  }, () => clearShippedOnSheet({ ...order, id: 73 }, '2026-08-05'), {
+    webhookUrl: 'https://example.test/append-only',
+    shippingWebhookUrl: 'https://example.test/shipping-only',
+    webhookSecret: 'shipping-secret',
+  });
+
+  assert.equal(request.url, 'https://example.test/shipping-only');
+  assert.deepEqual(request.body, {
+    secret: 'shipping-secret',
+    action: 'clearShipped',
+    sheetId: 0,
+    orderId: 73,
+    shippingValue: '출고완료 · 2026-08-05',
+    matchValues: [
+      '2026-08-03', '2026-08-10', 'manager', 'client', '', '', '', '',
+      '010-0000-0000', '', 'door', '', 100, '*', 200, '*', 300, 1, 'white',
+    ],
+  });
+  assert.deepEqual(result, { updatedRow: 23, unchanged: false });
+});
+
+test('the clear payload matches the row exactly like the markShipped payload does', async () => {
+  const bodies = [];
+  await withWebhookFetch(async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return jsonResponse({ ok: true, updatedRow: 23 });
+  }, async () => {
+    await markOrderShippedOnSheet(order, '2026-08-04');
+    await clearShippedOnSheet(order, '2026-08-04');
+  });
+
+  const [markBody, clearBody] = bodies;
+  assert.deepEqual(clearBody.matchValues, markBody.values);
+  assert.equal(clearBody.shippingValue, markBody.shippingValue);
+  assert.equal(clearBody.orderId, markBody.orderId);
+  assert.equal(clearBody.sheetId, markBody.sheetId);
+});
+
+test('the clear reports an idempotent no-op without failing the caller', async () => {
+  const result = await withWebhookFetch(
+    async () => jsonResponse({ ok: true, updatedRow: 23, unchanged: true }),
+    () => clearShippedOnSheet(order, '2026-08-05'),
+  );
+
+  assert.deepEqual(result, { updatedRow: 23, unchanged: true });
+});
+
+test('the clear rejects a missing URL, invalid IDs, and invalid dates before sending', async () => {
+  let fetchCalls = 0;
+  await withWebhookFetch(async () => {
+    fetchCalls += 1;
+    throw new Error('fetch must not run');
+  }, async () => {
+    await assert.rejects(
+      clearShippedOnSheet(order, '2026-08-05'),
+      /GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL/,
+    );
+  }, { shippingWebhookUrl: null });
+  assert.equal(fetchCalls, 0);
+
+  for (const orderId of [0, -1, 1.5, 'not-an-id', null, undefined]) {
+    let calls = 0;
+    await withWebhookFetch(async () => {
+      calls += 1;
+      return jsonResponse({ ok: true, updatedRow: 23 });
+    }, async () => {
+      await assert.rejects(clearShippedOnSheet({ ...order, id: orderId }, '2026-08-05'), /order ID/i);
+    });
+    assert.equal(calls, 0);
+  }
+
+  for (const shipDate of ['', '2026-8-5', '20260805', null, undefined, new Date()]) {
+    let calls = 0;
+    await withWebhookFetch(async () => {
+      calls += 1;
+      return jsonResponse({ ok: true, updatedRow: 23 });
+    }, async () => {
+      await assert.rejects(clearShippedOnSheet(order, shipDate), /ship date/i);
+    });
+    assert.equal(calls, 0);
+  }
+});
+
+test('the clear rejects network, non-2xx, malformed, and non-strict responses', async () => {
+  const invalidResponses = [
+    ['network failure', async () => { throw new Error('socket closed'); }],
+    ['non-2xx response', async () => jsonResponse({ ok: true, updatedRow: 23 }, 503)],
+    ['malformed JSON', async () => new Response('not json', { status: 200 })],
+    ['empty response', async () => new Response('', { status: 200 })],
+    ['null response', async () => jsonResponse(null)],
+    ['array response', async () => jsonResponse([{ ok: true, updatedRow: 23 }])],
+    ['explicit failure', async () => jsonResponse({ ok: false, error: 'ambiguous legacy match' })],
+    ['missing updated row', async () => jsonResponse({ ok: true })],
+    ['zero updated row', async () => jsonResponse({ ok: true, updatedRow: 0 })],
+    ['string updated row', async () => jsonResponse({ ok: true, updatedRow: '23' })],
+  ];
+
+  for (const [label, fetchImpl] of invalidResponses) {
+    await withWebhookFetch(fetchImpl, async () => {
+      await assert.rejects(clearShippedOnSheet(order, '2026-08-05'), undefined, label);
+    });
+  }
+});
+
 test('Google Sheets webhook keeps the bounded Apps Script cold-start timeout', async () => {
   const source = await readFile(sourcePath, 'utf8');
 
@@ -277,6 +387,10 @@ test('Google Sheets webhook keeps the bounded Apps Script cold-start timeout', a
   assert.match(
     source,
     /function markOrderShippedOnSheet[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), SHIPPING_WEBHOOK_TIMEOUT_MS\)/,
+  );
+  assert.match(
+    source,
+    /function clearShippedOnSheet[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), SHIPPING_WEBHOOK_TIMEOUT_MS\)/,
   );
 });
 

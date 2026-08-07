@@ -3,15 +3,30 @@ import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
+import { clearShippedOnSheet } from '../../_lib/googleSheets.js';
 
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
-export default cors(async function handler(req, res) {
+// processes.completed_at 은 UTC(new Date().toISOString())로, orders.ship_date 는 KST(kstTodayStr())로
+// 저장된다. 그대로 잘라 비교하면 KST 00:00~09:00 출고 건이 하루 어긋나 UPDATE 가 0행을 갱신하고,
+// 공정만 되돌아간 채 주문은 shipped 로 남는다.
+// notify.js kstTodayStr() / shippingSheetSync.js normalizedShipDate() 과 동일한 +9h offset 방식.
+function kstDateStr(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const time = value instanceof Date ? value.getTime() : Date.parse(String(value));
+  if (!Number.isFinite(time)) return null;
+  return new Date(time + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+export async function handleRevertProcess(req, res, dependencies = {}) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-  if (!rateLimitCheck(req, res)) return;
-  const workerAction = requireWorkerAction(req, res);
+  const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
+  if (!checkRateLimit(req, res)) return;
+  const workerAction = dependencies.requireWorkerAction
+    ? dependencies.requireWorkerAction(req, res)
+    : requireWorkerAction(req, res);
   if (!workerAction) return;
 
   const id = req.query.id;
@@ -19,7 +34,8 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
   }
 
-  const db = getDb();
+  const db = dependencies.db || getDb();
+  const clearShippedSheet = dependencies.clearShippedSheet || clearShippedOnSheet;
   const { actor } = req.body || {};
 
   // Find process
@@ -55,6 +71,9 @@ export default cors(async function handler(req, res) {
     });
   }
 
+  // 실제로 shipped -> in_production 으로 되돌린 주문의 직전 출고일(KST). 되돌리지 못했으면 null.
+  let revertedShipDate = null;
+
   // Atomic revert: only update if status still matches (prevents race condition)
   if (process.status === 'completed') {
     const completedAt = process.completed_at ? new Date(process.completed_at).getTime() : NaN;
@@ -72,24 +91,20 @@ export default cors(async function handler(req, res) {
       return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
     }
     if (process.step_name === '출고') {
-      const completedDate = process.completed_at ? String(process.completed_at).slice(0, 10) : null;
-      const { rows: markerRows } = await db.execute({
-        sql: `SELECT id FROM activity_feed
-              WHERE order_id = ?
-                AND action_type = '출고완료'
-                AND actor = ?
-                AND description LIKE '%출고 공정 완료%'
-              ORDER BY created_at DESC
-              LIMIT 1`,
-        args: [process.order_id, process.completed_by || actor || workerAction.actor],
+      // 활동로그 문구에 기대지 않는다. directShipping(영업 ship / 작업자 worker-ship)은
+      // '출고 공정 완료' 마커를 남기지 않아 그 경로로 출고한 건이 영영 되돌아가지 않았다.
+      // 출고 공정을 되돌리는데 주문이 shipped 라면 되돌리는 것이 맞다 — 주문 상태를 직접 조건으로 쓴다.
+      const completedDate = kstDateStr(process.completed_at);
+      const { rows: revertedOrders } = await db.execute({
+        sql: `UPDATE orders
+              SET status = 'in_production', ship_date = NULL, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ? AND status = 'shipped' AND (? IS NULL OR ship_date = ?)
+              RETURNING id`,
+        args: [process.order_id, completedDate, completedDate],
       });
-      if (markerRows.length > 0) {
-        await db.execute({
-          sql: `UPDATE orders
-                SET status = 'in_production', ship_date = NULL, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ? AND status = 'shipped' AND (? IS NULL OR ship_date = ?)`,
-          args: [process.order_id, completedDate, completedDate],
-        });
+      if (revertedOrders.length > 0) {
+        // WHERE 절이 ship_date = completedDate 를 보장하므로 시트에 적힌 값도 이 날짜다.
+        revertedShipDate = completedDate;
       }
     }
   } else if (process.status === 'in_progress') {
@@ -125,10 +140,34 @@ export default cors(async function handler(req, res) {
     }
   }
 
+  // 주문 상태를 실제로 되돌린 경우에만 출고 흔적을 정리한다. 정리는 전부 fail-open —
+  // 실패해도 되돌리기 자체는 성공으로 응답해야 한다.
+  if (revertedShipDate) {
+    // 대기 중인 잡을 지우지 않으면 크론이 나중에 미출고 주문에 '출고완료'를 기입한다.
+    try {
+      await db.execute({
+        sql: 'DELETE FROM sheet_shipping_sync_jobs WHERE order_id = ?',
+        args: [process.order_id],
+      });
+    } catch (e) {
+      console.warn('[revert] 출고 시트 동기화 잡 삭제 실패(무시):', e?.message || e);
+    }
+
+    if (order) {
+      try {
+        await clearShippedSheet(order, revertedShipDate);
+      } catch (e) {
+        console.warn('[revert] 시트 출고완료 표시 제거 실패(무시):', e?.message || e);
+      }
+    }
+  }
+
   const { rows: updatedRows } = await db.execute({
     sql: 'SELECT * FROM processes WHERE id = ?',
     args: [id]
   });
 
   res.json(updatedRows[0]);
-});
+}
+
+export default cors(handleRevertProcess);

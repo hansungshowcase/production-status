@@ -160,6 +160,29 @@ function mergeShippingValue(existingValue, shippingValue) {
   return `${existing}${VALUE_SEPARATOR}${shippingValue}`;
 }
 
+// 되돌리기(clearShipped): 출고완료 값 1개와 그에 붙은 구분자만 걷어내고 사람이 적은 메모는 남긴다.
+// 값이 없으면 null 을 돌려 아무것도 쓰지 않는다(멱등).
+function removeShippingValue(existingValue, shippingValue) {
+  const existing = String(existingValue ?? '').trim();
+  if (existing === '') return null;
+
+  const index = existing.indexOf(shippingValue);
+  if (index === -1) return null;
+
+  let start = index;
+  let end = index + shippingValue.length;
+  if (
+    start >= VALUE_SEPARATOR.length
+    && existing.slice(start - VALUE_SEPARATOR.length, start) === VALUE_SEPARATOR
+  ) {
+    start -= VALUE_SEPARATOR.length;
+  } else if (existing.slice(end, end + VALUE_SEPARATOR.length) === VALUE_SEPARATOR) {
+    end += VALUE_SEPARATOR.length;
+  }
+
+  return `${existing.slice(0, start)}${existing.slice(end)}`.trim();
+}
+
 function doPost(event) {
   const data = parseRequest(event);
   if (!data) {
@@ -170,7 +193,9 @@ function doPost(event) {
     return jsonOutput({ ok: false, error: 'unauthorized' });
   }
 
-  if (data.action !== 'markShipped') {
+  // clearShipped 는 되돌리기 전용. 행 탐색 규칙은 markShipped 와 완전히 동일하고 E열 계산만 다르다.
+  const isClear = data.action === 'clearShipped';
+  if (!isClear && data.action !== 'markShipped') {
     return jsonOutput({ ok: false, error: 'unsupported action' });
   }
 
@@ -191,7 +216,9 @@ function doPost(event) {
     return jsonOutput({ ok: false, error: 'invalid sheetId' });
   }
 
-  const targetValues = normalizeRequestValues(data.values);
+  const targetValues = normalizeRequestValues(
+    isClear && data.matchValues != null ? data.matchValues : data.values,
+  );
 
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = spreadsheet
@@ -234,9 +261,11 @@ function doPost(event) {
     const existingValue = sheet
       .getRange(updatedRow, SHIPPING_COLUMN, 1, 1)
       .getDisplayValues()[0][0];
-    const nextValue = mergeShippingValue(existingValue, shippingValue);
+    const nextValue = isClear
+      ? removeShippingValue(existingValue, shippingValue)
+      : mergeShippingValue(existingValue, shippingValue);
     if (nextValue === null) {
-      return jsonOutput({ ok: true, updatedRow });
+      return jsonOutput(isClear ? { ok: true, updatedRow, unchanged: true } : { ok: true, updatedRow });
     }
 
     sheet.getRange(updatedRow, SHIPPING_COLUMN, 1, 1).setValues([[nextValue]]);

@@ -196,6 +196,68 @@ export async function markOrderShippedOnSheet(order, shipDate) {
   }
 }
 
+// 되돌리기 전용: 시트 E열에서 해당 출고완료 값 1개만 걷어낸다(메모 보존).
+// markOrderShippedOnSheet 와 동일 구조·동일 타임아웃 — 실패는 호출부에서 fail-open 처리한다.
+export async function clearShippedOnSheet(order, shipDate) {
+  const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+  if (!webhookUrl) {
+    throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
+  }
+
+  const orderId = Number(order?.id);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    throw new Error('Invalid order ID for Google Sheets shipping webhook');
+  }
+  if (typeof shipDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(shipDate)) {
+    throw new Error('Invalid ship date for Google Sheets shipping webhook');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SHIPPING_WEBHOOK_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        action: 'clearShipped',
+        sheetId: 0,
+        orderId,
+        shippingValue: `${SHIPPED_VALUE_PREFIX}${shipDate}`,
+        matchValues: orderValues(order),
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Sheets shipping clear webhook failed: ${response.status}`);
+    }
+
+    let result;
+    try {
+      result = await response.json();
+    } catch {
+      throw new Error('Google Sheets shipping clear webhook returned invalid JSON');
+    }
+
+    if (
+      !result
+      || typeof result !== 'object'
+      || Array.isArray(result)
+      || result.ok !== true
+      || !Number.isInteger(result.updatedRow)
+      || result.updatedRow <= 0
+    ) {
+      throw new Error('Google Sheets shipping clear webhook returned an invalid success response');
+    }
+
+    return { updatedRow: result.updatedRow, unchanged: result.unchanged === true };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function base64Url(input) {
   return Buffer.from(input)
     .toString('base64')

@@ -18,10 +18,12 @@ const STATS_REFRESH_INTERVAL = 120000;
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESS_UNDO_MANAGER = '김보수 팀장';
 
+// 현직 영업 담당자와 일치해야 한다. 백엔드 지연경보 라우팅(api/_lib/alertRoutes.js)과
+// 주문 등록 허용 담당자(api/_lib/orderCreateInput.js ALLOWED_SALES_PERSONS)도 같은 두 명이다.
 const CONTACTS = [
   { name: '박상규', role: '공장장', phone: '010-9322-3904' },
   { name: '신은철', role: '영업', phone: '010-7346-7407' },
-  { name: '이시아', role: '영업', phone: '010-4221-4237' },
+  { name: '이준형', role: '영업', phone: '010-7731-4237' },
 ];
 
 const ISSUE_TYPES = [
