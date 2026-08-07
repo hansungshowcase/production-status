@@ -137,9 +137,25 @@
   color: var(--green, #059669);
 }
 
+.import-result.warning {
+  background: #fffbeb;
+  color: #b45309;
+}
+
 .import-result.error {
   background: #fef2f2;
   color: var(--red, #dc2626);
+}
+
+.import-result-details {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 /* Responsive */

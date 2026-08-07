@@ -29,6 +29,16 @@ test('앞뒤 공백은 같은 사람으로 본다', () => {
   assert.equal(shouldAskWorkerIdentity('강종효', ' 강종효 '), false);
 });
 
+test('작업자 선택 화면을 거치면 같은 사람을 다시 골라도 확인을 다시 받는다', async () => {
+  const source = await readFile(new URL('../src/pages/WorkerSelectPage.jsx', import.meta.url), 'utf8');
+
+  // finishSelection 이 확인 기록을 지워야 선택 직후 공정 화면에서 다시 묻는다.
+  assert.match(
+    source,
+    /function finishSelection[\s\S]*?sessionStorage\.removeItem\(WORKER_CONFIRMED_KEY\)/,
+  );
+});
+
 test('확인 화면은 이름을 그대로 보여주고 확인·재선택 두 가지를 제공한다', async () => {
   const source = await readFile(new URL('../src/pages/WorkerStationViewPage.jsx', import.meta.url), 'utf8');
 

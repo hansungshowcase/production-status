@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
+import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
 import { getOrders } from '../api/orders';
 import './WorkerSelectPage.css';
@@ -91,6 +91,9 @@ export default function WorkerSelectPage() {
   function finishSelection(name, department) {
     sessionStorage.setItem(WORKER_STORAGE_KEY, name);
     sessionStorage.setItem(DEPARTMENT_STORAGE_KEY, department);
+    // 선택 화면을 거쳤으면 같은 사람을 다시 골랐더라도 공정 화면에서 한 번 더 확인받는다.
+    // (공정 사이를 오갈 때는 확인된 이름이 남아 있어 다시 묻지 않는다.)
+    sessionStorage.removeItem(WORKER_CONFIRMED_KEY);
 
     const stepName = DEPARTMENT_STEP_MAP[department];
     if (stepName) {

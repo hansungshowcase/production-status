@@ -6,6 +6,14 @@ import { STEPS } from '../../_lib/steps.js';
 import { kstTodayStr } from '../../_lib/notify.js';
 import { syncShippedOrderToSheet } from '../../_lib/shippingSheetSync.js';
 import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
+import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
+
+// 유니크 인덱스가 경쟁을 막아준 경우(다른 요청이 먼저 '출고' 행을 만든 경우)를 식별한다.
+function isUniqueViolation(error) {
+  if (!error) return false;
+  if (error.code === '23505') return true;
+  return /duplicate key value|unique constraint|unique violation/i.test(String(error.message || ''));
+}
 
 async function defaultNotify(db, order, milestone) {
   const { maybeNotify } = await import('../../_lib/notify.js');
@@ -50,14 +58,24 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   }
   const shouldEnsureShippingStep = process.step_name === '포장' || start_next_step === '출고';
   if (shouldEnsureShippingStep) {
-    await db.execute({
-      sql: `INSERT INTO processes (order_id, step_name, status)
-            SELECT ?, '출고', 'waiting'
-            WHERE NOT EXISTS (
-              SELECT 1 FROM processes WHERE order_id = ? AND step_name = '출고'
-            )`,
-      args: [process.order_id, process.order_id],
-    });
+    // NOT EXISTS 만으로는 동시 완료/더블클릭 경쟁을 막지 못한다(둘 다 통과 → '출고' 2행).
+    // INSERT 직전에 부분 유니크 인덱스를 보장해 DB 가 막아주게 한다.
+    // 인덱스 생성 실패는 내부에서 삼켜지므로 여기서 본 동작이 멈추지 않는다.
+    await ensureShippingProcessUniqueIndex(db);
+    try {
+      await db.execute({
+        sql: `INSERT INTO processes (order_id, step_name, status)
+              SELECT ?, '출고', 'waiting'
+              WHERE NOT EXISTS (
+                SELECT 1 FROM processes WHERE order_id = ? AND step_name = '출고'
+              )`,
+        args: [process.order_id, process.order_id],
+      });
+    } catch (error) {
+      // 유니크 위반 = 다른 요청이 방금 '출고' 행을 만들었다는 뜻.
+      // 이미 존재하므로 500 으로 터뜨리지 말고 정상 흐름으로 계속한다.
+      if (!isUniqueViolation(error)) throw error;
+    }
   }
   const requiredForwardSteps = start_next_step ? STEPS.slice(currentStepIndex + 1, targetStepIndex + 1) : [];
   let forwardProcessRows = [];

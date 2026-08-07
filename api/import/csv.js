@@ -4,6 +4,7 @@ import { STEPS } from '../_lib/steps.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { requireAuth } from '../_lib/auth.js';
 import { normalizeOrderMutationInput } from '../_lib/orderCreateInput.js';
+import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
 
 export const config = {
   api: {
@@ -97,12 +98,35 @@ function mapStatus(koreanStatus) {
   return 'in_production';
 }
 
-export default cors(async function handler(req, res) {
+// orders 의 치수/수량 컬럼은 INTEGER 다. '1200mm' 같은 값을 Number() 로 그대로 넘기면
+// NaN 이 SQL 로 들어가고 Postgres 가 청크(최대 100행) 전체를 거절한다.
+// 파싱은 행 단위로 막아야 나머지 행이 정상 등록된다.
+const NUMERIC_FIELD_LABELS = {
+  quantity: '수량',
+  width: '가로',
+  depth: '세로',
+  height: '높이',
+};
+
+export function parseIntegerCell(raw) {
+  if (raw === null || raw === undefined) return { ok: true, value: null };
+  const text = String(raw).trim().replace(/,/g, '');
+  if (!text) return { ok: true, value: null };
+  if (!/^[+-]?\d+(?:\.0+)?$/.test(text)) return { ok: false, value: null };
+  const value = Number(text);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    return { ok: false, value: null };
+  }
+  return { ok: true, value };
+}
+
+export async function handleCsvImport(req, res, dependencies = {}) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
 
-  const auth = requireAuth(req, res, { roles: ['admin'] });
+  const checkAuth = dependencies.requireAuth || requireAuth;
+  const auth = checkAuth(req, res, { roles: ['admin'] });
   if (!auth) return;
 
   let parts;
@@ -139,7 +163,8 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: "'거래처' 컬럼이 필요합니다.", status: 400 } });
   }
 
-  const db = getDb();
+  const db = dependencies.db || getDb();
+  const ensureSyncSchema = dependencies.ensureSheetSyncSchema || ensureSheetSyncSchema;
   let importedCount = 0;
   let skippedCount = 0;
   const errors = [];
@@ -165,8 +190,24 @@ export default cors(async function handler(req, res) {
 
     const orderDate = get('order_date');
     const productType = get('product_type');
-    const quantityRaw = get('quantity');
-    const quantity = quantityRaw ? Number(quantityRaw) : null;
+
+    // 숫자 컬럼 파싱 실패는 그 행만 오류로 기록하고 건너뛴다. NaN 을 SQL 로 넘기면
+    // 같은 청크의 멀쩡한 행까지 통째로 실패한다.
+    const numbers = {};
+    let hasNumericError = false;
+    for (const [field, label] of Object.entries(NUMERIC_FIELD_LABELS)) {
+      const raw = get(field);
+      const parsed = parseIntegerCell(raw);
+      if (!parsed.ok) {
+        errors.push(`행 ${i + 1}: '${label}' 값 "${String(raw).trim()}" 은(는) 숫자가 아니라 건너뜁니다.`);
+        hasNumericError = true;
+        continue;
+      }
+      numbers[field] = parsed.value;
+    }
+    if (hasNumericError) continue;
+
+    const quantity = numbers.quantity;
     const status = mapStatus(get('status'));
 
     candidates.push({
@@ -181,9 +222,9 @@ export default cors(async function handler(req, res) {
         product_type: productType,
         door_type: get('door_type'),
         design: get('design'),
-        width: get('width') ? Number(get('width')) : null,
-        depth: get('depth') ? Number(get('depth')) : null,
-        height: get('height') ? Number(get('height')) : null,
+        width: numbers.width,
+        depth: numbers.depth,
+        height: numbers.height,
         quantity,
         color: get('color'),
         notes: get('notes'),
@@ -193,6 +234,13 @@ export default cors(async function handler(req, res) {
   }
 
   const totalCount = candidates.length;
+
+  // CSV 로 만든 주문도 정상 등록 경로(api/orders/index.js handlePost)와 똑같이
+  // sheet_sync_jobs 에 동기화 잡을 넣어야 구글시트에 반영된다.
+  // 잡 INSERT 전에 스키마 보정이 끝나 있어야 한다. (dry-run 은 쓰지 않으므로 제외)
+  if (!dryRun && candidates.length > 0) {
+    await ensureSyncSchema(db);
+  }
 
   // ---- 2단계: 청크 단위 처리 (100행) ----
   const CHUNK_SIZE = 100;
@@ -226,7 +274,24 @@ export default cors(async function handler(req, res) {
           existingKeys.add(key);
         }
       } catch (err) {
-        errors.push(`중복 조회 실패(청크 ${start}-${start + chunk.length}): ${err.message}`);
+        // 중복 조회가 실패하면 existingKeys 가 빈 채로 남아 "중복 없음"으로 오판하고
+        // 이미 있는 주문을 전량 다시 INSERT 한다. 대량 중복 생성이 훨씬 큰 피해라
+        // 여기서 요청을 실패시킨다.
+        const detail = `중복 조회 실패(행 ${chunk[0]?.rowIndex}-${chunk[chunk.length - 1]?.rowIndex}): ${err.message}`;
+        errors.push(detail);
+        return res.status(500).json({
+          error: {
+            message: `기존 주문 중복 확인에 실패해 가져오기를 중단했습니다. 중복 등록을 막기 위해 남은 행은 저장하지 않았습니다. (${err.message})`,
+            status: 500,
+          },
+          imported: importedCount,
+          inserted: importedCount,
+          skipped: skippedCount,
+          total: totalCount,
+          dryRun,
+          errors: errors.length,
+          errorDetails: errors.slice(0, 20),
+        });
       }
     }
 
@@ -293,6 +358,22 @@ export default cors(async function handler(req, res) {
         });
       }
 
+      // ---- 2-e: sheet_sync_jobs 배치 INSERT (구글시트 동기화 큐) ----
+      // 정상 등록 경로는 주문 INSERT 와 잡 INSERT 를 한 CTE 로 실행한다. CSV 경로에도
+      // 잡을 넣어야 CSV 주문이 구글시트에 들어간다. 즉시 동기화는 크론이 처리하므로 여기선 큐잉만.
+      //
+      // 고객 알림(notify.js 의 maybeNotify)은 의도적으로 부르지 않는다.
+      // CSV 가져오기는 과거 주문 대량 이관에 쓰이므로, 여기서 알림을 보내면
+      // 몇 달 지난 주문의 접수 문자가 지금 고객에게 발송되는 사고가 난다.
+      if (insertedIds.length > 0) {
+        const jobValuesSql = insertedIds.map(() => `(?, 'pending')`).join(', ');
+        await db.execute({
+          sql: `INSERT INTO sheet_sync_jobs (order_id, status) VALUES ${jobValuesSql}
+                ON CONFLICT (order_id) DO NOTHING`,
+          args: insertedIds,
+        });
+      }
+
       importedCount += insertedIds.length;
     } catch (err) {
       if (insertedIds.length > 0) {
@@ -322,4 +403,6 @@ export default cors(async function handler(req, res) {
     errors: errors.length,
     errorDetails: errors.slice(0, 20),
   });
-});
+}
+
+export default cors(handleCsvImport);

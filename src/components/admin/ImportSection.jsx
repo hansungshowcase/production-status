@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { uploadCsv } from '../../api/exportImport';
+import { summarizeCsvImportResult } from '../../utils/importResult';
 import './ImportSection.css';
 
 export default function ImportSection() {
@@ -62,11 +63,15 @@ export default function ImportSection() {
     setResult(null);
     try {
       const res = await uploadCsv(file);
-      setResult({ type: 'success', message: `${res.imported || 0}건 등록 완료` });
-      setFile(null);
-      setPreview(null);
+      const summary = summarizeCsvImportResult(res);
+      setResult(summary);
+      // 실패가 하나라도 있으면 파일/미리보기를 남겨 원인을 고쳐 다시 올릴 수 있게 한다.
+      if (summary.type === 'success') {
+        setFile(null);
+        setPreview(null);
+      }
     } catch (err) {
-      setResult({ type: 'error', message: 'CSV 업로드 실패: ' + err.message });
+      setResult({ type: 'error', message: 'CSV 업로드 실패: ' + err.message, details: [] });
     } finally {
       setLoading(false);
     }
@@ -146,7 +151,16 @@ export default function ImportSection() {
       )}
 
       {result && (
-        <div className={`import-result ${result.type}`}>{result.message}</div>
+        <div className={`import-result ${result.type}`}>
+          <div className="import-result-message">{result.message}</div>
+          {result.details && result.details.length > 0 && (
+            <ul className="import-result-details">
+              {result.details.map((detail, i) => (
+                <li key={i}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );
