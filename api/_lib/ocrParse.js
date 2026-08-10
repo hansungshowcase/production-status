@@ -7,7 +7,7 @@
 
 export const WORK_ORDER_FIELDS = [
   'client_name', 'order_date', 'due_date', 'phone', 'delivery_address',
-  'freight_payment', 'sales_person', 'product_type', 'door_type',
+  'freight_payment', 'balance', 'sales_person', 'product_type', 'door_type',
   'width', 'depth', 'height', 'quantity', 'color', 'notes',
 ];
 

@@ -5,6 +5,7 @@ import { resolveIssue } from '../api/issues';
 import { deletePhoto } from '../api/photos';
 import { extractDueDateFromOrder, formatDueStatus } from '../utils/dateUtils';
 import { getVisibleOrderMemo } from '../utils/orderText';
+import { formatMoney, balanceState } from '../utils/money';
 import { safeGet } from '../utils/safeStorage';
 import { PROCESS_STEPS } from '../constants';
 import {
@@ -131,6 +132,7 @@ export default function OrderDetailPage() {
   const displayDueDate = extractDueDateFromOrder(order);
   const visibleNotes = getVisibleOrderMemo(order.notes);
   const visibleRemarks = getVisibleOrderMemo(order.remarks);
+  const balance = balanceState(order.balance);
   const dueStatus = formatDueStatus(displayDueDate, order.status);
   const isOverdue = dueStatus.isOverdue;
   const isShipped = order.status === 'shipped' || order.status === '출고완료' || !!order.ship_date;
@@ -244,6 +246,16 @@ export default function OrderDetailPage() {
           <DetailRow label="수량" value={order.quantity ? `${order.quantity}대` : ''} />
           <DetailRow label="색상" value={order.color} />
           {order.ship_date && <DetailRow label="출고일" value={order.ship_date} />}
+          <DetailRow label="판매금액" value={formatMoney(order.sale_amount)} />
+          {/* 잔금은 사람이 자유롭게 적는 칸이라 숫자일 수도, '완납' 같은 메모일 수도 있다.
+              값이 아예 없으면 '기록 없음'을 보여줘 "안 적힌 것"과 "0원"을 구분한다. */}
+          <div className="odp-info-row">
+            <span className="odp-info-label">잔금</span>
+            <span className={`odp-info-value odp-balance odp-balance--${balance.kind}`}>
+              {balance.kind === 'unknown' ? '기록 없음' : balance.text}
+            </span>
+          </div>
+          {order.freight_payment && <DetailRow label="운임여부" value={order.freight_payment} />}
           {visibleNotes && <DetailRow label="비고" value={visibleNotes} full />}
           {visibleRemarks && <DetailRow label="특이사항" value={visibleRemarks} full />}
         </div>

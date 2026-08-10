@@ -472,3 +472,18 @@
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* 잔금: 남아 있으면 눈에 띄게, 없으면 차분하게, 기록이 없으면 흐리게 */
+.odp-balance--due {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.odp-balance--none {
+  color: #059669;
+  font-weight: 600;
+}
+
+.odp-balance--unknown {
+  color: #94a3b8;
+}
