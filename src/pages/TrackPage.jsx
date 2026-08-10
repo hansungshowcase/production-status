@@ -278,12 +278,13 @@ export default function TrackPage() {
   // 카카오 문의 클릭 → 주문정보+담당자를 클립보드에 자동 복사 (채널 채팅에 붙여넣기)
   // ※ 카카오톡 채팅은 링크로 메시지 자동입력을 지원하지 않아 '복사→붙여넣기'가 최선
   const buildInquiryText = () => {
-    const product = [data?.product_type, data?.door_type].filter(Boolean).join(' ');
+    // 품명은 제외한다(위 제품 정보 표시와 같은 이유). 문형만 붙인다.
+    const product = data?.door_type || '';
     const lines = [
       '[한성쇼케이스 주문 문의]',
       `· 주문번호: ${orderNo.replace(/^#/, '')}`,
     ];
-    if (product) lines.push(`· 제품: ${product}`);
+    if (product) lines.push(`· 문형: ${product}`);
     if (managerName) lines.push(`· 담당: ${managerName}`);
     lines.push('', '문의 내용: ');
     return lines.join('\n');
@@ -374,12 +375,14 @@ export default function TrackPage() {
               <div className="track-card">
                 <div className="track-sec-title">제품 정보</div>
                 <div className="track-spec">
-                  <div className="track-spec-cell full">
-                    <div className="track-spec-k">제품</div>
-                    <div className="track-spec-v">
-                      {[data.product_type, data.door_type].filter(Boolean).join(' · ') || '-'}
+                  {/* 품명(product_type)은 고객에게 보여주지 않는다. 내부 분류·거래처 표기가
+                      들어가 있는 경우가 있어 고객이 보기에 부적절하다(2026-08-10). 문형만 남긴다. */}
+                  {data.door_type && (
+                    <div className="track-spec-cell full">
+                      <div className="track-spec-k">문형</div>
+                      <div className="track-spec-v">{data.door_type}</div>
                     </div>
-                  </div>
+                  )}
                   <div className="track-spec-cell">
                     <div className="track-spec-k">규격 (가로×세로×높이)</div>
                     <div className="track-spec-v mono">

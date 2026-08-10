@@ -69,3 +69,24 @@ test('주문번호·수량·출고일·조회링크는 종전대로 들어간다
   assert.match(text, /- 출고일: 2026-08-20/);
   assert.match(text, /https:\/\/example\.com\/track\/tok/);
 });
+
+// 고객 조회 페이지(/track/:token)에도 품명이 나가지 않아야 한다.
+// 화면에서 빼는 것만으로는 API 응답에 남아 링크로 값이 보인다.
+test('고객 조회 API 응답에 품명이 들어가지 않는다', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../api/track/[token].js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('return res.json({'));
+
+  assert.doesNotMatch(body, /^\s*product_type:/m, '응답에 품명을 담으면 안 된다');
+  assert.match(body, /door_type: order\.door_type \|\| null/, '문형은 그대로 내려준다');
+  assert.match(body, /size: \{ width: order\.width/, '규격은 그대로 내려준다');
+});
+
+test('고객 조회 화면과 문의 복사 텍스트에 품명이 없다', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const page = await readFile(new URL('../src/pages/TrackPage.jsx', import.meta.url), 'utf8');
+  const code = page.split('\n').filter((line) => !line.trim().startsWith('//') && !line.trim().startsWith('*') && !line.trim().startsWith('{/*')).join('\n');
+
+  assert.doesNotMatch(code, /data\.product_type/, '화면이 품명을 읽으면 안 된다');
+  assert.doesNotMatch(code, /data\?\.product_type/, '문의 복사 텍스트도 품명을 읽으면 안 된다');
+});

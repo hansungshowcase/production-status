@@ -89,7 +89,9 @@ export default cors(async function handler(req, res) {
     order_no,
     manager_name: order.sales_person || null,
     client_name: maskName(order.client_name),
-    product_type: order.product_type || null,
+    // product_type(품명)은 내려주지 않는다. 내부 분류·거래처 표기가 들어가 있는 경우가 있어
+    // 고객에게 노출하기 부적절하다(2026-08-10). 화면에서 빼는 것만으로는 응답에 그대로 남아
+    // 조회 링크로 값이 보이므로 응답 자체에서 제외한다.
     door_type: order.door_type || null,
     size: { width: order.width, depth: order.depth, height: order.height },
     quantity: order.quantity,
