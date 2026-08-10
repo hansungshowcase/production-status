@@ -82,3 +82,51 @@ test('등록 시 잔금이 서버로 전송된다', async () => {
   const payload = await readFile(new URL('../src/pages/orderEntryPayload.js', import.meta.url), 'utf8');
   assert.match(payload, /balance: normalizeOptionalPositiveNumber\(form\.balance\)/);
 });
+
+// 배송 서류에 잔금 줄이 아예 없으면 기사님이 '받을 돈 없음' 인지 '안 적음' 인지 구분할 수 없다.
+// 항상 인쇄하고, 남아 있으면 눈에 띄게 한다.
+test('출하지시서·납품내역서에 잔금 줄이 항상 인쇄된다', async () => {
+  const { buildShippingDocumentData, buildShippingDocumentPrintHtml } =
+    await import('../src/components/sales/shippingDocuments.js');
+  const base = { client_name: '테스트', width: 900, depth: 650, height: 1200, quantity: 1 };
+
+  for (const type of ['shipping', 'delivery']) {
+    // '완납' 처럼 정산이 끝났다는 메모도 받을 돈이 없는 것이므로 '없음' 으로 통일해 인쇄한다.
+    for (const [balance, expected] of [[2000000, '2,000,000원'], [0, '없음'], [null, '미기재'], ['완납', '없음'], ['계좌이체 예정', '계좌이체 예정']]) {
+      const data = buildShippingDocumentData({ ...base, balance }, type);
+      const html = buildShippingDocumentPrintHtml(data);
+      const row = html.match(/<tr><th>잔금내역<\/th><td[^>]*>([^<]*)<\/td><\/tr>/);
+      assert.ok(row, `${type} / balance=${balance} 에 잔금 줄이 있어야 한다`);
+      assert.equal(row[1], expected);
+    }
+  }
+});
+
+test('잔금이 남은 경우에만 인쇄물에서 강조된다', async () => {
+  const { buildShippingDocumentData, buildShippingDocumentPrintHtml } =
+    await import('../src/components/sales/shippingDocuments.js');
+  const base = { client_name: '테스트', quantity: 1 };
+
+  const due = buildShippingDocumentData({ ...base, balance: 500000 }, 'shipping');
+  assert.equal(due.balanceDue, true);
+  assert.match(buildShippingDocumentPrintHtml(due), /<td class="balance-due">500,000원<\/td>/);
+
+  for (const balance of [0, null, '완납']) {
+    const data = buildShippingDocumentData({ ...base, balance }, 'shipping');
+    assert.equal(data.balanceDue, false, `balance=${balance} 는 강조하면 안 된다`);
+  }
+});
+
+test('운임여부는 적혀 있을 때만 인쇄된다', async () => {
+  const { buildShippingDocumentData, buildShippingDocumentPrintHtml } =
+    await import('../src/components/sales/shippingDocuments.js');
+  const withFreight = buildShippingDocumentPrintHtml(
+    buildShippingDocumentData({ client_name: 'ㄱ', freight_payment: '27만원' }, 'shipping'),
+  );
+  assert.match(withFreight, /<th>운임여부<\/th><td>27만원<\/td>/);
+
+  const without = buildShippingDocumentPrintHtml(
+    buildShippingDocumentData({ client_name: 'ㄱ' }, 'shipping'),
+  );
+  assert.doesNotMatch(without, /운임여부/);
+});

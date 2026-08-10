@@ -1,4 +1,5 @@
 import { getVisibleOrderMemo } from '../../utils/orderText.js';
+import { formatMoney, balanceState } from '../../utils/money.js';
 
 const COMPANY = {
   businessNumber: '634-81-02042',
@@ -10,20 +11,6 @@ const COMPANY = {
 function text(value, fallback = '-') {
   const normalized = String(value ?? '').trim();
   return normalized || fallback;
-}
-
-function formatMoney(value) {
-  if (value === undefined || value === null || value === '') return '';
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return `${Math.round(value).toLocaleString('ko-KR')}원`;
-  }
-  const raw = String(value).trim();
-  if (!raw || raw === '-') return '';
-  const number = Number(raw.replace(/,/g, '').replace(/[^\d.]/g, ''));
-  if (Number.isFinite(number) && number > 0) {
-    return `${Math.round(number).toLocaleString('ko-KR')}원`;
-  }
-  return raw;
 }
 
 function formatDateShort(value) {
@@ -115,7 +102,13 @@ export function buildShippingDocumentData(order, type, options = {}) {
   const visibleNote = getVisibleOrderMemo(order.notes)
     || getVisibleOrderMemo(order.remarks)
     || getVisibleOrderMemo(order.etc_notes);
-  const balanceText = formatMoney(order.balance);
+  // 배송 서류의 잔금 줄은 항상 인쇄한다. 줄이 아예 없으면 기사님이 "받을 돈이 없는 것"인지
+  // "적지 않은 것"인지 구분할 수 없다. 0원·완납은 '없음', 미기록은 '미기재'로 명시한다.
+  const balance = balanceState(order.balance);
+  const balanceText = balance.kind === 'unknown'
+    ? '미기재'
+    : (balance.kind === 'none' ? '없음' : balance.text);
+  const balanceDue = balance.kind === 'due';
   const freightText = buildFreightPayment(order);
 
   return {
@@ -127,6 +120,7 @@ export function buildShippingDocumentData(order, type, options = {}) {
     customerAddress: buildDeliveryAddress(order),
     customerPhone: text(order.phone),
     balanceText,
+    balanceDue,
     freightText,
     company: COMPANY,
     rows: [
@@ -227,6 +221,7 @@ export function buildShippingDocumentPrintHtml(data) {
   .balance { margin-top: 6px; border: 1px solid #999; font-size: 14px; font-weight: 800; }
   .balance th, .balance td { border: 1px solid #999; padding: 7px 10px; text-align: left; }
   .balance th { width: 28mm; background: #f8fafc; text-align: center; }
+  .balance td.balance-due { color: #b91c1c; font-size: 16px; }
   .sign { margin-top: 6px; font-size: 13px; font-weight: 700; }
   .sign th, .sign td { border: 1px solid #999; height: 38px; }
   .sign th { width: 22mm; }
@@ -272,10 +267,10 @@ export function buildShippingDocumentPrintHtml(data) {
       <tbody>${bodyRows}</tbody>
     </table>
     <table class="notice"><tr><td>${data.notice.map((line) => `※ ${line}`).join('<br />')}</td></tr></table>
-    ${(data.balanceText || data.freightText) ? `<table class="balance">
-      ${data.balanceText ? `<tr><th>잔금내역</th><td>${data.balanceText}</td></tr>` : ''}
+    <table class="balance">
+      <tr><th>잔금내역</th><td${data.balanceDue ? ' class="balance-due"' : ''}>${data.balanceText}</td></tr>
       ${data.freightText ? `<tr><th>운임여부</th><td>${data.freightText}</td></tr>` : ''}
-    </table>` : ''}
+    </table>
     ${data.type === 'shipping'
       ? '<table class="sign"><tr><th>배송담당자</th><td class="signature-cell"></td></tr></table>'
       : '<table class="sign"><tr><th>배송담당자</th><td class="signature-cell"></td><th>수취인</th><td class="signature-cell"></td><th>수평확인완료</th><td class="signature-cell"></td></tr></table>'}
