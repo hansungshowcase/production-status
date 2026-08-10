@@ -58,13 +58,26 @@ function orderNo(order) {
   return `HS-${year}-${String(order.id).padStart(4, '0')}`;
 }
 
-function productLine(order) {
-  const size = order.width && order.depth && order.height
+function orderSize(order) {
+  return order.width && order.depth && order.height
     ? `${order.width}×${order.depth}×${order.height}mm` : '';
+}
+
+function productLine(order) {
   return [
     order.product_type || '주문 제품',
     order.door_type ? `(${order.door_type})` : '',
-    size,
+    orderSize(order),
+  ].filter(Boolean).join(' ');
+}
+
+// 고객 문자 본문에는 품명을 넣지 않는다. product_type 에 '하나로냉장' 처럼 내부 분류·거래처
+// 표기가 들어가 있는 경우가 있어 고객이 받는 문구로는 부적절하다(2026-08-10 요청).
+// 알림톡 템플릿 변수(#{제품})는 카카오에 등록된 서식과 맞춰야 하므로 그대로 둔다.
+function customerSpecLine(order) {
+  return [
+    order.door_type || '',
+    orderSize(order),
   ].filter(Boolean).join(' ');
 }
 
@@ -73,6 +86,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
   const 고객명 = order.client_name || '고객';
   const 주문번호 = orderNo(order);
   const 제품규격 = productLine(order);
+  const 고객규격 = customerSpecLine(order);
   const 수량 = `${order.quantity || 1}대`;
   const 예상출고일 = fmtDate(order.due_date);
   const 조회링크 = trackUrl || '';
@@ -93,7 +107,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
         `${고객명}님, 주문이 정상 접수되었습니다.`,
         '',
         `- 주문번호: ${주문번호}`,
-        `- 제품/규격: ${제품규격}`,
+        `- 규격: ${고객규격}`,
         `- 수량: ${수량}`,
         `- 예상 출고일: ${예상출고일}`,
         ...linkBlock,
@@ -109,7 +123,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
         `${고객명}님, 주문하신 제품의 제작이 시작되었습니다.`,
         '',
         `- 주문번호: ${주문번호}`,
-        `- 제품/규격: ${제품규격}`,
+        `- 규격: ${고객규격}`,
         `- 예상 출고일: ${예상출고일}`,
         ...linkBlock,
         ...footer,
@@ -123,7 +137,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
         `${고객명}님, 주문하신 제품의 포장이 완료되어 곧 출고될 예정입니다.`,
         '',
         `- 주문번호: ${주문번호}`,
-        `- 제품/규격: ${제품규격}`,
+        `- 규격: ${고객규격}`,
         `- 수량: ${수량}`,
         `- 예상 출고일: ${출고예정}`,
         ...(조회링크 ? ['', '포장 상태는 아래 링크에서 확인하실 수 있습니다.', `▶ ${조회링크}`] : []),
@@ -141,7 +155,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
         `${고객명}님, 주문하신 제품이 출고되었습니다.`,
         '',
         `- 주문번호: ${주문번호}`,
-        `- 제품/규격: ${제품규격}`,
+        `- 규격: ${고객규격}`,
         `- 수량: ${수량}`,
         `- 출고일: ${출고일}`,
         ...(조회링크 ? ['', '배송 세부사항 조회', `▶ ${조회링크}`] : []),
@@ -161,7 +175,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
         '출고 예정일을 다시 안내드립니다.',
         '',
         `- 주문번호: ${주문번호}`,
-        `- 제품/규격: ${제품규격}`,
+        `- 규격: ${고객규격}`,
         `- 수량: ${수량}`,
         `- 출고 예정일: ${새출고예정일}`,
         ...linkBlock,
