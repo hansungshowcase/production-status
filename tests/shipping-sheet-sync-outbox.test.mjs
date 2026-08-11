@@ -640,13 +640,14 @@ test('cron authorizes first, installs shipping schema, then retries append befor
     }, authorized, db, {
       retry: async (_db, options) => {
         events.push('append-retry');
-        // Vercel 함수 한도 30초 안에서 25초까지 쓴다.
-        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
+        // 등록 큐에 상한(10초)을 둔다. 상한이 없으면 등록이 예산을 다 쓰고 출고가 굶는다.
+        assert.deepEqual(options, { limit: 25, deadlineMs: 10_000 });
         return appendSummary;
       },
       retryShipping: async (_db, options) => {
         events.push('shipping-retry');
-        // 출고 재시도는 append 가 쓰고 남은 예산을 받는다(Date.now 고정이라 25초 그대로).
+        // 출고 재시도는 전체 예산에서 append 가 실제로 쓴 시간만 뺀다.
+        // (Date.now 고정이라 append 가 0초 쓴 것으로 계산돼 25초 그대로 넘어온다.)
         assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
         return shippingSummary;
       },

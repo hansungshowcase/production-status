@@ -4,6 +4,8 @@ import { ensureShippingSheetSyncSchema } from './shippingSheetSyncSchema.js';
 const STALE_SENDING_INTERVAL = "INTERVAL '5 minutes'";
 // 실측 왕복이 3~4초라 15초를 예약하면 20초 예산에 1건밖에 못 돌린다.
 // 실제 웹훅 타임아웃(10초)에 맞춰 예약해 한 번에 여러 건을 처리한다.
+// 더 줄이지 말 것: Apps Script 락이 붐비면 정상 요청도 7~17초가 걸린다(2026-08-11 실측).
+// 여기를 6초로 낮추면 멀쩡한 기입이 중단돼 attempts 만 쌓이고 시트 반영이 오히려 늦어진다.
 const WEBHOOK_ATTEMPT_BUDGET_MS = 10_000;
 const JOB_STATE_WRITE_MARGIN_MS = 1_000;
 const MINIMUM_JOB_BUDGET_MS = WEBHOOK_ATTEMPT_BUDGET_MS + JOB_STATE_WRITE_MARGIN_MS;

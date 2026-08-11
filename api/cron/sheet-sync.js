@@ -9,6 +9,7 @@ import { ensureShippingSheetSyncSchema } from '../_lib/shippingSheetSyncSchema.j
 
 // Vercel 함수 한도 30초. 상태 기록 여유를 두고 25초까지 쓴다.
 const SYNC_DEADLINE_MS = 25_000;
+const APPEND_DEADLINE_CAP_MS = 10_000;
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -40,7 +41,10 @@ export async function handleSheetSyncCron(
   await ensureShippingSheetSyncSchema(db);
 
   const startedAt = Date.now();
-  const appendSummary = await retry(db, { limit: 25, deadlineMs: SYNC_DEADLINE_MS });
+  // 등록 큐가 예산을 다 쓰면 출고 큐가 굶는다. 등록에 상한을 두고 나머지를 출고에 넘긴다.
+  // 등록 큐는 보통 비어 있어 실제로는 출고가 대부분의 예산을 받는다.
+  const appendDeadlineMs = Math.min(APPEND_DEADLINE_CAP_MS, SYNC_DEADLINE_MS);
+  const appendSummary = await retry(db, { limit: 25, deadlineMs: appendDeadlineMs });
   const remainingDeadlineMs = Math.max(0, SYNC_DEADLINE_MS - (Date.now() - startedAt));
   const shippingSummary = await retryShipping(db, {
     limit: 25,
