@@ -184,14 +184,20 @@ export async function markOrderShippedOnSheet(order, shipDate, { timeoutMs = SHI
       throw new Error('Google Sheets shipping webhook returned invalid JSON');
     }
 
-    if (
-      !result
-      || typeof result !== 'object'
-      || Array.isArray(result)
-      || result.ok !== true
-      || !Number.isInteger(result.updatedRow)
-      || result.updatedRow <= 0
-    ) {
+    // Apps Script 는 실패 사유를 error 에 담아 준다('orderId not found',
+    // 'ambiguous legacy match', 'duplicate orderId' 등). 이걸 버리고 뭉뚱그리면
+    // 큐에는 'invalid success response' 만 남아, 시트에 행이 없어 영영 성공하지 못하는
+    // 잡과 잠깐 실패한 잡을 구분할 수 없다. (주문 266 이 15번 재시도된 이유)
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+      throw new Error('Google Sheets shipping webhook returned an invalid success response');
+    }
+    if (result.ok !== true) {
+      const reason = typeof result.error === 'string' && result.error.trim()
+        ? result.error.trim()
+        : 'unknown error';
+      throw new Error(`Google Sheets shipping webhook rejected the update: ${reason}`);
+    }
+    if (!Number.isInteger(result.updatedRow) || result.updatedRow <= 0) {
       throw new Error('Google Sheets shipping webhook returned an invalid success response');
     }
 

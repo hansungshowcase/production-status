@@ -239,6 +239,26 @@ test('shipping rejects invalid order IDs before sending a request', async () => 
   }
 });
 
+// Apps Script 가 알려준 실패 사유를 뭉뚱그리면 '시트에 행이 없어 영영 성공 못 하는 잡' 과
+// '잠깐 실패한 잡' 을 구분할 수 없다. 주문 266 은 이 때문에 15번이나 재시도되면서
+// 큐 예산을 선점해 정상 출고 6건을 막았다(2026-08-11).
+test('shipping surfaces the reason the sheet gave instead of a generic message', async () => {
+  for (const reason of ['orderId not found', 'ambiguous legacy match', 'duplicate orderId', 'lock unavailable']) {
+    await withWebhookFetch(async () => jsonResponse({ ok: false, error: reason }), async () => {
+      await assert.rejects(
+        markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'),
+        new RegExp(reason.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+        `'${reason}' 가 오류 메시지에 남아야 한다`,
+      );
+    });
+  }
+
+  // 사유를 안 알려주면 예전처럼 일반 메시지로 떨어지되, 성공으로 오해하지는 않는다.
+  await withWebhookFetch(async () => jsonResponse({ ok: false }), async () => {
+    await assert.rejects(markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'), /unknown error/);
+  });
+});
+
 test('shipping rejects network, non-2xx, malformed, empty, non-object, and non-strict responses', async () => {
   const invalidResponses = [
     ['network failure', async () => { throw new Error('socket closed'); }],
