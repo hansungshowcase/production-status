@@ -338,6 +338,63 @@ test('a fresh table has no action column so the legacy default is never attempte
   assert.equal(statements.filter((sql) => /ADD COLUMN IF NOT EXISTS/i.test(sql)).length, 3);
 });
 
+// 2026-08-11: 레거시 테이블에는 외래키가 없어 주문을 지워도 잡이 남았다. 재시도 쿼리가
+// orders 를 JOIN 하므로 그 잡은 영영 선택되지 않고 pending 으로 남는다 — 대기 건수가
+// '아직 시트에 안 올라간 주문 수'를 뜻하지 못하게 된다(실제 고아 6건, pending 2건).
+test('a legacy table without the foreign key gets orphans cleaned and cascade attached', async () => {
+  const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
+  const statements = [];
+  await ensureSheetSyncSchema({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      statements.push(sql);
+      if (/pg_constraint/i.test(sql)) return { rows: [] }; // 외래키 없음
+      return { rows: [] };
+    },
+  });
+
+  const cleanupAt = statements.findIndex((sql) => /^DELETE FROM sheet_sync_jobs\b/i.test(sql));
+  const attachAt = statements.findIndex((sql) => /ADD CONSTRAINT sheet_sync_jobs_order_id_fkey/i.test(sql));
+  assert.ok(cleanupAt >= 0, '고아 잡을 먼저 지워야 한다');
+  assert.ok(attachAt > cleanupAt, '정리 후에 외래키를 붙여야 한다');
+  assert.match(statements[attachAt], /REFERENCES orders\(id\) ON DELETE CASCADE/i);
+  // NOT VALID: 정리 직후 다른 요청이 주문을 지워 새 고아가 생겨도 ADD CONSTRAINT 가 실패하지 않는다.
+  assert.match(statements[attachAt], /NOT VALID/i);
+  assert.match(statements[cleanupAt], /NOT EXISTS \(SELECT 1 FROM orders o WHERE o\.id = j\.order_id\)/i);
+});
+
+test('an already-constrained table is left alone', async () => {
+  const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
+  const statements = [];
+  await ensureSheetSyncSchema({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      statements.push(sql);
+      if (/pg_constraint/i.test(sql)) return { rows: [{ present: 1 }] };
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(statements.filter((sql) => /^DELETE FROM sheet_sync_jobs\b/i.test(sql)).length, 0);
+  assert.equal(statements.filter((sql) => /ADD CONSTRAINT/i.test(sql)).length, 0);
+});
+
+// 외래키는 청소용이다. 여기서 던지면 ensureSheetSyncSchema 를 부르는 주문 등록이 통째로
+// 죽는다 — 2026-08-04 장애와 정확히 같은 경로다. 실패해도 등록은 살아 있어야 한다.
+test('a failing foreign key reconciliation never breaks order registration', async () => {
+  const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
+  await assert.doesNotReject(ensureSheetSyncSchema({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      if (/pg_constraint/i.test(sql)) return { rows: [] };
+      if (/ADD CONSTRAINT|^DELETE FROM sheet_sync_jobs\b/i.test(sql)) {
+        throw new Error('deadlock detected');
+      }
+      return { rows: [] };
+    },
+  }));
+});
+
 test('schema reconciliation never drops or rewrites existing job data', async () => {
   const { ensureSheetSyncSchema } = await loadSheetSyncSchema();
   const statements = [];
@@ -350,11 +407,17 @@ test('schema reconciliation never drops or rewrites existing job data', async ()
     },
   });
 
+  // 유일하게 허용되는 삭제는 참조 주문이 사라진 고아 잡이다. 시트에 올릴 주문 자체가
+  // 없는 행이라 지워도 잃을 데이터가 없다. 조건 없는 삭제는 여전히 금지한다.
+  const ORPHAN_CLEANUP = /^DELETE FROM sheet_sync_jobs j WHERE NOT EXISTS \(SELECT 1 FROM orders o WHERE o\.id = j\.order_id\)$/i;
+
   for (const sql of statements) {
     assert.doesNotMatch(sql, /\bDROP\b/i);
     assert.doesNotMatch(sql, /\bTRUNCATE\b/i);
-    assert.doesNotMatch(sql, /\bDELETE\s+FROM\b/i);
     assert.doesNotMatch(sql, /\bUPDATE\s+sheet_sync_jobs\s+SET\b/i);
+    if (/\bDELETE\s+FROM\b/i.test(sql)) {
+      assert.match(sql, ORPHAN_CLEANUP, '고아 정리 외의 삭제는 허용하지 않는다');
+    }
   }
 });
 
