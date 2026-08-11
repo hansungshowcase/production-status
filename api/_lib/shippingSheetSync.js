@@ -115,6 +115,9 @@ export async function syncShippedOrderToSheet(
   {
     markShipped = markOrderShippedOnSheet,
     failureStatus = 'pending',
+    // 사용자 요청 안에서 부르는 즉시 시도는 짧게 끊는다(브라우저 15초 한도).
+    // 크론 재시도는 기본값(30초)을 그대로 쓴다.
+    timeoutMs = undefined,
     shipDate = order?.shipping_sheet_sync_ship_date ?? order?.ship_date,
   } = {},
 ) {
@@ -145,7 +148,7 @@ export async function syncShippedOrderToSheet(
   const deliveryShipDate = normalizedShipDate(claimed.ship_date) || validShipDate;
 
   try {
-    const result = await markShipped(order, deliveryShipDate);
+    const result = await markShipped(order, deliveryShipDate, timeoutMs ? { timeoutMs } : undefined);
     if (!Number.isInteger(result?.updatedRow) || result.updatedRow <= 0) {
       throw new Error('Google Sheets shipping update did not return a positive integer updatedRow');
     }

@@ -8,6 +8,11 @@ const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
 const WEBHOOK_TIMEOUT_MS = 15_000;
 // 출고 전용: Apps Script 스크립트 락 대기(25초)를 백엔드가 먼저 끊지 않도록 더 길게 잡는다.
 const SHIPPING_WEBHOOK_TIMEOUT_MS = 30_000;
+// 출고 버튼을 누른 요청 안에서 시트 응답을 30초까지 기다리면 브라우저(15초)가 먼저 끊어
+// "요청 시간이 초과되었습니다" 가 뜬다 — 출고는 이미 DB 에 반영된 뒤라 사용자만 실패로 오해한다.
+// 즉시 시도는 짧게 끊고, 못 하면 pending 으로 남겨 매시 크론이 30초 예산으로 재시도한다.
+// 예산: 알림 5초 + 시트 5초 + DB 1~2초 = 최대 12초로 브라우저 15초 안에 들어온다.
+export const SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS = 5_000;
 const SHIPPED_VALUE_PREFIX = '출고완료 · ';
 
 let cachedToken = null;
@@ -136,7 +141,7 @@ async function deleteViaWebhook(order) {
   }
 }
 
-export async function markOrderShippedOnSheet(order, shipDate) {
+export async function markOrderShippedOnSheet(order, shipDate, { timeoutMs = SHIPPING_WEBHOOK_TIMEOUT_MS } = {}) {
   const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
   if (!webhookUrl) {
     throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
@@ -151,7 +156,7 @@ export async function markOrderShippedOnSheet(order, shipDate) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SHIPPING_WEBHOOK_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(webhookUrl, {
@@ -198,7 +203,7 @@ export async function markOrderShippedOnSheet(order, shipDate) {
 
 // 되돌리기 전용: 시트 E열에서 해당 출고완료 값 1개만 걷어낸다(메모 보존).
 // markOrderShippedOnSheet 와 동일 구조·동일 타임아웃 — 실패는 호출부에서 fail-open 처리한다.
-export async function clearShippedOnSheet(order, shipDate) {
+export async function clearShippedOnSheet(order, shipDate, { timeoutMs = SHIPPING_WEBHOOK_TIMEOUT_MS } = {}) {
   const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
   if (!webhookUrl) {
     throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
@@ -213,7 +218,7 @@ export async function clearShippedOnSheet(order, shipDate) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SHIPPING_WEBHOOK_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(webhookUrl, {

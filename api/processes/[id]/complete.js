@@ -7,6 +7,7 @@ import { kstTodayStr } from '../../_lib/notify.js';
 import { syncShippedOrderToSheet } from '../../_lib/shippingSheetSync.js';
 import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
 import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
+import { SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS } from '../../_lib/googleSheets.js';
 
 // 유니크 인덱스가 경쟁을 막아준 경우(다른 요청이 먼저 '출고' 행을 만든 경우)를 식별한다.
 function isUniqueViolation(error) {
@@ -261,7 +262,7 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
       }
 
       try {
-        const syncResult = await syncShippingSheet(db, shippedOrder);
+        const syncResult = await syncShippingSheet(db, shippedOrder, { timeoutMs: SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS });
         if (syncResult?.status !== 'synced' && !syncResult?.skipped) {
           console.warn(
             `[complete] shipping Sheet immediate sync failed for order ${shippedOrder.id} (${today}); job remains retryable:`,

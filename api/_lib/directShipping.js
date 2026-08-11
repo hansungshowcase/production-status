@@ -1,6 +1,7 @@
 import { kstTodayStr } from './notify.js';
 import { syncShippedOrderToSheet } from './shippingSheetSync.js';
 import { ensureShippingSheetSyncSchema } from './shippingSheetSyncSchema.js';
+import { SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS } from './googleSheets.js';
 
 async function defaultNotify(db, order) {
   const { maybeNotify } = await import('./notify.js');
@@ -107,7 +108,7 @@ export async function completeOrderShipping({
   }
 
   try {
-    const syncResult = await syncShippingSheet(db, updatedOrder);
+    const syncResult = await syncShippingSheet(db, updatedOrder, { timeoutMs: SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS });
     if (syncResult?.status !== 'synced' && !syncResult?.skipped) {
       console.warn(
         `[direct-shipping] shipping Sheet immediate sync failed for order ${updatedOrder.id} (${today}); job remains retryable:`,

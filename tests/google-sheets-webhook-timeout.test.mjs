@@ -384,13 +384,44 @@ test('Google Sheets webhook keeps the bounded Apps Script cold-start timeout', a
     source,
     /async function appendViaWebhook[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), WEBHOOK_TIMEOUT_MS\)/,
   );
-  assert.match(
-    source,
-    /function markOrderShippedOnSheet[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), SHIPPING_WEBHOOK_TIMEOUT_MS\)/,
-  );
-  assert.match(
-    source,
-    /function clearShippedOnSheet[\s\S]*?setTimeout\(\(\) => controller\.abort\(\), SHIPPING_WEBHOOK_TIMEOUT_MS\)/,
+  // 출고 웹훅은 기본 30초(크론 재시도용)를 쓰되, 호출자가 더 짧게 줄 수 있어야 한다.
+  // 사용자 요청 안에서 30초를 기다리면 브라우저(15초)가 먼저 끊어 "요청 시간이 초과되었습니다"
+  // 가 뜨는데, 출고는 이미 DB 에 반영된 뒤라 사용자만 실패로 오해한다.
+  for (const fn of ['markOrderShippedOnSheet', 'clearShippedOnSheet']) {
+    assert.match(
+      source,
+      new RegExp(`function ${fn}\\(order, shipDate, \\{ timeoutMs = SHIPPING_WEBHOOK_TIMEOUT_MS \\} = \\{\\}\\)`),
+      `${fn} 은 타임아웃을 주입받을 수 있어야 한다`,
+    );
+    assert.match(
+      source,
+      new RegExp(`function ${fn}[\\s\\S]*?setTimeout\\(\\(\\) => controller\\.abort\\(\\), timeoutMs\\)`),
+      `${fn} 은 주입된 타임아웃을 실제로 써야 한다`,
+    );
+  }
+  assert.match(source, /export const SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS = 5_000;/);
+});
+
+test('출고 버튼 경로는 짧은 타임아웃으로 즉시 시도하고, 못 하면 크론에 맡긴다', async () => {
+  const direct = await readFile(new URL('../api/_lib/directShipping.js', import.meta.url), 'utf8');
+  const complete = await readFile(new URL('../api/processes/[id]/complete.js', import.meta.url), 'utf8');
+  const outbox = await readFile(new URL('../api/_lib/shippingSheetSync.js', import.meta.url), 'utf8');
+
+  for (const [name, src] of [['directShipping', direct], ['complete', complete]]) {
+    assert.match(
+      src,
+      /syncShippingSheet\(db, \w+, \{ timeoutMs: SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS \}\)/,
+      `${name} 의 즉시 동기화는 짧은 타임아웃을 써야 한다`,
+    );
+    assert.match(src, /import \{ SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS \}/);
+  }
+
+  // 크론 재시도는 기본값(30초)을 그대로 쓴다 — timeoutMs 를 넘기지 않는다.
+  assert.match(outbox, /markShipped\(order, deliveryShipDate, timeoutMs \? \{ timeoutMs \} : undefined\)/);
+  assert.doesNotMatch(
+    outbox,
+    /retryPendingShippingSheetSync[\s\S]*?timeoutMs:/,
+    '크론 경로는 짧은 타임아웃을 쓰면 안 된다',
   );
 });
 
