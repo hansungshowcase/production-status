@@ -18,6 +18,7 @@ const REFRESH_INTERVAL = 180000;
 const STATS_REFRESH_INTERVAL = 120000;
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const PROCESS_UNDO_MANAGER = '김보수 팀장';
+const PAGE_SIZE = 10;
 
 // 현직 영업 담당자와 일치해야 한다. 백엔드 지연경보 라우팅(api/_lib/alertRoutes.js)과
 // 주문 등록 허용 담당자(api/_lib/orderCreateInput.js ALLOWED_SALES_PERSONS)도 같은 두 명이다.
@@ -130,6 +131,11 @@ export default function WorkerStationViewPage() {
   const [orderSearch, setOrderSearch] = useState('');
   const [focusedOrderId, setFocusedOrderId] = useState(null);
   const [undoAction, setUndoAction] = useState(null);
+  // 알림 두 개는 접어 둔다. 지연이 22건까지 늘어나면서 목록이 화면을 다 덮어
+  // 정작 아래 작업현황이 안 보였다(2026-08-11 요청). 제목을 누르면 펼친다.
+  const [dueTodayAlertOpen, setDueTodayAlertOpen] = useState(false);
+  const [delayedAlertOpen, setDelayedAlertOpen] = useState(false);
+  const [page, setPage] = useState(1);
   const prevIssueCountRef = useRef(0);
   const prevOverdueKeyRef = useRef('');
 
@@ -636,6 +642,12 @@ export default function WorkerStationViewPage() {
   const overdueKey = overdueAlertItems.map(i => `${i.order_id || ''}:${i.process_id || ''}`).sort().join(',');
   const focusOrderId = location.state?.focusOrderId;
 
+  // 검색어를 바꾸거나 다른 공정으로 옮기면 1페이지부터 본다.
+  // 3페이지를 보던 중 검색해서 결과가 2건이면 빈 화면이 뜬다.
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, decodedStep]);
+
   // 새 이슈 발생 시 확인 상태 리셋 (렌더 중 setState 금지 → useEffect로)
   useEffect(() => {
     if (totalOpenIssues > prevIssueCountRef.current) {
@@ -660,12 +672,22 @@ export default function WorkerStationViewPage() {
   function focusOrderCard(orderId, processId) {
     setFocusedOrderId(orderId);
     if (processId) setExpandedId(processId);
-    requestAnimationFrame(() => {
-      cardRefs.current.get(String(orderId))?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
-    });
+    // 찾는 주문이 다른 페이지에 있으면 스크롤해 봐야 카드가 없다. 그 페이지로 먼저 넘긴다.
+    const targetIndex = [...visibleItems].sort(sortByDueDate)
+      .findIndex(item => String(item.order_id) === String(orderId));
+    if (targetIndex >= 0) setPage(Math.floor(targetIndex / PAGE_SIZE) + 1);
+    // 페이지를 넘기면 카드가 다음 렌더에야 생긴다. 한 프레임만 기다리면 놓치므로 몇 번 더 본다.
+    let framesLeft = 10;
+    const scrollWhenReady = () => {
+      const node = cardRefs.current.get(String(orderId));
+      if (node) {
+        node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      framesLeft -= 1;
+      if (framesLeft > 0) requestAnimationFrame(scrollWhenReady);
+    };
+    requestAnimationFrame(scrollWhenReady);
   }
 
   useEffect(() => {
@@ -693,6 +715,13 @@ export default function WorkerStationViewPage() {
 
   const sorted = [...visibleItems].sort(sortByDueDate);
   const sortedOverdueAlertItems = [...overdueAlertItems].sort(sortByDueDate);
+
+  // 한 화면에 10개씩만 보여준다. 공정 하나에 수십 건이 쌓이면 스크롤로는 못 찾는다.
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  // 목록이 줄어 현재 페이지가 사라졌을 때(완료 처리·검색) 빈 화면이 뜨지 않도록 한다.
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pagedItems = sorted.slice(pageStart, pageStart + PAGE_SIZE);
 
   function getDday(dueDate) {
     const diff = getDaysUntilDue(dueDate);
@@ -908,7 +937,12 @@ export default function WorkerStationViewPage() {
           </div>
           {dueTodayOrders.length > 0 && (
             <div className="factory-delay-alert factory-delay-alert--today">
-              <div className="factory-delay-alert__head">
+              <button
+                type="button"
+                className="factory-delay-alert__head factory-delay-alert__head--toggle"
+                onClick={() => setDueTodayAlertOpen(open => !open)}
+                aria-expanded={dueTodayAlertOpen}
+              >
                 <div>
                   <span className="factory-delay-alert__eyebrow">금일 출고 알림</span>
                   <strong className="factory-delay-alert__title">오늘 출고 대상 {dueTodayOrdersTotalCount}건</strong>
@@ -916,8 +950,11 @@ export default function WorkerStationViewPage() {
                     오늘 납기 건입니다. 출고 전까지 현재 공정과 담당자를 확인해 주세요.
                   </p>
                 </div>
-              </div>
-              <div className="factory-delay-alert__list">
+                <span className="factory-delay-alert__toggle">
+                  {dueTodayAlertOpen ? '접기 ▲' : `전체 보기 ▼`}
+                </span>
+              </button>
+              <div className={`factory-delay-alert__list${dueTodayAlertOpen ? '' : ' factory-delay-alert__list--collapsed'}`}>
                 {dueTodayOrders.map(order => {
                   const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
                   const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
@@ -942,7 +979,12 @@ export default function WorkerStationViewPage() {
           )}
           {delayedOrders.length > 0 && (
             <div className="factory-delay-alert">
-              <div className="factory-delay-alert__head">
+              <button
+                type="button"
+                className="factory-delay-alert__head factory-delay-alert__head--toggle"
+                onClick={() => setDelayedAlertOpen(open => !open)}
+                aria-expanded={delayedAlertOpen}
+              >
                 <div>
                   <span className="factory-delay-alert__eyebrow">납기초과 알림</span>
                   <strong className="factory-delay-alert__title">지연 작업 {delayedOrdersTotalCount}건</strong>
@@ -959,8 +1001,11 @@ export default function WorkerStationViewPage() {
                     ))}
                   </div>
                 )}
-              </div>
-              <div className="factory-delay-alert__list">
+                <span className="factory-delay-alert__toggle">
+                  {delayedAlertOpen ? '접기 ▲' : '전체 보기 ▼'}
+                </span>
+              </button>
+              <div className={`factory-delay-alert__list${delayedAlertOpen ? '' : ' factory-delay-alert__list--collapsed'}`}>
                 {delayedOrders.map(order => {
                   const product = [order.product_type, order.door_type].filter(Boolean).join(' / ') || '제품 미입력';
                   const size = [order.width, order.depth, order.height].filter(Boolean).join('x');
@@ -1114,7 +1159,7 @@ export default function WorkerStationViewPage() {
           </div>
         )}
 
-        {!loading && !error && sorted.map((item) => {
+        {!loading && !error && pagedItems.map((item) => {
           const sKey = statusKey(item.status);
           const isActioning = actionLoading === item.process_id;
           const isDirectShipping = actionLoading === `ship-${item.order_id}`;
@@ -1333,6 +1378,43 @@ export default function WorkerStationViewPage() {
             </div>
           );
         })}
+
+        {!loading && !error && pageCount > 1 && (
+          <div className="station-view__pager">
+            <span className="station-view__pager-info">
+              {sorted.length}건 중 {pageStart + 1}~{Math.min(pageStart + PAGE_SIZE, sorted.length)}번째
+            </span>
+            <div className="station-view__pager-buttons">
+              <button
+                type="button"
+                className="station-view__pager-btn"
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+              >
+                이전
+              </button>
+              {Array.from({ length: pageCount }, (_, index) => index + 1).map(pageNumber => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  className={`station-view__pager-btn station-view__pager-btn--num${pageNumber === currentPage ? ' station-view__pager-btn--current' : ''}`}
+                  onClick={() => setPage(pageNumber)}
+                  aria-current={pageNumber === currentPage ? 'page' : undefined}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="station-view__pager-btn"
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage >= pageCount}
+              >
+                다음
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Global Popup: Confirm ── */}

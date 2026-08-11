@@ -633,10 +633,55 @@
   font-weight: 800;
 }
 
+/* 제목 줄 전체가 펼침 버튼이다. 손가락으로 눌러야 하므로 넓게 잡는다. */
+.factory-delay-alert__head--toggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.factory-delay-alert__head--toggle:hover .factory-delay-alert__toggle,
+.factory-delay-alert__head--toggle:focus-visible .factory-delay-alert__toggle {
+  background: #dc2626;
+  color: #fff;
+}
+
+.factory-delay-alert__toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.factory-delay-alert--today .factory-delay-alert__toggle {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.factory-delay-alert--today .factory-delay-alert__head--toggle:hover .factory-delay-alert__toggle,
+.factory-delay-alert--today .factory-delay-alert__head--toggle:focus-visible .factory-delay-alert__toggle {
+  background: #d97706;
+  color: #fff;
+}
+
 .factory-delay-alert__list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+/* 접힌 상태에서는 목록을 아예 그리지 않는다. 높이만 0으로 만들면 화면 낭독기가 계속 읽는다. */
+.factory-delay-alert__list--collapsed {
+  display: none;
 }
 
 .factory-delay-alert__item {
@@ -1045,6 +1090,62 @@
   padding: 40px 16px;
   font-size: 14px;
   color: #888;
+}
+
+/* ── 페이지 넘김 (10건씩) ── */
+.station-view__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.station-view__pager-info {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.station-view__pager-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.station-view__pager-btn {
+  min-width: 40px;
+  /* 현장에서 장갑 낀 손으로 누른다. 손가락 최소 크기를 지킨다. */
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.station-view__pager-btn:hover:not(:disabled) {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+.station-view__pager-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.station-view__pager-btn--current {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
 }
 
 /* ── Table header ── */
@@ -2411,6 +2512,13 @@
   .factory-delay-alert__message {
     font-size: 13px;
     line-height: 1.5;
+  }
+
+  /* 모바일에서는 제목 아래로 떨어지므로 가로 전체를 눌리게 한다. */
+  .factory-delay-alert__toggle {
+    align-self: stretch;
+    padding: 12px;
+    text-align: center;
   }
 
   .factory-delay-alert__list {
