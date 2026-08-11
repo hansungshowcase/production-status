@@ -180,7 +180,7 @@ async function loadCompleteOrderShipping(t) {
   return module.completeOrderShipping;
 }
 
-test('direct shipping creates only shipping, records the worker, and ignores notification failure', async (t) => {
+test('direct shipping creates only shipping, records the worker, ignores notification failure, and never calls the sheet in-request', async (t) => {
   const completeOrderShipping = await loadCompleteOrderShipping(t);
   if (!completeOrderShipping) return;
   const db = makeDb({
@@ -188,8 +188,15 @@ test('direct shipping creates only shipping, records the worker, and ignores not
     processes: [{ id: 3, order_id: 41, step_name: '절곡', status: 'in_progress' }],
   });
   const originalDateNow = Date.now;
+  const originalFetch = globalThis.fetch;
   Date.now = () => Date.parse('2026-08-03T15:30:00.000Z');
   const syncCalls = [];
+  let webhookCalls = 0;
+  // 구글 시트 왕복이 3~4초라 출고 버튼이 그만큼 느려졌다. 이제 시트 기입은 크론만 한다.
+  globalThis.fetch = async () => {
+    webhookCalls += 1;
+    throw new Error('출고 요청 경로에서 시트 웹훅을 부르면 안 된다');
+  };
 
   let result;
   try {
@@ -198,6 +205,7 @@ test('direct shipping creates only shipping, records the worker, and ignores not
       orderId: 41,
       actor: '작업자 A',
       notify: async () => { throw new Error('notification offline'); },
+      // 즉시 동기화 주입 지점 자체가 사라졌다. 넘겨도 무시되어야 한다.
       syncShippingSheet: async (receivedDb, receivedOrder) => {
         syncCalls.push({ receivedDb, receivedOrder });
         return { status: 'synced', updatedRow: 41 };
@@ -205,6 +213,7 @@ test('direct shipping creates only shipping, records the worker, and ignores not
     });
   } finally {
     Date.now = originalDateNow;
+    globalThis.fetch = originalFetch;
   }
 
   assert.equal(result.status, 200);
@@ -215,12 +224,12 @@ test('direct shipping creates only shipping, records the worker, and ignores not
   assert.equal(db.state.processes.find((process) => process.step_name === '절곡').status, 'in_progress');
   assert.equal(db.state.activity[0].action_type, '출고완료');
   assert.equal(db.state.activity[0].actor, '작업자 A');
+  // 잡 적재는 주문 UPDATE 와 같은 CTE 안에서 그대로 일어나야 한다 — 크론이 이걸 보고 시트를 채운다.
   assert.deepEqual(db.state.shippingJobs.map(({ order_id, ship_date, status }) => ({ order_id, ship_date, status })), [
     { order_id: 41, ship_date: '2026-08-04', status: 'pending' },
   ]);
-  assert.equal(syncCalls.length, 1);
-  assert.equal(syncCalls[0].receivedDb, db);
-  assert.equal(syncCalls[0].receivedOrder.ship_date, '2026-08-04');
+  assert.equal(syncCalls.length, 0, '출고 요청 안에서는 시트 동기화를 시도하지 않는다');
+  assert.equal(webhookCalls, 0, '출고 요청 중 시트 웹훅 호출은 0회여야 한다');
   assert.ok(
     db.state.statements.findIndex((statement) => statement.startsWith('CREATE TABLE IF NOT EXISTS sheet_shipping_sync_jobs'))
       < db.state.statements.findIndex((statement) => statement.startsWith('WITH claimed_order AS')),
@@ -305,7 +314,7 @@ test('direct shipping does not write a duplicate process, feed entry, or notific
   assert.equal(syncCount, 0);
 });
 
-test('direct shipping keeps a same-date synced job terminal while still attempting immediate sync once', async (t) => {
+test('direct shipping keeps a same-date synced job terminal without any in-request sync attempt', async (t) => {
   const completeOrderShipping = await loadCompleteOrderShipping(t);
   if (!completeOrderShipping) return;
   const originalDateNow = Date.now;
@@ -342,7 +351,7 @@ test('direct shipping keeps a same-date synced job terminal while still attempti
     Date.now = originalDateNow;
   }
 
-  assert.equal(syncCount, 1);
+  assert.equal(syncCount, 0, '이미 같은 날짜로 동기화된 잡에도 즉시 시도를 하지 않는다');
   assert.deepEqual(db.state.shippingJobs[0], {
     order_id: 46,
     ship_date: '2026-08-04',
@@ -400,7 +409,7 @@ test('direct shipping reopens a different-date synced job without resetting its 
   });
 });
 
-test('direct shipping sync failure stays nonfatal and leaves its atomic job retryable', async (t) => {
+test('direct shipping returns 200 with a retryable queued job even when the sheet is unreachable', async (t) => {
   const completeOrderShipping = await loadCompleteOrderShipping(t);
   if (!completeOrderShipping) return;
   const db = makeDb({
@@ -410,9 +419,16 @@ test('direct shipping sync failure stays nonfatal and leaves its atomic job retr
   const warnings = [];
   const originalWarn = console.warn;
   const originalDateNow = Date.now;
+  const originalFetch = globalThis.fetch;
   Date.now = () => Date.parse('2026-08-03T15:30:00.000Z');
   console.warn = (...args) => warnings.push(args.join(' '));
   let syncCount = 0;
+  let webhookCalls = 0;
+  // 시트가 죽어 있어도 출고 요청은 시트를 부르지 않으므로 아예 영향을 받지 않아야 한다.
+  globalThis.fetch = async () => {
+    webhookCalls += 1;
+    throw new Error('shipping webhook unavailable');
+  };
 
   try {
     const result = await completeOrderShipping({
@@ -429,15 +445,25 @@ test('direct shipping sync failure stays nonfatal and leaves its atomic job retr
   } finally {
     console.warn = originalWarn;
     Date.now = originalDateNow;
+    globalThis.fetch = originalFetch;
   }
 
-  assert.equal(syncCount, 1);
+  assert.equal(syncCount, 0, '출고 요청 안에서는 시트 동기화를 시도하지 않는다');
+  assert.equal(webhookCalls, 0, '출고 요청 중 시트 웹훅 호출은 0회여야 한다');
+  assert.equal(db.state.order.status, 'shipped');
   assert.equal(db.state.shippingJobs.length, 1);
-  assert.equal(db.state.shippingJobs[0].status, 'pending');
-  assert.match(warnings.join('\n'), /shipping webhook unavailable/);
-  assert.match(warnings.join('\n'), /retry/i);
-  assert.match(warnings.join('\n'), /order 48/i);
-  assert.match(warnings.join('\n'), /2026-08-04/);
+  assert.deepEqual(db.state.shippingJobs[0], {
+    order_id: 48,
+    ship_date: '2026-08-04',
+    status: 'pending',
+    attempts: 0,
+    last_error: null,
+    last_attempt_at: null,
+    synced_at: null,
+    sheet_row: null,
+  });
+  // 시도 자체를 안 하므로 실패 경고도 없어야 한다(있으면 요청 경로가 아직 시트를 만지고 있다는 뜻).
+  assert.equal(warnings.join('\n'), '', '출고 요청 경로는 시트 동기화 경고를 남기지 않는다');
 });
 
 test('direct shipping rolls back the order claim when its atomic shipment mutation fails', async (t) => {

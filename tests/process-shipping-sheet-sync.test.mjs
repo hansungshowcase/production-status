@@ -140,19 +140,27 @@ function dependencies(db, { notify, syncShippingSheet } = {}) {
   };
 }
 
-test('final shipping completion atomically queues the KST date and attempts one immediate sync', async (t) => {
+test('final shipping completion atomically queues the KST date without any in-request sheet call', async (t) => {
   const handleCompleteProcess = await loadHandleCompleteProcess(t);
   if (!handleCompleteProcess) return;
   const db = makeDb();
   const res = makeResponse();
   const originalDateNow = Date.now;
+  const originalFetch = globalThis.fetch;
   Date.now = () => Date.parse('2026-08-03T15:30:00.000Z');
   const syncCalls = [];
   let notificationCount = 0;
+  let webhookCalls = 0;
+  // 출고 공정 완료도 directShipping 과 같다 — 시트 기입은 크론에 맡긴다.
+  globalThis.fetch = async () => {
+    webhookCalls += 1;
+    throw new Error('출고 공정 완료 경로에서 시트 웹훅을 부르면 안 된다');
+  };
 
   try {
     await handleCompleteProcess(makeRequest(), res, dependencies(db, {
       notify: async () => { notificationCount += 1; },
+      // 즉시 동기화 주입 지점 자체가 사라졌다. 넘겨도 무시되어야 한다.
       syncShippingSheet: async (receivedDb, receivedOrder) => {
         syncCalls.push({ receivedDb, receivedOrder });
         return { status: 'synced', updatedRow: 173 };
@@ -160,6 +168,7 @@ test('final shipping completion atomically queues the KST date and attempts one 
     }));
   } finally {
     Date.now = originalDateNow;
+    globalThis.fetch = originalFetch;
   }
 
   assert.equal(res.statusCode, 200);
@@ -172,9 +181,8 @@ test('final shipping completion atomically queues the KST date and attempts one 
     status: 'pending',
     attempts: 0,
   }]);
-  assert.equal(syncCalls.length, 1);
-  assert.equal(syncCalls[0].receivedDb, db);
-  assert.equal(syncCalls[0].receivedOrder.ship_date, '2026-08-04');
+  assert.equal(syncCalls.length, 0, '출고 공정 완료 안에서는 시트 동기화를 시도하지 않는다');
+  assert.equal(webhookCalls, 0, '출고 공정 완료 중 시트 웹훅 호출은 0회여야 한다');
   assert.equal(notificationCount, 1);
   assert.deepEqual(db.state.activity.map(({ action_type }) => action_type), ['공정완료', '출고완료']);
   const schemaIndex = db.state.statements.findIndex((statement) => statement.startsWith('CREATE TABLE IF NOT EXISTS sheet_shipping_sync_jobs'));
@@ -225,17 +233,23 @@ test('a lost final order claim preserves process success without a job, shipping
   assert.deepEqual(db.state.activity.map(({ action_type }) => action_type), ['공정완료']);
 });
 
-test('final shipping sync failure stays HTTP 200, retryable, and emits one actionable warning', async (t) => {
+test('final shipping completion stays HTTP 200 with a retryable queued job even when the sheet is unreachable', async (t) => {
   const handleCompleteProcess = await loadHandleCompleteProcess(t);
   if (!handleCompleteProcess) return;
   const db = makeDb();
   const res = makeResponse();
   const originalDateNow = Date.now;
   const originalWarn = console.warn;
+  const originalFetch = globalThis.fetch;
   Date.now = () => Date.parse('2026-08-03T15:30:00.000Z');
   const warnings = [];
   console.warn = (...args) => warnings.push(args.join(' '));
   let syncCount = 0;
+  let webhookCalls = 0;
+  globalThis.fetch = async () => {
+    webhookCalls += 1;
+    throw new Error('process shipping webhook unavailable');
+  };
 
   try {
     await handleCompleteProcess(makeRequest(), res, dependencies(db, {
@@ -247,15 +261,22 @@ test('final shipping sync failure stays HTTP 200, retryable, and emits one actio
   } finally {
     Date.now = originalDateNow;
     console.warn = originalWarn;
+    globalThis.fetch = originalFetch;
   }
 
   assert.equal(res.statusCode, 200);
-  assert.equal(syncCount, 1);
-  assert.equal(db.state.shippingJobs[0].status, 'pending');
-  assert.match(warnings.join('\n'), /process shipping webhook unavailable/);
-  assert.match(warnings.join('\n'), /retry/i);
-  assert.match(warnings.join('\n'), /order 173/i);
-  assert.match(warnings.join('\n'), /2026-08-04/);
+  assert.equal(syncCount, 0, '출고 공정 완료 안에서는 시트 동기화를 시도하지 않는다');
+  assert.equal(webhookCalls, 0, '출고 공정 완료 중 시트 웹훅 호출은 0회여야 한다');
+  assert.equal(db.state.order.status, 'shipped');
+  // 시트가 죽어 있어도 잡은 pending 으로 남아 크론이 그대로 재시도할 수 있어야 한다.
+  assert.deepEqual(db.state.shippingJobs, [{
+    order_id: 173,
+    ship_date: '2026-08-04',
+    status: 'pending',
+    attempts: 0,
+  }]);
+  // 시도 자체를 안 하므로 실패 경고도 없어야 한다(있으면 요청 경로가 아직 시트를 만지고 있다는 뜻).
+  assert.equal(warnings.join('\n'), '', '출고 공정 완료 경로는 시트 동기화 경고를 남기지 않는다');
 });
 
 test('a lost process claim returns 409 and creates no shipping job or immediate sync', async (t) => {

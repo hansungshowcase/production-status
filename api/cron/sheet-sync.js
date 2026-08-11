@@ -43,7 +43,7 @@ export async function handleSheetSyncCron(
   const appendSummary = await retry(db, { limit: 25, deadlineMs: SYNC_DEADLINE_MS });
   const remainingDeadlineMs = Math.max(0, SYNC_DEADLINE_MS - (Date.now() - startedAt));
   const shippingSummary = await retryShipping(db, {
-    limit: 10,
+    limit: 25,
     deadlineMs: remainingDeadlineMs,
   });
   return res.json({

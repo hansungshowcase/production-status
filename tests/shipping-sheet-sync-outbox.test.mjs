@@ -544,6 +544,67 @@ test('retry client failures persist a durable failed state', async () => {
   assert.match(db.jobs.get(73).last_error, /retry delivery failed/);
 });
 
+test('one cron sweep spends the 10s attempt budget on several jobs instead of stalling after one', async () => {
+  const { retryPendingShippingSheetSync } = await loadShippingSheetSync();
+  const db = new FakeShippingOutboxDb();
+  for (const orderId of [74, 75, 76, 77, 78, 79]) {
+    db.orders.set(orderId, {
+      id: orderId,
+      client_name: `shipping client ${orderId}`,
+      status: 'shipped',
+      ship_date: '2026-08-04',
+    });
+    db.jobs.set(orderId, {
+      order_id: orderId,
+      ship_date: '2026-08-04',
+      status: 'pending',
+      attempts: 0,
+      last_error: null,
+      last_attempt_at: null,
+      synced_at: null,
+      sheet_row: null,
+      created_at: new Date(fixedNow - 60_000).toISOString(),
+      updated_at: new Date(fixedNow - 60_000).toISOString(),
+    });
+  }
+
+  const originalDateNow = Date.now;
+  let clock = fixedNow;
+  Date.now = () => clock;
+  const delivered = [];
+  let summary;
+
+  try {
+    summary = await retryPendingShippingSheetSync(db, {
+      limit: 25,
+      deadlineMs: 25_000,
+      markShipped: async (order) => {
+        delivered.push(order.id);
+        clock += 3_500; // 실측 왕복 3~4초
+        return { updatedRow: 200 + order.id };
+      },
+    });
+  } finally {
+    Date.now = originalDateNow;
+  }
+
+  // 건당 예약 예산이 10초(+상태 기록 1초)라 25초 예산에 5건이 들어간다.
+  // 예전 15초 예약이었다면 같은 조건에서 3건에서 멈췄다.
+  assert.equal(summary.attempted, 5, '한 번 실행에 여러 건을 처리해야 한다');
+  assert.equal(summary.synced, 5);
+  assert.equal(summary.failed, 0);
+  assert.deepEqual(delivered, [73, 74, 75, 76, 77]);
+  for (const orderId of delivered) {
+    assert.equal(db.jobs.get(orderId).status, 'synced');
+    assert.equal(db.jobs.get(orderId).sheet_row, 200 + orderId);
+  }
+  // 남은 건은 손대지 않은 채 다음 실행으로 넘어가야 한다(5분 뒤 크론).
+  for (const orderId of [78, 79]) {
+    assert.equal(db.jobs.get(orderId).status, 'pending');
+    assert.equal(db.jobs.get(orderId).attempts, 0);
+  }
+});
+
 test('cron authorizes first, installs shipping schema, then retries append before shipping', async () => {
   const { handleSheetSyncCron } = await import('../api/cron/sheet-sync.js');
   const originalSecret = process.env.CRON_SECRET;
@@ -579,12 +640,14 @@ test('cron authorizes first, installs shipping schema, then retries append befor
     }, authorized, db, {
       retry: async (_db, options) => {
         events.push('append-retry');
-        assert.deepEqual(options, { limit: 10, deadlineMs: 20_000 });
+        // Vercel 함수 한도 30초 안에서 25초까지 쓴다.
+        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
         return appendSummary;
       },
       retryShipping: async (_db, options) => {
         events.push('shipping-retry');
-        assert.deepEqual(options, { limit: 10, deadlineMs: 20_000 });
+        // 출고 재시도는 append 가 쓰고 남은 예산을 받는다(Date.now 고정이라 25초 그대로).
+        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
         return shippingSummary;
       },
     });

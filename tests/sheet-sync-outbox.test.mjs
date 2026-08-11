@@ -677,7 +677,8 @@ test('dedicated sheet-sync cron is CRON_SECRET protected and leaves notification
     }, authorized, db, {
       retry: async (_db, options) => {
         retryCalls += 1;
-        assert.deepEqual(options, { limit: 10, deadlineMs: 20_000 });
+        // Vercel 함수 한도 30초 안에서 25초까지 쓰고, 한 번에 최대 25건을 훑는다.
+        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
         return { attempted: 1, synced: 1, failed: 0, skipped: 0, errors: [] };
       },
     });
@@ -698,4 +699,8 @@ test('dedicated sheet-sync cron is CRON_SECRET protected and leaves notification
   const sheetCron = vercelConfig.crons.filter((cron) => cron.path === '/api/cron/sheet-sync');
   assert.equal(sheetCron.length, 1);
   assert.match(sheetCron[0].schedule, /^\S+ \S+ \* \* \*$/);
+  // 시트 기입이 이제 전적으로 이 크론에 달려 있으므로 시간당 1회로는 부족하다.
+  const [minuteField, hourField] = sheetCron[0].schedule.split(' ');
+  assert.equal(minuteField, '*/5', 'sheet-sync 크론은 5분마다 돌아야 한다');
+  assert.equal(hourField, '*', 'sheet-sync 크론은 매시간 돌아야 한다');
 });

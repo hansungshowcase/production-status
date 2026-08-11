@@ -211,6 +211,9 @@ export async function retryPendingShippingSheetSync(
       markShipped,
       failureStatus: 'failed',
       shipDate: order.shipping_sheet_sync_ship_date,
+      // 웹훅 기본값은 30초라 한 건이 매달리면 크론 데드라인(25초)과 함수 한도(30초)를 넘긴다.
+      // 예약해 둔 건당 예산과 같은 값으로 끊는다.
+      timeoutMs: WEBHOOK_ATTEMPT_BUDGET_MS,
     });
     if (result.skipped) {
       summary.skipped += 1;
