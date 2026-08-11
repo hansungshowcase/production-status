@@ -421,6 +421,24 @@ test('schema reconciliation never drops or rewrites existing job data', async ()
   }
 });
 
+// 출고 큐와 같은 굶주림 문제. 오래된 실패 잡이 매 실행 예산을 선점하면 새 주문이 시트에 못 올라간다.
+test('append retry picks the least-attempted job first and drops jobs past the attempt limit', async () => {
+  const { retryPendingSheetSync } = await import('../api/_lib/sheetSync.js');
+  let selectSql = null;
+  await retryPendingSheetSync({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      if (/^SELECT o\.\*/i.test(sql)) selectSql = sql;
+      return { rows: [] };
+    },
+  }, { limit: 25, deadlineMs: 25_000 });
+
+  assert.ok(selectSql, '재시도 대상 조회가 실행되어야 한다');
+  assert.match(selectSql, /ORDER BY j\.attempts,\s*j\.created_at/i);
+  assert.match(selectSql, /j\.attempts < 10/i);
+  assert.doesNotMatch(selectSql, /\bDELETE\b/i);
+});
+
 test('order creation executes the order insert and pending job insert in one data-modifying CTE', async () => {
   const stopAfterAtomicInsert = new Error('stop after atomic insert');
   const db = new FakeOrderDb();

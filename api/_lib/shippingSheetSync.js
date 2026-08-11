@@ -10,6 +10,13 @@ const WEBHOOK_ATTEMPT_BUDGET_MS = 10_000;
 const JOB_STATE_WRITE_MARGIN_MS = 1_000;
 const MINIMUM_JOB_BUDGET_MS = WEBHOOK_ATTEMPT_BUDGET_MS + JOB_STATE_WRITE_MARGIN_MS;
 
+// 시트에 행 자체가 없는 주문(주문 266 신현섭, 260 빠니노)은 몇 번을 재시도해도 성공하지 못한다.
+// 그런데 created_at 순으로 뽑으면 가장 오래된 이 두 건이 매 실행마다 먼저 예산을 다 쓰고 실패해,
+// 뒤에 줄 선 정상 출고 6건이 영영 차례를 못 받았다(2026-08-11 실측: 시도 +2/분, 완료 +0).
+// 시도 횟수가 적은 것부터 처리하고, 한도를 넘긴 잡은 자동 재시도에서 뺀다.
+// 뺀다고 지우지는 않는다 — status='failed' 로 남아 사람이 볼 수 있어야 한다.
+const MAX_AUTO_ATTEMPTS = 10;
+
 function errorMessage(error) {
   return String(error?.message || error || 'Unknown Google Sheets shipping synchronization error')
     .slice(0, 2000);
@@ -197,12 +204,15 @@ export async function retryPendingShippingSheetSync(
     sql: `SELECT o.*, j.ship_date AS shipping_sheet_sync_ship_date
             FROM sheet_shipping_sync_jobs j
             JOIN orders o ON o.id = j.order_id
-           WHERE j.status IN ('pending', 'failed')
-              OR (
-                j.status = 'sending'
-                AND (j.last_attempt_at IS NULL OR j.last_attempt_at <= NOW() - ${STALE_SENDING_INTERVAL})
-              )
-           ORDER BY j.created_at, j.order_id
+           WHERE j.attempts < ${MAX_AUTO_ATTEMPTS}
+             AND (
+               j.status IN ('pending', 'failed')
+               OR (
+                 j.status = 'sending'
+                 AND (j.last_attempt_at IS NULL OR j.last_attempt_at <= NOW() - ${STALE_SENDING_INTERVAL})
+               )
+             )
+           ORDER BY j.attempts, j.created_at, j.order_id
            LIMIT ?`,
     args: [boundedLimit],
   });

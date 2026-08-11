@@ -507,6 +507,27 @@ test('a Date-typed ship_date retried by the cron increments attempts instead of 
   assert.equal(db.jobs.get(73).sheet_row, 102);
 });
 
+// 2026-08-11: 시트에 행이 없어 영영 성공하지 못하는 잡 2건(주문 266·260)이 가장 오래된
+// 잡이라, created_at 순으로 뽑는 재시도가 매 실행마다 그 둘로 예산을 다 써버렸다.
+// 뒤에 줄 선 정상 출고 6건은 한 시간 넘게 시트에 올라가지 못했다(시도 +2/분, 완료 +0).
+test('retry picks the least-attempted job first so a hopeless job cannot starve fresh ones', async () => {
+  const { retryPendingShippingSheetSync } = await loadShippingSheetSync();
+  let selectSql = null;
+  await retryPendingShippingSheetSync({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      if (/^SELECT o\.\*/i.test(sql)) selectSql = sql;
+      return { rows: [] };
+    },
+  }, { limit: 25, deadlineMs: 25_000 });
+
+  assert.ok(selectSql, '재시도 대상 조회가 실행되어야 한다');
+  assert.match(selectSql, /ORDER BY j\.attempts,\s*j\.created_at/i, '시도가 적은 잡부터 처리해야 한다');
+  assert.match(selectSql, /j\.attempts < 10/i, '한도를 넘긴 잡은 자동 재시도에서 빠져야 한다');
+  // 빼는 것이지 지우는 것이 아니다. 사람이 목록에서 볼 수 있어야 한다.
+  assert.doesNotMatch(selectSql, /\bDELETE\b/i);
+});
+
 test('unusable ship dates are still rejected before any claim', async () => {
   const { syncShippedOrderToSheet } = await loadShippingSheetSync();
 
