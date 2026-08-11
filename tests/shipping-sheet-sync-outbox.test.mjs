@@ -523,9 +523,34 @@ test('retry picks the least-attempted job first so a hopeless job cannot starve 
 
   assert.ok(selectSql, '재시도 대상 조회가 실행되어야 한다');
   assert.match(selectSql, /ORDER BY j\.attempts,\s*j\.created_at/i, '시도가 적은 잡부터 처리해야 한다');
-  assert.match(selectSql, /j\.attempts < 10/i, '한도를 넘긴 잡은 자동 재시도에서 빠져야 한다');
-  // 빼는 것이지 지우는 것이 아니다. 사람이 목록에서 볼 수 있어야 한다.
+  // 계속 실패하는 잡은 간격을 벌려 예산을 덜 먹게 한다.
+  assert.match(selectSql, /LEAST\(GREATEST\(j\.attempts - 4, 0\) \* 10, 60\)/i, '재시도 간격을 벌려야 한다');
+  // 포기시키지는 않는다. 시트에 행을 채워 넣으면 다음 차례에 저절로 성공해야 한다.
+  assert.doesNotMatch(selectSql, /j\.attempts <\s*\d/i, '시도 횟수로 잡을 영구 제외하면 안 된다');
   assert.doesNotMatch(selectSql, /\bDELETE\b/i);
+});
+
+// 등록이 시트에 올라가기 전에 출고 표시를 시도하면, 아직 행이 없으니 'orderId not found' 로
+// 실패한다. 실패가 쌓이면 재시도 간격만 벌어져 정작 행이 생긴 뒤에도 한참 뒤에야 찍힌다.
+// 신규 주문에서 이 순서가 뒤집히지 않도록 조회 단계에서 막는다. (2026-08-11 요청)
+test('shipping waits until the order actually has a sheet row', async () => {
+  const { retryPendingShippingSheetSync } = await loadShippingSheetSync();
+  let selectSql = null;
+  await retryPendingShippingSheetSync({
+    async execute(query) {
+      const sql = compactSql(querySql(query));
+      if (/^SELECT o\.\*/i.test(sql)) selectSql = sql;
+      return { rows: [] };
+    },
+  }, { limit: 25, deadlineMs: 25_000 });
+
+  assert.match(
+    selectSql,
+    /NOT EXISTS \(\s*SELECT 1 FROM sheet_sync_jobs a WHERE a\.order_id = j\.order_id AND a\.status NOT IN \('synced', 'completed'\)\s*\)/i,
+    '등록 잡이 아직 안 끝난 주문은 출고 표시를 미뤄야 한다',
+  );
+  // 등록 잡이 아예 없는 주문은 큐가 생기기 전의 옛날 건이다. 이건 계속 시도해야 한다.
+  assert.doesNotMatch(selectSql, /EXISTS \(\s*SELECT 1 FROM sheet_sync_jobs a WHERE a\.order_id = j\.order_id\s*\)/i);
 });
 
 test('unusable ship dates are still rejected before any claim', async () => {

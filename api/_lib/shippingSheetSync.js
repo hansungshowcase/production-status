@@ -13,9 +13,13 @@ const MINIMUM_JOB_BUDGET_MS = WEBHOOK_ATTEMPT_BUDGET_MS + JOB_STATE_WRITE_MARGIN
 // 시트에 행 자체가 없는 주문(주문 266 신현섭, 260 빠니노)은 몇 번을 재시도해도 성공하지 못한다.
 // 그런데 created_at 순으로 뽑으면 가장 오래된 이 두 건이 매 실행마다 먼저 예산을 다 쓰고 실패해,
 // 뒤에 줄 선 정상 출고 6건이 영영 차례를 못 받았다(2026-08-11 실측: 시도 +2/분, 완료 +0).
-// 시도 횟수가 적은 것부터 처리하고, 한도를 넘긴 잡은 자동 재시도에서 뺀다.
-// 뺀다고 지우지는 않는다 — status='failed' 로 남아 사람이 볼 수 있어야 한다.
-const MAX_AUTO_ATTEMPTS = 10;
+//
+// 해결은 두 가지다. 시도가 적은 잡부터 처리해 실패하는 잡이 자연히 뒤로 밀리게 하고,
+// 계속 실패하는 잡은 재시도 간격을 벌린다. 포기시키지는 않는다 — 시트에 행을 채워 넣으면
+// 다음 차례에 저절로 성공해야 하고, 그때까지 큐에서 사라져 있으면 안 된다.
+//   시도 4회까지: 매 실행 (1분마다)
+//   5회부터    : 10분씩 늘려가며, 최대 1시간 간격
+const RETRY_BACKOFF_SQL = "INTERVAL '1 minute' * LEAST(GREATEST(j.attempts - 4, 0) * 10, 60)";
 
 function errorMessage(error) {
   return String(error?.message || error || 'Unknown Google Sheets shipping synchronization error')
@@ -204,13 +208,24 @@ export async function retryPendingShippingSheetSync(
     sql: `SELECT o.*, j.ship_date AS shipping_sheet_sync_ship_date
             FROM sheet_shipping_sync_jobs j
             JOIN orders o ON o.id = j.order_id
-           WHERE j.attempts < ${MAX_AUTO_ATTEMPTS}
-             AND (
+           WHERE (
                j.status IN ('pending', 'failed')
                OR (
                  j.status = 'sending'
                  AND (j.last_attempt_at IS NULL OR j.last_attempt_at <= NOW() - ${STALE_SENDING_INTERVAL})
                )
+             )
+             AND (
+               j.last_attempt_at IS NULL
+               OR j.last_attempt_at <= NOW() - (${RETRY_BACKOFF_SQL})
+             )
+             -- 등록이 아직 시트에 안 올라간 주문은 건드리지 않는다. 행이 없는 상태에서
+             -- 출고 표시를 시도하면 'orderId not found' 로 실패하며 재시도 간격만 벌어진다.
+             -- 등록 잡이 없는 주문은 큐가 생기기 전의 옛날 건이라 레거시 대조로 찾는다.
+             AND NOT EXISTS (
+               SELECT 1 FROM sheet_sync_jobs a
+                WHERE a.order_id = j.order_id
+                  AND a.status NOT IN ('synced', 'completed')
              )
            ORDER BY j.attempts, j.created_at, j.order_id
            LIMIT ?`,

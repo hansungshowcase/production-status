@@ -5,10 +5,11 @@ const WEBHOOK_ATTEMPT_BUDGET_MS = 15_000;
 const JOB_STATE_WRITE_MARGIN_MS = 1_000;
 const MINIMUM_JOB_BUDGET_MS = WEBHOOK_ATTEMPT_BUDGET_MS + JOB_STATE_WRITE_MARGIN_MS;
 
-// 출고 큐와 같은 이유. created_at 순으로만 뽑으면 영영 성공하지 못하는 오래된 잡이
-// 매 실행마다 먼저 예산을 다 써버려 뒤의 정상 주문이 시트에 올라가지 못한다.
-// 시도가 적은 것부터 처리하고, 한도를 넘긴 잡은 자동 재시도에서 빼되 지우지는 않는다.
-const MAX_AUTO_ATTEMPTS = 10;
+// 출고 큐와 같은 이유. created_at 순으로만 뽑으면 계속 실패하는 오래된 잡이 매 실행마다
+// 먼저 예산을 다 써버려 뒤의 정상 주문이 시트에 올라가지 못한다.
+// 시도가 적은 것부터 처리하고, 계속 실패하는 잡은 재시도 간격을 벌린다.
+// 등록 잡은 특히 포기시키면 안 된다 — 포기하는 순간 그 주문은 시트에서 영영 빠진다.
+const RETRY_BACKOFF_SQL = "INTERVAL '1 minute' * LEAST(GREATEST(j.attempts - 4, 0) * 10, 60)";
 
 function errorMessage(error) {
   return String(error?.message || error || 'Unknown Google Sheets synchronization error').slice(0, 2000);
@@ -130,13 +131,16 @@ export async function retryPendingSheetSync(
     sql: `SELECT o.*
             FROM sheet_sync_jobs j
             JOIN orders o ON o.id = j.order_id
-           WHERE j.attempts < ${MAX_AUTO_ATTEMPTS}
-             AND (
+           WHERE (
                j.status IN ('pending', 'failed')
                OR (
                  j.status = 'sending'
                  AND (j.last_attempt_at IS NULL OR j.last_attempt_at <= NOW() - ${STALE_SENDING_INTERVAL})
                )
+             )
+             AND (
+               j.last_attempt_at IS NULL
+               OR j.last_attempt_at <= NOW() - (${RETRY_BACKOFF_SQL})
              )
            ORDER BY j.attempts, j.created_at, j.order_id
            LIMIT ?`,

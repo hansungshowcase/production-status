@@ -422,7 +422,7 @@ test('schema reconciliation never drops or rewrites existing job data', async ()
 });
 
 // 출고 큐와 같은 굶주림 문제. 오래된 실패 잡이 매 실행 예산을 선점하면 새 주문이 시트에 못 올라간다.
-test('append retry picks the least-attempted job first and drops jobs past the attempt limit', async () => {
+test('append retry picks the least-attempted job first and never abandons a job', async () => {
   const { retryPendingSheetSync } = await import('../api/_lib/sheetSync.js');
   let selectSql = null;
   await retryPendingSheetSync({
@@ -435,7 +435,9 @@ test('append retry picks the least-attempted job first and drops jobs past the a
 
   assert.ok(selectSql, '재시도 대상 조회가 실행되어야 한다');
   assert.match(selectSql, /ORDER BY j\.attempts,\s*j\.created_at/i);
-  assert.match(selectSql, /j\.attempts < 10/i);
+  assert.match(selectSql, /LEAST\(GREATEST\(j\.attempts - 4, 0\) \* 10, 60\)/i, '재시도 간격을 벌려야 한다');
+  // 등록 잡을 포기시키면 그 주문은 시트에서 영영 빠진다. 간격만 벌리고 계속 시도한다.
+  assert.doesNotMatch(selectSql, /j\.attempts <\s*\d/i, '시도 횟수로 등록 잡을 제외하면 안 된다');
   assert.doesNotMatch(selectSql, /\bDELETE\b/i);
 });
 
