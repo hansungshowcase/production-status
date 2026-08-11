@@ -4,10 +4,8 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { STEPS } from '../../_lib/steps.js';
 import { kstTodayStr } from '../../_lib/notify.js';
-import { syncShippedOrderToSheet } from '../../_lib/shippingSheetSync.js';
 import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
 import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
-import { SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS } from '../../_lib/googleSheets.js';
 
 // 유니크 인덱스가 경쟁을 막아준 경우(다른 요청이 먼저 '출고' 행을 만든 경우)를 식별한다.
 function isUniqueViolation(error) {
@@ -39,7 +37,6 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const notify = dependencies.notify || defaultNotify;
-  const syncShippingSheet = dependencies.syncShippingSheet || syncShippedOrderToSheet;
   const { completed_date, actor, start_next_step, assigned_worker } = req.body || {};
 
   // Find process
@@ -261,20 +258,8 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
         console.error('[complete] shipped 알림 발송 실패(무시):', e?.message || e);
       }
 
-      try {
-        const syncResult = await syncShippingSheet(db, shippedOrder, { timeoutMs: SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS });
-        if (syncResult?.status !== 'synced' && !syncResult?.skipped) {
-          console.warn(
-            `[complete] shipping Sheet immediate sync failed for order ${shippedOrder.id} (${today}); job remains retryable:`,
-            syncResult?.error || 'pending',
-          );
-        }
-      } catch (e) {
-        console.warn(
-          `[complete] shipping Sheet immediate sync failed for order ${shippedOrder.id} (${today}); job remains retryable:`,
-          e?.message || e,
-        );
-      }
+      // 시트 기입은 이 요청 안에서 기다리지 않는다(directShipping 과 같은 이유).
+      // 잡은 위 CTE 에서 이미 큐에 들어갔으므로 sheet-sync 크론이 처리한다.
     }
   }
 

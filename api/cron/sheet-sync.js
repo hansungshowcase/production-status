@@ -7,7 +7,8 @@ import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
 import { retryPendingShippingSheetSync } from '../_lib/shippingSheetSync.js';
 import { ensureShippingSheetSyncSchema } from '../_lib/shippingSheetSyncSchema.js';
 
-const SYNC_DEADLINE_MS = 20_000;
+// Vercel 함수 한도 30초. 상태 기록 여유를 두고 25초까지 쓴다.
+const SYNC_DEADLINE_MS = 25_000;
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -39,7 +40,7 @@ export async function handleSheetSyncCron(
   await ensureShippingSheetSyncSchema(db);
 
   const startedAt = Date.now();
-  const appendSummary = await retry(db, { limit: 10, deadlineMs: SYNC_DEADLINE_MS });
+  const appendSummary = await retry(db, { limit: 25, deadlineMs: SYNC_DEADLINE_MS });
   const remainingDeadlineMs = Math.max(0, SYNC_DEADLINE_MS - (Date.now() - startedAt));
   const shippingSummary = await retryShipping(db, {
     limit: 10,

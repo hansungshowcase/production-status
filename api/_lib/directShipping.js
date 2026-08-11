@@ -1,7 +1,5 @@
 import { kstTodayStr } from './notify.js';
-import { syncShippedOrderToSheet } from './shippingSheetSync.js';
 import { ensureShippingSheetSyncSchema } from './shippingSheetSyncSchema.js';
-import { SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS } from './googleSheets.js';
 
 async function defaultNotify(db, order) {
   const { maybeNotify } = await import('./notify.js');
@@ -13,7 +11,6 @@ export async function completeOrderShipping({
   orderId,
   actor,
   notify = defaultNotify,
-  syncShippingSheet = syncShippedOrderToSheet,
 }) {
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
   const order = orderResult.rows[0];
@@ -107,20 +104,9 @@ export async function completeOrderShipping({
     console.error('[direct-shipping] 출고 알림 발송 실패(무시):', error?.message || error);
   }
 
-  try {
-    const syncResult = await syncShippingSheet(db, updatedOrder, { timeoutMs: SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS });
-    if (syncResult?.status !== 'synced' && !syncResult?.skipped) {
-      console.warn(
-        `[direct-shipping] shipping Sheet immediate sync failed for order ${updatedOrder.id} (${today}); job remains retryable:`,
-        syncResult?.error || 'pending',
-      );
-    }
-  } catch (error) {
-    console.warn(
-      `[direct-shipping] shipping Sheet immediate sync failed for order ${updatedOrder.id} (${today}); job remains retryable:`,
-      error?.message || error,
-    );
-  }
+  // 시트 기입을 이 요청 안에서 기다리지 않는다. 구글 왕복이 3~4초라 출고 버튼이 그만큼 느려지고,
+  // 여러 건을 연달아 출고하면 Apps Script 락 경합으로 대기가 더 길어진다.
+  // 잡은 위 CTE 에서 이미 큐에 들어갔으므로 sheet-sync 크론이 처리한다.
 
   return { status: 200, body: updatedOrder };
 }
