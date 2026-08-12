@@ -1,5 +1,5 @@
 // 고객용 공개 조회 — GET /api/track/{track_token}
-// 인증 없음(토큰이 곧 자격증명). 마스킹된 필드만 반환.
+// 인증 없음(토큰이 곧 자격증명). 고객 본인이 알아야 할 것만 반환.
 // 내부정보(sale_amount, balance, phone, 작업자명, 리스크 등급) 절대 미포함.
 // 예외: manager_name(=sales_person 이름)은 문의 라우팅용으로 의도적 노출 — 고객 본인의 담당 영업자라 무방 (대표 승인).
 import { getDb } from '../_lib/db.js';
@@ -8,10 +8,13 @@ import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { kstToday } from '../_lib/risk.js';
 
-function maskName(name) {
+// 거래처명은 가리지 않는다. 이 링크는 그 거래처 본인에게 문자로 나가는 것이라
+// 자기 상호를 '솔*********' 로 보게 되면 잘못된 화면으로 읽힌다(2026-08-12 요청).
+// 링크가 새어도 상대가 보는 건 '그 상호가 무엇을 주문했는지' 뿐이고, 금액·연락처·
+// 작업자명 같은 내부 정보는 애초에 이 응답에 없다.
+function clientName(name) {
   const s = String(name || '').trim();
-  if (!s) return '고객';
-  return s[0] + '*'.repeat(Math.max(s.length - 1, 1));
+  return s || '고객';
 }
 
 export default cors(async function handler(req, res) {
@@ -88,7 +91,7 @@ export default cors(async function handler(req, res) {
   return res.json({
     order_no,
     manager_name: order.sales_person || null,
-    client_name: maskName(order.client_name),
+    client_name: clientName(order.client_name),
     // product_type(품명)은 내려주지 않는다. 내부 분류·거래처 표기가 들어가 있는 경우가 있어
     // 고객에게 노출하기 부적절하다(2026-08-10). 화면에서 빼는 것만으로는 응답에 그대로 남아
     // 조회 링크로 값이 보이므로 응답 자체에서 제외한다.
