@@ -101,10 +101,11 @@ test('shipping print html expands the item table to fill A4 vertical space', () 
   const delivery = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'delivery', { today: '2026-06-24' }));
 
   assert.equal(shipping.includes('<div class="doc doc--shipping">'), true);
-  assert.equal(countItemRows(shipping), 9);
+  // 빈 칸 8개 → 4개. 적요가 길면 그 한 줄이 10줄 넘게 늘어나 2페이지가 됐다(2026-08-18).
+  assert.equal(countItemRows(shipping), 5);
   assert.equal(shipping.includes('.doc--shipping .items { margin-top: 18px; font-size: 15px; flex: 0 0 auto; }'), true);
   assert.equal(shipping.includes('.doc--shipping .items th, .doc--shipping .items td { height: 36px; font-size: 15px; padding: 4px 6px; }'), true);
-  assert.equal(shipping.includes('.doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 64mm; padding: 10px 14px; font-size: 14px;'), true);
+  assert.equal(shipping.includes('.doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 40mm; padding: 10px 14px; font-size: 14px;'), true);
   assert.equal(shipping.includes('.doc--shipping .guide--shipping .guide-driver { margin-top: 6px; font-size: 13px; line-height: 1.45; }'), true);
 
   assert.equal(delivery.includes('<div class="doc doc--shipping">'), false);
@@ -125,7 +126,9 @@ test('shipping print html reserves visible space for driver information', () => 
   const shipping = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' }));
 
   assert.equal(shipping.includes('overflow: hidden;'), false);
-  assert.equal(shipping.includes('.doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 64mm;'), true);
+  // 바닥값이지 고정 높이가 아니다. flex:1 이라 평소에는 남는 공간만큼 커지고,
+  // 적요가 길어 표가 페이지를 밀어낼 때만 이 값까지 눌린다.
+  assert.equal(shipping.includes('.doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 40mm;'), true);
   assert.equal(shipping.includes('.doc--shipping .guide--shipping .guide-title { margin: 0 0 8px; font-size: 16px; }'), true);
   assert.equal(shipping.includes('.doc--shipping .guide--shipping .guide-driver { margin-top: 6px; font-size: 13px; line-height: 1.45; }'), true);
 });
@@ -140,4 +143,40 @@ test('shipping print html has delivery-manager signature and driver info without
   assert.equal(data.levelingGuide.driverInfo.length > 0, true);
   assert.equal(data.levelingGuide.steps.length, 0);
   assert.equal(html.includes('<div class="guide">'), false);
+});
+
+// 적요에 특이사항이 길게 들어가면 그 한 줄이 10줄 넘게 늘어난다. 여기에 빈 칸 8개까지
+// 더해지면 A4 한 장을 넘겨 2페이지로 인쇄됐다. (2026-08-18 요청)
+test('출하지시서 표는 빈 칸을 4개 줄여 한 장에 맞춘다', () => {
+  const html = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' }));
+  const body = html.match(/<tbody>([\s\S]*?)<\/tbody>/)[1];
+
+  assert.equal((body.match(/<tr>/g) || []).length, 5, '데이터 1줄 + 손으로 적는 빈 칸 4개');
+});
+
+test('납품내역서 표는 종전 그대로 둔다', () => {
+  const html = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'delivery', { today: '2026-06-24' }));
+  const body = html.match(/<tbody>([\s\S]*?)<\/tbody>/)[1];
+
+  assert.equal((body.match(/<tr>/g) || []).length, 7);
+});
+
+// 칸을 줄인다고 적요를 잘라내면 안 된다. 기사님이 봐야 할 특이사항이다.
+test('적요가 길어도 내용을 잘라내지 않는다', () => {
+  const longNote = '선반: 1/2 그릴선반 6개 제공 + 봉걸이 2줄 장착, 특이사항: 라지에타 방향 청소하기 쉽도록 부착, 조명 검정색 전기테이프 최대한 안보이도록 마감';
+  const html = buildShippingDocumentPrintHtml(
+    buildShippingDocumentData({ ...order, notes: longNote }, 'shipping', { today: '2026-06-24' }),
+  );
+
+  assert.match(html, /라지에타 방향 청소하기 쉽도록 부착/);
+  assert.match(html, /전기테이프 최대한 안보이도록 마감/);
+  assert.doesNotMatch(html, /text-overflow:\s*ellipsis/, '적요를 말줄임으로 감추면 안 된다');
+});
+
+// 페이지가 늘어나는 것을 막는 장치는 문서 높이 고정이다. 이게 풀리면 다시 2페이지가 된다.
+test('문서 높이는 A4 한 장으로 고정되어 있다', () => {
+  const html = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' }));
+
+  assert.match(html, /@page \{ size: A4; margin: 10mm; \}/);
+  assert.match(html, /\.doc \{ width: 190mm; height: 277mm;/);
 });

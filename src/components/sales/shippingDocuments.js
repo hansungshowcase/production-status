@@ -169,7 +169,11 @@ function buildGuideHtml(guide) {
 }
 
 export function buildShippingDocumentPrintHtml(data) {
-  const rowCount = data.type === 'shipping' ? 9 : 7;
+  // 실제로 채워지는 줄은 항상 1줄이고 나머지는 손으로 적는 빈 칸이다.
+  // 출하지시서는 적요에 특이사항이 길게 들어가면 그 한 줄이 10줄 넘게 늘어나,
+  // 빈 칸 8개까지 더해지면 2페이지로 넘어갔다. 빈 칸을 4개 줄여 한 장에 맞춘다.
+  // (2026-08-18 요청)
+  const rowCount = data.type === 'shipping' ? 5 : 7;
   const rows = Array.from({ length: rowCount }, (_, index) => data.rows[index] || {});
   const headers = data.type === 'shipping'
     ? ['월/일', '품목명', '규격', '수량', '적요', '창고명']
@@ -227,7 +231,10 @@ export function buildShippingDocumentPrintHtml(data) {
   .sign th { width: 22mm; }
   .signature-cell { min-width: 42mm; }
   .guide { margin-top: 8px; border: 1px solid #999; padding: 14px 16px; font-size: 16px; line-height: 1.55; page-break-inside: avoid; break-inside: avoid; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
-  .doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 64mm; padding: 10px 14px; font-size: 14px; justify-content: flex-start; }
+  /* min-height 는 바닥값일 뿐이고 flex:1 이라 평소에는 남는 공간만큼 알아서 커진다.
+     이 값이 실제로 걸리는 건 적요가 아주 길어 표가 페이지를 밀어낼 때뿐인데,
+     그때 64mm 를 고집하면 문서가 2페이지로 넘어간다. 바닥을 낮춰 한 장을 지킨다. */
+  .doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 40mm; padding: 10px 14px; font-size: 14px; justify-content: flex-start; }
   .guide-title { margin: 2px 0 16px; font-size: 20px; font-weight: 900; }
   .guide-intro { margin-bottom: 18px; font-size: 18px; font-weight: 800; }
   .guide-step { margin: 0 0 16px; }
