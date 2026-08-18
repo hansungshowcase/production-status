@@ -117,15 +117,21 @@ test('shipping print html expands the item table to fill A4 vertical space', () 
 test('shipping print html keeps specification readable by narrowing the note column', () => {
   const shipping = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' }));
 
-  assert.equal(shipping.includes('.doc--shipping .items th:nth-child(3), .doc--shipping .items td:nth-child(3) { width: 26%; white-space: nowrap; }'), true);
-  assert.equal(shipping.includes('.doc--shipping .items th:nth-child(5), .doc--shipping .items td:nth-child(5) { width: 24%; }'), true);
+  assert.equal(shipping.includes('.doc--shipping .items th:nth-child(3), .doc--shipping .items td:nth-child(3) { width: 24%; white-space: nowrap; }'), true);
+  // 적요가 좁으면 특이사항 한 줄이 11줄로 접혀 그 행 하나가 페이지를 밀어낸다.
+  // 품목명('진열 / 앞문 / 올스텐')은 짧으니 폭을 넘겨받아 적요를 넓힌다.
+  assert.equal(shipping.includes('.doc--shipping .items th:nth-child(2), .doc--shipping .items td:nth-child(2) { width: 16%; }'), true);
+  assert.equal(shipping.includes('.doc--shipping .items th:nth-child(5), .doc--shipping .items td:nth-child(5) { width: 32%; }'), true);
   assert.equal(shipping.includes('.doc--shipping .items th:nth-child(4), .doc--shipping .items td:nth-child(4), .doc--shipping .items th:nth-child(6), .doc--shipping .items td:nth-child(6) { white-space: nowrap; }'), true);
 });
 
 test('shipping print html reserves visible space for driver information', () => {
   const shipping = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' }));
 
-  assert.equal(shipping.includes('overflow: hidden;'), false);
+  // overflow:hidden 은 마지막 안전판이다. 아래 축소 스크립트가 먼저 한 장에 맞추므로
+  // 정상 경로에서는 잘려나가는 내용이 없다(실측: 적요 25줄짜리도 기사 안내 박스까지 온전).
+  assert.equal(shipping.includes('.doc { overflow: hidden; }'), true);
+  assert.equal(shipping.includes('.fit { display: flex; flex-direction: column; width: 100%; height: 100%; transform-origin: top left; }'), true);
   // 바닥값이지 고정 높이가 아니다. flex:1 이라 평소에는 남는 공간만큼 커지고,
   // 적요가 길어 표가 페이지를 밀어낼 때만 이 값까지 눌린다.
   assert.equal(shipping.includes('.doc--shipping .guide--shipping { flex: 1 1 auto; min-height: 40mm;'), true);
@@ -179,4 +185,26 @@ test('문서 높이는 A4 한 장으로 고정되어 있다', () => {
 
   assert.match(html, /@page \{ size: A4; margin: 10mm; \}/);
   assert.match(html, /\.doc \{ width: 190mm; height: 277mm;/);
+});
+
+// 칸 수를 줄이고 적요 폭을 넓혀도, 글꼴이나 프린터 여백이 조금만 달라지면 기사 안내문
+// 블록이 통째로 2페이지로 밀려났다(page-break-inside: avoid 라 쪼개지지 않는다).
+// 그래서 남는 높이를 재서 넘칠 때만 문서 전체를 줄인다. (2026-08-18 실제 인쇄물 확인)
+test('넘칠 때 문서를 줄여 한 장에 맞추는 장치가 들어 있다', () => {
+  for (const type of ['shipping', 'delivery']) {
+    const html = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, type, { today: '2026-06-24' }));
+
+    assert.match(html, /<div class="fit">/, '축소 대상 래퍼가 있어야 한다');
+    assert.match(html, /fit\.style\.transform = scale === 1 \? 'none' : 'scale\(' \+ scale \+ '\)'/);
+    // 폭을 넓히면 줄바꿈이 줄어 높이가 다시 바뀐다. 한 번만 재면 수렴하지 않는다.
+    assert.match(html, /for \(var i = 0; i < 8; i \+= 1\)/);
+    // 인쇄 대화상자의 용지·여백 설정이 높이를 바꾸므로 인쇄 직전에 한 번 더 맞춘다.
+    assert.match(html, /window\.addEventListener\('beforeprint', apply\)/);
+  }
+});
+
+test('읽지 못할 만큼 줄이지는 않는다', () => {
+  const html = buildShippingDocumentPrintHtml(buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' }));
+
+  assert.match(html, /Math\.max\(0\.6,/, '60% 아래로 줄이면 기사님이 읽지 못한다');
 });

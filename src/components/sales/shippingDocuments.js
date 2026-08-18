@@ -215,8 +215,13 @@ export function buildShippingDocumentPrintHtml(data) {
   .items th { background: #f1f1f1; font-size: 14px; }
   .doc--shipping .items { margin-top: 18px; font-size: 15px; flex: 0 0 auto; }
   .doc--shipping .items th, .doc--shipping .items td { height: 36px; font-size: 15px; padding: 4px 6px; }
-  .doc--shipping .items th:nth-child(3), .doc--shipping .items td:nth-child(3) { width: 26%; white-space: nowrap; }
-  .doc--shipping .items th:nth-child(5), .doc--shipping .items td:nth-child(5) { width: 24%; }
+  .doc--shipping .items th:nth-child(3), .doc--shipping .items td:nth-child(3) { width: 24%; white-space: nowrap; }
+  /* 적요 칸이 좁으면 특이사항 한 줄이 11줄로 접혀 그 행 하나가 페이지를 밀어낸다.
+     품목명('진열 / 앞문 / 올스텐')은 짧으니 폭을 넘겨받아 적요를 넓히고, 글씨를
+     한 단계 줄여 줄 수를 더 낮춘다. 내용을 자르는 게 아니라 접히는 횟수를 줄이는 것이다. */
+  .doc--shipping .items th:nth-child(2), .doc--shipping .items td:nth-child(2) { width: 16%; }
+  .doc--shipping .items th:nth-child(5), .doc--shipping .items td:nth-child(5) { width: 32%; }
+  .doc--shipping .items td:nth-child(5) { font-size: 13px; line-height: 1.35; }
   .doc--shipping .items th:nth-child(4), .doc--shipping .items td:nth-child(4), .doc--shipping .items th:nth-child(6), .doc--shipping .items td:nth-child(6) { white-space: nowrap; }
   .items td:nth-child(5) { text-align: left; }
   .red { color: #ef4444; font-weight: 700; }
@@ -243,10 +248,16 @@ export function buildShippingDocumentPrintHtml(data) {
   .doc--shipping .guide--shipping .guide-title { margin: 0 0 8px; font-size: 16px; }
   .doc--shipping .guide--shipping .guide-driver { margin-top: 6px; font-size: 13px; line-height: 1.45; }
   @media print { .doc { margin: 0 auto; } }
+  /* 한 장 보장용 축소 장치. .fit 이 실제 내용을 담고, 넘칠 때만 통째로 줄여 A4 한 장에 맞춘다.
+     .doc 의 overflow:hidden 은 마지막 안전판일 뿐이다 — 아래 스크립트가 먼저 맞추므로
+     정상 경로에서는 잘려나가는 내용이 없다. */
+  .doc { overflow: hidden; }
+  .fit { display: flex; flex-direction: column; width: 100%; height: 100%; transform-origin: top left; }
 </style>
 </head>
 <body>
   <div class="doc${data.type === 'shipping' ? ' doc--shipping' : ''}">
+    <div class="fit">
     <div class="top">
       <div>
         <h1>${data.title}</h1>
@@ -282,7 +293,43 @@ export function buildShippingDocumentPrintHtml(data) {
       ? '<table class="sign"><tr><th>배송담당자</th><td class="signature-cell"></td></tr></table>'
       : '<table class="sign"><tr><th>배송담당자</th><td class="signature-cell"></td><th>수취인</th><td class="signature-cell"></td><th>수평확인완료</th><td class="signature-cell"></td></tr></table>'}
     ${buildGuideHtml(data.levelingGuide)}
+    </div>
   </div>
+<script>
+// 항상 A4 한 장으로 인쇄되게 한다.
+// 칸 수를 줄이고 적요 폭을 넓혀도, 글꼴이나 프린터 여백이 조금만 달라지면 기사 안내문
+// 블록이 통째로 2페이지로 밀려났다(page-break-inside: avoid 라 쪼개지지 않는다).
+// 그래서 남는 높이를 재서, 넘칠 때만 문서 전체를 줄인다. 내용은 그대로 두고 크기만 줄인다.
+// 폭도 함께 넓혀 두면 축소 후 글씨가 페이지를 꽉 채우고, 적요가 접히는 줄 수도 줄어든다.
+(function () {
+  var doc = document.querySelector('.doc');
+  var fit = document.querySelector('.fit');
+  if (!doc || !fit) return;
+
+  function apply() {
+    var limit = doc.clientHeight;
+    if (!limit) return;
+    var scale = 1;
+    // 폭을 넓히면 줄바꿈이 줄어 높이가 다시 바뀐다. 몇 번 반복해 수렴시킨다.
+    for (var i = 0; i < 8; i += 1) {
+      fit.style.width = (100 / scale) + '%';
+      fit.style.height = (100 / scale) + '%';
+      fit.style.transform = scale === 1 ? 'none' : 'scale(' + scale + ')';
+      var natural = fit.scrollHeight; // transform 은 레이아웃에 영향을 주지 않는다
+      if (natural * scale <= limit + 1) return;
+      // 0.6 미만으로는 줄이지 않는다. 그보다 작아지면 기사님이 읽지 못한다.
+      var next = Math.max(0.6, (limit / natural) * 0.995);
+      if (next >= scale) break;
+      scale = next;
+    }
+  }
+
+  if (document.readyState === 'complete') apply();
+  else window.addEventListener('load', apply);
+  // 인쇄 직전에 한 번 더. 인쇄 대화상자의 용지·여백 설정이 높이를 바꾼다.
+  window.addEventListener('beforeprint', apply);
+})();
+</script>
 </body>
 </html>`;
 }
