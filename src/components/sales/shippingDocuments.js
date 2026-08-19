@@ -39,8 +39,15 @@ function buildSpec(order) {
   return [order.width, order.depth, order.height].filter(Boolean).join(' x ');
 }
 
-function buildItemName(order) {
-  return [order.product_type, order.door_type, order.color].filter(Boolean).join(' / ') || '-';
+// 납품내역서는 고객이 받아 서명하는 서류다. 품명(product_type)에는 '알앤에프냉동덧방'
+// 처럼 거래처·내부 분류 표기가 들어가 있어 고객에게 보이면 안 된다(2026-08-19 요청).
+// 고객 문자·조회 페이지에서 품명을 뺀 것과 같은 이유다.
+// 출하지시서는 기사님과 공장이 보는 내부 서류라 품명을 그대로 둔다.
+function buildItemName(order, type) {
+  const parts = type === 'delivery'
+    ? [order.door_type, order.color]
+    : [order.product_type, order.door_type, order.color];
+  return parts.filter(Boolean).join(' / ') || '-';
 }
 
 function buildDeliveryAddress(order) {
@@ -126,7 +133,7 @@ export function buildShippingDocumentData(order, type, options = {}) {
     rows: [
       {
         date: formatDateShort(shipDate),
-        itemName: buildItemName(order),
+        itemName: buildItemName(order, type),
         spec: buildSpec(order),
         quantity: text(quantity),
         note: text(visibleNote, ''),

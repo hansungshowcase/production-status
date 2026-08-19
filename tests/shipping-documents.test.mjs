@@ -208,3 +208,41 @@ test('읽지 못할 만큼 줄이지는 않는다', () => {
 
   assert.match(html, /Math\.max\(0\.6,/, '60% 아래로 줄이면 기사님이 읽지 못한다');
 });
+
+// 납품내역서는 고객이 받아 서명하는 서류다. 품명에 '알앤에프냉동덧방' 처럼 거래처·내부
+// 분류 표기가 들어가 있어 고객에게 보이면 안 된다. (2026-08-19 요청)
+// 고객 문자·조회 페이지에서 품명을 뺀 것과 같은 이유다.
+test('납품내역서에는 품명이 인쇄되지 않는다', () => {
+  const internal = { ...order, product_type: '알앤에프냉동덧방', door_type: '앞문', color: '올스텐' };
+  const data = buildShippingDocumentData(internal, 'delivery', { today: '2026-06-24' });
+  const html = buildShippingDocumentPrintHtml(data);
+
+  assert.equal(data.rows[0].itemName, '앞문 / 올스텐');
+  assert.doesNotMatch(html, /알앤에프냉동덧방/, '고객 서류에 내부 품명이 남으면 안 된다');
+});
+
+// 출하지시서는 기사님과 공장이 보는 내부 서류다. 품명이 있어야 무엇을 싣는지 안다.
+test('출하지시서에는 품명이 그대로 인쇄된다', () => {
+  const internal = { ...order, product_type: '알앤에프냉동덧방', door_type: '앞문', color: '올스텐' };
+  const data = buildShippingDocumentData(internal, 'shipping', { today: '2026-06-24' });
+  const html = buildShippingDocumentPrintHtml(data);
+
+  assert.equal(data.rows[0].itemName, '알앤에프냉동덧방 / 앞문 / 올스텐');
+  assert.match(html, /알앤에프냉동덧방/);
+});
+
+test('품명을 빼도 납품내역서의 규격·수량은 그대로 남는다', () => {
+  const internal = { ...order, product_type: '알앤에프냉동덧방' };
+  const data = buildShippingDocumentData(internal, 'delivery', { today: '2026-06-24' });
+
+  assert.equal(data.rows[0].spec, '1200 x 500 x 900');
+  assert.equal(data.rows[0].quantity, '1');
+});
+
+// 문형·색상이 둘 다 비어 있으면 빈 칸이 아니라 '-' 로 둔다. 품명으로 메우면 안 된다.
+test('문형과 색상이 없으면 품명으로 메우지 않는다', () => {
+  const bare = { ...order, product_type: '알앤에프냉동덧방', door_type: '', color: '' };
+  const data = buildShippingDocumentData(bare, 'delivery', { today: '2026-06-24' });
+
+  assert.equal(data.rows[0].itemName, '-');
+});
