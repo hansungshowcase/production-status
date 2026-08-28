@@ -20,6 +20,7 @@ export function isShipped(order) {
 }
 
 export function isOverdue(order) {
+  if (isShipped(order)) return false;
   const ds = formatDueStatus(extractDueDateFromOrder(order), order?.status);
   return ds.isOverdue;
 }

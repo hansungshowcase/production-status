@@ -78,6 +78,7 @@ export default function SalesMyPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const intervalRef = useRef(null);
+  const ordersFetchIdRef = useRef(0);
 
   const activePerson = viewingPerson || mySalesPerson;
   const isViewingOther = !!viewingPerson;
@@ -94,16 +95,21 @@ export default function SalesMyPage() {
 
   const fetchOrders = useCallback(async () => {
     if (!activePerson) return;
+    const fetchId = ++ordersFetchIdRef.current;
     try {
-      setError(null);
       const list = activePerson === '이준형'
         ? [...await fetchAllSalesOrders({ sales_person: '이준형' }), ...await fetchAllSalesOrders({ sales_person: '김보수' })]
         : await fetchAllSalesOrders({ sales_person: activePerson });
+      if (fetchId !== ordersFetchIdRef.current) return;
+      setError(null);
       setOrders(list);
     } catch (err) {
+      if (fetchId !== ordersFetchIdRef.current) return;
       setError(err.message || '데이터를 불러오지 못했습니다');
     } finally {
-      setLoading(false);
+      if (fetchId === ordersFetchIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [activePerson]);
 
@@ -229,8 +235,13 @@ export default function SalesMyPage() {
   async function handleShipOrder(order) {
     try {
       const updated = await shipOrder(order.id, mySalesPerson);
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...updated } : o));
-      fetchFeed();
+      // 출고 전에 시작된 조회가 늦게 도착해 이전 상태를 덮지 못하게 무효화한다.
+      ordersFetchIdRef.current += 1;
+      setOrders(prev => prev.map(o => o.id === order.id
+        ? { ...o, ...updated, status: 'shipped' }
+        : o));
+      handleFilterChange('shipped');
+      void Promise.all([fetchOrders(), fetchFeed()]);
     } catch (err) {
       alert('출고 처리 실패: ' + (err.message || ''));
       throw err;

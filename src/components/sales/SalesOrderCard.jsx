@@ -150,7 +150,9 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
     };
   }, [detailLoading, detailOrder, expanded, order.id]);
 
-  const displayOrder = detailOrder || order;
+  // 상세 조회가 열린 뒤 목록의 주문 상태가 바뀌어도 최신 상태가 우선해야 한다.
+  // 특히 출고 성공 직후 오래된 상세 응답이 shipped 상태를 다시 가리지 않게 한다.
+  const displayOrder = detailOrder ? { ...detailOrder, ...order } : order;
   const displayDueDate = extractDueDateFromOrder(displayOrder);
   const visibleNotes = getVisibleOrderMemo(displayOrder.notes);
   const visibleRemarks = getVisibleOrderMemo(displayOrder.remarks);
@@ -226,9 +228,9 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
     currentStepStatus = null;
   }
 
-  const dueStatus = formatDueStatus(displayDueDate, displayOrder.status);
-  const isOverdue = dueStatus.isOverdue;
   const isShipped = displayOrder.status === 'shipped' || displayOrder.status === '출고완료' || !!displayOrder.ship_date;
+  const dueStatus = formatDueStatus(displayDueDate, isShipped ? 'shipped' : displayOrder.status);
+  const isOverdue = dueStatus.isOverdue;
 
   const clientDisplay = displayOrder.client_name || '-';
   const specParts = [displayOrder.product_type, displayOrder.door_type].filter(Boolean).join(' / ');
