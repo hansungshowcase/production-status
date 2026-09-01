@@ -90,9 +90,11 @@ All spacing derives from a base of 4px.
 - **States**: default, hover lift, active press, and visible keyboard focus.
 
 ### Notification History Controls
-- **Structure**: three-button segmented audience filter, a wrapping member button grid, and one native date selector with a clear action.
+- **Structure**: one wrapping recipient grid beginning with `전체 수신자`, followed by every production, worker, and sales recipient; one native date selector with a clear action.
+- **Dimensions**: interactive controls use the shared `--control-min-height` and `--control-min-inline-size` tokens.
 - **Selected state**: `--blue` text and `--blue-light` surface, reinforced by `aria-pressed`.
-- **Responsive behavior**: member buttons share one row when space allows and use two equal columns on narrow mobile screens; the date clear action stacks below the input on mobile.
+- **Responsive behavior**: recipient buttons wrap by available width and use two equal columns on narrow mobile screens; the date clear action stacks below the input on mobile.
+- **Ordering**: records always render in KST newest-date and newest-time order, independent of API input order; choosing a date narrows the already ordered list.
 - **Summary**: three cells using the shared H2, body, and caption scale with text status labels.
 
 ### Notification History Item

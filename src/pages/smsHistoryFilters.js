@@ -1,4 +1,12 @@
-export const TEAM_MEMBER_FILTERS = [
+export const NOTIFICATION_RECIPIENT_FILTERS = [
+  '이시아 부장',
+  '최우석 이사',
+  '이정섭 부장',
+  '김보수 팀장',
+  '박상규 공장장',
+  '정영호 팀장',
+  '신은철',
+  '이준형',
   '강종효',
   '카우사르',
   '나타왓',
@@ -42,7 +50,14 @@ function dateHeading(dateKey) {
 
 export function groupNotificationsByKstDate(items = []) {
   const groups = new Map();
-  for (const item of items) {
+  const sortedItems = [...items].sort((left, right) => {
+    const leftTime = new Date(left?.sent_at).getTime();
+    const rightTime = new Date(right?.sent_at).getTime();
+    const safeLeft = Number.isNaN(leftTime) ? Number.NEGATIVE_INFINITY : leftTime;
+    const safeRight = Number.isNaN(rightTime) ? Number.NEGATIVE_INFINITY : rightTime;
+    return safeRight - safeLeft;
+  });
+  for (const item of sortedItems) {
     const date = getKstDateKey(item?.sent_at);
     if (!groups.has(date)) {
       groups.set(date, { date, label: dateHeading(date), items: [] });

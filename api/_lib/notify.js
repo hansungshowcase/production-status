@@ -464,7 +464,8 @@ export async function sendAdminLms(db, {
   }
 
   const status = result.dryRun ? 'dry_run' : result.ok ? 'success' : 'failed';
-  const isInternalHistory = String(tag || '').startsWith('internal_');
+  const historyTag = String(tag || '');
+  const isInternalHistory = historyTag.startsWith('internal_') || historyTag === 'chonbe_alert';
   try {
     await db.execute({
       sql: `INSERT INTO notification_log (

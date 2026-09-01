@@ -6,6 +6,13 @@ export const ALERT_ROUTES = {
   '이준형': '010-7731-4237',
 };
 
+export function canonicalAlertRecipientName(value) {
+  const name = String(value || '').trim();
+  if (name === '신은철' || name === '신은절') return '신은철';
+  if (name === '이준형') return '이준형';
+  return '';
+}
+
 // 매핑 없는 담당자(미지정/김보수 등) 경보의 수신번호. env ALERT_FALLBACK 로 설정.
 // 비어 있으면 발송하지 않고 응답/로그에 '미라우팅'으로만 남김(잘못된 사람에게 안 감).
 export function alertFallbackPhone() {

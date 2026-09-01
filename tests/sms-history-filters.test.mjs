@@ -12,11 +12,11 @@ test('발송 시각은 한국 시간 날짜를 기준으로 구분한다', () =>
   assert.equal(getKstDateKey('잘못된 날짜'), 'unknown');
 });
 
-test('발송내역은 입력 순서를 보존하며 한국 시간 날짜별로 묶인다', () => {
+test('발송내역은 입력 순서와 관계없이 한국 시간 최신 날짜·시간순으로 묶인다', () => {
   const groups = groupNotificationsByKstDate([
-    { id: 1, sent_at: '2026-09-02T01:00:00.000Z' },
-    { id: 2, sent_at: '2026-09-01T15:30:00.000Z' },
     { id: 3, sent_at: '2026-09-01T10:00:00.000Z' },
+    { id: 2, sent_at: '2026-09-01T15:30:00.000Z' },
+    { id: 1, sent_at: '2026-09-02T01:00:00.000Z' },
   ]);
 
   assert.deepEqual(groups.map(group => group.date), ['2026-09-02', '2026-09-01']);

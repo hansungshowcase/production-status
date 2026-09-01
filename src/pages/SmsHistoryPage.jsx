@@ -3,20 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { fetchInternalNotifications } from '../api/internalNotifications';
 import {
   groupNotificationsByKstDate,
-  TEAM_MEMBER_FILTERS,
+  NOTIFICATION_RECIPIENT_FILTERS,
 } from './smsHistoryFilters';
 import './SmsHistoryPage.css';
-
-const FILTERS = [
-  { value: 'all', label: '전체' },
-  { value: 'executive', label: '간부' },
-  { value: 'member', label: '팀원' },
-];
 
 const STATUS_META = {
   success: { label: '쏠라피 접수 성공', className: 'success' },
   failed: { label: '발송 요청 실패', className: 'failed' },
   dry_run: { label: '테스트 기록', className: 'dry-run' },
+};
+
+const AUDIENCE_LABELS = {
+  executive: '생산',
+  member: '팀원',
+  sales: '영업',
 };
 
 const KST_DATE_TIME = new Intl.DateTimeFormat('ko-KR', {
@@ -44,7 +44,6 @@ export default function SmsHistoryPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState('loading');
-  const [audience, setAudience] = useState('all');
   const [recipient, setRecipient] = useState('');
   const [date, setDate] = useState('');
   const [expandedId, setExpandedId] = useState(null);
@@ -55,7 +54,7 @@ export default function SmsHistoryPage() {
     requestIdRef.current = requestId;
     setStatus('loading');
     try {
-      const data = await fetchInternalNotifications({ audience, recipient, date, limit: 100 });
+      const data = await fetchInternalNotifications({ recipient, date, limit: 100 });
       if (requestId !== requestIdRef.current) return;
       setItems(Array.isArray(data?.items) ? data.items : []);
       setStatus('ready');
@@ -63,7 +62,7 @@ export default function SmsHistoryPage() {
       if (requestId !== requestIdRef.current) return;
       setStatus('error');
     }
-  }, [audience, date, recipient]);
+  }, [date, recipient]);
 
   useEffect(() => {
     loadNotifications();
@@ -76,6 +75,12 @@ export default function SmsHistoryPage() {
     success: items.filter(item => item.status === 'success').length,
     failed: items.filter(item => item.status === 'failed').length,
   }), [items]);
+
+  const filterResult = status === 'loading'
+    ? '선택한 조건의 발송내역을 조회하는 중입니다.'
+    : status === 'ready'
+      ? `${recipient || '전체 수신자'} · ${date || '전체 날짜'} · ${items.length}건`
+      : '선택한 조건의 발송내역을 불러오지 못했습니다.';
 
   return (
     <div className="sms-history-page">
@@ -102,7 +107,7 @@ export default function SmsHistoryPage() {
         <section className="sms-history-intro" aria-labelledby="sms-history-title">
           <div>
             <h2 id="sms-history-title">쏠라피 발송 현황</h2>
-            <p>간부와 팀원에게 자동 발송된 문자 내용과 요청 결과입니다.</p>
+            <p>생산 담당자, 작업자, 영업담당자에게 자동 발송된 문자 내용과 요청 결과입니다.</p>
           </div>
           <p className="sms-history-notice">
             ‘접수 성공’은 쏠라피가 발송 요청을 정상 접수했다는 뜻입니다.
@@ -111,49 +116,26 @@ export default function SmsHistoryPage() {
 
         <section className="sms-history-filter-panel" aria-label="발송내역 조회 조건">
           <div className="sms-history-filter-section">
-            <strong className="sms-history-filter-label">수신자 구분</strong>
-            <div className="sms-history-filters" role="group" aria-label="수신자 구분">
-              {FILTERS.map(filter => (
-                <button
-                  type="button"
-                  key={filter.value}
-                  className={audience === filter.value ? 'is-selected' : ''}
-                  aria-pressed={audience === filter.value}
-                  onClick={() => {
-                    setAudience(filter.value);
-                    setRecipient('');
-                    setExpandedId(null);
-                  }}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="sms-history-filter-section">
-            <strong className="sms-history-filter-label">팀원별 발송내역</strong>
-            <div className="sms-history-member-filters" role="group" aria-label="팀원별 발송내역">
+            <strong className="sms-history-filter-label">수신자별 발송내역</strong>
+            <div className="sms-history-recipient-filters" role="group" aria-label="수신자별 발송내역">
               <button
                 type="button"
-                className={audience === 'member' && !recipient ? 'is-selected' : ''}
-                aria-pressed={audience === 'member' && !recipient}
+                className={!recipient ? 'is-selected' : ''}
+                aria-pressed={!recipient}
                 onClick={() => {
-                  setAudience('member');
                   setRecipient('');
                   setExpandedId(null);
                 }}
               >
-                전체 팀원
+                전체 수신자
               </button>
-              {TEAM_MEMBER_FILTERS.map(name => (
+              {NOTIFICATION_RECIPIENT_FILTERS.map(name => (
                 <button
                   type="button"
                   key={name}
-                  className={audience === 'member' && recipient === name ? 'is-selected' : ''}
-                  aria-pressed={audience === 'member' && recipient === name}
+                  className={recipient === name ? 'is-selected' : ''}
+                  aria-pressed={recipient === name}
                   onClick={() => {
-                    setAudience('member');
                     setRecipient(name);
                     setExpandedId(null);
                   }}
@@ -166,7 +148,10 @@ export default function SmsHistoryPage() {
 
           <div className="sms-history-date-filter">
             <label htmlFor="sms-history-date">
-              <span className="sms-history-filter-label">날짜별 보기</span>
+              <span className="sms-history-date-label">
+                <span className="sms-history-filter-label">날짜별 보기</span>
+                <small>최신 날짜순 자동 정렬</small>
+              </span>
               <input
                 id="sms-history-date"
                 type="date"
@@ -190,6 +175,14 @@ export default function SmsHistoryPage() {
               전체 날짜
             </button>
           </div>
+          <p
+            className="sms-history-live-status"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {filterResult}
+          </p>
         </section>
 
         <section className="sms-history-summary" aria-label="발송 요약">
@@ -252,7 +245,7 @@ export default function SmsHistoryPage() {
                           <div className="sms-history-recipient">
                             <strong>{item.recipient_name}</strong>
                             <span className="sms-history-audience">
-                              {item.audience === 'member' ? '팀원' : '간부'}
+                              {AUDIENCE_LABELS[item.audience] || '수신자'}
                             </span>
                           </div>
                           <span className={`sms-history-status sms-history-status--${meta.className}`}>

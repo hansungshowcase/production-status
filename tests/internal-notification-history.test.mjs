@@ -54,7 +54,7 @@ test('내부 LMS 로그에 수신자명·제목·발송 본문을 스냅숏으�
   });
 });
 
-test('기존 영업 관리자 문자는 내부 발송내역 스냅숏에 내용을 저장하지 않는다', async () => {
+test('연결 대상이 아닌 기존 영업 관리자 문자는 공개 발송내역 스냅숏에 내용을 저장하지 않는다', async () => {
   await withoutSolapi(async () => {
     const { sendAdminLms } = await import(`../api/_lib/notify.js?history=${Math.random()}`);
     const db = makeNotificationDb();
@@ -72,7 +72,59 @@ test('기존 영업 관리자 문자는 내부 발송내역 스냅숏에 내용�
   });
 });
 
+test('분체 미착수 문자는 영업담당자명·제목·본문을 발송내역 스냅숏에 저장한다', async () => {
+  await withoutSolapi(async () => {
+    const { sendAdminLms } = await import(`../api/_lib/notify.js?powderHistory=${Math.random()}`);
+    const db = makeNotificationDb();
+    await sendAdminLms(db, {
+      to: '010-7731-4237',
+      recipientName: '이준형',
+      subject: '[한성쇼케이스 분체 미착수 경보]',
+      text: '이준형님 담당 분체 미착수 작업을 확인해 주세요.',
+      tag: 'chonbe_alert',
+    });
+
+    const insert = db.calls.find(call => call.sql.startsWith('INSERT INTO notification_log'));
+    assert.ok(insert);
+    assert.deepEqual(insert.args.slice(-3), [
+      '이준형',
+      '[한성쇼케이스 분체 미착수 경보]',
+      '이준형님 담당 분체 미착수 작업을 확인해 주세요.',
+    ]);
+  });
+});
+
+test('분체 미착수 공개 이력은 신은철·이준형 영업담당자 기록만 허용한다', async () => {
+  const { isPublicNotificationRow } = await import('../api/_lib/internalNotificationHistory.js');
+
+  assert.equal(isPublicNotificationRow({
+    milestone: 'chonbe_alert',
+    recipient_name: '신은철',
+    to_phone: '010****7407',
+  }), true);
+  assert.equal(isPublicNotificationRow({
+    milestone: 'chonbe_alert',
+    recipient_name: null,
+    to_phone: '010****4237',
+  }), true);
+  assert.equal(isPublicNotificationRow({
+    milestone: 'chonbe_alert',
+    recipient_name: '김보수 팀장',
+    to_phone: '010****4237',
+  }), false);
+});
+
 const historyRows = [
+  {
+    id: 4,
+    milestone: 'chonbe_alert',
+    to_phone: '010****4237',
+    status: 'success',
+    recipient_name: null,
+    message_subject: null,
+    message_text: null,
+    created_at: '2026-09-01T00:50:00.000Z',
+  },
   {
     id: 3,
     milestone: 'internal_assembly_daily',
@@ -157,38 +209,43 @@ async function callHistoryApi(query = {}, options = {}) {
   return { res, db };
 }
 
-test('공개 발송내역 API는 인증 없이 내부 문자만 마스킹해 반환한다', async () => {
+test('공개 발송내역 API는 인증 없이 내부 문자와 분체 미착수 문자만 마스킹해 반환한다', async () => {
   const { res, db } = await callHistoryApi({ audience: 'all', limit: '50' });
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.headers['cache-control'], 'no-store');
   assert.deepEqual(res.body.items.map(item => item.milestone), [
+    'chonbe_alert',
     'internal_assembly_daily',
     'internal_design_due',
   ]);
-  assert.equal(res.body.items[0].phone, '010****0873');
-  assert.equal(res.body.items[1].recipient_name, '김보수 팀장');
-  assert.equal(res.body.items[1].text, null);
-  assert.deepEqual(res.body.counts, { total: 2, success: 1, failed: 0, dry_run: 1 });
+  assert.equal(res.body.items[0].recipient_name, '이준형');
+  assert.equal(res.body.items[0].phone, '010****4237');
+  assert.equal(res.body.items[1].phone, '010****0873');
+  assert.equal(res.body.items[2].recipient_name, '김보수 팀장');
+  assert.equal(res.body.items[2].text, null);
+  assert.deepEqual(res.body.counts, { total: 3, success: 2, failed: 0, dry_run: 1 });
   assert.equal('error' in res.body.items[0], false);
   assert.equal('provider_msgid' in res.body.items[0], false);
-  assert.match(db.calls.at(-1).sql, /LEFT\(milestone, 9\) = 'internal_'/);
+  assert.match(db.calls.at(-1).sql, /milestone = 'chonbe_alert'/);
 });
 
-test('공개 발송내역 API는 간부와 팀원을 구분해 조회한다', async () => {
+test('공개 발송내역 API는 기존 간부·팀원 조회와 영업담당자 조회도 호환한다', async () => {
   const member = await callHistoryApi({ audience: 'member' });
   const executive = await callHistoryApi({ audience: 'executive' });
+  const sales = await callHistoryApi({ audience: 'sales' });
 
   assert.deepEqual(member.res.body.items.map(item => item.audience), ['member']);
   assert.deepEqual(executive.res.body.items.map(item => item.audience), ['executive']);
+  assert.deepEqual(sales.res.body.items.map(item => item.audience), ['sales']);
   assert.match(member.db.calls.at(-1).sql, /milestone = 'internal_assembly_daily'/);
   assert.match(executive.db.calls.at(-1).sql, /milestone <> 'internal_assembly_daily'/);
+  assert.match(sales.db.calls.at(-1).sql, /milestone = 'chonbe_alert'/);
 });
 
-test('공개 발송내역 API는 팀원명과 한국 시간 날짜를 매개변수로 조회한다', async () => {
+test('공개 발송내역 API는 모든 수신자명과 한국 시간 날짜를 매개변수로 조회한다', async () => {
   const { res, db } = await callHistoryApi({
-    audience: 'member',
-    recipient: '강종효',
+    recipient: '이준형',
     date: '2026-09-01',
     limit: '100',
   }, { db: makeHistoryDb([]) });
@@ -197,27 +254,41 @@ test('공개 발송내역 API는 팀원명과 한국 시간 날짜를 매개변�
   assert.match(db.calls.at(-1).sql, /recipient_name = \?/);
   assert.match(db.calls.at(-1).sql, /to_phone = \?/);
   assert.match(db.calls.at(-1).sql, /\(created_at AT TIME ZONE 'Asia\/Seoul'\)::date = \?::date/);
-  assert.deepEqual(db.calls.at(-1).args, ['강종효', '010****0873', '2026-09-01', 100]);
+  assert.deepEqual(db.calls.at(-1).args, [
+    '이준형',
+    'chonbe_alert',
+    '010****4237',
+    '2026-09-01',
+    100,
+  ]);
 });
 
-test('팀원별 조회는 수신자명이 없는 기존 기록도 마스킹 번호로 찾는다', async () => {
-  const { maskedPhoneForInternalMember } = await import('../api/_lib/internalNotificationHistory.js');
-  const { db } = await callHistoryApi({ audience: 'member', recipient: '카우사르' }, {
+test('수신자별 조회는 이름이 없는 기존 팀원 기록도 마스킹 번호로 찾는다', async () => {
+  const { recipientFilterForName } = await import('../api/_lib/internalNotificationHistory.js');
+  const { db } = await callHistoryApi({ recipient: '카우사르' }, {
     db: makeHistoryDb([]),
   });
 
-  assert.equal(maskedPhoneForInternalMember('카우사르'), '010****2576');
+  assert.deepEqual(recipientFilterForName('카우사르'), {
+    milestone: 'internal_assembly_daily',
+    maskedPhone: '010****2576',
+  });
   assert.match(
     db.calls.at(-1).sql,
     /\(recipient_name IS NULL OR BTRIM\(recipient_name\) = ''\).*to_phone = \?/,
   );
-  assert.deepEqual(db.calls.at(-1).args, ['카우사르', '010****2576', 50]);
+  assert.deepEqual(db.calls.at(-1).args, [
+    '카우사르',
+    'internal_assembly_daily',
+    '010****2576',
+    50,
+  ]);
 });
 
-test('공개 발송내역 API는 등록되지 않은 팀원명과 잘못된 날짜를 거절한다', async () => {
-  const unknownMember = await callHistoryApi({ audience: 'member', recipient: '알 수 없음' });
-  const malformedDate = await callHistoryApi({ audience: 'member', date: '2026-9-1' });
-  const impossibleDate = await callHistoryApi({ audience: 'member', date: '2026-02-30' });
+test('공개 발송내역 API는 등록되지 않은 수신자명과 잘못된 날짜를 거절한다', async () => {
+  const unknownMember = await callHistoryApi({ recipient: '알 수 없음' });
+  const malformedDate = await callHistoryApi({ date: '2026-9-1' });
+  const impossibleDate = await callHistoryApi({ date: '2026-02-30' });
 
   assert.equal(unknownMember.res.statusCode, 400);
   assert.equal(malformedDate.res.statusCode, 400);
@@ -225,7 +296,7 @@ test('공개 발송내역 API는 등록되지 않은 팀원명과 잘못된 날�
 });
 
 test('공개 발송내역 API는 잘못된 요청을 거절하고 조회 개수를 100건으로 제한한다', async () => {
-  const invalid = await callHistoryApi({ audience: 'sales' });
+  const invalid = await callHistoryApi({ audience: 'customers' });
   const method = await callHistoryApi({}, { method: 'POST' });
   const limited = await callHistoryApi({ limit: '9999' });
 
@@ -255,6 +326,36 @@ test('저장값이 잘못 들어와도 전체 전화번호는 공개 응답에�
   assert.equal(item.phone, '010****0873');
   assert.equal(item.recipient_name, '강종효');
   assert.doesNotMatch(JSON.stringify(item), /010-?9606-?0873/);
+});
+
+test('기존 분체 미착수 기록은 마스킹 번호로 신은철·이준형을 구분한다', async () => {
+  const { serializeInternalNotification } = await import('../api/_lib/internalNotificationHistory.js');
+  const shin = serializeInternalNotification({
+    id: 10,
+    milestone: 'chonbe_alert',
+    to_phone: '010****7407',
+    status: 'success',
+    created_at: '2026-09-01T01:00:00.000Z',
+  });
+  const lee = serializeInternalNotification({
+    id: 11,
+    milestone: 'chonbe_alert',
+    to_phone: '010****4237',
+    status: 'success',
+    created_at: '2026-09-01T01:01:00.000Z',
+  });
+
+  assert.equal(shin.recipient_name, '신은철');
+  assert.equal(lee.recipient_name, '이준형');
+  assert.equal(shin.audience, 'sales');
+  assert.equal(lee.audience, 'sales');
+});
+
+test('분체 미착수 크론은 정규화한 영업담당자명을 발송 이력에 전달한다', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../api/cron/risk-daily.js', import.meta.url), 'utf8');
+
+  assert.match(source, /recipientName:\s*canonicalAlertRecipientName/);
 });
 
 test('내부 문자 이력 열 보정은 일반 주문 알림 스키마 경로와 분리한다', async () => {

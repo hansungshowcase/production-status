@@ -45,8 +45,7 @@
 }
 
 .sms-history-back:focus-visible,
-.sms-history-filters button:focus-visible,
-.sms-history-member-filters button:focus-visible,
+.sms-history-recipient-filters button:focus-visible,
 .sms-history-date-filter input:focus-visible,
 .sms-history-date-clear:focus-visible,
 .sms-history-disclosure:focus-visible,
@@ -187,22 +186,11 @@
   line-height: 1.4;
 }
 
-.sms-history-filters {
-  padding: 4px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface2);
-}
-
-.sms-history-filters button,
-.sms-history-member-filters button {
-  min-height: 44px;
-  padding: 8px 12px;
+.sms-history-recipient-filters button {
+  min-height: var(--control-min-height);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-mid);
   cursor: pointer;
@@ -214,21 +202,20 @@
               box-shadow var(--dur-fast) var(--ease-smooth);
 }
 
-.sms-history-filters button.is-selected,
-.sms-history-member-filters button.is-selected {
-  border-color: rgba(37, 99, 235, 0.16);
+.sms-history-recipient-filters button.is-selected {
+  border-color: var(--blue);
   background: var(--blue-light);
   color: var(--blue-dark);
   box-shadow: var(--shadow);
 }
 
-.sms-history-member-filters {
+.sms-history-recipient-filters {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(var(--control-min-inline-size), 1fr));
+  gap: var(--space-2);
 }
 
-.sms-history-member-filters button {
+.sms-history-recipient-filters button {
   border: 1px solid var(--border);
   background: var(--surface2);
 }
@@ -239,11 +226,32 @@
   gap: 8px;
 }
 
+.sms-history-live-status {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .sms-history-date-filter label {
   min-width: 0;
   flex: 1;
   display: grid;
   gap: 8px;
+}
+
+.sms-history-date-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sms-history-date-label small {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .sms-history-date-filter input,
@@ -556,7 +564,7 @@
     padding: 14px;
   }
 
-  .sms-history-member-filters {
+  .sms-history-recipient-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -581,8 +589,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .sms-history-back,
-  .sms-history-filters button,
-  .sms-history-member-filters button,
+  .sms-history-recipient-filters button,
   .sms-history-disclosure svg {
     transition: none;
   }

@@ -1,13 +1,11 @@
 import request from './client';
 
 export function fetchInternalNotifications({
-  audience = 'all',
   recipient = '',
   date = '',
   limit = 100,
 } = {}) {
   const params = new URLSearchParams();
-  params.set('audience', audience);
   params.set('limit', String(limit));
   if (recipient) params.set('recipient', recipient);
   if (date) params.set('date', date);

@@ -10,7 +10,7 @@ import { cors } from '../_lib/cors.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { sendAdminLms } from '../_lib/notify.js';
 import { assessOrder, isShipRiskAlert, isKstWeekend, kstToday } from '../_lib/risk.js';
-import { routeAlerts } from '../_lib/alertRoutes.js';
+import { canonicalAlertRecipientName, routeAlerts } from '../_lib/alertRoutes.js';
 
 // 상수시간 비교 (타이밍 사이드채널 방지)
 function timingSafeMatch(a, b) {
@@ -102,7 +102,13 @@ export default cors(async function handler(req, res) {
     const text = [subject, '', ...lines].join('\n');
     const masked = phone.slice(0, 3) + '****' + phone.slice(-4);
     try {
-      const r = await sendAdminLms(db, { to: phone, subject, text, tag: 'chonbe_alert' });
+      const r = await sendAdminLms(db, {
+        to: phone,
+        recipientName: canonicalAlertRecipientName([...group.persons][0]) || null,
+        subject,
+        text,
+        tag: 'chonbe_alert',
+      });
       results.push({ phone: masked, persons, count: items.length, ok: Boolean(r.ok), dryRun: Boolean(r.dryRun), error: r.error || null });
     } catch (err) {
       results.push({ phone: masked, persons, count: items.length, ok: false, error: err?.message || String(err) });

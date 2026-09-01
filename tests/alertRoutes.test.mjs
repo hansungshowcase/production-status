@@ -1,7 +1,11 @@
 // 담당자별 지연경보 라우팅 검증
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { routeAlerts, ALERT_ROUTES } from '../api/_lib/alertRoutes.js';
+import {
+  canonicalAlertRecipientName,
+  routeAlerts,
+  ALERT_ROUTES,
+} from '../api/_lib/alertRoutes.js';
 
 const R = { '신은철': '010-5879-2438', '신은절': '010-5879-2438', '이준형': '010-7731-4237' };
 const mk = (sales_person, client_name, days_left = 3) => ({ sales_person, client_name, days_left, current_step: '용접작업' });
@@ -16,6 +20,13 @@ test('신은철 → 5879, 이준형 → 7731 로 분리', () => {
 test('오타 "신은절" → 신은철 번호로', () => {
   const { byPhone } = routeAlerts([mk('신은절', 'C')], R, '');
   assert.equal(byPhone.get('01058792438').items.length, 1);
+});
+
+test('분체 미착수 이력에는 영업담당자 이름을 정규화해 저장한다', () => {
+  assert.equal(canonicalAlertRecipientName('신은철'), '신은철');
+  assert.equal(canonicalAlertRecipientName('신은절'), '신은철');
+  assert.equal(canonicalAlertRecipientName('이준형'), '이준형');
+  assert.equal(canonicalAlertRecipientName('김보수'), '');
 });
 
 test('앞뒤 공백 이름도 매칭 (trim)', () => {
