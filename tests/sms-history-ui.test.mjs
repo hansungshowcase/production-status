@@ -51,6 +51,7 @@ test('발송내역은 10건씩 이전·페이지 번호·다음으로 이동한�
   assert.match(apiSource, /params\.set\('page'/);
   assert.match(pageSource, /aria-label="문자 발송내역 페이지"/);
   assert.match(pageSource, /notificationPageNumbers/);
+  assert.match(pageSource, /pagination\.total_pages > 0/);
   assert.match(pageSource, /sms-history-keep-together/);
   assert.match(pageSource, />\s*이전\s*</);
   assert.match(pageSource, />\s*다음\s*</);

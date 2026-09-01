@@ -318,7 +318,7 @@ export default function SmsHistoryPage() {
           </section>
         )}
 
-        {status === 'ready' && pagination.total_pages > 1 && (
+        {status === 'ready' && pagination.total_pages > 0 && (
           <nav className="sms-history-pagination" aria-label="문자 발송내역 페이지">
             <button
               type="button"
