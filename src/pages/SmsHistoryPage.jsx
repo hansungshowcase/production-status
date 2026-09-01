@@ -4,6 +4,7 @@ import { fetchInternalNotifications } from '../api/internalNotifications';
 import {
   groupNotificationsByKstDate,
   NOTIFICATION_RECIPIENT_FILTERS,
+  notificationPageNumbers,
 } from './smsHistoryFilters';
 import './SmsHistoryPage.css';
 
@@ -18,6 +19,14 @@ const AUDIENCE_LABELS = {
   member: '팀원',
   sales: '영업',
 };
+
+const EMPTY_SUMMARY = Object.freeze({ total: 0, success: 0, failed: 0 });
+const EMPTY_PAGINATION = Object.freeze({
+  page: 1,
+  page_size: 10,
+  total_items: 0,
+  total_pages: 0,
+});
 
 const KST_DATE_TIME = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul',
@@ -46,6 +55,9 @@ export default function SmsHistoryPage() {
   const [status, setStatus] = useState('loading');
   const [recipient, setRecipient] = useState('');
   const [date, setDate] = useState('');
+  const [page, setPage] = useState(1);
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
+  const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [expandedId, setExpandedId] = useState(null);
   const requestIdRef = useRef(0);
 
@@ -54,15 +66,26 @@ export default function SmsHistoryPage() {
     requestIdRef.current = requestId;
     setStatus('loading');
     try {
-      const data = await fetchInternalNotifications({ recipient, date, limit: 100 });
+      const data = await fetchInternalNotifications({ recipient, date, page, limit: 10 });
       if (requestId !== requestIdRef.current) return;
       setItems(Array.isArray(data?.items) ? data.items : []);
+      setSummary({
+        total: Number(data?.counts?.total) || 0,
+        success: Number(data?.counts?.success) || 0,
+        failed: Number(data?.counts?.failed) || 0,
+      });
+      setPagination({
+        page: Number(data?.pagination?.page) || 1,
+        page_size: Number(data?.pagination?.page_size) || 10,
+        total_items: Number(data?.pagination?.total_items) || 0,
+        total_pages: Number(data?.pagination?.total_pages) || 0,
+      });
       setStatus('ready');
     } catch {
       if (requestId !== requestIdRef.current) return;
       setStatus('error');
     }
-  }, [date, recipient]);
+  }, [date, page, recipient]);
 
   useEffect(() => {
     loadNotifications();
@@ -70,16 +93,15 @@ export default function SmsHistoryPage() {
 
   const dateGroups = useMemo(() => groupNotificationsByKstDate(items), [items]);
 
-  const summary = useMemo(() => ({
-    total: items.length,
-    success: items.filter(item => item.status === 'success').length,
-    failed: items.filter(item => item.status === 'failed').length,
-  }), [items]);
+  const pageNumbers = useMemo(
+    () => notificationPageNumbers(pagination.page, pagination.total_pages),
+    [pagination.page, pagination.total_pages],
+  );
 
   const filterResult = status === 'loading'
     ? '선택한 조건의 발송내역을 조회하는 중입니다.'
     : status === 'ready'
-      ? `${recipient || '전체 수신자'} · ${date || '전체 날짜'} · ${items.length}건`
+      ? `${recipient || '전체 수신자'} · ${date || '전체 날짜'} · 총 ${summary.total}건 · ${pagination.page}/${pagination.total_pages || 1}페이지`
       : '선택한 조건의 발송내역을 불러오지 못했습니다.';
 
   return (
@@ -107,10 +129,14 @@ export default function SmsHistoryPage() {
         <section className="sms-history-intro" aria-labelledby="sms-history-title">
           <div>
             <h2 id="sms-history-title">쏠라피 발송 현황</h2>
-            <p>생산 담당자, 작업자, 영업담당자에게 자동 발송된 문자 내용과 요청 결과입니다.</p>
+            <p>
+              생산 담당자, 작업자, 영업담당자에게 자동 발송된{' '}
+              <span className="sms-history-keep-together">문자 내용과 요청 결과입니다.</span>
+            </p>
           </div>
           <p className="sms-history-notice">
-            ‘접수 성공’은 쏠라피가 발송 요청을 정상 접수했다는 뜻입니다.
+            ‘접수 성공’은 쏠라피가 발송 요청을{' '}
+            <span className="sms-history-keep-together">정상 접수했다는 뜻입니다.</span>
           </p>
         </section>
 
@@ -124,6 +150,7 @@ export default function SmsHistoryPage() {
                 aria-pressed={!recipient}
                 onClick={() => {
                   setRecipient('');
+                  setPage(1);
                   setExpandedId(null);
                 }}
               >
@@ -137,6 +164,7 @@ export default function SmsHistoryPage() {
                   aria-pressed={recipient === name}
                   onClick={() => {
                     setRecipient(name);
+                    setPage(1);
                     setExpandedId(null);
                   }}
                 >
@@ -159,6 +187,7 @@ export default function SmsHistoryPage() {
                 value={date}
                 onChange={event => {
                   setDate(event.target.value);
+                  setPage(1);
                   setExpandedId(null);
                 }}
               />
@@ -169,6 +198,7 @@ export default function SmsHistoryPage() {
               disabled={!date}
               onClick={() => {
                 setDate('');
+                setPage(1);
                 setExpandedId(null);
               }}
             >
@@ -286,6 +316,46 @@ export default function SmsHistoryPage() {
               </section>
             ))}
           </section>
+        )}
+
+        {status === 'ready' && pagination.total_pages > 1 && (
+          <nav className="sms-history-pagination" aria-label="문자 발송내역 페이지">
+            <button
+              type="button"
+              disabled={pagination.page <= 1}
+              onClick={() => {
+                setPage(Math.max(1, pagination.page - 1));
+                setExpandedId(null);
+              }}
+            >
+              이전
+            </button>
+            {pageNumbers.map(pageNumber => (
+              <button
+                type="button"
+                key={pageNumber}
+                className={pagination.page === pageNumber ? 'is-selected' : ''}
+                aria-current={pagination.page === pageNumber ? 'page' : undefined}
+                aria-label={`${pageNumber}페이지`}
+                onClick={() => {
+                  setPage(pageNumber);
+                  setExpandedId(null);
+                }}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={pagination.page >= pagination.total_pages}
+              onClick={() => {
+                setPage(Math.min(pagination.total_pages, pagination.page + 1));
+                setExpandedId(null);
+              }}
+            >
+              다음
+            </button>
+          </nav>
         )}
       </main>
     </div>

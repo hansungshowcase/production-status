@@ -49,9 +49,10 @@
 .sms-history-date-filter input:focus-visible,
 .sms-history-date-clear:focus-visible,
 .sms-history-disclosure:focus-visible,
-.sms-history-state button:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.28);
-  outline-offset: 3px;
+.sms-history-state button:focus-visible,
+.sms-history-pagination button:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: var(--space-1);
 }
 
 .sms-history-back svg {
@@ -120,6 +121,10 @@
   color: var(--blue-dark);
   font-size: 12px;
   font-weight: 700;
+}
+
+.sms-history-keep-together {
+  white-space: nowrap;
 }
 
 .sms-history-summary {
@@ -513,6 +518,44 @@
   overflow-wrap: anywhere;
 }
 
+.sms-history-pagination {
+  margin-top: var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sms-history-pagination button {
+  min-width: var(--control-min-height);
+  min-height: var(--control-min-height);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-mid);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  transition: background var(--dur-fast) var(--ease-smooth),
+              border-color var(--dur-fast) var(--ease-smooth),
+              color var(--dur-fast) var(--ease-smooth);
+}
+
+.sms-history-pagination button:hover:not(:disabled),
+.sms-history-pagination button.is-selected {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue-dark);
+}
+
+.sms-history-pagination button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 @media (min-width: 768px) {
   .sms-history-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -585,12 +628,22 @@
   .sms-history-status {
     align-self: flex-start;
   }
+
+  .sms-history-pagination {
+    gap: var(--space-1);
+  }
+
+  .sms-history-pagination button {
+    min-width: calc(var(--control-min-height) - var(--space-1));
+    padding: var(--space-2);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sms-history-back,
   .sms-history-recipient-filters button,
-  .sms-history-disclosure svg {
+  .sms-history-disclosure svg,
+  .sms-history-pagination button {
     transition: none;
   }
 

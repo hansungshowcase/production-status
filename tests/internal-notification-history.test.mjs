@@ -161,13 +161,31 @@ const historyRows = [
 
 function makeHistoryDb(rows = historyRows) {
   const calls = [];
+  const publicRows = rows.filter(row => {
+    if (String(row?.milestone || '').startsWith('internal_')) return true;
+    if (row?.milestone !== 'chonbe_alert') return false;
+    if (['신은철', '이준형'].includes(String(row?.recipient_name || '').trim())) return true;
+    return !String(row?.recipient_name || '').trim()
+      && ['010****7407', '010****4237'].includes(row?.to_phone);
+  });
   return {
     calls,
     async execute(query) {
-      calls.push({
+      const call = {
         sql: String(query?.sql || '').replace(/\s+/g, ' ').trim(),
         args: query?.args || [],
-      });
+      };
+      calls.push(call);
+      if (/SELECT COUNT\(\*\) AS total/.test(call.sql)) {
+        return {
+          rows: [{
+            total: publicRows.length,
+            success: publicRows.filter(row => row.status === 'success').length,
+            failed: publicRows.filter(row => !['success', 'dry_run'].includes(row.status)).length,
+            dry_run: publicRows.filter(row => row.status === 'dry_run').length,
+          }],
+        };
+      }
       return { rows };
     },
   };
@@ -255,12 +273,53 @@ test('공개 발송내역 API는 모든 수신자명과 한국 시간 날짜를 
   assert.match(db.calls.at(-1).sql, /to_phone = \?/);
   assert.match(db.calls.at(-1).sql, /\(created_at AT TIME ZONE 'Asia\/Seoul'\)::date = \?::date/);
   assert.deepEqual(db.calls.at(-1).args, [
+    '신은철',
+    '이준형',
+    '010****7407',
+    '010****4237',
+    '2026-09-01',
     '이준형',
     'chonbe_alert',
     '010****4237',
     '2026-09-01',
-    100,
+    10,
+    0,
   ]);
+});
+
+test('발송내역 API는 9월 1일부터만 집계하고 10건씩 페이지로 반환한다', async () => {
+  const calls = [];
+  const db = {
+    async execute(query) {
+      const call = {
+        sql: String(query?.sql || '').replace(/\s+/g, ' ').trim(),
+        args: query?.args || [],
+      };
+      calls.push(call);
+      if (/SELECT COUNT\(\*\) AS total/.test(call.sql)) {
+        return { rows: [{ total: 26, success: 20, failed: 4, dry_run: 2 }] };
+      }
+      return { rows: historyRows.slice(0, 3) };
+    },
+  };
+
+  const { res } = await callHistoryApi({ page: '2', limit: '10' }, { db });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.match(call.sql, /\(created_at AT TIME ZONE 'Asia\/Seoul'\)::date >= \?::date/);
+    assert.equal(call.args.includes('2026-09-01'), true);
+  }
+  assert.match(calls[1].sql, /ORDER BY created_at DESC, id DESC LIMIT \? OFFSET \?/);
+  assert.deepEqual(calls[1].args.slice(-2), [10, 10]);
+  assert.deepEqual(res.body.counts, { total: 26, success: 20, failed: 4, dry_run: 2 });
+  assert.deepEqual(res.body.pagination, {
+    page: 2,
+    page_size: 10,
+    total_items: 26,
+    total_pages: 3,
+  });
 });
 
 test('수신자별 조회는 이름이 없는 기존 팀원 기록도 마스킹 번호로 찾는다', async () => {
@@ -278,10 +337,16 @@ test('수신자별 조회는 이름이 없는 기존 팀원 기록도 마스킹 
     /\(recipient_name IS NULL OR BTRIM\(recipient_name\) = ''\).*to_phone = \?/,
   );
   assert.deepEqual(db.calls.at(-1).args, [
+    '신은철',
+    '이준형',
+    '010****7407',
+    '010****4237',
+    '2026-09-01',
     '카우사르',
     'internal_assembly_daily',
     '010****2576',
-    50,
+    10,
+    0,
   ]);
 });
 
@@ -295,14 +360,22 @@ test('공개 발송내역 API는 등록되지 않은 수신자명과 잘못된 �
   assert.equal(impossibleDate.res.statusCode, 400);
 });
 
-test('공개 발송내역 API는 잘못된 요청을 거절하고 조회 개수를 100건으로 제한한다', async () => {
+test('공개 발송내역 API는 잘못된 요청을 거절하고 조회 개수를 10건으로 고정한다', async () => {
   const invalid = await callHistoryApi({ audience: 'customers' });
   const method = await callHistoryApi({}, { method: 'POST' });
   const limited = await callHistoryApi({ limit: '9999' });
 
   assert.equal(invalid.res.statusCode, 400);
   assert.equal(method.res.statusCode, 405);
-  assert.deepEqual(limited.db.calls.at(-1).args, [100]);
+  assert.deepEqual(limited.db.calls.at(-1).args, [
+    '신은철',
+    '이준형',
+    '010****7407',
+    '010****4237',
+    '2026-09-01',
+    10,
+    0,
+  ]);
 });
 
 test('공개 발송내역 API는 전체 전화번호와 인증 의존성을 소스에 포함하지 않는다', async () => {

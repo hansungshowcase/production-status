@@ -7,10 +7,14 @@ const EXECUTIVE_NAMES = {
   internal_packing_due: '정영호 팀장',
 };
 
-const SALES_NAMES_BY_MASKED_PHONE = {
-  '010****7407': '신은철',
-  '010****4237': '이준형',
-};
+export const PUBLIC_CHONBE_RECIPIENTS = Object.freeze([
+  Object.freeze({ name: '신은철', maskedPhone: '010****7407' }),
+  Object.freeze({ name: '이준형', maskedPhone: '010****4237' }),
+]);
+
+const SALES_NAMES_BY_MASKED_PHONE = Object.fromEntries(
+  PUBLIC_CHONBE_RECIPIENTS.map(({ name, maskedPhone }) => [maskedPhone, name]),
+);
 
 const SALES_RECIPIENT_NAMES = new Set(Object.values(SALES_NAMES_BY_MASKED_PHONE));
 

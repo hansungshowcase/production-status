@@ -23,3 +23,13 @@ test('발송내역은 입력 순서와 관계없이 한국 시간 최신 날짜�
   assert.deepEqual(groups.map(group => group.items.map(item => item.id)), [[1, 2], [3]]);
   assert.match(groups[0].label, /2026년 9월 2일/);
 });
+
+test('페이지 번호는 현재 페이지를 중심으로 최대 5개만 표시한다', async () => {
+  const { notificationPageNumbers } = await import('../src/pages/smsHistoryFilters.js');
+
+  assert.equal(typeof notificationPageNumbers, 'function');
+  assert.deepEqual(notificationPageNumbers(1, 3), [1, 2, 3]);
+  assert.deepEqual(notificationPageNumbers(1, 8), [1, 2, 3, 4, 5]);
+  assert.deepEqual(notificationPageNumbers(4, 8), [2, 3, 4, 5, 6]);
+  assert.deepEqual(notificationPageNumbers(8, 8), [4, 5, 6, 7, 8]);
+});

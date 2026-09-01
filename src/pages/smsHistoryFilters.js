@@ -66,3 +66,20 @@ export function groupNotificationsByKstDate(items = []) {
   }
   return [...groups.values()];
 }
+
+export function notificationPageNumbers(currentPage, totalPages, maxVisible = 5) {
+  const total = Math.max(0, Math.trunc(Number(totalPages) || 0));
+  if (total === 0) return [];
+
+  const current = Math.min(total, Math.max(1, Math.trunc(Number(currentPage) || 1)));
+  const visible = Math.min(total, Math.max(1, Math.trunc(Number(maxVisible) || 5)));
+  let start = Math.max(1, current - Math.floor(visible / 2));
+  let end = start + visible - 1;
+
+  if (end > total) {
+    end = total;
+    start = end - visible + 1;
+  }
+
+  return Array.from({ length: visible }, (_, index) => start + index);
+}

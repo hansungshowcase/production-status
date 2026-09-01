@@ -46,6 +46,17 @@ test('상단에서 문자 수신자 전원과 날짜를 선택하고 최신 날�
   assert.match(apiSource, /params\.set\('date'/);
 });
 
+test('발송내역은 10건씩 이전·페이지 번호·다음으로 이동한다', () => {
+  assert.match(pageSource, /limit:\s*10/);
+  assert.match(apiSource, /params\.set\('page'/);
+  assert.match(pageSource, /aria-label="문자 발송내역 페이지"/);
+  assert.match(pageSource, /notificationPageNumbers/);
+  assert.match(pageSource, /sms-history-keep-together/);
+  assert.match(pageSource, />\s*이전\s*</);
+  assert.match(pageSource, />\s*다음\s*</);
+  assert.match(pageSource, /setPage\(1\)/);
+});
+
 test('발송 본문은 접근 가능한 펼침 버튼으로 확인하고 과거 기록은 안내 문구를 쓴다', () => {
   assert.match(pageSource, /aria-expanded=/);
   assert.match(pageSource, /aria-controls=/);
@@ -64,6 +75,7 @@ test('발송내역 스타일은 공통 토큰과 모바일·태블릿·데스크
   assert.match(pageCss, /var\(--surface\)/);
   assert.match(pageCss, /var\(--border\)/);
   assert.match(variablesCss, /--space-2:\s*8px/);
+  assert.match(variablesCss, /--space-1:\s*4px/);
   assert.match(variablesCss, /--space-3:\s*12px/);
   assert.match(pageCss, /padding:\s*var\(--space-2\) var\(--space-3\)/);
   assert.match(variablesCss, /--control-min-inline-size:\s*104px/);
@@ -76,4 +88,6 @@ test('발송내역 스타일은 공통 토큰과 모바일·태블릿·데스크
   assert.match(pageCss, /\.sms-history-body\s*\{[^}]*word-break:\s*keep-all/s);
   assert.match(pageCss, /prefers-reduced-motion:\s*reduce/);
   assert.match(pageCss, /:focus-visible/);
+  assert.match(pageCss, /outline:\s*3px solid var\(--blue\)/);
+  assert.match(pageCss, /gap:\s*var\(--space-1\)/);
 });

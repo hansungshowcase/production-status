@@ -56,6 +56,7 @@ All spacing derives from a base of 4px.
 
 | Token | Value | Usage |
 |-------|-------|-------|
+| --space-1 | 4px | Dense pagination gaps |
 | --space-2 | 8px | Compact gaps |
 | --space-3 | 12px | Card internal gaps |
 | --space-4 | 16px | Standard card padding |
@@ -95,6 +96,9 @@ All spacing derives from a base of 4px.
 - **Selected state**: `--blue` text and `--blue-light` surface, reinforced by `aria-pressed`.
 - **Responsive behavior**: recipient buttons wrap by available width and use two equal columns on narrow mobile screens; the date clear action stacks below the input on mobile.
 - **Ordering**: records always render in KST newest-date and newest-time order, independent of API input order; choosing a date narrows the already ordered list.
+- **History boundary**: list and summary queries begin at KST 2026-09-01; older stored records remain intact but are not displayed.
+- **Pagination**: the server returns 10 records per page; navigation shows previous/next actions and at most five numbered pages, resetting to page 1 whenever recipient or date changes.
+- **Pagination focus**: keyboard focus uses the solid `--blue` accent and `--space-1` offset; narrow layouts retain the 44px control height and derive compact width from shared control/spacing tokens.
 - **Summary**: three cells using the shared H2, body, and caption scale with text status labels.
 
 ### Notification History Item
