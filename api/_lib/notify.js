@@ -4,7 +4,10 @@
 // - 멱등성: orders.notify_state JSONB, 조건부 UPDATE 선점 (Neon HTTP — 트랜잭션 없음)
 // - 솔라피 env 없으면 dry_run (notification_log 에 기록만, 실발송 없음)
 import crypto from 'crypto';
-import { ensureNotifySchema } from './notifySchema.js';
+import {
+  ensureInternalNotificationHistorySchema,
+  ensureNotifySchema,
+} from './notifySchema.js';
 import { ensureTrackToken } from './trackToken.js';
 
 const SOLAPI_ENDPOINT = 'https://api.solapi.com/messages/v4/send';
@@ -444,7 +447,7 @@ export async function sendAdminLms(db, {
   tag = 'admin_daily',
   recipientName = null,
 }) {
-  await ensureNotifySchema(db);
+  await ensureInternalNotificationHistorySchema(db);
   const phone = normalizePhone(to);
   if (!phone) return { ok: false, error: '수신 번호 없음' };
 

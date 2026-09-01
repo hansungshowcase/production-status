@@ -5,7 +5,7 @@ import {
   serializeInternalNotification,
   summarizeInternalNotifications,
 } from './_lib/internalNotificationHistory.js';
-import { ensureNotifySchema } from './_lib/notifySchema.js';
+import { ensureInternalNotificationHistorySchema } from './_lib/notifySchema.js';
 import { rateLimitCheck } from './_lib/rateLimit.js';
 
 const AUDIENCES = new Set(['all', 'executive', 'member']);
@@ -36,7 +36,7 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
   const requestedLimit = Number.parseInt(queryValue(req.query?.limit), 10);
   const limit = Math.min(100, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 50));
   const db = dependencies.db || getDb();
-  await (dependencies.ensureSchema || ensureNotifySchema)(db);
+  await (dependencies.ensureSchema || ensureInternalNotificationHistorySchema)(db);
 
   const filters = ["LEFT(milestone, 9) = 'internal_'"];
   if (audience === 'member') filters.push("milestone = 'internal_assembly_daily'");

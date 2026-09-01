@@ -38,6 +38,13 @@ export async function ensureNotifySchema(db) {
     args: [],
   });
 
+  schemaFlags.set('notify.schema', true);
+}
+
+export async function ensureInternalNotificationHistorySchema(db) {
+  await ensureNotifySchema(db);
+  if (schemaFlags.get('notify.internalHistory')) return;
+
   for (const sql of [
     'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS recipient_name TEXT',
     'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS message_subject TEXT',
@@ -46,5 +53,5 @@ export async function ensureNotifySchema(db) {
     await db.execute({ sql, args: [] });
   }
 
-  schemaFlags.set('notify.schema', true);
+  schemaFlags.set('notify.internalHistory', true);
 }

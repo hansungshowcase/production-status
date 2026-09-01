@@ -217,3 +217,20 @@ test('저장값이 잘못 들어와도 전체 전화번호는 공개 응답에�
   assert.equal(item.recipient_name, '강종효');
   assert.doesNotMatch(JSON.stringify(item), /010-?9606-?0873/);
 });
+
+test('내부 문자 이력 열 보정은 일반 주문 알림 스키마 경로와 분리한다', async () => {
+  const schema = await import(`../api/_lib/notifySchema.js?scope=${Math.random()}`);
+  const db = makeNotificationDb();
+
+  await schema.ensureNotifySchema(db);
+  assert.equal(
+    db.calls.some(call => /recipient_name|message_subject|message_text/.test(call.sql)),
+    false,
+  );
+
+  await schema.ensureInternalNotificationHistorySchema(db);
+  assert.equal(
+    db.calls.filter(call => /^ALTER TABLE notification_log ADD COLUMN/.test(call.sql)).length,
+    3,
+  );
+});
