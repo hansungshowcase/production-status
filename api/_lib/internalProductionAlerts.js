@@ -433,6 +433,7 @@ export async function sendInternalAlertGroup(db, group, options = {}) {
   try {
     result = await sendLms(db, {
       to: group.phone,
+      recipientName: group.recipientName,
       subject: message.subject,
       text: message.text,
       tag: `internal_${group.type}`,

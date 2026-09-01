@@ -437,7 +437,13 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
 }
 
 // ── 관리자 LMS (리스크 리포트 등) — notification_log 에만 기록 (order_id NULL) ──
-export async function sendAdminLms(db, { to, subject, text, tag = 'admin_daily' }) {
+export async function sendAdminLms(db, {
+  to,
+  subject,
+  text,
+  tag = 'admin_daily',
+  recipientName = null,
+}) {
   await ensureNotifySchema(db);
   const phone = normalizePhone(to);
   if (!phone) return { ok: false, error: '수신 번호 없음' };
@@ -455,11 +461,23 @@ export async function sendAdminLms(db, { to, subject, text, tag = 'admin_daily' 
   }
 
   const status = result.dryRun ? 'dry_run' : result.ok ? 'success' : 'failed';
+  const isInternalHistory = String(tag || '').startsWith('internal_');
   try {
     await db.execute({
-      sql: `INSERT INTO notification_log (order_id, milestone, channel, to_phone, status, provider_msgid, error, attempt)
-            VALUES (NULL, ?, 'lms', ?, ?, ?, ?, 1)`,
-      args: [tag, maskPhone(phone), status, result.msgId || null, result.error ? String(result.error).slice(0, 500) : null],
+      sql: `INSERT INTO notification_log (
+              order_id, milestone, channel, to_phone, status, provider_msgid, error, attempt,
+              recipient_name, message_subject, message_text
+            ) VALUES (NULL, ?, 'lms', ?, ?, ?, ?, 1, ?, ?, ?)`,
+      args: [
+        tag,
+        maskPhone(phone),
+        status,
+        result.msgId || null,
+        result.error ? String(result.error).slice(0, 500) : null,
+        isInternalHistory ? recipientName : null,
+        isInternalHistory ? String(subject || '').slice(0, 200) : null,
+        isInternalHistory ? String(text || '').slice(0, 5000) : null,
+      ],
     });
   } catch (err) {
     console.error('[notify] 관리자 발송 로그 기록 실패:', err?.message || err);

@@ -391,6 +391,7 @@ test('주문 알림 상태를 원자적으로 선점해 같은 내부 문자를 
   assert.equal(second.sent, 0);
   assert.equal(second.skipped, 2);
   assert.equal(sends.length, 1);
+  assert.equal(sends[0].recipientName, '김보수 팀장');
   assert.match(sends[0].text, /거래처 30/);
   assert.match(sends[0].text, /거래처 31/);
   assert.equal(db.notifyState.get(30)['internal:design_due'].status, 'internal_success');

@@ -38,5 +38,13 @@ export async function ensureNotifySchema(db) {
     args: [],
   });
 
+  for (const sql of [
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS recipient_name TEXT',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS message_subject TEXT',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS message_text TEXT',
+  ]) {
+    await db.execute({ sql, args: [] });
+  }
+
   schemaFlags.set('notify.schema', true);
 }
