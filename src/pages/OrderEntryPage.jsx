@@ -44,6 +44,15 @@ const INITIAL_FORM = {
   notes: '',
 };
 
+const DUE_DATE_BUFFER_CONFIRM_MESSAGE = [
+  '납기일을 다시 확인해 주세요.',
+  '',
+  '입력한 납기일이 실제 납기일보다 2일 앞당긴 날짜인지 확인해 주세요.',
+  '현장 작업 여유를 위해 실제 납기보다 2일 빠르게 등록합니다.',
+  '',
+  '이대로 작업을 등록하시겠습니까?',
+].join('\n');
+
 const EMPTY_OCR_DATA = {
   client_name: '',
   order_date: '',
@@ -233,6 +242,10 @@ export default function OrderEntryPage() {
     const missingMessages = Object.values(validationErrors).filter(Boolean);
     if (missingMessages.length > 0) {
       setToast({ visible: true, message: `등록할 수 없습니다 — ${missingMessages.join('  ·  ')}` });
+      return;
+    }
+
+    if (!window.confirm(DUE_DATE_BUFFER_CONFIRM_MESSAGE)) {
       return;
     }
 
