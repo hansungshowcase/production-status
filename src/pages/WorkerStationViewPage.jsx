@@ -10,7 +10,7 @@ import { shipOrderFromWorker } from '../api/orders';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY } from '../constants';
 import { shouldAskWorkerIdentity } from './workerIdentityConfirm';
-import { extractDueDateFromOrder, getDaysUntilDue, parseDate } from '../utils/dateUtils';
+import { extractDueDateFromOrder, formatProcessCompletionTime, getDaysUntilDue, parseDate } from '../utils/dateUtils';
 import { getVisibleOrderMemo } from '../utils/orderText';
 import './WorkerStationViewPage.css';
 
@@ -1223,7 +1223,12 @@ export default function WorkerStationViewPage() {
                     const worker = historyItem
                       ? displayProcessWorker(s, historyItem, item.sales_person)
                       : (s === item.step_name ? displayProcessWorker(s, item, item.sales_person) : '');
-                    const label = worker ? `${shortName}(${worker})` : shortName;
+                    const completedTime = isDone
+                      ? formatProcessCompletionTime(historyItem?.completed_at)
+                      : '';
+                    const label = [worker ? `${shortName}(${worker})` : shortName, completedTime]
+                      .filter(Boolean)
+                      .join(' · ');
                     return (
                       <span
                         key={s}
@@ -1234,7 +1239,12 @@ export default function WorkerStationViewPage() {
                           <span className="station-view__pip-index">{isDone ? '✓' : i + 1}</span>
                           <span className="station-view__pip-label">
                             <span className="station-view__pip-step">{shortName}</span>
-                            {worker && <span className="station-view__pip-worker">({worker})</span>}
+                            {(worker || completedTime) && (
+                              <span className="station-view__pip-meta">
+                                {worker && <span className="station-view__pip-worker">({worker})</span>}
+                                {completedTime && <span className="station-view__pip-time">{completedTime}</span>}
+                              </span>
+                            )}
                           </span>
                         </span>
                       </span>

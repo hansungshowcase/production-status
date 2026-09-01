@@ -1413,14 +1413,30 @@
   white-space: nowrap;
 }
 
+.station-view__pip-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
 .station-view__pip-worker {
-  display: block;
+  display: inline;
   font-size: 9px;
   font-weight: 800;
   opacity: 0.95;
   white-space: normal;
   word-break: keep-all;
   overflow-wrap: anywhere;
+}
+
+.station-view__pip-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .station-view__step-pip--done .station-view__pip-bar {
