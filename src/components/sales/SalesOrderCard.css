@@ -571,10 +571,19 @@
 }
 
 .sales-order-card__process-name {
+  flex: 1;
   min-width: 0;
   color: #475569;
   font-weight: 500;
   overflow-wrap: anywhere;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.sales-order-card__process-name .sales-order-card__process-worker-inline {
+  margin-left: 0;
 }
 
 .sales-order-card__process-status {
@@ -603,6 +612,9 @@
   font-weight: 800;
   color: #047857;
   white-space: nowrap;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #dcfce7;
 }
 
 .sales-order-card__process-item:has(.sales-order-card__process-dot--done) {
@@ -707,9 +719,9 @@
   }
 
   .sales-order-card__process-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
   }
 
   .sales-order-card__progress {

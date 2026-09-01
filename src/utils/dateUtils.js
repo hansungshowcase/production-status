@@ -130,6 +130,24 @@ export function getDaysUntilDue(dueDate) {
   return Math.ceil((dueDay - today) / (1000 * 60 * 60 * 24));
 }
 
+export function formatProcessCompletionTime(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || '';
+
+  return `${part('month')}/${part('day')} ${part('hour')}:${part('minute')}`;
+}
+
 /**
  * 납기 상태를 라벨/색상으로 반환
  * @param {string|Date} dueDate - 납기일

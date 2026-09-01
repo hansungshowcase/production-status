@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROCESS_STEPS } from '../../constants';
-import { extractDueDateFromOrder, formatDueStatus } from '../../utils/dateUtils';
+import { extractDueDateFromOrder, formatDueStatus, formatProcessCompletionTime } from '../../utils/dateUtils';
 import { getVisibleOrderMemo } from '../../utils/orderText';
 import { getOrder } from '../../api/orders';
 import { buildShippingDocumentData, buildShippingDocumentPrintHtml } from './shippingDocuments';
@@ -25,12 +25,6 @@ function getDisplayWorker(step, summary, salesPerson) {
   if (summary.started_by && summary.started_by !== salesPerson) return summary.started_by;
   if (step === '도면설계') return '김보수 팀장';
   return '';
-}
-
-function formatProcessTime(value) {
-  if (!value) return '';
-  const text = String(value).replace('T', ' ');
-  return text.slice(5, 16);
 }
 
 function getDeliveryAddress(order) {
@@ -524,12 +518,12 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
                   <span className="sales-order-card__process-name">
                     {step}
                     {worker && <span className="sales-order-card__process-worker-inline">({worker})</span>}
+                    {isDone && completedTime && (
+                      <span className="sales-order-card__process-time">{formatProcessCompletionTime(completedTime)}</span>
+                    )}
                   </span>
                   <span className={statusCls}>
                     {statusText}
-                    {isDone && completedTime && (
-                      <span className="sales-order-card__process-time">{formatProcessTime(completedTime)}</span>
-                    )}
                   </span>
                 </div>
               );
