@@ -7,12 +7,20 @@ import { requireWorkerAction } from '../../_lib/auth.js';
 // 핸들러 안에서 지역변수 process(공정 row)가 Node 전역 process를 가리므로 환경변수는 모듈 레벨에서 읽는다
 const NOTIFY_STARTED_ENABLED = process.env.NOTIFY_STARTED === '1';
 
-export default cors(async function handler(req, res) {
+async function defaultInternalStartNotify(db, payload) {
+  const { notifyInternalProcessStart } = await import('../../_lib/internalProductionAlerts.js');
+  return notifyInternalProcessStart(db, payload);
+}
+
+export async function handleStartProcess(req, res, dependencies = {}) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-  if (!rateLimitCheck(req, res)) return;
-  const workerAction = requireWorkerAction(req, res);
+  const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
+  if (!checkRateLimit(req, res)) return;
+  const workerAction = dependencies.requireWorkerAction
+    ? dependencies.requireWorkerAction(req, res)
+    : requireWorkerAction(req, res);
   if (!workerAction) return;
 
   const id = req.query.id;
@@ -20,7 +28,8 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
   }
 
-  const db = getDb();
+  const db = dependencies.db || getDb();
+  const notifyInternalStart = dependencies.notifyInternalStart || defaultInternalStartNotify;
   const { work_date, actor, assigned_worker, assigned_team } = req.body || {};
 
   // Validate required fields
@@ -105,6 +114,23 @@ export default cors(async function handler(req, res) {
     }
   }
 
+  if (order) {
+    try {
+      await notifyInternalStart(db, {
+        order,
+        process: {
+          ...process,
+          status: 'in_progress',
+          started_at: work_date || now,
+          started_by: workerName,
+        },
+        workerName,
+      });
+    } catch (e) {
+      console.error('[start] 조립팀 내부 알림 발송 실패(무시):', e?.message || e);
+    }
+  }
+
   // 알림 훅: 해당 주문의 최초 공정 시작 + NOTIFY_STARTED=1 → started (실패해도 본 응답에 영향 없음)
   // allProcesses는 UPDATE 이전 스냅샷 — 전부 waiting이었다면 이번이 첫 시작
   if (NOTIFY_STARTED_ENABLED && order && allProcesses.every((p) => p.status === 'waiting')) {
@@ -122,4 +148,6 @@ export default cors(async function handler(req, res) {
   });
 
   res.json(updatedRows[0]);
-});
+}
+
+export default cors(handleStartProcess);

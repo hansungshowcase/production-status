@@ -10,6 +10,7 @@
   "crons": [
     { "path": "/api/cron/sweep", "schedule": "30 23 * * *" },
     { "path": "/api/cron/risk-daily", "schedule": "40 23 * * 0-4" },
+    { "path": "/api/cron/internal-production-daily", "schedule": "40 23 * * 0-4" },
     { "path": "/api/cron/sheet-sync", "schedule": "* * * * *" }
   ],
   "rewrites": [

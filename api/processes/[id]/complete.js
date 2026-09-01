@@ -19,6 +19,11 @@ async function defaultNotify(db, order, milestone) {
   await maybeNotify(db, order, milestone);
 }
 
+async function defaultInternalCompletionNotify(db, payload) {
+  const { notifyInternalProcessCompletion } = await import('../../_lib/internalProductionAlerts.js');
+  return notifyInternalProcessCompletion(db, payload);
+}
+
 export async function handleCompleteProcess(req, res, dependencies = {}) {
   if (req.method !== 'PATCH') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -37,6 +42,7 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const notify = dependencies.notify || defaultNotify;
+  const notifyInternalCompletion = dependencies.notifyInternalCompletion || defaultInternalCompletionNotify;
   const { completed_date, actor, start_next_step, assigned_worker } = req.body || {};
 
   // Find process
@@ -146,6 +152,18 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
     }
   }
 
+  if (order && process.step_name === 'V-커팅작업') {
+    try {
+      await notifyInternalCompletion(db, {
+        order,
+        completedStepNames: [process.step_name],
+        completedBy: completeWorker,
+      });
+    } catch (e) {
+      console.error('[complete] V-커팅 자재 알림 발송 실패(무시):', e?.message || e);
+    }
+  }
+
   // 알림 훅: 포장 완료 → packed (실패해도 본 응답에 영향 없음)
   if (order && process.step_name === '포장') {
     try {
@@ -157,12 +175,15 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
 
   let startedNextProcessId = null;
   let completedIntermediateProcesses = [];
+  let completedIntermediateStepNames = [];
 
   if (start_next_step) {
     const nextWorker = assigned_worker || completeWorker;
     const intermediateSteps = STEPS.slice(currentStepIndex + 1, targetStepIndex);
-    completedIntermediateProcesses = forwardProcessRows
-      .filter((row) => intermediateSteps.includes(row.step_name) && (row.status === 'waiting' || row.status === 'in_progress'))
+    const processesToComplete = forwardProcessRows
+      .filter((row) => intermediateSteps.includes(row.step_name) && (row.status === 'waiting' || row.status === 'in_progress'));
+    completedIntermediateStepNames = processesToComplete.map(row => row.step_name);
+    completedIntermediateProcesses = processesToComplete
       .map((row) => ({
         id: row.id,
         was_waiting_before_complete: row.status === 'waiting',
@@ -182,6 +203,19 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
                 AND status IN ('waiting', 'in_progress')`,
         args: [now, nextWorker, now, completed_date || null, completeWorker, process.order_id, ...intermediateSteps],
       });
+
+      const completedVcut = completedIntermediateStepNames.includes('V-커팅작업');
+      if (order && completedVcut) {
+        try {
+          await notifyInternalCompletion(db, {
+            order,
+            completedStepNames: ['V-커팅작업'],
+            completedBy: completeWorker,
+          });
+        } catch (e) {
+          console.error('[complete] V-커팅 자재 알림 발송 실패(무시):', e?.message || e);
+        }
+      }
     }
 
     const { rows: startNextRows } = await db.execute({
