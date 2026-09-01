@@ -84,6 +84,21 @@ All spacing derives from a base of 4px.
 - **Spacing**: 12px mobile gap, 16px desktop gap.
 - **Accessibility**: text labels and numbers, no color-only meaning.
 
+### Home Secondary Action
+- **Structure**: full-width compact action directly below the role cards.
+- **Surface**: `--surface` background, `--border` outline, and primary-blue icon/focus ring.
+- **States**: default, hover lift, active press, and visible keyboard focus.
+
+### Notification History Controls
+- **Structure**: three-button segmented filter for all, executives, and members.
+- **Selected state**: `--blue` text and `--blue-light` surface, reinforced by `aria-pressed`.
+- **Summary**: three cells using the shared H2, body, and caption scale with text status labels.
+
+### Notification History Item
+- **Structure**: one surface row with recipient, masked phone, request status, timestamp, subject, and one disclosure button.
+- **States**: collapsed, expanded, legacy-content fallback, failed, and dry-run.
+- **Accessibility**: status is never color-only; the disclosure exposes `aria-expanded` and `aria-controls`.
+
 ## 6. Motion & Interaction
 
 | Type | Duration | Easing | Usage |

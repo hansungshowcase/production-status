@@ -538,6 +538,91 @@
   color: var(--text-mid);
 }
 
+.home-sms-history-link {
+  width: 100%;
+  max-width: 1280px;
+  min-height: 56px;
+  margin-top: 12px;
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: transform var(--dur-fast) var(--ease-smooth),
+              box-shadow var(--dur-fast) var(--ease-smooth),
+              border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.home-sms-history-link:hover {
+  transform: translateY(-2px);
+  border-color: var(--blue);
+  box-shadow: var(--shadow-lg);
+}
+
+.home-sms-history-link:active {
+  transform: scale(0.99);
+}
+
+.home-sms-history-link:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 3px;
+}
+
+.home-sms-history-link__icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.home-sms-history-link__icon svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.home-sms-history-link__copy {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-sms-history-link__copy strong {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.home-sms-history-link__copy small {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.home-sms-history-link__arrow {
+  flex: 0 0 auto;
+  color: var(--blue);
+  font-size: 24px;
+  line-height: 1;
+}
+
 /* ─── Footer ─── */
 .home-footer {
   display: none;
@@ -666,6 +751,27 @@
     height: 38px;
     flex-basis: 38px;
     font-size: 22px;
+  }
+
+  .home-sms-history-link {
+    min-height: 56px;
+    margin-top: 10px;
+    padding: 10px 12px;
+  }
+
+  .home-sms-history-link__copy small {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-sms-history-link {
+    transition: none;
+  }
+
+  .home-sms-history-link:hover,
+  .home-sms-history-link:active {
+    transform: none;
   }
 }
 

@@ -14,6 +14,15 @@ test('home page keeps existing entry actions while matching the wide dashboard l
   assert.match(homeSource, /home-card-divider/);
 });
 
+test('역할 카드 바로 아래에 공개 문자 발송내역 진입 버튼이 있다', () => {
+  assert.match(homeSource, /navigate\('\/sms-history'\)/);
+  assert.match(homeSource, /문자 발송내역 확인하기/);
+  assert.match(homeSource, /home-sms-history-link/);
+  assert.match(homeSource, /<svg[\s\S]*aria-hidden="true"/);
+  assert.match(homeCss, /\.home-sms-history-link\s*\{[\s\S]*min-height:\s*56px/);
+  assert.match(homeCss, /\.home-sms-history-link:focus-visible/);
+});
+
 test('home page visual layout uses the provided wide hero and horizontal role cards', () => {
   assert.match(homeCss, /\.home-header\s*\{[\s\S]*padding:\s*18px 44px 16px;/);
   assert.match(homeCss, /\.home-logo\s*\{[\s\S]*justify-content:\s*flex-start;/);

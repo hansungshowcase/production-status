@@ -25,6 +25,7 @@ const OrderDetailPage = lazy(() => import('./pages/OrderDetailPage'));
 const SalesLoginPage = lazy(() => import('./pages/SalesLoginPage'));
 const SalesMyPage = lazy(() => import('./pages/SalesMyPage'));
 const TrackPage = lazy(() => import('./pages/TrackPage'));
+const SmsHistoryPage = lazy(() => import('./pages/SmsHistoryPage'));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="/sales/login" element={<SalesLoginPage />} />
         <Route path="/sales/my" element={<SalesMyPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/sms-history" element={<SmsHistoryPage />} />
         {/* 고객용 공개 조회 페이지 — 인증/로그인 리다이렉트 없음 */}
         <Route path="/track/:token" element={<TrackPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -88,6 +88,23 @@ export default function HomePage() {
             <div className="home-card-arrow">&rarr;</div>
           </button>
         </div>
+
+        <button
+          className="home-sms-history-link"
+          onClick={() => navigate('/sms-history')}
+        >
+          <span className="home-sms-history-link__icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 4.75h14A2.25 2.25 0 0 1 21.25 7v8A2.25 2.25 0 0 1 19 17.25H9.2l-4.45 3v-3.13A2.25 2.25 0 0 1 2.75 15V7A2.25 2.25 0 0 1 5 4.75Z" />
+              <path d="M7 9h10M7 13h6" />
+            </svg>
+          </span>
+          <span className="home-sms-history-link__copy">
+            <strong>문자 발송내역 확인하기</strong>
+            <small>간부·팀원별 쏠라피 발송 현황과 내용을 확인합니다</small>
+          </span>
+          <span className="home-sms-history-link__arrow" aria-hidden="true">&rarr;</span>
+        </button>
       </div>
 
       <div className="home-footer">
