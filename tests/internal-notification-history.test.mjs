@@ -185,6 +185,45 @@ test('공개 발송내역 API는 간부와 팀원을 구분해 조회한다', as
   assert.match(executive.db.calls.at(-1).sql, /milestone <> 'internal_assembly_daily'/);
 });
 
+test('공개 발송내역 API는 팀원명과 한국 시간 날짜를 매개변수로 조회한다', async () => {
+  const { res, db } = await callHistoryApi({
+    audience: 'member',
+    recipient: '강종효',
+    date: '2026-09-01',
+    limit: '100',
+  }, { db: makeHistoryDb([]) });
+
+  assert.equal(res.statusCode, 200);
+  assert.match(db.calls.at(-1).sql, /recipient_name = \?/);
+  assert.match(db.calls.at(-1).sql, /to_phone = \?/);
+  assert.match(db.calls.at(-1).sql, /\(created_at AT TIME ZONE 'Asia\/Seoul'\)::date = \?::date/);
+  assert.deepEqual(db.calls.at(-1).args, ['강종효', '010****0873', '2026-09-01', 100]);
+});
+
+test('팀원별 조회는 수신자명이 없는 기존 기록도 마스킹 번호로 찾는다', async () => {
+  const { maskedPhoneForInternalMember } = await import('../api/_lib/internalNotificationHistory.js');
+  const { db } = await callHistoryApi({ audience: 'member', recipient: '카우사르' }, {
+    db: makeHistoryDb([]),
+  });
+
+  assert.equal(maskedPhoneForInternalMember('카우사르'), '010****2576');
+  assert.match(
+    db.calls.at(-1).sql,
+    /\(recipient_name IS NULL OR BTRIM\(recipient_name\) = ''\).*to_phone = \?/,
+  );
+  assert.deepEqual(db.calls.at(-1).args, ['카우사르', '010****2576', 50]);
+});
+
+test('공개 발송내역 API는 등록되지 않은 팀원명과 잘못된 날짜를 거절한다', async () => {
+  const unknownMember = await callHistoryApi({ audience: 'member', recipient: '알 수 없음' });
+  const malformedDate = await callHistoryApi({ audience: 'member', date: '2026-9-1' });
+  const impossibleDate = await callHistoryApi({ audience: 'member', date: '2026-02-30' });
+
+  assert.equal(unknownMember.res.statusCode, 400);
+  assert.equal(malformedDate.res.statusCode, 400);
+  assert.equal(impossibleDate.res.statusCode, 400);
+});
+
 test('공개 발송내역 API는 잘못된 요청을 거절하고 조회 개수를 100건으로 제한한다', async () => {
   const invalid = await callHistoryApi({ audience: 'sales' });
   const method = await callHistoryApi({}, { method: 'POST' });

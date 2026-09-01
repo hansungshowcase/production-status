@@ -90,12 +90,13 @@ All spacing derives from a base of 4px.
 - **States**: default, hover lift, active press, and visible keyboard focus.
 
 ### Notification History Controls
-- **Structure**: three-button segmented filter for all, executives, and members.
+- **Structure**: three-button segmented audience filter, a wrapping member button grid, and one native date selector with a clear action.
 - **Selected state**: `--blue` text and `--blue-light` surface, reinforced by `aria-pressed`.
+- **Responsive behavior**: member buttons share one row when space allows and use two equal columns on narrow mobile screens; the date clear action stacks below the input on mobile.
 - **Summary**: three cells using the shared H2, body, and caption scale with text status labels.
 
 ### Notification History Item
-- **Structure**: one surface row with recipient, masked phone, request status, timestamp, subject, and one disclosure button.
+- **Structure**: records are grouped under a KST date heading and count; each surface row contains recipient, masked phone, request status, timestamp, subject, and one disclosure button.
 - **States**: collapsed, expanded, legacy-content fallback, failed, and dry-run.
 - **Accessibility**: status is never color-only; the disclosure exposes `aria-expanded` and `aria-controls`.
 

@@ -16,6 +16,16 @@ const MEMBER_NAMES_BY_MASKED_PHONE = {
   '010****4537': '까지',
 };
 
+const MEMBER_MASKED_PHONE_BY_NAME = Object.fromEntries(
+  Object.entries(MEMBER_NAMES_BY_MASKED_PHONE).map(([phone, name]) => [name, phone]),
+);
+
+export const INTERNAL_MEMBER_NAMES = new Set(Object.keys(MEMBER_MASKED_PHONE_BY_NAME));
+
+export function maskedPhoneForInternalMember(name) {
+  return MEMBER_MASKED_PHONE_BY_NAME[name] || '';
+}
+
 const PUBLIC_STATUSES = new Set(['success', 'failed', 'dry_run']);
 
 export function audienceForMilestone(milestone) {

@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchInternalNotifications } from '../api/internalNotifications';
+import {
+  groupNotificationsByKstDate,
+  TEAM_MEMBER_FILTERS,
+} from './smsHistoryFilters';
 import './SmsHistoryPage.css';
 
 const FILTERS = [
@@ -41,27 +45,31 @@ export default function SmsHistoryPage() {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState('loading');
   const [audience, setAudience] = useState('all');
+  const [recipient, setRecipient] = useState('');
+  const [date, setDate] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const requestIdRef = useRef(0);
 
   const loadNotifications = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setStatus('loading');
     try {
-      const data = await fetchInternalNotifications({ limit: 100 });
+      const data = await fetchInternalNotifications({ audience, recipient, date, limit: 100 });
+      if (requestId !== requestIdRef.current) return;
       setItems(Array.isArray(data?.items) ? data.items : []);
       setStatus('ready');
     } catch {
+      if (requestId !== requestIdRef.current) return;
       setStatus('error');
     }
-  }, []);
+  }, [audience, date, recipient]);
 
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
 
-  const filteredItems = useMemo(
-    () => audience === 'all' ? items : items.filter(item => item.audience === audience),
-    [items, audience],
-  );
+  const dateGroups = useMemo(() => groupNotificationsByKstDate(items), [items]);
 
   const summary = useMemo(() => ({
     total: items.length,
@@ -101,9 +109,92 @@ export default function SmsHistoryPage() {
           </p>
         </section>
 
+        <section className="sms-history-filter-panel" aria-label="발송내역 조회 조건">
+          <div className="sms-history-filter-section">
+            <strong className="sms-history-filter-label">수신자 구분</strong>
+            <div className="sms-history-filters" role="group" aria-label="수신자 구분">
+              {FILTERS.map(filter => (
+                <button
+                  type="button"
+                  key={filter.value}
+                  className={audience === filter.value ? 'is-selected' : ''}
+                  aria-pressed={audience === filter.value}
+                  onClick={() => {
+                    setAudience(filter.value);
+                    setRecipient('');
+                    setExpandedId(null);
+                  }}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="sms-history-filter-section">
+            <strong className="sms-history-filter-label">팀원별 발송내역</strong>
+            <div className="sms-history-member-filters" role="group" aria-label="팀원별 발송내역">
+              <button
+                type="button"
+                className={audience === 'member' && !recipient ? 'is-selected' : ''}
+                aria-pressed={audience === 'member' && !recipient}
+                onClick={() => {
+                  setAudience('member');
+                  setRecipient('');
+                  setExpandedId(null);
+                }}
+              >
+                전체 팀원
+              </button>
+              {TEAM_MEMBER_FILTERS.map(name => (
+                <button
+                  type="button"
+                  key={name}
+                  className={audience === 'member' && recipient === name ? 'is-selected' : ''}
+                  aria-pressed={audience === 'member' && recipient === name}
+                  onClick={() => {
+                    setAudience('member');
+                    setRecipient(name);
+                    setExpandedId(null);
+                  }}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="sms-history-date-filter">
+            <label htmlFor="sms-history-date">
+              <span className="sms-history-filter-label">날짜별 보기</span>
+              <input
+                id="sms-history-date"
+                type="date"
+                aria-label="발송 날짜"
+                value={date}
+                onChange={event => {
+                  setDate(event.target.value);
+                  setExpandedId(null);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="sms-history-date-clear"
+              disabled={!date}
+              onClick={() => {
+                setDate('');
+                setExpandedId(null);
+              }}
+            >
+              전체 날짜
+            </button>
+          </div>
+        </section>
+
         <section className="sms-history-summary" aria-label="발송 요약">
           <div className="sms-history-summary__cell">
-            <span>전체 기록</span>
+            <span>조회 기록</span>
             <strong>{summary.total}</strong>
           </div>
           <div className="sms-history-summary__cell sms-history-summary__cell--success">
@@ -115,23 +206,6 @@ export default function SmsHistoryPage() {
             <strong>{summary.failed}</strong>
           </div>
         </section>
-
-        <div className="sms-history-filters" role="group" aria-label="수신자 구분">
-          {FILTERS.map(filter => (
-            <button
-              type="button"
-              key={filter.value}
-              className={audience === filter.value ? 'is-selected' : ''}
-              aria-pressed={audience === filter.value}
-              onClick={() => {
-                setAudience(filter.value);
-                setExpandedId(null);
-              }}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
 
         {status === 'loading' && (
           <div className="sms-history-state" role="status" aria-live="polite">
@@ -148,62 +222,76 @@ export default function SmsHistoryPage() {
           </div>
         )}
 
-        {status === 'ready' && filteredItems.length === 0 && (
+        {status === 'ready' && items.length === 0 && (
           <div className="sms-history-state" role="status">
-            <strong>표시할 발송내역이 없습니다.</strong>
+            <strong>선택한 조건의 발송내역이 없습니다.</strong>
             <span>내부 자동문자가 발송되면 여기에 기록됩니다.</span>
           </div>
         )}
 
-        {status === 'ready' && filteredItems.length > 0 && (
-          <section className="sms-history-list" aria-label="문자 발송 목록">
-            {filteredItems.map(item => {
-              const meta = statusMeta(item.status);
-              const isExpanded = expandedId === item.id;
-              const bodyId = `sms-history-body-${item.id}`;
-              return (
-                <article className="sms-history-item" key={item.id}>
-                  <div className="sms-history-item__top">
-                    <div className="sms-history-recipient">
-                      <strong>{item.recipient_name}</strong>
-                      <span className="sms-history-audience">
-                        {item.audience === 'member' ? '팀원' : '간부'}
-                      </span>
-                    </div>
-                    <span className={`sms-history-status sms-history-status--${meta.className}`}>
-                      {meta.label}
-                    </span>
-                  </div>
+        {status === 'ready' && items.length > 0 && (
+          <section className="sms-history-groups" aria-label="문자 발송 목록">
+            {dateGroups.map(group => (
+              <section
+                className="sms-history-date-group"
+                key={group.date}
+                aria-labelledby={`sms-history-date-${group.date}`}
+              >
+                <div className="sms-history-date-heading">
+                  <h2 id={`sms-history-date-${group.date}`}>{group.label}</h2>
+                  <span>{group.items.length}건</span>
+                </div>
+                <div className="sms-history-list">
+                  {group.items.map(item => {
+                    const meta = statusMeta(item.status);
+                    const isExpanded = expandedId === item.id;
+                    const bodyId = `sms-history-body-${item.id}`;
+                    return (
+                      <article className="sms-history-item" key={item.id}>
+                        <div className="sms-history-item__top">
+                          <div className="sms-history-recipient">
+                            <strong>{item.recipient_name}</strong>
+                            <span className="sms-history-audience">
+                              {item.audience === 'member' ? '팀원' : '간부'}
+                            </span>
+                          </div>
+                          <span className={`sms-history-status sms-history-status--${meta.className}`}>
+                            {meta.label}
+                          </span>
+                        </div>
 
-                  <div className="sms-history-meta">
-                    <span>{item.phone || '번호 정보 없음'}</span>
-                    <span aria-hidden="true">·</span>
-                    <time dateTime={item.sent_at || undefined}>{formatSentAt(item.sent_at)}</time>
-                  </div>
+                        <div className="sms-history-meta">
+                          <span>{item.phone || '번호 정보 없음'}</span>
+                          <span aria-hidden="true">·</span>
+                          <time dateTime={item.sent_at || undefined}>{formatSentAt(item.sent_at)}</time>
+                        </div>
 
-                  <h3>{item.subject || '제목 저장 전 기록'}</h3>
+                        <h3>{item.subject || '제목 저장 전 기록'}</h3>
 
-                  <button
-                    type="button"
-                    className="sms-history-disclosure"
-                    aria-expanded={isExpanded}
-                    aria-controls={bodyId}
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                  >
-                    <span>{isExpanded ? '내용 접기' : '발송 내용 보기'}</span>
-                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                      <path d="m6 9 6 6 6-6" />
-                    </svg>
-                  </button>
+                        <button
+                          type="button"
+                          className="sms-history-disclosure"
+                          aria-expanded={isExpanded}
+                          aria-controls={bodyId}
+                          onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                        >
+                          <span>{isExpanded ? '내용 접기' : '발송 내용 보기'}</span>
+                          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
 
-                  {isExpanded && (
-                    <div className="sms-history-body" id={bodyId}>
-                      {item.text || '내용 저장 전 기록'}
-                    </div>
-                  )}
-                </article>
-              );
-            })}
+                        {isExpanded && (
+                          <div className="sms-history-body" id={bodyId}>
+                            {item.text || '내용 저장 전 기록'}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </section>
         )}
       </main>

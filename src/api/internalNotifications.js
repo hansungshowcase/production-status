@@ -1,5 +1,15 @@
 import request from './client';
 
-export function fetchInternalNotifications({ limit = 100 } = {}) {
-  return request(`/internal-notifications?audience=all&limit=${limit}`, { cache: 'no-store' });
+export function fetchInternalNotifications({
+  audience = 'all',
+  recipient = '',
+  date = '',
+  limit = 100,
+} = {}) {
+  const params = new URLSearchParams();
+  params.set('audience', audience);
+  params.set('limit', String(limit));
+  if (recipient) params.set('recipient', recipient);
+  if (date) params.set('date', date);
+  return request(`/internal-notifications?${params.toString()}`, { cache: 'no-store' });
 }

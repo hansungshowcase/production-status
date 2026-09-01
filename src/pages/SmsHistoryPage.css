@@ -46,6 +46,9 @@
 
 .sms-history-back:focus-visible,
 .sms-history-filters button:focus-visible,
+.sms-history-member-filters button:focus-visible,
+.sms-history-date-filter input:focus-visible,
+.sms-history-date-clear:focus-visible,
 .sms-history-disclosure:focus-visible,
 .sms-history-state button:focus-visible {
   outline: 3px solid rgba(37, 99, 235, 0.28);
@@ -160,8 +163,31 @@
   color: var(--red);
 }
 
+.sms-history-filter-panel {
+  margin-top: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.sms-history-filter-section {
+  display: grid;
+  gap: 8px;
+}
+
+.sms-history-filter-label {
+  display: block;
+  color: var(--text-mid);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .sms-history-filters {
-  margin: 20px 0 12px;
   padding: 4px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -171,7 +197,8 @@
   background: var(--surface2);
 }
 
-.sms-history-filters button {
+.sms-history-filters button,
+.sms-history-member-filters button {
   min-height: 44px;
   padding: 8px 12px;
   border: 1px solid transparent;
@@ -187,14 +214,72 @@
               box-shadow var(--dur-fast) var(--ease-smooth);
 }
 
-.sms-history-filters button.is-selected {
+.sms-history-filters button.is-selected,
+.sms-history-member-filters button.is-selected {
   border-color: rgba(37, 99, 235, 0.16);
   background: var(--blue-light);
   color: var(--blue-dark);
   box-shadow: var(--shadow);
 }
 
+.sms-history-member-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.sms-history-member-filters button {
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+.sms-history-date-filter {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sms-history-date-filter label {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 8px;
+}
+
+.sms-history-date-filter input,
+.sms-history-date-clear {
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sms-history-date-filter input {
+  width: 100%;
+  padding: 9px 12px;
+  color-scheme: light;
+}
+
+.sms-history-date-clear {
+  padding: 9px 16px;
+  background: var(--surface);
+  color: var(--blue-dark);
+  cursor: pointer;
+}
+
+.sms-history-date-clear:disabled {
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 0.6;
+}
+
 .sms-history-state {
+  margin-top: 12px;
   min-height: 180px;
   padding: 28px 20px;
   display: flex;
@@ -250,8 +335,45 @@
   to { transform: rotate(360deg); }
 }
 
+.sms-history-groups,
+.sms-history-date-group,
 .sms-history-list {
   display: grid;
+}
+
+.sms-history-groups {
+  margin-top: 12px;
+  gap: 24px;
+}
+
+.sms-history-date-group {
+  gap: 10px;
+}
+
+.sms-history-date-heading {
+  padding: 0 2px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 2px solid var(--blue-light);
+}
+
+.sms-history-date-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.sms-history-date-heading span {
+  flex: 0 0 auto;
+  color: var(--blue-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.sms-history-list {
   gap: 12px;
 }
 
@@ -379,6 +501,7 @@
   font-size: 14px;
   line-height: 1.7;
   white-space: pre-wrap;
+  word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
@@ -397,6 +520,10 @@
 
   .sms-history-item {
     padding: 20px;
+  }
+
+  .sms-history-date-filter label {
+    max-width: 340px;
   }
 }
 
@@ -425,6 +552,23 @@
     max-width: none;
   }
 
+  .sms-history-filter-panel {
+    padding: 14px;
+  }
+
+  .sms-history-member-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sms-history-date-filter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sms-history-date-clear {
+    width: 100%;
+  }
+
   .sms-history-item__top {
     align-items: flex-start;
     flex-direction: column;
@@ -438,6 +582,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sms-history-back,
   .sms-history-filters button,
+  .sms-history-member-filters button,
   .sms-history-disclosure svg {
     transition: none;
   }
