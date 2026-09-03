@@ -59,7 +59,9 @@ export async function fetchSolapiDeliveryReports(messageIds, options = {}) {
   for (let index = 0; index < uniqueIds.length; index += batchSize) {
     const batch = uniqueIds.slice(index, index + batchSize);
     const url = new URL(SOLAPI_LIST_ENDPOINT);
-    url.searchParams.set('messageIds', JSON.stringify(batch));
+    batch.forEach((messageId, messageIndex) => {
+      url.searchParams.append(`messageIds[${messageIndex}]`, messageId);
+    });
     url.searchParams.set('limit', String(batch.length));
     const response = await fetchImpl(url, {
       headers: { Authorization: solapiAuthHeader() },

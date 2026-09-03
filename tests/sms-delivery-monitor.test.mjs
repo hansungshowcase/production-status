@@ -627,7 +627,11 @@ test('Solapi report lookup batches message IDs and never returns message bodies'
       batchSize: 2,
       fetchImpl: async (url, options) => {
         const parsed = new URL(url);
-        const ids = JSON.parse(parsed.searchParams.get('messageIds'));
+        const ids = [...parsed.searchParams.entries()]
+          .filter(([key]) => /^messageIds\[\d+\]$/.test(key))
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([, value]) => value);
+        assert.equal(parsed.searchParams.get('messageIds'), null);
         batches.push(ids);
         assert.match(options.headers.Authorization, /^HMAC-SHA256 apiKey=test-key,/);
         return {
