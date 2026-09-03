@@ -30,6 +30,8 @@ export async function handleSmsDeliveryMonitor(req, res, dependencies = {}) {
   const db = dependencies.db || getDb();
   const monitor = dependencies.monitor || runSmsDeliveryMonitor;
   const result = await monitor(db, { nowMs });
+  const logger = dependencies.logger || console;
+  logger.info?.('[sms-delivery-monitor]', result);
   return res.json({ ok: true, ...result });
 }
 

@@ -666,6 +666,7 @@ test('delivery monitor cron authenticates requests and skips KST weekends', asyn
   const originalSecret = process.env.CRON_SECRET;
   process.env.CRON_SECRET = 'delivery-monitor-secret';
   const calls = [];
+  const monitorLogs = [];
 
   try {
     const unauthorized = mockResponse();
@@ -696,10 +697,14 @@ test('delivery monitor cron authenticates requests and skips KST weekends', asyn
           calls.push('weekday');
           return monitorResult;
         },
+        logger: {
+          info(label, payload) { monitorLogs.push({ label, payload }); },
+        },
       },
     );
     assert.equal(authorized.statusCode, 200);
     assert.deepEqual(authorized.body, { ok: true, ...monitorResult });
+    assert.deepEqual(monitorLogs, [{ label: '[sms-delivery-monitor]', payload: monitorResult }]);
 
     const weekend = mockResponse();
     await cron.handleSmsDeliveryMonitor(
