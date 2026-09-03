@@ -4,7 +4,7 @@
 
 **Goal:** Solapi 최종 전송결과에서 직원 문자 수신거부·차단을 감지해 관리자 `010-7731-4237`로 하루 한 번 알린다.
 
-**Architecture:** 인증된 Vercel Cron이 5분마다 최근 내부 문자 로그의 Solapi 메시지 ID를 묶어 조회한다. 최종 상태를 기존 로그에 저장하고, 차단 상태는 별도 원자적 선점 테이블로 중복을 막은 뒤 기존 `sendAdminLms` 경로로 관리자에게 알린다.
+**Architecture:** 인증된 Vercel Cron이 5분마다 최근 내부 문자 로그의 Solapi 메시지 ID를 묶어 조회한다. 최종 상태를 기존 로그에 저장하고, 차단 상태는 별도 원자적 선점 테이블로 중복을 막은 뒤 기존 `sendAdminLms` 경로로 관리자에게 알린다. 재시도 전에는 Solapi `customFields`의 날짜별 중복방지 토큰을 조회해 이전 요청의 응답만 유실된 경우 관리자 문자를 다시 보내지 않는다.
 
 **Tech Stack:** Node.js ESM, Vercel Functions/Cron, Neon PostgreSQL, Solapi Messages v4 REST API, `node:test`.
 
@@ -74,7 +74,7 @@ Expected: 모듈 또는 export 부재로 각 새 동작 테스트가 실패한�
 
 - [ ] **Step 4: Implement monitor and deduplication**
 
-KST `2026-09-03` 이후의 대상 로그 중 미확정 또는 차단 상태를 조회한다. 결과를 로그에 갱신하고 `KST날짜:수신자명:마스킹번호:상태코드` 키를 `notification_delivery_alerts`에 원자적으로 선점한다. 성공한 선점만 관리자 문자로 보내며 성공은 `sent`, 실패는 `failed`로 기록해 재시도할 수 있게 한다.
+KST `2026-09-03` 이후의 대상 로그 중 미확정·처리중 상태와 아직 끝나지 않은 관리자 알림 큐를 조회한다. `sent` 처리된 최종 차단 행은 이후 조회에서 제외한다. 마지막 확인 시각이 오래된 순서로 순환 처리해 반복 실패 건이 다른 대기 건을 막지 않게 한다. 결과를 로그에 갱신하고 `KST날짜:수신자명:마스킹번호:상태코드` 키를 `notification_delivery_alerts`에 원자적으로 선점한다. 성공한 선점만 관리자 문자로 보내며 성공은 `sent`, 실패는 `failed`, 실행 한도 초과는 `queued`로 기록해 다음 실행에서 재시도할 수 있게 한다. 관리자 문자에는 선점 키의 해시를 `customFields.deliveryAlertKey`로 포함하고, 재시도 전에 당일 관리자 발송 내역의 같은 토큰을 조회한다. 30초 함수 제한을 넘지 않도록 한 실행에서 최대 20건을 조회하고 관리자 알림 처리는 최대 2건으로 제한한다.
 
 - [ ] **Step 5: Run targeted tests**
 

@@ -55,3 +55,37 @@ export async function ensureInternalNotificationHistorySchema(db) {
 
   schemaFlags.set('notify.internalHistory', true);
 }
+
+export async function ensureSmsDeliveryMonitorSchema(db) {
+  await ensureInternalNotificationHistorySchema(db);
+  if (schemaFlags.get('notify.deliveryMonitor')) return;
+
+  for (const sql of [
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_status TEXT',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_status_code TEXT',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_reason TEXT',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_reported_at TIMESTAMPTZ',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_received_at TIMESTAMPTZ',
+    'ALTER TABLE notification_log ADD COLUMN IF NOT EXISTS delivery_checked_at TIMESTAMPTZ',
+    `CREATE TABLE IF NOT EXISTS notification_delivery_alerts (
+      alert_key TEXT PRIMARY KEY,
+      source_log_id BIGINT,
+      provider_msgid TEXT NOT NULL,
+      recipient_name TEXT,
+      to_phone TEXT,
+      status_code TEXT NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'sending',
+      attempts INT NOT NULL DEFAULT 1,
+      admin_provider_msgid TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      alerted_at TIMESTAMPTZ
+    )`,
+  ]) {
+    await db.execute({ sql, args: [] });
+  }
+
+  schemaFlags.set('notify.deliveryMonitor', true);
+}

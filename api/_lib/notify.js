@@ -446,6 +446,7 @@ export async function sendAdminLms(db, {
   text,
   tag = 'admin_daily',
   recipientName = null,
+  customFields = null,
 }) {
   await ensureInternalNotificationHistorySchema(db);
   const phone = normalizePhone(to);
@@ -459,7 +460,11 @@ export async function sendAdminLms(db, {
     if (!from) {
       result = { ok: false, channel: 'lms', msgId: null, error: 'SMS_SENDER 미설정' };
     } else {
-      result = await solapiSend({ to: phone, from, subject: String(subject || '').slice(0, 40), text, type: 'LMS' }, 'lms');
+      const message = { to: phone, from, subject: String(subject || '').slice(0, 40), text, type: 'LMS' };
+      if (customFields && typeof customFields === 'object' && !Array.isArray(customFields)) {
+        message.customFields = customFields;
+      }
+      result = await solapiSend(message, 'lms');
     }
   }
 
