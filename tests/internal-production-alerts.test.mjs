@@ -13,7 +13,7 @@ test('내부 생산 알림 수신자와 조립팀 작업자 별칭을 정확히 
   const alerts = await loadAlertsModule();
 
   assert.deepEqual(alerts.INTERNAL_ALERT_CONTACTS, {
-    material: { name: '이시아 부장', phone: '010-4186-4237' },
+    material: { name: '이시아 부장', phone: '010-4221-4237' },
     welding: { name: '최우석 이사', phone: '010-8308-5110' },
     laser: { name: '이정섭 부장', phone: '010-3240-5938' },
     design: { name: '김보수 팀장', phone: '010-9097-4034' },
@@ -234,7 +234,7 @@ test('V-커팅 완료 즉시 자재 입고 요청 문구를 만든다', async ()
   });
   const message = alerts.buildInternalAlertMessage(alerts.groupInternalAlerts([item])[0]);
 
-  assert.equal(item.phone, '010-4186-4237');
+  assert.equal(item.phone, '010-4221-4237');
   assert.equal(item.stateKey, 'internal:vcut_completed');
   assert.equal(message.subject, '[한성쇼케이스 자재 입고 요청]');
   assert.match(message.text, /V-커팅 작업이 완료되었습니다/);
@@ -291,7 +291,7 @@ test('V-커팅 완료 훅만 자재 담당자에게 즉시 알림을 전달한�
   assert.equal(sent.sent, 1);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].type, 'vcut_completed');
-  assert.equal(groups[0].phone, '010-4186-4237');
+  assert.equal(groups[0].phone, '010-4221-4237');
 });
 
 test('공정 시작 훅은 평일에 시작한 조립팀 본인에게만 즉시 알림을 전달한다', async () => {

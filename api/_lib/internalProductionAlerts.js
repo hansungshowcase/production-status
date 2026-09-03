@@ -4,7 +4,7 @@ import { sendAdminLms } from './notify.js';
 import { ensureNotifySchema } from './notifySchema.js';
 
 export const INTERNAL_ALERT_CONTACTS = {
-  material: { name: '이시아 부장', phone: '010-4186-4237' },
+  material: { name: '이시아 부장', phone: '010-4221-4237' },
   welding: { name: '최우석 이사', phone: '010-8308-5110' },
   laser: { name: '이정섭 부장', phone: '010-3240-5938' },
   design: { name: '김보수 팀장', phone: '010-9097-4034' },
