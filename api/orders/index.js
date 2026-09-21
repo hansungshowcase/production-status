@@ -311,9 +311,13 @@ export async function handleGet(req, res, db = getDb()) {
 }
 
 export async function handlePost(req, res, db, { append = appendOrderToSheet } = {}) {
+  const sanitizedBody = sanitizeInput(req.body);
+  if (!sanitizedBody.client_name) {
+    return res.status(400).json({ error: { message: '거래처는 필수 항목입니다.', status: 400 } });
+  }
   let body;
   try {
-    body = normalizeOrderCreateInput(sanitizeInput(req.body));
+    body = normalizeOrderCreateInput(sanitizedBody);
   } catch (err) {
     if (err instanceof OrderCreateInputValidationError) {
       return res.status(400).json({ error: { message: err.message, status: 400 } });
@@ -368,7 +372,7 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
         order_date || null, due_date || null, sales_person || null, client_name,
         product_type || null, door_type || null, design || null,
         width ?? null, depth ?? null, height ?? null,
-        quantity ?? 1, color || null, phone || null, delivery_address || null, freight_payment || null,
+        quantity, color || null, phone || null, delivery_address || null, freight_payment || null,
         notes || null, remarks || null, etc_notes || null,
         sale_amount ?? null, lead_source || null, balance ?? null,
         ship_scheduled_date || null, sms_sent ?? null, safe_delivery ?? 0, work_order_image_url || null,

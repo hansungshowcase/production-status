@@ -1,5 +1,6 @@
 import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
 import { isCanonicalCalendarDate } from '../../src/utils/dateUtils.js';
+import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
 function normalizeOptionalPositiveNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -14,7 +15,11 @@ function normalizeOptionalPositiveNumber(value) {
 }
 
 function normalizeQuantity(value) {
-  return normalizeOptionalPositiveNumber(value) ?? 1;
+  const quantity = parsePositiveIntegerQuantity(value);
+  if (quantity === null) {
+    throw new OrderCreateInputValidationError('수량은 1 이상의 정수로 입력해야 합니다(최대 2147483647).');
+  }
+  return quantity;
 }
 
 function normalizeOptionalText(value) {
@@ -87,13 +92,9 @@ export function assertImageBackedOrderHasProductType(order) {
 }
 
 export function assertImageBackedOrderHasPositiveQuantity(order) {
-  const quantityText = String(order.quantity ?? '').trim();
-  if (
-    order.work_order_image_url
-    && (quantityText.startsWith('-') || normalizeOptionalPositiveNumber(order.quantity) === null)
-  ) {
+  if (order.work_order_image_url && parsePositiveIntegerQuantity(order.quantity) === null) {
     throw new OrderCreateInputValidationError(
-      '작업지시서가 등록된 주문은 수량을 1 이상의 숫자로 입력해야 합니다.',
+      '작업지시서가 등록된 주문은 수량을 1 이상의 정수로 입력해야 합니다(최대 2147483647).',
     );
   }
 }
@@ -137,7 +138,7 @@ export function mutationChangesImageOrderInvariant(order, mutation) {
 }
 
 export function normalizeOrderCreateInput(input) {
-  const body = normalizeOrderMutationInput(input);
+  const body = normalizeOrderMutationInput(input, { normalizeQuantityField: false });
 
   assertImageBackedOrderHasClientName(body);
   assertImageBackedOrderHasCanonicalOrderDate(body);
@@ -158,8 +159,12 @@ export function normalizeOrderCreateInput(input) {
   return body;
 }
 
-export function normalizeOrderMutationInput(input) {
+export function normalizeOrderMutationInput(input, { normalizeQuantityField = true } = {}) {
   const body = { ...(input || {}) };
+
+  if (normalizeQuantityField && Object.hasOwn(body, 'quantity')) {
+    body.quantity = normalizeQuantity(body.quantity);
+  }
 
   if (body.delivery_address !== undefined) {
     body.delivery_address = normalizeOptionalText(body.delivery_address);

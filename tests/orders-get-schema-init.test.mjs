@@ -87,7 +87,7 @@ test('orders POST prepares the optional schema before opening its write transact
 
   await assert.rejects(
     () => ordersModule.handlePost({
-      body: { client_name: 'schema preparation regression' },
+      body: { client_name: 'schema preparation regression', quantity: 1 },
     }, mockResponse(), db),
     (error) => error === transactionReached,
   );

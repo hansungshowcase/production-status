@@ -1,5 +1,5 @@
-import { getToken, clearToken } from '../utils/authClient';
-import { parseResponseBody, shouldRetryRequest } from './clientCore';
+import { getToken, clearToken } from '../utils/authClient.js';
+import { parseResponseBody, shouldRetryRequest } from './clientCore.js';
 
 const BASE_URL = '/api';
 

@@ -60,36 +60,20 @@ test('does not mark future due orders as missed before the due date passes', () 
 
 test('keeps orders without due dates out of the adherence denominator but reports them', () => {
   const rows = [
-    { quantity: null, due_date: '2026-07-03', status: 'shipped', equipment_completed: 0 },
+    { id: 1, quantity: null, due_date: '2026-07-03', status: 'shipped', equipment_completed: 0 },
     { quantity: 5, due_date: null, status: 'in_production', ship_date: null },
   ];
 
   const result = calculateDeliveryAdherence(rows, '2026-07-03');
 
-  assert.equal(result.total_production_units, 6);
-  assert.equal(result.measurable_units, 1);
-  assert.equal(result.on_time_units, 1);
+  assert.equal(result.total_production_units, 5);
+  assert.equal(result.measurable_units, 0);
+  assert.equal(result.on_time_units, 0);
   assert.equal(result.missed_units, 0);
   assert.equal(result.missing_due_date_units, 5);
-  assert.equal(result.adherence_rate, 100);
-});
-
-test('home delivery adherence API is cached for about half a day to protect database quota', async () => {
-  const apiSource = await readFile(new URL('../api/delivery-adherence.js', import.meta.url), 'utf8');
-  const corsSource = await readFile(new URL('../api/_lib/cors.js', import.meta.url), 'utf8');
-  const clientSource = await readFile(new URL('../src/api/deliveryAdherence.js', import.meta.url), 'utf8');
-
-  assert.match(apiSource, /calculateDeliveryAdherence/);
-  assert.match(apiSource, /equipment_completed_at/);
-  assert.match(apiSource, /later_step_started_at/);
-  assert.match(apiSource, /res\.setHeader\('ETag', `delivery-adherence-\$\{today\}-\$\{Date\.now\(\)\}`\)/);
-  assert.match(corsSource, /'\/api\/delivery-adherence': 'public, s-maxage=43200, stale-while-revalidate=3600'/);
-  assert.match(corsSource, /path === '\/api\/delivery-adherence'/);
-  assert.match(corsSource, /res\.setHeader\('Cache-Control', 'no-store'\)/);
-  assert.match(corsSource, /res\.setHeader\('Clear-Site-Data', '"cache"'\)/);
-  assert.match(clientSource, /delivery_adherence_slot/);
-  assert.match(clientSource, /cache:\s*'no-store'/);
-  assert.doesNotMatch(clientSource, /cache:\s*'force-cache'/);
+  assert.equal(result.adherence_rate, 0);
+  assert.equal(result.invalid_quantity_orders, 1);
+  assert.deepEqual(result.invalid_quantity_order_ids, [1]);
 });
 
 test('home page shows the four easy delivery adherence numbers before entry actions', async () => {

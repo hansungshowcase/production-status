@@ -1,4 +1,5 @@
 import { isCanonicalCalendarDate } from '../utils/dateUtils.js';
+import { parsePositiveIntegerQuantity } from '../utils/quantity.js';
 
 export const PRODUCT_TYPE_OPTIONS = ['제과', '정육', '반찬', '꽃', '대면', '오픈', '진열', '마카롱', '샌드위치', '쇼케이스', '버티칼', '냉장고', '냉동고'];
 export const DOOR_TYPE_OPTIONS = ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운드앞문', '라운드뒷문', '평대'];
@@ -43,11 +44,7 @@ const OCR_CORE_FIELD_RULES = [
     key: 'quantity',
     label: '수량',
     message: '수량을 1 이상 입력해주세요',
-    isValid: (value) => {
-      if (value === null || value === undefined || String(value).trim() === '') return false;
-      const numeric = typeof value === 'number' ? value : Number(String(value).replace(/,/g, '').trim());
-      return Number.isFinite(numeric) && numeric > 0;
-    },
+    isValid: (value) => parsePositiveIntegerQuantity(value) !== null,
   },
 ];
 

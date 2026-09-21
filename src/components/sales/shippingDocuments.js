@@ -1,5 +1,6 @@
 import { getVisibleOrderMemo } from '../../utils/orderText.js';
 import { formatMoney, balanceState } from '../../utils/money.js';
+import { parsePositiveIntegerQuantity } from '../../utils/quantity.js';
 
 const COMPANY = {
   businessNumber: '634-81-02042',
@@ -105,7 +106,8 @@ export function buildShippingDocumentData(order, type, options = {}) {
   const baseDate = options.today || todayIso();
   const shipDate = order.ship_date || order.ship_scheduled_date || baseDate;
   const orderDate = order.order_date || baseDate;
-  const quantity = order.quantity ?? 1;
+  const parsedQuantity = parsePositiveIntegerQuantity(order.quantity);
+  const quantity = parsedQuantity === null ? '수량 확인 필요' : parsedQuantity;
   const visibleNote = getVisibleOrderMemo(order.notes)
     || getVisibleOrderMemo(order.remarks)
     || getVisibleOrderMemo(order.etc_notes);

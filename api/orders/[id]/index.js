@@ -86,16 +86,27 @@ async function handleGet(id, req, res) {
   });
 }
 
-async function handleUpdate(id, req, res) {
-  const auth = requireAuth(req, res, { roles: ['sales'] });
+export async function handleUpdate(id, req, res, dependencies = {}) {
+  const checkAuth = dependencies.requireAuth || requireAuth;
+  const auth = checkAuth(req, res, { roles: ['sales'] });
   if (!auth) return;
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
-  const db = getDb();
-  await ensureOrderImageColumn(db);
-  const normalizedBody = normalizeOrderMutationInput(sanitizeInput(req.body));
-  const mutation = pickOwnAllowedFields(normalizedBody, ORDER_FIELDS);
+  let mutation;
+  try {
+    const normalizedBody = normalizeOrderMutationInput(sanitizeInput(req.body));
+    mutation = pickOwnAllowedFields(normalizedBody, ORDER_FIELDS);
+  } catch (err) {
+    if (err instanceof OrderCreateInputValidationError) {
+      return res.status(400).json({ error: { message: err.message, status: 400 } });
+    }
+    throw err;
+  }
+
+  const db = dependencies.db || getDb();
+  const ensureImageColumn = dependencies.ensureOrderImageColumn || ensureOrderImageColumn;
+  await ensureImageColumn(db);
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];

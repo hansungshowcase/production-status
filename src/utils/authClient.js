@@ -1,6 +1,6 @@
 // 인증 클라이언트 헬퍼.
 // 환경변수 미설정(opt-in 비활성) 시 토큰 없이도 동작. 활성 시 비번 로그인 후 Bearer 토큰 자동 첨부.
-import { safeGet, safeSet, safeRemove } from './safeStorage';
+import { safeGet, safeSet, safeRemove } from './safeStorage.js';
 
 const TOKEN_KEY = 'auth_token';
 const ROLE_KEY = 'auth_role';

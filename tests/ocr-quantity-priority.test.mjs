@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { extractQuantityFromOcrValue } from '../api/ocr/work-order.js';
+import { extractBrowserOcrQuantity } from '../src/pages/browserOcrEssentialFields.js';
 
-test('OCR quantity parser prefers an explicit Korean total quantity', () => {
+test('OCR quantity parser prefers an individual Korean quantity over a grouped total', () => {
   // Given: an OCR value that contains both an item annotation and the stated total.
   const ocrValue = '1대(급) 총 2대';
 
   // When: the OCR quantity is normalized.
   const quantity = extractQuantityFromOcrValue(ocrValue);
 
-  // Then: the explicitly stated total wins over the first number.
-  assert.equal(quantity, 2);
+  // Then: the individual line quantity wins over the grouped total.
+  assert.equal(quantity, 1);
 });
 
 test('OCR quantity parser preserves a single quantity when no total is stated', () => {
@@ -26,17 +26,9 @@ test('OCR quantity parser preserves a single quantity when no total is stated', 
   assert.equal(quantity, 1);
 });
 
-test('browser fallback checks an explicit total before a labeled quantity', async () => {
-  // Given: the browser fallback source.
-  const browserSource = await readFile(
-    new URL('../src/pages/OrderEntryPage.jsx', import.meta.url),
-    'utf8',
-  );
-
-  // When: the fallback quantity parser is inspected.
-  const browserTotalPattern = browserSource.indexOf('총\\s*(\\d+)\\s*대');
-
-  // Then: the explicit total is considered before a labeled first number.
-  assert.ok(browserTotalPattern >= 0);
-  assert.ok(browserTotalPattern < browserSource.indexOf('const labeled =', browserTotalPattern));
+test('browser fallback parses only the labeled individual quantity', () => {
+  assert.equal(extractBrowserOcrQuantity('규격 1340×760×2000\n수량: 1대(급) 총 6대'), '1');
+  assert.equal(extractBrowserOcrQuantity('수량: 2대(급) 총 6대'), '2');
+  assert.equal(extractBrowserOcrQuantity('수량: 총 6대'), '');
+  assert.equal(extractBrowserOcrQuantity('규격: 1340×760×2000'), '');
 });

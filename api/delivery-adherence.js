@@ -2,15 +2,17 @@ import { cors } from './_lib/cors.js';
 import { getDb } from './_lib/db.js';
 import { calculateDeliveryAdherence, todayInSeoul } from './_lib/deliveryAdherence.js';
 
-export default cors(async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: { message: 'Method not allowed' } });
-  }
+export function createDeliveryAdherenceHandler({ dbFactory = getDb } = {}) {
+  return cors(async function handler(req, res) {
+    if (req.method !== 'GET') {
+      return res.status(405).json({ error: { message: 'Method not allowed' } });
+    }
 
-  const db = getDb();
-  const result = await db.execute({
-    sql: `
+    const db = dbFactory();
+    const result = await db.execute({
+      sql: `
       SELECT
+        o.id,
         o.quantity,
         o.due_date,
         o.status,
@@ -28,13 +30,20 @@ export default cors(async function handler(req, res) {
       LEFT JOIN processes p ON p.order_id = o.id
       GROUP BY o.id, o.quantity, o.due_date, o.status, o.ship_date
     `,
-    args: [],
-  });
-  const today = todayInSeoul();
-  res.setHeader('ETag', `delivery-adherence-${today}-${Date.now()}`);
+      args: [],
+    });
+    const today = todayInSeoul();
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
-  return res.json({
-    ...calculateDeliveryAdherence(result.rows, today),
-    calculated_at: today,
+    return res.json({
+      ...calculateDeliveryAdherence(result.rows, today),
+      calculated_at: today,
+    });
   });
-});
+}
+
+export default createDeliveryAdherenceHandler();

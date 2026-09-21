@@ -36,15 +36,15 @@ test('normalizes labeled Korean due-date OCR text to a real ISO date', () => {
   assert.equal(normalizeOcrDueDate('납기일 7월 32일'), '');
 });
 
-test('prefers stated total quantity over an item annotation', () => {
+test('prefers the individual line quantity over a grouped total', () => {
   // Given: an OCR value with an item count and an explicit total.
   const ocrValue = '1대(급) 총 2대';
 
   // When: quantity is normalized.
   const quantity = extractQuantityFromOcrValue(ocrValue);
 
-  // Then: the explicit total is preserved.
-  assert.equal(quantity, 2);
+  // Then: the individual work-order line quantity is preserved.
+  assert.equal(quantity, 1);
 });
 
 test('preserves an explicitly recognized historical order date', () => {

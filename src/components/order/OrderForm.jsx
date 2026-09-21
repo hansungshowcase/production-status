@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { SALES_PERSONS as SP_DATA } from '../../constants';
+import { MAX_QUANTITY } from '../../utils/quantity';
 import './OrderForm.css';
 
 const SALES_PERSONS = SP_DATA.map(p => p.name);
@@ -154,7 +155,7 @@ export default function OrderForm({ form, errors, onChange }) {
         <div className="of__row">
           <label className="of__field">
             <span className="of__label">수량</span>
-            <input type="number" className="of__input" value={form.quantity === '' || form.quantity == null ? '' : form.quantity} onChange={inp('quantity')} placeholder="1" min="1" inputMode="numeric" />
+            <input type="number" className="of__input" value={form.quantity === '' || form.quantity == null ? '' : form.quantity} onChange={inp('quantity')} placeholder="1" min="1" max={MAX_QUANTITY} inputMode="numeric" />
           </label>
           <label className="of__field">
             <span className="of__label">색상</span>

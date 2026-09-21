@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import OrderForm from './OrderForm';
 import { updateOrder, getTrackLink } from '../../api/orders';
 import { getVisibleOrderMemo } from '../../utils/orderText';
+import { normalizeQuantity } from '../../pages/orderEntryPayload';
 import './OrderEditModal.css';
 
 function normalizeOptionalPositiveNumber(value) {
@@ -52,6 +53,11 @@ export default function OrderEditModal({ order, onClose, onSaved }) {
 
   function validate() {
     const e = {};
+    try {
+      normalizeQuantity(form.quantity);
+    } catch {
+      e.quantity = '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)';
+    }
     if (!form.client_name?.trim()) e.client_name = '거래처명은 필수입니다';
     if (!form.product_type) e.product_type = '사양은 필수입니다';
     setErrors(e);
@@ -77,7 +83,7 @@ export default function OrderEditModal({ order, onClose, onSaved }) {
         width: form.width === '' || form.width == null ? null : Number(form.width),
         depth: form.depth === '' || form.depth == null ? null : Number(form.depth),
         height: form.height === '' || form.height == null ? null : Number(form.height),
-        quantity: form.quantity === '' || form.quantity == null ? 1 : Number(form.quantity),
+        quantity: normalizeQuantity(form.quantity),
         color: form.color || null,
         sale_amount: normalizeOptionalPositiveNumber(form.sale_amount),
         balance: normalizeOptionalPositiveNumber(form.balance),

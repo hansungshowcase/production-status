@@ -1,3 +1,5 @@
+import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
+
 function normalizeDate(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -6,9 +8,7 @@ function normalizeDate(value) {
 }
 
 function normalizeUnits(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return 1;
-  return Math.trunc(numeric);
+  return parsePositiveIntegerQuantity(value);
 }
 
 function getEquipmentReachedDate(row) {
@@ -35,11 +35,18 @@ export function calculateDeliveryAdherence(rows, today = todayInSeoul()) {
     on_time_units: 0,
     missed_units: 0,
     missing_due_date_units: 0,
+    invalid_quantity_orders: 0,
+    invalid_quantity_order_ids: [],
     adherence_rate: 0,
   };
 
   for (const row of rows) {
     const units = normalizeUnits(row.quantity);
+    if (units === null) {
+      summary.invalid_quantity_orders += 1;
+      if (row.id !== undefined && row.id !== null) summary.invalid_quantity_order_ids.push(Number(row.id));
+      continue;
+    }
     const dueDate = normalizeDate(row.due_date);
     const reachedDate = getEquipmentReachedDate(row);
 

@@ -9,6 +9,7 @@ import {
   ensureNotifySchema,
 } from './notifySchema.js';
 import { ensureTrackToken } from './trackToken.js';
+import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
 const SOLAPI_ENDPOINT = 'https://api.solapi.com/messages/v4/send';
 // 종결 상태 = success/dry_run/skipped (claim SQL 에 인라인) — queued/failed/sending(stale) 은 스윕이 재처리
@@ -90,7 +91,11 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
   const 주문번호 = orderNo(order);
   const 제품규격 = productLine(order);
   const 고객규격 = customerSpecLine(order);
-  const 수량 = `${order.quantity || 1}대`;
+  const parsedQuantity = parsePositiveIntegerQuantity(order.quantity);
+  if (parsedQuantity === null) {
+    throw new Error('수량 확인이 필요하여 고객 알림을 발송하지 않았습니다.');
+  }
+  const 수량 = `${parsedQuantity}대`;
   const 예상출고일 = fmtDate(order.due_date);
   const 조회링크 = trackUrl || '';
   // 알림톡 웹링크 버튼이 https://.../track/#{토큰} 형태라 토큰 변수도 함께 넘긴다

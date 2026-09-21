@@ -18,7 +18,7 @@ test('order payload does not save fallback OCR raw text as work memo', () => {
     width: '',
     depth: '',
     height: '',
-    quantity: '',
+    quantity: '1',
     color: '',
     sale_amount: '',
     lead_source: '',
@@ -40,7 +40,7 @@ test('order payload saves extracted work memo from OCR text', () => {
     width: '',
     depth: '',
     height: '',
-    quantity: '',
+    quantity: '1',
     color: '',
     sale_amount: '',
     lead_source: '',
@@ -131,6 +131,7 @@ test('server order create input sanitizes OCR boilerplate before DB insert', () 
   const normalized = normalizeOrderCreateInput({
     client_name: '솔트앤멜로우 AS',
     product_type: '쇼케이스',
+    quantity: 1,
     notes: 'LED 조명, 납기는 발주일로부터 최대 일 (긴급 발주건은 최소 4일) 절대적으로 지킬것. 작업지시서 없이 작업금지. 절대엄금.',
   });
 

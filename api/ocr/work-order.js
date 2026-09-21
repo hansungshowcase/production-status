@@ -4,6 +4,7 @@ import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
 import { isCanonicalCalendarDate } from '../../src/utils/dateUtils.js';
 import { parseWorkOrderJson } from '../_lib/ocrParse.js';
+import { extractIndividualQuantity, parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
 export const config = {
   api: {
@@ -58,7 +59,7 @@ const WORK_ORDER_SCHEMA = {
     width: { type: ['number', 'string', 'null'] },
     depth: { type: ['number', 'string', 'null'] },
     height: { type: ['number', 'string', 'null'] },
-    quantity: { type: ['number', 'string', 'null'] },
+    quantity: { type: ['number', 'null'] },
     color: { type: ['string', 'null'] },
     notes: { type: ['string', 'null'] },
   },
@@ -86,7 +87,7 @@ const PROMPT = `이 이미지는 냉장쇼케이스 제조업체의 작업지시
 이미지에서 다음 정보를 추출해서 JSON으로 반환하세요.
 반드시 아래 필드명을 사용하세요. 값이 없으면 null로 반환하세요.
 숫자 필드(width, depth, height, quantity)는 반드시 숫자만 반환하세요.
-수량 표기에 "총 N대"가 있으면 앞의 개별 표기보다 총 N대를 quantity로 반환하세요.
+quantity는 이 작업지시서 한 줄의 개별 제작 수량만 반환하세요. "총 N대" 묶음 합계와 규격 숫자는 무시하세요.
 날짜는 반드시 YYYY-MM-DD 형식으로 반환하세요. 연도가 불분명하면 ${CURRENT_YEAR}년으로 설정하세요.
 
 {
@@ -115,7 +116,7 @@ const ESSENTIAL_FIELD_PROMPT = `
 필수 정확도 규칙:
 - sales_person은 신은철 또는 이준형만 반환한다. 김보수(김보수 팀장 포함)는 이준형으로, 신은절은 신은철로 정규화한다. 판독 불가하면 null로 둔다.
 - due_date는 납기/납기일/납기일자 라벨 바로 뒤의 날짜를 우선 읽고 반드시 실제 YYYY-MM-DD 날짜로 반환한다. 연도가 없으면 ${CURRENT_YEAR}년을 사용하며, 읽지 못하면 null로 둔다.
-- quantity에 여러 숫자가 있으면 "총 N대"의 N을 우선 반환한다. 확실하지 않으면 null로 둔다.`;
+- quantity는 수량 칸의 개별 제작 대수만 반환한다. "1대(급) 총6대"이면 1을 반환하고, 총수량만 보이거나 확실하지 않으면 null로 둔다.`;
 
 function getImageMimeType(filePart) {
   let mimeType = filePart.contentType || 'image/jpeg';
@@ -154,9 +155,7 @@ function parseOcrJson(text) {
 }
 
 export function extractQuantityFromOcrValue(value) {
-  const totalMatch = String(value || '').match(/총\s*(\d+)\s*대/);
-  if (totalMatch) return parseInt(totalMatch[1], 10) || null;
-  return parseInt(String(value || '').replace(/[^0-9]/g, ''), 10) || null;
+  return extractIndividualQuantity(value);
 }
 
 export function normalizeOcrSalesPerson(value) {
@@ -194,15 +193,14 @@ export function hasCompleteOcrEssentials(data) {
     && Boolean(data?.due_date)
     && normalizeOcrDueDate(data?.due_date) === data?.due_date
     && Boolean(String(data?.product_type || '').trim())
-    && Number.isInteger(data?.quantity)
-    && data.quantity > 0;
+    && parsePositiveIntegerQuantity(data?.quantity) !== null;
 }
 
 export function normalizeOcrResult(parsed) {
   if (parsed.width) parsed.width = parseInt(String(parsed.width).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.depth) parsed.depth = parseInt(String(parsed.depth).replace(/[^0-9]/g, ''), 10) || null;
   if (parsed.height) parsed.height = parseInt(String(parsed.height).replace(/[^0-9]/g, ''), 10) || null;
-  if (parsed.quantity) parsed.quantity = extractQuantityFromOcrValue(parsed.quantity);
+  parsed.quantity = extractQuantityFromOcrValue(parsed.quantity);
 
   parsed.due_date = normalizeOcrDueDate(parsed.due_date);
   parsed.sales_person = normalizeOcrSalesPerson(parsed.sales_person);

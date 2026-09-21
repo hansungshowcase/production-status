@@ -1,5 +1,29 @@
 import { normalizeOrderMemoForStorage } from '../utils/orderText.js';
 import { isCanonicalCalendarDate } from '../utils/dateUtils.js';
+import { parsePositiveIntegerQuantity } from '../utils/quantity.js';
+
+export function createInitialOrderForm(orderDate, salesPerson = '') {
+  return {
+    order_date: orderDate,
+    due_date: '',
+    sales_person: salesPerson,
+    client_name: '',
+    phone: '',
+    delivery_address: '',
+    freight_payment: '',
+    product_type: '',
+    door_type: '',
+    width: '',
+    depth: '',
+    height: '',
+    quantity: '1',
+    color: '',
+    sale_amount: '',
+    balance: '',
+    lead_source: '',
+    notes: '',
+  };
+}
 
 export function normalizeOptionalPositiveNumber(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -14,7 +38,9 @@ export function normalizeOptionalPositiveNumber(value) {
 }
 
 export function normalizeQuantity(value) {
-  return normalizeOptionalPositiveNumber(value) ?? 1;
+  const quantity = parsePositiveIntegerQuantity(value);
+  if (quantity === null) throw new Error('수량은 1 이상의 정수로 입력해야 합니다(최대 2147483647).');
+  return quantity;
 }
 
 export function normalizeOrderNotes(value) {
@@ -47,11 +73,8 @@ export function validateOrderEntryForm(form, hasWorkOrderImage = false) {
   if (hasWorkOrderImage && !['신은철', '이준형'].includes(normalizeSalesPerson(form.sales_person))) {
     errors.sales_person = '작업지시서 등록은 담당자를 선택해주세요';
   }
-  if (
-    hasWorkOrderImage
-    && (String(form.quantity ?? '').trim().startsWith('-') || normalizeOptionalPositiveNumber(form.quantity) === null)
-  ) {
-    errors.quantity = '작업지시서 등록은 수량을 1 이상 입력해주세요';
+  if (parsePositiveIntegerQuantity(form.quantity) === null) {
+    errors.quantity = '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)';
   }
   return errors;
 }

@@ -54,6 +54,18 @@ test('builds delivery statement data with delivery-specific guide', () => {
   assert.equal(data.levelingGuide.showWarning, true);
 });
 
+test('유효한 수량은 유지하고 잘못된 수량은 문서에서 확인 필요로 표시한다', () => {
+  const valid = buildShippingDocumentData({ ...order, quantity: 2 }, 'shipping', { today: '2026-06-24' });
+  assert.equal(valid.rows[0].quantity, '2');
+
+  for (const quantity of [undefined, null, '', 0, '0', -1, 1.5, '2대', 2147483648]) {
+    const data = buildShippingDocumentData({ ...order, quantity }, 'shipping', { today: '2026-06-24' });
+    const html = buildShippingDocumentPrintHtml(data);
+    assert.equal(data.rows[0].quantity, '수량 확인 필요');
+    assert.match(html, /수량 확인 필요/);
+  }
+});
+
 test('print html contains the document title, supplier box, and table content', () => {
   const data = buildShippingDocumentData(order, 'shipping', { today: '2026-06-24' });
   const html = buildShippingDocumentPrintHtml(data);

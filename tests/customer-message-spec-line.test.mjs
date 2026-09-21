@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildMessage } from '../api/_lib/notify.js';
+import { buildMessage, maybeNotify } from '../api/_lib/notify.js';
 
 // 고객이 받은 실제 문자에 '하나로냉장' 같은 내부 분류·거래처 표기가 품명으로 나갔다.
 // (2026-08-10 확인) 고객 문자 본문에서는 품명을 빼고 규격만 남긴다.
@@ -68,6 +68,67 @@ test('주문번호·수량·출고일·조회링크는 종전대로 들어간다
   assert.match(text, /- 수량: 1대/);
   assert.match(text, /- 출고일: 2026-08-20/);
   assert.match(text, /https:\/\/example\.com\/track\/tok/);
+});
+
+test('유효한 수량은 그대로 표시하고 잘못된 수량은 1대로 바꾸지 않는다', () => {
+  assert.match(buildMessage({ ...ORDER, quantity: 2 }, 'ordered', '').text, /- 수량: 2대/);
+  for (const quantity of [undefined, null, '', 0, '0', -1, 1.5, '2대', 2147483648]) {
+    assert.throws(
+      () => buildMessage({ ...ORDER, quantity }, 'ordered', ''),
+      /수량 확인.*발송하지 않았/,
+      `invalid quantity ${String(quantity)} must not become 1대`,
+    );
+  }
+});
+
+test('잘못된 수량 주문은 고객 알림을 발송하지 않는다', async () => {
+  const originalNow = Date.now;
+  const originalFetch = globalThis.fetch;
+  const originalEnv = {
+    SOLAPI_API_KEY: process.env.SOLAPI_API_KEY,
+    SOLAPI_API_SECRET: process.env.SOLAPI_API_SECRET,
+    SMS_SENDER: process.env.SMS_SENDER,
+  };
+  let fetchCalls = 0;
+  Date.now = () => Date.parse('2026-09-21T03:00:00.000Z');
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('customer send must not be reached');
+  };
+  process.env.SOLAPI_API_KEY = 'test-key';
+  process.env.SOLAPI_API_SECRET = 'test-secret';
+  process.env.SMS_SENDER = '0212345678';
+  const calls = [];
+  const db = {
+    async execute(query) {
+      calls.push(query);
+      if (/RETURNING id/.test(query.sql)) return { rows: [{ id: ORDER.id }] };
+      if (/SELECT COUNT\(\*\)::int AS n/.test(query.sql)) return { rows: [{ n: 0 }] };
+      return { rows: [] };
+    },
+  };
+
+  try {
+    const result = await maybeNotify(db, {
+      ...ORDER,
+      quantity: null,
+      phone: '01012345678',
+      track_token: 'test-token',
+    }, 'ordered');
+    assert.equal(result.ok, false);
+    assert.match(result.error, /수량 확인.*발송하지 않았/);
+    assert.equal(fetchCalls, 0);
+    assert.ok(calls.some(({ args = [] }) => args.some((value) => (
+      typeof value === 'string' && value.includes('수량 확인')
+    ))));
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 // 고객 조회 페이지(/track/:token)에도 품명이 나가지 않아야 한다.

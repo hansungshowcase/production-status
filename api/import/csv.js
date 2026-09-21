@@ -7,6 +7,7 @@ import { normalizeOrderMutationInput } from '../_lib/orderCreateInput.js';
 import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { generateTrackToken } from '../_lib/trackToken.js';
+import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
 export const config = {
   api: {
@@ -110,7 +111,13 @@ const NUMERIC_FIELD_LABELS = {
   height: '높이',
 };
 
-export function parseIntegerCell(raw) {
+export function parseIntegerCell(raw, { requiredPositive = false } = {}) {
+  if (requiredPositive) {
+    const quantity = parsePositiveIntegerQuantity(raw);
+    return quantity === null
+      ? { ok: false, value: null }
+      : { ok: true, value: quantity };
+  }
   if (raw === null || raw === undefined) return { ok: true, value: null };
   const text = String(raw).trim().replace(/,/g, '');
   if (!text) return { ok: true, value: null };
@@ -200,9 +207,10 @@ export async function handleCsvImport(req, res, dependencies = {}) {
     let hasNumericError = false;
     for (const [field, label] of Object.entries(NUMERIC_FIELD_LABELS)) {
       const raw = get(field);
-      const parsed = parseIntegerCell(raw);
+      const parsed = parseIntegerCell(raw, { requiredPositive: field === 'quantity' });
       if (!parsed.ok) {
-        errors.push(`행 ${i + 1}: '${label}' 값 "${String(raw).trim()}" 은(는) 숫자가 아니라 건너뜁니다.`);
+        const expectation = field === 'quantity' ? '1 이상의 정수(최대 2147483647)' : '숫자';
+        errors.push(`행 ${i + 1}: '${label}' 값 "${String(raw).trim()}" 은(는) ${expectation}가 아니라 건너뜁니다.`);
         hasNumericError = true;
         continue;
       }

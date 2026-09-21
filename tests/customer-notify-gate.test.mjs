@@ -76,6 +76,7 @@ async function runNotify({ authOff = true } = {}) {
         status: 'in_production',
         due_date: '2026-08-20',
         product_type: '제과',
+        quantity: 1,
       }, 'ordered');
       return { result, sent, db };
     });
@@ -128,6 +129,7 @@ test('솔라피 미설정이면 실발송 없이 dry-run 으로 남는다', asyn
         client_name: '테스트거래처2',
         phone: '010-1234-5678',
         status: 'in_production',
+        quantity: 1,
       }, 'ordered');
     });
     assert.equal(sent.filter((u) => u === SOLAPI_URL).length, 0, '솔라피 미설정이면 발송 요청이 없어야 한다');

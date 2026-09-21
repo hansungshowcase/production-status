@@ -39,7 +39,7 @@ function mockResponse() {
   };
 }
 
-test('create validation requires every image-backed order essential while preserving image-free normalization', () => {
+test('create validation requires every image-backed essential and a deliberate quantity for every order', () => {
   const invalidCases = [
     ['client_name', '   ', /거래처/],
     ['order_date', '2026-02-29', /발주일.*실제 날짜/],
@@ -68,7 +68,7 @@ test('create validation requires every image-backed order essential while preser
       due_date: '',
       sales_person: '',
       product_type: '\t',
-      quantity: '',
+      quantity: 1,
       work_order_image_url: null,
     }),
     {
@@ -87,6 +87,10 @@ test('create validation requires every image-backed order essential while preser
       delivery_address: undefined,
       freight_payment: undefined,
     },
+  );
+  assert.throws(
+    () => normalizeOrderCreateInput({ work_order_image_url: null, quantity: '' }),
+    /수량.*1 이상의 정수/,
   );
 });
 

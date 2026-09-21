@@ -36,7 +36,7 @@ function mockResponse() {
   };
 }
 
-test('order entry payload tolerates OCR numeric text and non-positive optional sizes', () => {
+test('order entry payload keeps optional OCR dimensions permissive but requires an exact quantity', () => {
   const payload = buildOrderPayload({
     order_date: '',
     due_date: '',
@@ -48,7 +48,7 @@ test('order entry payload tolerates OCR numeric text and non-positive optional s
     width: '1,200mm',
     depth: '0',
     height: '-',
-    quantity: '2대',
+    quantity: '2',
     color: '',
     sale_amount: '',
     balance: '320,000원',
@@ -71,14 +71,15 @@ test('order entry payload tolerates OCR numeric text and non-positive optional s
   assert.equal(payload.work_order_image_url, 'https://example.com/work-order.jpg');
 });
 
-test('numeric normalizers convert invalid OCR values without blocking registration', () => {
+test('optional numeric fields stay permissive while quantity is a strict positive integer', () => {
   assert.equal(normalizeOptionalPositiveNumber('1,500 mm'), 1500);
   assert.equal(normalizeOptionalPositiveNumber('0'), null);
   assert.equal(normalizeOptionalPositiveNumber(''), null);
   assert.equal(normalizeOptionalPositiveNumber('폭 미기재'), null);
-  assert.equal(normalizeQuantity('3EA'), 3);
-  assert.equal(normalizeQuantity('0'), 1);
-  assert.equal(normalizeQuantity(''), 1);
+  assert.equal(normalizeQuantity('3'), 3);
+  assert.throws(() => normalizeQuantity('3EA'), /수량.*1 이상의 정수/);
+  assert.throws(() => normalizeQuantity('0'), /수량.*1 이상의 정수/);
+  assert.throws(() => normalizeQuantity(''), /수량.*1 이상의 정수/);
 });
 
 test('work orders marked with Kim Bosu manager are assigned to Lee Junhyeong sales', () => {
@@ -93,7 +94,7 @@ test('work orders marked with Kim Bosu manager are assigned to Lee Junhyeong sal
     width: '',
     depth: '',
     height: '',
-    quantity: '',
+    quantity: '1',
     color: '',
     sale_amount: '',
     balance: '',
@@ -104,7 +105,7 @@ test('work orders marked with Kim Bosu manager are assigned to Lee Junhyeong sal
   }, null, '2026-07-13');
 
   assert.equal(payload.sales_person, '이준형');
-  assert.equal(normalizeOrderCreateInput({ sales_person: '김보수 팀장' }).sales_person, '이준형');
+  assert.equal(normalizeOrderCreateInput({ sales_person: '김보수 팀장', quantity: 1 }).sales_person, '이준형');
   assert.equal(normalizeOrderMutationInput({ sales_person: ' 김보수 ' }).sales_person, '이준형');
 });
 
@@ -169,7 +170,7 @@ test('work-order image registrations require a positive quantity before submit o
     quantity: '1',
   };
 
-  for (const quantity of [undefined, null, '', '0', '-1', '수량 미기재']) {
+  for (const quantity of [undefined, null, '', '0', '-1', '1.5', '2대', '수량 미기재']) {
     assert.throws(
       () => normalizeOrderCreateInput({
         work_order_image_url: 'https://example.com/work-order.jpg',
@@ -183,13 +184,17 @@ test('work-order image registrations require a positive quantity before submit o
       /작업지시서.*수량.*1 이상/,
     );
     assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity }, true), {
-      quantity: '작업지시서 등록은 수량을 1 이상 입력해주세요',
+      quantity: '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)',
     });
   }
 
-  assert.doesNotThrow(() => normalizeOrderCreateInput({ quantity: '' }));
-  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity: '' }, false), {});
-  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity: '2대' }, true), {});
+  assert.throws(() => normalizeOrderCreateInput({ quantity: '' }), /수량.*1 이상의 정수/);
+  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity: '' }, false), {
+    quantity: '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)',
+  });
+  assert.deepEqual(validateOrderEntryForm({ ...imageBackedForm, quantity: '2대' }, true), {
+    quantity: '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)',
+  });
 });
 
 test('order create input normalizes numeric fields before server validation and insert', () => {
@@ -199,7 +204,7 @@ test('order create input normalizes numeric fields before server validation and 
     width: '1,200mm',
     depth: '0',
     height: '높이 미기재',
-    quantity: '2대',
+    quantity: '2',
     sale_amount: '1,500,000원',
     delivery_address: '  경기도 김포시 양촌읍 양곡로 374-3  ',
     freight_payment: '  본사부담  ',
@@ -245,8 +250,8 @@ test('order create input rejects missing or invalid due dates when a work-order 
 });
 
 test('order create input permits an omitted due date without an image and real canonical dates with one', () => {
-  assert.doesNotThrow(() => normalizeOrderCreateInput({ due_date: undefined }));
-  assert.doesNotThrow(() => normalizeOrderCreateInput({ due_date: null, work_order_image_url: null }));
+  assert.doesNotThrow(() => normalizeOrderCreateInput({ due_date: undefined, quantity: 1 }));
+  assert.doesNotThrow(() => normalizeOrderCreateInput({ due_date: null, work_order_image_url: null, quantity: 1 }));
   assert.doesNotThrow(() => normalizeOrderCreateInput({
     client_name: '한성 거래처',
     order_date: '2026-07-14',
@@ -287,7 +292,7 @@ test('work-order image registrations require an assigned sales person (신은철
   }));
 
   // 이미지 없는 일반 등록은 담당자 없어도 허용 (규칙 영향 없음)
-  assert.doesNotThrow(() => normalizeOrderCreateInput({ sales_person: '' }));
+  assert.doesNotThrow(() => normalizeOrderCreateInput({ sales_person: '', quantity: 1 }));
 });
 
 test('order mutation input sanitizes OCR boilerplate before DB update', () => {
@@ -420,7 +425,7 @@ test('order update routes validate final image-backed state before upload or UPD
     readFile(new URL('../api/orders/[id]/work-order-image.js', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(patchSource, /const mutation = pickOwnAllowedFields\(normalizedBody, ORDER_FIELDS\)/);
+  assert.match(patchSource, /mutation = pickOwnAllowedFields\(normalizedBody, ORDER_FIELDS\)/);
   assert.doesNotMatch(patchSource, /body\[field\]/);
   const patchValidation = patchSource.indexOf(
     'assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation })',

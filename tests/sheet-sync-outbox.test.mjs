@@ -455,7 +455,7 @@ test('order creation executes the order insert and pending job insert in one dat
   };
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'atomic order' } }, mockResponse(), db),
+    () => handlePost({ body: { client_name: 'atomic order', quantity: 1 } }, mockResponse(), db),
     (error) => error === stopAfterAtomicInsert,
   );
 
@@ -472,7 +472,7 @@ test('failed immediate append returns 201 with pending sync and keeps the commit
   globalThis.fetch = async () => { throw new Error('network must not be used by injected append'); };
   try {
     await handlePost(
-      { body: { client_name: 'atomic order' } },
+      { body: { client_name: 'atomic order', quantity: 1 } },
       res,
       db,
       { append: async () => { throw new Error('sheet unavailable'); } },
@@ -663,7 +663,7 @@ test('order cleanup deletes its CTE-created job through the cascade lifecycle', 
   const db = new FakeOrderDb({ failProcessInsert: true });
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'cleanup order' } }, mockResponse(), db),
+    () => handlePost({ body: { client_name: 'cleanup order', quantity: 1 } }, mockResponse(), db),
     /simulated process insert failure/,
   );
 
@@ -686,7 +686,7 @@ test('a failure on the last required insert still cleans up the order it created
   };
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'cleanup order' } }, mockResponse(), db),
+    () => handlePost({ body: { client_name: 'cleanup order', quantity: 1 } }, mockResponse(), db),
     /simulated activity feed insert failure/,
   );
 
@@ -709,7 +709,7 @@ test('a read-back failure after the required inserts keeps the order alive', asy
   };
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'atomic order' } }, mockResponse(), db),
+    () => handlePost({ body: { client_name: 'atomic order', quantity: 1 } }, mockResponse(), db),
     (error) => error === readFailure,
   );
 
@@ -731,7 +731,7 @@ test('a failure after the required inserts never deletes the created order', asy
   };
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'atomic order' } }, mockResponse(), db),
+    () => handlePost({ body: { client_name: 'atomic order', quantity: 1 } }, mockResponse(), db),
     /simulated read outage/,
   );
 

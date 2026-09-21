@@ -106,7 +106,7 @@ test('주문을 만들면 고객 조회 토큰이 반드시 함께 발급된다'
   const db = new FakeOrderDb();
   const res = mockResponse();
 
-  await handlePost({ body: { client_name: '토큰거래처' } }, res, db, { append: noopAppend });
+  await handlePost({ body: { client_name: '토큰거래처', quantity: 1 } }, res, db, { append: noopAppend });
 
   assert.equal(res.statusCode, 201);
   const created = [...db.orders.values()][0];
@@ -133,7 +133,7 @@ test('주문을 만들면 고객 조회 토큰이 반드시 함께 발급된다'
 
 test('토큰은 사후 훅이 아니라 주문 INSERT 안에서 채워진다', async () => {
   const db = new FakeOrderDb();
-  await handlePost({ body: { client_name: '원자성거래처' } }, mockResponse(), db, { append: noopAppend });
+  await handlePost({ body: { client_name: '원자성거래처', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
 
   assert.ok(db.orderInsertColumns.includes('track_token'), 'INSERT 컬럼에 track_token 이 있어야 한다');
 
@@ -149,7 +149,7 @@ test('커밋 후 단계가 실패해도 남은 주문에는 토큰이 이미 들
   const db = new FakeOrderDb({ failAfterCommit: true });
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: '커밋후실패거래처' } }, mockResponse(), db, { append: noopAppend }),
+    () => handlePost({ body: { client_name: '커밋후실패거래처', quantity: 1 } }, mockResponse(), db, { append: noopAppend }),
     /simulated post-commit read failure/,
   );
 
@@ -161,8 +161,8 @@ test('커밋 후 단계가 실패해도 남은 주문에는 토큰이 이미 들
 
 test('주문마다 서로 다른 토큰이 발급된다', async () => {
   const db = new FakeOrderDb();
-  await handlePost({ body: { client_name: '거래처1' } }, mockResponse(), db, { append: noopAppend });
-  await handlePost({ body: { client_name: '거래처2' } }, mockResponse(), db, { append: noopAppend });
+  await handlePost({ body: { client_name: '거래처1', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
+  await handlePost({ body: { client_name: '거래처2', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
 
   const tokens = [...db.orders.values()].map(order => order.track_token);
   assert.equal(tokens.length, 2);

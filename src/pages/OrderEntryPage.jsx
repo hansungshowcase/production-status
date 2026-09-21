@@ -7,8 +7,8 @@ import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
 import { extractDueDateFromText } from '../utils/dateUtils';
-import { extractBrowserOcrEssentialFields } from './browserOcrEssentialFields';
-import { buildOrderPayload, validateOrderEntryForm } from './orderEntryPayload';
+import { extractBrowserOcrEssentialFields, extractBrowserOcrQuantity } from './browserOcrEssentialFields';
+import { buildOrderPayload, createInitialOrderForm, validateOrderEntryForm } from './orderEntryPayload';
 import {
   COLOR_OPTIONS,
   DOOR_TYPE_OPTIONS,
@@ -22,27 +22,6 @@ function todayStr() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
 }
-
-const INITIAL_FORM = {
-  order_date: todayStr(),
-  due_date: '',
-  sales_person: '',
-  client_name: '',
-  phone: '',
-  delivery_address: '',
-  freight_payment: '',
-  product_type: '',
-  door_type: '',
-  width: '',
-  depth: '',
-  height: '',
-  quantity: '',
-  color: '',
-  sale_amount: '',
-  balance: '',
-  lead_source: '',
-  notes: '',
-};
 
 const DUE_DATE_BUFFER_CONFIRM_MESSAGE = [
   '납기일을 다시 확인해 주세요.',
@@ -120,15 +99,6 @@ function extractFirstNumber(value) {
   return match ? match[0] : '';
 }
 
-function extractQuantity(text) {
-  const total = String(text || '').match(/총\s*(\d+)\s*대/);
-  if (total) return total[1];
-  const labeled = extractFirstNumber(extractLabeledValue(text, ['수량', '개수', 'Quantity', 'Qty', 'QTY']));
-  if (labeled) return labeled;
-  const match = String(text || '').match(/(?:Quantity|Quantit\w+|Qty|QTY|\bEA\b|\bea\b)\D{0,24}(\d+)/i);
-  return match ? match[1] : '';
-}
-
 function extractSize(text) {
   const labeled = {
     width: extractFirstNumber(extractLabeledValue(text, ['가로', '폭'])),
@@ -178,7 +148,7 @@ function parseBrowserOcrText(text) {
     width: size.width,
     depth: size.depth,
     height: size.height,
-    quantity: extractQuantity(normalized),
+    quantity: extractBrowserOcrQuantity(normalized),
     color: inferOption(normalized, COLOR_OPTIONS) || extractLabeledValue(normalized, ['색상', '색깔', '컬러', 'Color', 'Colour']),
     notes: notes || '',
     raw_text: normalized,
@@ -218,7 +188,7 @@ export default function OrderEntryPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const initialSalesPerson = location.state?.salesPerson || '';
-  const [form, setForm] = useState({ ...INITIAL_FORM, sales_person: initialSalesPerson });
+  const [form, setForm] = useState(() => createInitialOrderForm(todayStr(), initialSalesPerson));
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '' });
@@ -279,7 +249,7 @@ export default function OrderEntryPage() {
   };
 
   const handleContinue = () => {
-    setForm({ ...INITIAL_FORM, order_date: todayStr() });
+    setForm(createInitialOrderForm(todayStr()));
     setErrors({});
     setWorkOrderImageUrl(null);
     setShowSuccess(false);

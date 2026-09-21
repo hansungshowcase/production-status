@@ -211,6 +211,26 @@ test('숫자로 읽을 수 없는 행만 오류로 빠지고 같은 청크의 �
   }
 });
 
+test('CSV 수량은 PostgreSQL INTEGER 최댓값을 저장하고 최댓값+1 행은 오류로 남긴다', async () => {
+  const db = makeDb();
+  const res = mockResponse();
+  const csv = [
+    HEADER_ROW,
+    '최댓값거래처,2026-08-01,쇼케이스,2147483647,1200,600,900',
+    '초과거래처,2026-08-01,쇼케이스,2147483648,1200,600,900',
+  ].join('\n');
+
+  await handleCsvImport(csvRequest(csv), res, dependencies(db, { ensureSheetSyncSchema: async () => {} }));
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.imported, 1);
+  assert.equal(res.body.errors, 1);
+  assert.equal(db.state.orders.length, 1);
+  assert.equal(db.state.orders[0].quantity, 2147483647);
+  assert.match(res.body.errorDetails.join('\n'), /2147483648/);
+  assert.match(res.body.errorDetails.join('\n'), /최대 2147483647/);
+});
+
 test('중복 조회가 실패하면 중복 판정 없이 진행하지 않고 요청을 실패시킨다', async () => {
   const db = makeDb({ failDuplicateLookup: true });
   const res = mockResponse();

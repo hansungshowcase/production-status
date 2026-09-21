@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { getDeliveryAdherence } from '../../api/deliveryAdherence';
 import './DeliveryAdherenceCard.css';
 
-const HALF_DAY_MS = 12 * 60 * 60 * 1000;
+const CURRENT_REFRESH_MS = 60 * 1000;
 
 const EMPTY_STATS = {
   total_production_units: 0,
   on_time_units: 0,
   missed_units: 0,
   missing_due_date_units: 0,
+  invalid_quantity_orders: 0,
   adherence_rate: 0,
   calculated_at: '',
 };
@@ -24,6 +25,7 @@ function isValidDeliveryAdherence(data) {
     'on_time_units',
     'missed_units',
     'missing_due_date_units',
+    'invalid_quantity_orders',
     'adherence_rate',
   ].every((key) => Number.isFinite(Number(data[key])));
 }
@@ -67,11 +69,13 @@ export default function DeliveryAdherenceCard() {
     }
 
     loadStats();
-    const refreshId = window.setInterval(loadStats, HALF_DAY_MS);
+    const refreshId = window.setInterval(loadStats, CURRENT_REFRESH_MS);
+    window.addEventListener('focus', loadStats);
 
     return () => {
       active = false;
       window.clearInterval(refreshId);
+      window.removeEventListener('focus', loadStats);
     };
   }, []);
 
@@ -88,7 +92,7 @@ export default function DeliveryAdherenceCard() {
           <h2>현재 납기 준수율</h2>
           <p>총 생산대수 대비 납기 준수 현황</p>
         </div>
-        <span className="delivery-adherence__refresh">하루 2회 갱신</span>
+        <span className="delivery-adherence__refresh">1분마다 갱신</span>
       </div>
 
       <div className="delivery-adherence__grid">
@@ -98,9 +102,16 @@ export default function DeliveryAdherenceCard() {
         <StatCell label="준수율" value={rate} unit="%" tone="rate" />
       </div>
 
-      {((stats?.missing_due_date_units || 0) > 0 || error) && (
-        <p className="delivery-adherence__note">
-          {error || `납기일 미입력 ${formatNumber(stats.missing_due_date_units)}대는 준수율 계산에서 제외`}
+      {((stats?.invalid_quantity_orders || 0) > 0 || (stats?.missing_due_date_units || 0) > 0 || error) && (
+        <p className="delivery-adherence__note" role={(stats?.invalid_quantity_orders || 0) > 0 ? 'alert' : 'status'}>
+          {error || [
+            (stats.invalid_quantity_orders > 0)
+              ? `수량 확인 필요 ${formatNumber(stats.invalid_quantity_orders)}건은 합계·준수율에서 제외`
+              : '',
+            (stats.missing_due_date_units > 0)
+              ? `납기일 미입력 ${formatNumber(stats.missing_due_date_units)}대는 준수율 계산에서 제외`
+              : '',
+          ].filter(Boolean).join(' · ')}
         </p>
       )}
     </section>
