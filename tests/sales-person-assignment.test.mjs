@@ -19,9 +19,9 @@ test('sales management people are Shin Euncheol and Lee Junhyeong only', () => {
 });
 
 test('Lee Junhyeong sales view includes existing Kim Bosu orders', () => {
-  const source = readFileSync('src/pages/SalesMyPage.jsx', 'utf8');
+  const source = readFileSync('src/pages/salesOrderLoader.js', 'utf8');
 
-  assert.match(source, /activePerson === '이준형'/, 'SalesMyPage should branch for 이준형');
+  assert.match(source, /activePerson === '이준형'/, 'sales order loader should branch for 이준형');
   assert.match(source, /sales_person: '이준형'/, '이준형 view should include new 이준형 orders');
   assert.match(source, /sales_person: '김보수'/, '이준형 view should include existing 김보수 orders');
 });

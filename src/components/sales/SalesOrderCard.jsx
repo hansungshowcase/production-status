@@ -125,24 +125,31 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const [detailError, setDetailError] = useState('');
 
   useEffect(() => {
-    if (!expanded || detailOrder || detailLoading || !order.id) return;
+    setDetailOrder(null);
+    setDetailLoading(false);
+    setDetailError('');
+  }, [order.id]);
+
+  useEffect(() => {
+    if (!expanded || detailOrder || !order.id) return;
     let cancelled = false;
     setDetailLoading(true);
     setDetailError('');
     getOrder(order.id)
       .then((data) => {
-        if (!cancelled) setDetailOrder(data);
+        if (cancelled) return;
+        setDetailOrder(data);
+        setDetailLoading(false);
       })
       .catch((err) => {
-        if (!cancelled) setDetailError(err.message || '상세 정보를 불러오지 못했습니다.');
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
+        if (cancelled) return;
+        setDetailError(err.message || '상세 정보를 불러오지 못했습니다.');
+        setDetailLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [detailLoading, detailOrder, expanded, order.id]);
+  }, [detailOrder, expanded, order.id]);
 
   // 상세 조회가 열린 뒤 목록의 주문 상태가 바뀌어도 최신 상태가 우선해야 한다.
   // 특히 출고 성공 직후 오래된 상세 응답이 shipped 상태를 다시 가리지 않게 한다.

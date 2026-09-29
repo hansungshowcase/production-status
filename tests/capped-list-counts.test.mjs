@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const salesSource = readFileSync(new URL('../src/pages/SalesMyPage.jsx', import.meta.url), 'utf8');
+const salesLoaderSource = readFileSync(new URL('../src/pages/salesOrderLoader.js', import.meta.url), 'utf8');
 const workerSearchSource = readFileSync(new URL('../src/pages/WorkerSearchPage.jsx', import.meta.url), 'utf8');
 const tabletWorkerSource = readFileSync(new URL('../src/pages/TabletWorkerPage.jsx', import.meta.url), 'utf8');
 const workerPageSource = readFileSync(new URL('../src/pages/WorkerPage.jsx', import.meta.url), 'utf8');
@@ -11,9 +12,10 @@ const dataOverviewSource = readFileSync(new URL('../src/components/admin/DataOve
 const mojibakeScanSource = readFileSync(new URL('../api/admin/mojibake-scan.js', import.meta.url), 'utf8');
 
 test('sales order status loads all paginated orders before calculating summary counts', () => {
-  assert.equal(salesSource.includes('async function fetchAllSalesOrders'), true);
-  assert.equal(salesSource.includes('offset += page.length'), true);
-  assert.equal(salesSource.includes('if (page.length === 0 || loaded.length >= total)'), true);
+  assert.equal(salesSource.includes('loadSalesOrdersForPerson'), true);
+  assert.equal(salesLoaderSource.includes('async function fetchAllSalesOrders'), true);
+  assert.equal(salesLoaderSource.includes('offset += page.length'), true);
+  assert.equal(salesLoaderSource.includes('if (page.length === 0 || loaded.length >= total)'), true);
 });
 
 test('worker search total display uses the API total instead of the capped first page length', () => {

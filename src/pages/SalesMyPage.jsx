@@ -8,6 +8,7 @@ import OrderEditModal from '../components/order/OrderEditModal';
 import { getFeed } from '../api/feed';
 import useWebSocket from '../hooks/useWebSocket';
 import { safeGet } from '../utils/safeStorage';
+import { loadSalesOrdersForPerson } from './salesOrderLoader';
 import {
   countSalesOrders,
   filterSalesOrders,
@@ -23,6 +24,12 @@ const REFRESH_INTERVAL = 300000; // 5 minutes
 const SALES_ORDER_PAGE_SIZE = 200;
 const INITIAL_VISIBLE_ORDER_COUNT = 40;
 const VISIBLE_ORDER_INCREMENT = 40;
+const SALES_REFRESH_EVENT_TYPES = new Set([
+  'PROCESS_STARTED', 'PROCESS_COMPLETED', 'PROCESS_REVERTED',
+  'ISSUE_REPORTED', 'ISSUE_RESOLVED',
+  'ORDER_CREATED', 'ORDER_UPDATED', 'ORDER_DELETED', 'ORDER_SHIPPED',
+  'PRE_PRODUCTION_UPDATED',
+]);
 
 const SALES_SHIPPING_MANAGERS = ['신은철', '이준형'];
 const SALES_PERSONS = ['신은철', '이준형'];
@@ -41,24 +48,6 @@ function sortByOldestDue(a, b) {
   return String(aDue).localeCompare(String(bDue)) || Number(b.id || 0) - Number(a.id || 0);
 }
 
-async function fetchAllSalesOrders(params) {
-  const loaded = [];
-  let offset = 0;
-  let total = null;
-
-  while (true) {
-    const res = await getOrders({ ...params, limit: SALES_ORDER_PAGE_SIZE, offset });
-    const page = Array.isArray(res) ? res : (res.orders || []);
-    loaded.push(...page);
-    total = Array.isArray(res) ? loaded.length : Number(res.total ?? loaded.length);
-
-    if (page.length === 0 || loaded.length >= total) {
-      return loaded;
-    }
-    offset += page.length;
-  }
-}
-
 export default function SalesMyPage() {
   const navigate = useNavigate();
   const mySalesPerson = safeGet(LS_KEY);
@@ -69,6 +58,7 @@ export default function SalesMyPage() {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResetKey, setSearchResetKey] = useState(0);
   const [feedItems, setFeedItems] = useState([]);
   const [editingOrder, setEditingOrder] = useState(null);
   const [visibleOrderCount, setVisibleOrderCount] = useState(INITIAL_VISIBLE_ORDER_COUNT);
@@ -97,9 +87,11 @@ export default function SalesMyPage() {
     if (!activePerson) return;
     const fetchId = ++ordersFetchIdRef.current;
     try {
-      const list = activePerson === '이준형'
-        ? [...await fetchAllSalesOrders({ sales_person: '이준형' }), ...await fetchAllSalesOrders({ sales_person: '김보수' })]
-        : await fetchAllSalesOrders({ sales_person: activePerson });
+      const list = await loadSalesOrdersForPerson({
+        activePerson,
+        getOrders,
+        pageSize: SALES_ORDER_PAGE_SIZE,
+      });
       if (fetchId !== ordersFetchIdRef.current) return;
       setError(null);
       setOrders(list);
@@ -132,11 +124,8 @@ export default function SalesMyPage() {
   // WebSocket 실시간 연동 — 현장 작업 변경 시 즉시 반영
   useEffect(() => {
     if (!lastMessage) return;
-    const { type } = lastMessage;
-    if (['PROCESS_STARTED', 'PROCESS_COMPLETED', 'PROCESS_REVERTED',
-         'ISSUE_REPORTED', 'ISSUE_RESOLVED',
-         'ORDER_CREATED', 'ORDER_UPDATED', 'ORDER_DELETED', 'ORDER_SHIPPED',
-         'PRE_PRODUCTION_UPDATED'].includes(type)) {
+    const types = Array.isArray(lastMessage.types) ? lastMessage.types : [lastMessage.type];
+    if (types.some((type) => SALES_REFRESH_EVENT_TYPES.has(type))) {
       fetchOrders();
       fetchFeed();
     }
@@ -214,6 +203,7 @@ export default function SalesMyPage() {
     setDropdownOpen(false);
     setFilter('all');
     setSearchQuery('');
+    setSearchResetKey((key) => key + 1);
   }
 
   function handleReturnToOwn() {
@@ -221,6 +211,7 @@ export default function SalesMyPage() {
     setViewingPerson(null);
     setFilter('all');
     setSearchQuery('');
+    setSearchResetKey((key) => key + 1);
   }
 
   async function handleDeleteOrder(order) {
@@ -366,6 +357,7 @@ export default function SalesMyPage() {
       {/* ── Search ── */}
       <div style={{ padding: '12px 20px 0' }}>
         <SearchBar
+          key={searchResetKey}
           placeholder="거래처, 사양, 색상으로 검색"
           onSearch={handleSearchChange}
         />

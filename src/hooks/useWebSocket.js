@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toRealtimeMessage } from './realtimeEvents';
 
 export default function useWebSocket() {
   const [lastMessage, setLastMessage] = useState(null);
@@ -16,15 +17,10 @@ export default function useWebSocket() {
         if (!active) return;
 
         setIsConnected(true);
-        if (data.events && data.events.length > 0) {
+        const message = toRealtimeMessage(data);
+        if (message) {
           lastTimestampRef.current = data.timestamp;
-          // Use the most recent event (last in array)
-          const latest = data.events[data.events.length - 1];
-          setLastMessage({
-            type: latest.action_type,
-            data: latest,
-            timestamp: latest.created_at,
-          });
+          setLastMessage(message);
         }
       } catch {
         if (active) setIsConnected(false);

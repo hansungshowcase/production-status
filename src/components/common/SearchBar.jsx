@@ -12,9 +12,15 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
   const wrapRef = useRef(null);
   const timerRef = useRef(null);
 
+  function cancelPendingSearch() {
+    if (!timerRef.current) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }
+
   // Debounced search
   const search = useCallback((text) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    cancelPendingSearch();
 
     // Local filter mode: just pass query text back
     if (onSearch) {
@@ -49,6 +55,7 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
   };
 
   const handleClear = () => {
+    cancelPendingSearch();
     setQuery('');
     setResults([]);
     setOpen(false);
@@ -75,7 +82,7 @@ export default function SearchBar({ placeholder = '검색', onSelect, onSearch }
 
   // Cleanup timer
   useEffect(() => {
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    return cancelPendingSearch;
   }, []);
 
   const getDueInfo = (order) => {

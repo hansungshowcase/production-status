@@ -132,7 +132,8 @@
 @media (max-width: 479px) {
   .sales-summary-card {
     min-height: 68px;
-    padding: 12px;
+    padding: 12px 9px;
+    gap: 8px;
     border-radius: 10px;
   }
 
