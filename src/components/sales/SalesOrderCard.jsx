@@ -123,6 +123,7 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+  const [addressCopied, setAddressCopied] = useState(false);
 
   useEffect(() => {
     setDetailOrder(null);
@@ -158,6 +159,33 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const visibleNotes = getVisibleOrderMemo(displayOrder.notes);
   const visibleRemarks = getVisibleOrderMemo(displayOrder.remarks);
   const deliveryAddress = getDeliveryAddress(displayOrder);
+
+  const handleCopyAddress = async (e) => {
+    e.stopPropagation();
+    if (!deliveryAddress) return;
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(deliveryAddress);
+        ok = true;
+      }
+    } catch { /* 권한 거부 등 — 아래 대체 방식 사용 */ }
+    if (!ok) {
+      const textarea = document.createElement('textarea');
+      textarea.value = deliveryAddress;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      document.body.removeChild(textarea);
+    }
+    if (ok) {
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 1500);
+    }
+  };
   const freightPayment = getFreightPayment(displayOrder);
   const balanceDisplay = formatMoney(displayOrder.balance);
   const workOrderImageUrl = getWorkOrderImageUrl(displayOrder);
@@ -386,6 +414,14 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
               <div className="sales-order-card__detail-item sales-order-card__detail-item--full">
                 <span className="sales-order-card__detail-label">주소</span>
                 <span className="sales-order-card__detail-value">{deliveryAddress}</span>
+                <button
+                  type="button"
+                  className={`sales-order-card__copy-btn${addressCopied ? ' sales-order-card__copy-btn--done' : ''}`}
+                  onClick={handleCopyAddress}
+                  aria-label="주소 복사"
+                >
+                  {addressCopied ? '복사됨' : '복사'}
+                </button>
               </div>
             )}
             {balanceDisplay && (
