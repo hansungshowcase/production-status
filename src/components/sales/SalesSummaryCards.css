@@ -47,6 +47,7 @@
   font-weight: 900;
   color: #475569;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .sales-summary-card__value {
@@ -99,6 +100,12 @@
 @media (min-width: 1024px) {
   .sales-summary-cards {
     padding: 18px 40px 10px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .sales-summary-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

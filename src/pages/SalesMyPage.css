@@ -874,6 +874,13 @@
     padding: 12px 12px 10px;
   }
 
+  .sales-my-page__header-right {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
   /* 활동로그: 모바일에서는 접힌 상태로 하단에 표시 */
   .sales-my-page__feed-log {
     margin: 12px 12px 16px;
@@ -901,6 +908,10 @@
   .sales-my-page__filter-bar,
   .sales-my-page__category-bar {
     -webkit-overflow-scrolling: touch;
+  }
+
+  .sales-my-page__filter-bar {
+    justify-content: flex-start;
   }
 
   /* FAB: 모바일에서는 숨기고 상단 헤더 버튼 사용 */
