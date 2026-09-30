@@ -93,11 +93,11 @@ function deriveDeliveryStatus(data) {
   if (data.delivery_status) return data.delivery_status;
   if (data.status === 'shipped') return 'shipped';
   if (data.ship_scheduled_date) return 'rescheduled';
-  const due = dateOnly(data.due_date);
-  if (due) {
+  const expectedShipDate = dateOnly(data.expected_ship_date || data.due_date);
+  if (expectedShipDate) {
     // KST 오늘 날짜 = UTC epoch + 9시간의 ISO 날짜부
     const kstToday = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-    if (due < kstToday) return 'adjusting';
+    if (expectedShipDate < kstToday) return 'adjusting';
   }
   return 'on_track';
 }
@@ -137,7 +137,7 @@ function ShipBox({ data, deliveryStatus }) {
     );
   }
   if (deliveryStatus === 'adjusting') {
-    // 조정 중: 기존 납기(due_date)·D-day를 숨기고 재안내 예정만 표시
+    // 조정 중: 지난 예상 출고일과 D-day를 숨기고 재안내 예정만 표시
     return (
       <div className="track-hero">
         <div className="track-dstat adj">출고일 조정 중</div>
@@ -147,7 +147,7 @@ function ShipBox({ data, deliveryStatus }) {
     );
   }
   if (deliveryStatus === 'rescheduled') {
-    // 조정 확정: 새 출고예정일만 크게 표시, 원래 due_date는 비노출
+    // 조정 확정: 새 출고예정일만 크게 표시
     const nd = dday(data.ship_scheduled_date);
     return (
       <div className="track-hero">
@@ -161,14 +161,15 @@ function ShipBox({ data, deliveryStatus }) {
     );
   }
   // on_track
-  const dd = dday(data.due_date);
+  const expectedShipDate = data.expected_ship_date || data.due_date;
+  const dd = dday(expectedShipDate);
   return (
     <div className="track-hero">
       <div className="track-dstat ok">예정대로 진행 중</div>
-      <div className="track-hero-lbl">예상 출고(납기)일</div>
-      <div className="track-hero-date">{fmtDate(data.due_date)}</div>
+      <div className="track-hero-lbl">예상 출고일</div>
+      <div className="track-hero-date">{fmtDate(expectedShipDate)}</div>
       <div className="track-hero-sub">
-        {weekday(data.due_date)}{dd ? <span className="track-dday">{dd}</span> : null}
+        {weekday(expectedShipDate)}{dd ? <span className="track-dday">{dd}</span> : null}
       </div>
     </div>
   );

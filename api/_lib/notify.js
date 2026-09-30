@@ -10,6 +10,7 @@ import {
 } from './notifySchema.js';
 import { ensureTrackToken } from './trackToken.js';
 import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
+import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
 
 const SOLAPI_ENDPOINT = 'https://api.solapi.com/messages/v4/send';
 // 종결 상태 = success/dry_run/skipped (claim SQL 에 인라인) — queued/failed/sending(stale) 은 스윕이 재처리
@@ -96,7 +97,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
     throw new Error('수량 확인이 필요하여 고객 알림을 발송하지 않았습니다.');
   }
   const 수량 = `${parsedQuantity}대`;
-  const 예상출고일 = fmtDate(order.due_date);
+  const 예상출고일 = fmtDate(customerExpectedShipDate(order));
   const 조회링크 = trackUrl || '';
   // 알림톡 웹링크 버튼이 https://.../track/#{토큰} 형태라 토큰 변수도 함께 넘긴다
   const 토큰 = trackUrl ? (String(trackUrl).split('/track/')[1] || '') : '';
@@ -139,7 +140,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
       break;
     case 'packed': {
       subject = '[한성쇼케이스] 포장 완료 안내';
-      const 출고예정 = fmtDate(order.ship_scheduled_date || order.due_date);
+      const 출고예정 = 예상출고일;
       variables.예상출고일 = 출고예정;
       lines = [
         `${고객명}님, 주문하신 제품의 포장이 완료되어 곧 출고될 예정입니다.`,

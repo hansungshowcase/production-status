@@ -7,6 +7,10 @@ import { cors } from '../_lib/cors.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { kstToday } from '../_lib/risk.js';
+import {
+  customerDeliveryStatus,
+  customerExpectedShipDate,
+} from '../../src/utils/customerShippingDate.js';
 
 // 거래처명은 가리지 않는다. 이 링크는 그 거래처 본인에게 문자로 나가는 것이라
 // 자기 상호를 '솔*********' 로 보게 되면 잘못된 화면으로 읽힌다(2026-08-12 요청).
@@ -59,13 +63,9 @@ export default cors(async function handler(req, res) {
 
   // 고객 노출 delivery_status 파생 (리스크 등급·확률은 절대 비노출)
   const today = kstToday();
-  const schedDate = order.ship_scheduled_date ? String(order.ship_scheduled_date).slice(0, 10) : null;
-  let delivery_status;
-  if (order.status === 'shipped') delivery_status = 'shipped';
-  // 예정일이 이미 지났으면 '새 출고예정일' 로 지난 날짜를 보여주지 않고 '조정 중' 으로 폴백 (05 문서 5.2)
-  else if (schedDate && schedDate >= today) delivery_status = 'rescheduled';
-  else if (schedDate || (order.due_date && String(order.due_date).slice(0, 10) < today)) delivery_status = 'adjusting';
-  else delivery_status = 'on_track';
+  const expected_ship_date = customerExpectedShipDate(order);
+  // 명시된 예정일 또는 납기+3일이 지나면 지난 날짜를 숨기고 '조정 중' 으로 폴백한다.
+  const delivery_status = customerDeliveryStatus(order, today);
 
   // 포장 완료 시에만 포장 사진 노출
   let packing_photo_url = null;
@@ -101,8 +101,10 @@ export default cors(async function handler(req, res) {
     color: order.color || null,
     status: order.status,
     delivery_status,
-    // 지난/폐기된 날짜 노출 방지 (05 문서 5.2): 조정 중·새 예정일 안내 중에는 기존 납기를 숨긴다
-    due_date: (delivery_status === 'adjusting' || delivery_status === 'rescheduled') ? null : (order.due_date || null),
+    // 고객 안내일은 작업지시서 납기+3일이며, 조정 중에는 지난 날짜를 숨긴다.
+    expected_ship_date: delivery_status === 'adjusting' ? null : expected_ship_date,
+    // 배포 전에 열린 구형 화면도 자동갱신 때 같은 고객 안내일을 표시하도록 호환 필드를 유지한다.
+    due_date: delivery_status === 'adjusting' ? null : expected_ship_date,
     ship_scheduled_date: delivery_status === 'adjusting' ? null : (order.ship_scheduled_date || null),
     ship_date: order.ship_date || null,
     progress: { completed, total: processes.length },
