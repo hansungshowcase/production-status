@@ -52,6 +52,85 @@ function formatDateKey(value) {
   return `${year}. ${Number(month)}. ${Number(day)}.`;
 }
 
+function formatDueState(due) {
+  if (!due || due.status === 'needs_review') return '';
+  if (due.status === 'overdue') return `납기 경과 ${due.days}일`;
+  if (due.status === 'today') return '오늘 납기';
+  return `D-${due.days}`;
+}
+
+const DUE_REVIEW_LABELS = {
+  미기재: '납기 확인필요 · 미기재',
+  날짜형식: '납기 확인필요 · 날짜 형식',
+  발주일이전: '확인 필요 · 발주일 이전',
+  조회기준일미기재: '납기 확인필요 · 조회 기준일 미기재',
+};
+
+const DUE_REVIEW_SEGMENTS = {
+  미기재: ['납기 확인필요', '미기재'],
+  날짜형식: ['납기 확인필요', '날짜 형식'],
+  발주일이전: ['확인 필요', '발주일 이전'],
+  조회기준일미기재: ['납기 확인필요', '조회 기준일 미기재'],
+};
+
+function formatDueDetail(due) {
+  if (!due) return '납기 확인필요';
+  if (due.status === 'needs_review') {
+    return DUE_REVIEW_LABELS[due.reason] || '납기 확인필요';
+  }
+  return formatDueState(due);
+}
+
+function DueDetail({ due }) {
+  if (due?.status !== 'needs_review') {
+    return <small>{formatDueDetail(due)}</small>;
+  }
+  const segments = DUE_REVIEW_SEGMENTS[due.reason];
+  if (!segments) return <small>{formatDueDetail(due)}</small>;
+  return (
+    <small className="materials-order-due__review">
+      <span className="materials-order-due__meaning">{segments[0]}</span>
+      <span className="materials-order-due__meaning"> · {segments[1]}</span>
+    </small>
+  );
+}
+
+function dueSummaryLabel(company) {
+  const summary = company.due_summary;
+  const details = summary.details;
+  if (details.length === 1) {
+    const [due] = details;
+    if (due.status === 'needs_review' && due.reason === '발주일이전' && due.date_key) {
+      return `납기 ${formatDateKey(due.date_key)} · 확인 필요 · 발주일 이전`;
+    }
+    if (due.status === 'needs_review') return DUE_REVIEW_LABELS[due.reason] || '납기 확인필요';
+    return `납기 ${formatDateKey(due.date_key)} · ${formatDueState(due)}`;
+  }
+  if (summary.earliest_due_date) return `가장 빠른 납기 ${formatDateKey(summary.earliest_due_date)}`;
+  return `납기 확인필요 ${details.length}건`;
+}
+
+function DueResultBadges({ counts, className = '', showZero = false }) {
+  const badges = [
+    ['overdue_count', '납기경과', 'overdue'],
+    ['today_count', '오늘납기', 'today'],
+    ['due_review_count', '납기확인', 'review'],
+  ].filter(([key]) => showZero || counts[key] > 0);
+  if (!badges.length) return null;
+  return (
+    <p className={`materials-due-result ${className}`.trim()}>
+      {badges.map(([key, label, tone], index) => (
+        <span className="materials-due-result__item" key={key}>
+          {index > 0 && <span aria-hidden="true"> · </span>}
+          <span className={`materials-due-result__badge materials-due-result__badge--${tone}${counts[key] === 0 ? ' materials-due-result__badge--zero' : ''}`}>
+            {label} {counts[key]}건
+          </span>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function RefreshIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -78,20 +157,22 @@ function StageCount({ label, count }) {
       ? `확인필요 ${count.needs_review_count}건`
       : '전체 완료';
 
+  const tone = count.unchecked_count > 0
+    ? 'unchecked'
+    : count.needs_review_count > 0 ? 'needs-review' : 'complete';
   return (
-    <div className={`materials-stage-count materials-stage-count--${count.unchecked_count > 0
-      ? 'unchecked'
-      : count.needs_review_count > 0 ? 'needs-review' : 'complete'}`}>
+    <div className={`materials-stage-count materials-stage-count--${tone}`}>
       <span>{label}</span>
       <strong>{mainLabel}</strong>
       {count.unchecked_count > 0 && count.needs_review_count > 0 && (
-        <small>확인필요 {count.needs_review_count}건</small>
+        <small className="materials-stage-count__review">확인필요 {count.needs_review_count}건</small>
       )}
     </div>
   );
 }
 
 function OrderRow({ order }) {
+  const due = order.due;
   return (
     <div className="materials-order-row">
       <div className="materials-order-identity">
@@ -99,7 +180,10 @@ function OrderRow({ order }) {
         <small>시트 {order.source_row}행</small>
       </div>
       <div data-label="발주일">{order.order_date || '-'}</div>
-      <div data-label="납기일">{order.due_date || '-'}</div>
+      <div className="materials-order-due" data-label="납기일">
+        <strong>{String(order.due_date ?? '').trim() || '-'}</strong>
+        <DueDetail due={due} />
+      </div>
       <div data-label="담당">{order.manager || '-'}</div>
       <div data-label="출고">{String(order.shipping.raw ?? '').trim() || '미출고'}</div>
       {STAGES.map(({ key, label }) => (
@@ -112,13 +196,19 @@ function OrderRow({ order }) {
 }
 
 function CompanyCard({ company }) {
+  const dueSummary = company.due_summary;
+  const materialReviewClass = company.due_risk === 'other' && company.review_order_count > 0
+    ? ' materials-company-card--material-review'
+    : '';
   return (
-    <details className="materials-company-card">
+    <details className={`materials-company-card materials-company-card--${company.due_risk}${materialReviewClass}`}>
       <summary>
         <div className="materials-company-heading">
           <div>
             <h2>{company.company}</h2>
             <p>미출고 {company.target_order_count}건</p>
+            <p className="materials-company-due">{dueSummaryLabel(company)}</p>
+            <DueResultBadges counts={dueSummary.counts} className="materials-company-due-result" />
           </div>
           <span className="materials-company-disclosure">상세</span>
         </div>
@@ -195,7 +285,11 @@ export default function MaterialsPage() {
     material,
     fetchedAt: data?.fetched_at,
   }), [companyQuery, data, material]);
-  const summary = useMemo(() => aggregateMaterialOrders(filteredOrders), [filteredOrders]);
+  const dueAnchor = scope.date_range?.end ?? null;
+  const summary = useMemo(
+    () => aggregateMaterialOrders(filteredOrders, dueAnchor),
+    [dueAnchor, filteredOrders],
+  );
   const visibleCompanies = summary.companies.slice(0, visibleCompanyCount);
 
   useEffect(() => {
@@ -279,9 +373,28 @@ export default function MaterialsPage() {
         <p className="materials-result" aria-live="polite">
           {summary.total_companies}개 업체 · 미출고 {summary.total_orders}건
         </p>
+        <DueResultBadges counts={summary.due_counts} className="materials-result-due" showZero />
         {scope.unknown_date_count > 0 && (
           <p className="materials-date-note">발주일 미확인 {scope.unknown_date_count}건 제외</p>
         )}
+
+        <p className="materials-legend" aria-label="납기 및 자재 상태 색상 안내">
+          <span className="materials-legend__item">
+            <span className="materials-legend__overdue">빨강 납기경과</span>
+          </span>
+          <span className="materials-legend__item">
+            <span aria-hidden="true"> · </span>
+            <span className="materials-legend__today">주황 오늘납기/미체크</span>
+          </span>
+          <span className="materials-legend__item">
+            <span aria-hidden="true"> · </span>
+            <span className="materials-legend__review">파랑 확인필요</span>
+          </span>
+          <span className="materials-legend__item">
+            <span aria-hidden="true"> · </span>
+            <span className="materials-legend__complete">초록 자재완료</span>
+          </span>
+        </p>
 
         <section className="materials-companies" aria-live="polite">
           {summary.companies.length > 0

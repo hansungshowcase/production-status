@@ -112,6 +112,111 @@ body:has(.materials-page),
   overflow-wrap: anywhere;
 }
 
+.materials-due-result {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.materials-due-result__badge {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.materials-due-result__item,
+.materials-legend__item {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.materials-result-due {
+  margin-top: var(--space-1);
+}
+
+.materials-due-result__badge--overdue,
+.materials-legend__overdue {
+  color: var(--text);
+}
+
+.materials-legend__overdue,
+.materials-legend__today,
+.materials-legend__review,
+.materials-legend__complete {
+  display: inline-flex;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.materials-legend__overdue {
+  border-color: var(--red);
+  background: var(--red-light);
+}
+
+.materials-due-result__badge--overdue {
+  border-color: var(--red);
+  background: var(--red-light);
+}
+
+.materials-due-result__badge--today,
+.materials-legend__today {
+  color: var(--text);
+}
+
+.materials-due-result__badge--today {
+  border-color: var(--orange);
+  background: var(--orange-light);
+}
+
+.materials-legend__today {
+  border-color: var(--orange);
+  background: var(--orange-light);
+}
+
+.materials-due-result__badge--review,
+.materials-legend__review {
+  color: var(--blue-dark);
+}
+
+.materials-due-result__badge--review {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+
+.materials-legend__review {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+
+.materials-due-result__badge--zero {
+  border-color: var(--border);
+  background: var(--surface2);
+  color: var(--text-mid);
+}
+
+.materials-legend__complete {
+  border-color: var(--green);
+  background: var(--green-light);
+  color: var(--text);
+}
+
+.materials-legend {
+  margin: var(--space-3) 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .materials-date-scope {
   margin-bottom: var(--space-3);
   color: var(--text-mid);
@@ -218,6 +323,26 @@ body:has(.materials-page),
   overflow: hidden;
 }
 
+.materials-company-card--overdue {
+  box-shadow: inset 4px 0 0 var(--red), var(--shadow);
+}
+
+.materials-company-card--today {
+  box-shadow: inset 4px 0 0 var(--orange), var(--shadow);
+}
+
+.materials-company-card--due_review {
+  box-shadow: inset 4px 0 0 var(--blue), var(--shadow);
+}
+
+.materials-company-card--material-review {
+  box-shadow: inset 4px 0 0 var(--blue), var(--shadow);
+}
+
+.materials-company-card--complete {
+  box-shadow: inset 4px 0 0 var(--green), var(--shadow);
+}
+
 .materials-company-card > summary {
   min-height: 44px;
   padding: var(--space-3) var(--space-4);
@@ -249,6 +374,18 @@ body:has(.materials-page),
   font-size: 14px;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.materials-company-heading .materials-company-due {
+  margin-top: var(--space-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.materials-company-due-result {
+  margin-top: var(--space-1);
 }
 
 .materials-company-disclosure {
@@ -316,6 +453,25 @@ body:has(.materials-page),
   background: var(--green-light);
 }
 
+.materials-stage-count--unchecked {
+  border-left: 3px solid var(--orange);
+  background: var(--orange-light);
+}
+
+.materials-stage-count--unchecked strong {
+  color: var(--text);
+}
+
+.materials-stage-count__review {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--blue-light);
+  color: var(--blue-dark) !important;
+}
+
 .materials-stage-count--complete strong {
   color: var(--text);
 }
@@ -327,6 +483,10 @@ body:has(.materials-page),
 
 .materials-stage-count--needs-review strong {
   color: var(--blue-dark);
+}
+
+.materials-stage-count--needs-review > span {
+  color: var(--text-mid);
 }
 
 .materials-order-list {
@@ -377,6 +537,33 @@ body:has(.materials-page),
 .materials-order-identity small {
   color: var(--text-dim);
   font-size: 12px;
+}
+
+.materials-order-due {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.materials-order-due strong {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.materials-order-due small {
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.materials-order-due__review {
+  color: var(--blue-dark) !important;
+}
+
+.materials-order-due__meaning {
+  white-space: nowrap;
 }
 
 .materials-status {
@@ -503,7 +690,7 @@ body:has(.materials-page),
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .materials-order-head {
     display: none;
   }

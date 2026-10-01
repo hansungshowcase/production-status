@@ -75,6 +75,140 @@ export function parseOrderDate(value) {
   };
 }
 
+function resolveDateKey(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return parseOrderDate(text)?.key ?? null;
+  }
+  return getKstDateKey(value);
+}
+
+function dateOrdinal(dateKey) {
+  const parsed = parseOrderDate(dateKey);
+  if (!parsed) return null;
+  return Date.UTC(parsed.year, parsed.month - 1, parsed.day) / 86400000;
+}
+
+export function getCalendarDayDifference(laterDateKey, earlierDateKey) {
+  const later = dateOrdinal(laterDateKey);
+  const earlier = dateOrdinal(earlierDateKey);
+  if (later === null || earlier === null) return null;
+  return later - earlier;
+}
+
+/**
+ * Due dates are compared using calendar dates only. A due date is never
+ * shifted by a guessed year or by a delivery lead-time adjustment.
+ */
+export function classifyDueDate(order, anchor, resolvedAnchor = resolveDateKey(anchor)) {
+  const raw = order?.due_date ?? '';
+  const text = String(raw).trim();
+  if (!text) {
+    return { status: 'needs_review', category: 'due_review', reason: '미기재', raw, date_key: null, days: null };
+  }
+
+  const dueDate = parseOrderDate(text);
+  if (!dueDate) {
+    return { status: 'needs_review', category: 'due_review', reason: '날짜형식', raw, date_key: null, days: null };
+  }
+
+  const orderDate = parseOrderDate(order?.order_date);
+  if (orderDate && dueDate.key < orderDate.key) {
+    return {
+      status: 'needs_review',
+      category: 'due_review',
+      reason: '발주일이전',
+      raw,
+      date_key: dueDate.key,
+      order_date_key: orderDate.key,
+      days: null,
+    };
+  }
+
+  const anchorDateKey = resolvedAnchor;
+  if (!anchorDateKey) {
+    return {
+      status: 'needs_review',
+      category: 'due_review',
+      reason: '조회기준일미기재',
+      raw,
+      date_key: dueDate.key,
+      order_date_key: orderDate?.key ?? null,
+      days: null,
+    };
+  }
+
+  const difference = getCalendarDayDifference(dueDate.key, anchorDateKey);
+  if (difference === null) {
+    return {
+      status: 'needs_review',
+      category: 'due_review',
+      reason: '조회기준일미기재',
+      raw,
+      date_key: dueDate.key,
+      order_date_key: orderDate?.key ?? null,
+      days: null,
+    };
+  }
+  if (difference < 0) {
+    return {
+      status: 'overdue',
+      category: 'overdue',
+      reason: '납기경과',
+      raw,
+      date_key: dueDate.key,
+      order_date_key: orderDate?.key ?? null,
+      days: Math.abs(difference),
+    };
+  }
+  if (difference === 0) {
+    return {
+      status: 'today',
+      category: 'today',
+      reason: '오늘납기',
+      raw,
+      date_key: dueDate.key,
+      order_date_key: orderDate?.key ?? null,
+      days: 0,
+    };
+  }
+  return {
+    status: 'future',
+    category: 'other',
+    reason: '납기예정',
+    raw,
+    date_key: dueDate.key,
+    order_date_key: orderDate?.key ?? null,
+    days: difference,
+  };
+}
+
+export function summarizeDueOrders(orders, anchor, resolvedAnchor = resolveDateKey(anchor)) {
+  const hasAnchor = Boolean(resolvedAnchor);
+  const details = orders.map(order => classifyDueDate(order, anchor, resolvedAnchor));
+  const counts = {
+    overdue_count: details.filter(item => item.status === 'overdue').length,
+    today_count: details.filter(item => item.status === 'today').length,
+    future_count: details.filter(item => item.status === 'future').length,
+    due_review_count: hasAnchor
+      ? details.filter(item => item.status === 'needs_review').length
+      : 0,
+  };
+  const validDates = details
+    .filter(item => ['overdue', 'today', 'future'].includes(item.status))
+    .map(item => item.date_key)
+    .sort();
+
+  return {
+    enabled: hasAnchor,
+    counts,
+    details,
+    earliest_due_date: validDates[0] ?? null,
+    valid_due_count: validDates.length,
+  };
+}
+
 export function getKstDateKey(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -347,7 +481,64 @@ function countStages(orders) {
   }]));
 }
 
-export function aggregateMaterialOrders(orders) {
+function materialOrderIncomplete(order) {
+  return ['receipt', 'order', 'arrival']
+    .some(stage => order.materials[stage].status !== 'complete');
+}
+
+function dueRiskGroup(dueSummary, incompleteOrderCount) {
+  if (dueSummary.counts.overdue_count > 0) return 'overdue';
+  if (dueSummary.counts.today_count > 0) return 'today';
+  if (dueSummary.enabled && dueSummary.counts.due_review_count > 0) return 'due_review';
+  if (incompleteOrderCount === 0) return 'complete';
+  return 'other';
+}
+
+function compareCompanySummary(left, right) {
+  const riskOrder = { overdue: 0, today: 1, due_review: 2, other: 3, complete: 3 };
+  const leftRisk = riskOrder[left.due_risk] ?? 3;
+  const rightRisk = riskOrder[right.due_risk] ?? 3;
+
+  if (!left.due_summary.enabled && !right.due_summary.enabled) {
+    if (left.all_complete !== right.all_complete) return left.all_complete ? 1 : -1;
+    if (left.review_order_count !== right.review_order_count) {
+      return right.review_order_count - left.review_order_count;
+    }
+    if (left.incomplete_order_count !== right.incomplete_order_count) {
+      return right.incomplete_order_count - left.incomplete_order_count;
+    }
+    return KOREAN_COLLATOR.compare(left.company, right.company);
+  }
+
+  if (leftRisk !== rightRisk) return leftRisk - rightRisk;
+
+  if (leftRisk <= 1) {
+    const leftDate = left.due_summary.earliest_due_date ?? '9999-12-31';
+    const rightDate = right.due_summary.earliest_due_date ?? '9999-12-31';
+    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+  } else if (leftRisk === 2
+    && left.due_summary.counts.due_review_count !== right.due_summary.counts.due_review_count) {
+    return right.due_summary.counts.due_review_count - left.due_summary.counts.due_review_count;
+  } else if (leftRisk === 3) {
+    const leftIncomplete = left.incomplete_order_count > 0;
+    const rightIncomplete = right.incomplete_order_count > 0;
+    if (leftIncomplete !== rightIncomplete) return leftIncomplete ? -1 : 1;
+    const leftDate = left.due_summary.earliest_due_date ?? '9999-12-31';
+    const rightDate = right.due_summary.earliest_due_date ?? '9999-12-31';
+    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+  }
+
+  if (left.review_order_count !== right.review_order_count) {
+    return right.review_order_count - left.review_order_count;
+  }
+  if (left.incomplete_order_count !== right.incomplete_order_count) {
+    return right.incomplete_order_count - left.incomplete_order_count;
+  }
+  return KOREAN_COLLATOR.compare(left.company, right.company);
+}
+
+export function aggregateMaterialOrders(orders, anchor) {
+  const resolvedAnchor = resolveDateKey(anchor);
   const grouped = new Map();
   for (const order of orders) {
     const companyOrders = grouped.get(order.company) ?? [];
@@ -357,10 +548,10 @@ export function aggregateMaterialOrders(orders) {
 
   const companies = [...grouped.entries()]
     .map(([company, companyOrders]) => {
-      const incompleteOrderCount = companyOrders.filter(order =>
-        ['receipt', 'order', 'arrival'].some(stage => order.materials[stage].status !== 'complete')).length;
+      const incompleteOrderCount = companyOrders.filter(materialOrderIncomplete).length;
       const reviewOrderCount = companyOrders.filter(order =>
         ['receipt', 'order', 'arrival'].some(stage => order.materials[stage].status === 'needs_review')).length;
+      const dueSummary = summarizeDueOrders(companyOrders, anchor, resolvedAnchor);
       return {
         company,
         target_order_count: companyOrders.length,
@@ -368,20 +559,23 @@ export function aggregateMaterialOrders(orders) {
         review_order_count: reviewOrderCount,
         all_complete: incompleteOrderCount === 0,
         stages: countStages(companyOrders),
-        orders: [...companyOrders].sort((left, right) => right.source_row - left.source_row),
+        due_summary: dueSummary,
+        due_risk: dueRiskGroup(dueSummary, incompleteOrderCount),
+        orders: [...companyOrders]
+          .sort((left, right) => right.source_row - left.source_row)
+          .map(order => ({
+            ...order,
+            due: classifyDueDate(order, anchor, resolvedAnchor),
+          })),
       };
     })
-    .sort((left, right) => {
-      if (left.all_complete !== right.all_complete) return left.all_complete ? 1 : -1;
-      if (left.review_order_count !== right.review_order_count) return right.review_order_count - left.review_order_count;
-      if (left.incomplete_order_count !== right.incomplete_order_count) return right.incomplete_order_count - left.incomplete_order_count;
-      return KOREAN_COLLATOR.compare(left.company, right.company);
-    });
+    .sort(compareCompanySummary);
 
   return {
     total_orders: orders.length,
     total_companies: companies.length,
     stages: countStages(orders),
+    due_counts: summarizeDueOrders(orders, anchor, resolvedAnchor).counts,
     companies,
   };
 }
