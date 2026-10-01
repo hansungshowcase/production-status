@@ -13,7 +13,6 @@ export const INTERNAL_ALERT_CONTACTS = {
 };
 
 const ASSEMBLY_WORKER_PHONES = {
-  '강종효': '010-9606-0873',
   '카우사르': '010-8302-2576',
   '까우사르': '010-8302-2576',
   '나타왓': '010-2157-9396',

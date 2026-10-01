@@ -4,6 +4,7 @@ import OfflineBanner from './components/common/OfflineBanner';
 import InstallPrompt from './components/common/InstallPrompt';
 import PageLoader from './components/common/PageLoader';
 import SplashScreen from './components/common/SplashScreen';
+import { DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY, WORKER_STORAGE_KEY } from './constants';
 import ChunkErrorBoundary, {
   clearChunkReloadAttempt,
   isChunkLoadError,
@@ -62,6 +63,22 @@ function AnimatedPage({ children }) {
 }
 
 function AppRoutes() {
+  const location = useLocation();
+  const isRetiredWorkerSession = sessionStorage.getItem(WORKER_STORAGE_KEY) === '강종효';
+  const isWorkerRoute = location.pathname === '/worker' || location.pathname.startsWith('/worker/');
+  const shouldRedirectRetiredWorker = isRetiredWorkerSession && (isWorkerRoute || location.pathname === '/tablet');
+
+  useLayoutEffect(() => {
+    if (!shouldRedirectRetiredWorker) return;
+    sessionStorage.removeItem(WORKER_STORAGE_KEY);
+    sessionStorage.removeItem(DEPARTMENT_STORAGE_KEY);
+    sessionStorage.removeItem(WORKER_CONFIRMED_KEY);
+  }, [shouldRedirectRetiredWorker]);
+
+  if (shouldRedirectRetiredWorker) {
+    return <Navigate to="/worker/select" replace />;
+  }
+
   return (
     <AnimatedPage>
       <Routes>

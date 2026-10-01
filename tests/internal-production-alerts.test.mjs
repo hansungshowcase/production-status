@@ -21,7 +21,7 @@ test('내부 생산 알림 수신자와 조립팀 작업자 별칭을 정확히 
     packing: { name: '정영호 팀장', phone: '010-9095-0577' },
   });
 
-  assert.equal(alerts.assemblyWorkerPhone('강종효'), '010-9606-0873');
+  assert.equal(alerts.assemblyWorkerPhone('강종효'), '');
   assert.equal(alerts.assemblyWorkerPhone('카우사르'), '010-8302-2576');
   assert.equal(alerts.assemblyWorkerPhone('까우사르'), '010-8302-2576');
   assert.equal(alerts.assemblyWorkerPhone('나타왓'), '010-2157-9396');
@@ -147,8 +147,9 @@ test('조립팀 문자는 포장 미완료 주문을 시작한 각 작업자 본
   });
   const daily = items.filter(item => item.type === 'assembly_daily');
 
-  assert.deepEqual(daily.map(item => item.recipientName).sort(), ['강종효', '카우사르']);
-  assert.deepEqual(daily.map(item => item.phone).sort(), ['010-8302-2576', '010-9606-0873']);
+  assert.deepEqual(daily.map(item => item.recipientName).sort(), ['카우사르']);
+  assert.deepEqual(daily.map(item => item.phone).sort(), ['010-8302-2576']);
+  assert.equal(daily.some(item => item.recipientName === '강종효'), false);
   assert.equal(daily.every(item => item.orderId === 9 && item.alertDate === '2026-09-01'), true);
   assert.equal(daily.some(item => item.orderId === 10), false);
 });
@@ -245,20 +246,21 @@ test('조립팀 시작 문자는 평일에 시작 버튼을 누른 본인에게�
   const alerts = await loadAlertsModule();
   assert.equal(typeof alerts.createAssemblyStartAlert, 'function');
   const targetOrder = order(26, '2026-09-10');
-  const process = { order_id: 26, step_name: '용접작업', status: 'in_progress', started_by: '강종효' };
+  const process = { order_id: 26, step_name: '용접작업', status: 'in_progress', started_by: '카우사르' };
   const weekday = Date.parse('2026-09-01T00:00:00.000Z'); // KST 화요일
   const weekend = Date.parse('2026-09-05T00:00:00.000Z'); // KST 토요일
 
-  const item = alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '강종효', today: '2026-09-01', nowMs: weekday });
-  assert.equal(item.recipientName, '강종효');
-  assert.equal(item.phone, '010-9606-0873');
+  const item = alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '카우사르', today: '2026-09-01', nowMs: weekday });
+  assert.equal(item.recipientName, '카우사르');
+  assert.equal(item.phone, '010-8302-2576');
   assert.equal(item.alertDate, '2026-09-01');
-  assert.equal(item.stateKey, 'internal:assembly_daily:강종효');
+  assert.equal(item.stateKey, 'internal:assembly_daily:카우사르');
+  assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '강종효', today: '2026-09-01', nowMs: weekday }), null);
   assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '거니', today: '2026-09-01', nowMs: weekday }), null);
-  assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '강종효', today: '2026-09-05', nowMs: weekend }), null);
+  assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '카우사르', today: '2026-09-05', nowMs: weekend }), null);
 
   const message = alerts.buildInternalAlertMessage(alerts.groupInternalAlerts([item])[0]);
-  assert.match(message.text, /강종효님/);
+  assert.match(message.text, /카우사르님/);
   assert.match(message.text, /포장이 아직 완료되지 않았습니다/);
   assert.match(message.text, /납기는 한성 팀원 모두의 책임입니다/);
 });
@@ -303,7 +305,7 @@ test('공정 시작 훅은 평일에 시작한 조립팀 본인에게만 즉시 
     return { sent: 1, failed: 0, skipped: 0 };
   };
   const targetOrder = order(28, '2026-09-10');
-  const targetProcess = { order_id: 28, step_name: '용접작업', status: 'in_progress' };
+  const targetProcess = { order_id: 28, step_name: '용접작업', status: 'in_progress', started_by: '카우사르' };
 
   const unknown = await alerts.notifyInternalProcessStart({}, {
     order: targetOrder,
@@ -315,24 +317,32 @@ test('공정 시작 훅은 평일에 시작한 조립팀 본인에게만 즉시 
   const weekend = await alerts.notifyInternalProcessStart({}, {
     order: targetOrder,
     process: targetProcess,
-    workerName: '강종효',
+    workerName: '카우사르',
     today: '2026-09-05',
     nowMs: Date.parse('2026-09-05T00:00:00.000Z'),
   }, { sendGroup });
-  const sent = await alerts.notifyInternalProcessStart({}, {
+  const retired = await alerts.notifyInternalProcessStart({}, {
     order: targetOrder,
     process: targetProcess,
     workerName: '강종효',
     today: '2026-09-01',
     nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
   }, { sendGroup });
+  const sent = await alerts.notifyInternalProcessStart({}, {
+    order: targetOrder,
+    process: targetProcess,
+    workerName: '카우사르',
+    today: '2026-09-01',
+    nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
+  }, { sendGroup });
 
   assert.deepEqual(unknown, { sent: 0, failed: 0, skipped: 'not_target' });
   assert.deepEqual(weekend, { sent: 0, failed: 0, skipped: 'not_target' });
+  assert.deepEqual(retired, { sent: 0, failed: 0, skipped: 'not_target' });
   assert.equal(sent.sent, 1);
   assert.equal(groups.length, 1);
-  assert.equal(groups[0].recipientName, '강종효');
-  assert.equal(groups[0].phone, '010-9606-0873');
+  assert.equal(groups[0].recipientName, '카우사르');
+  assert.equal(groups[0].phone, '010-8302-2576');
 });
 
 function makeInternalStateDb() {
@@ -402,11 +412,11 @@ test('주문 알림 상태를 원자적으로 선점해 같은 내부 문자를 
 test('조립팀 일일 문자는 같은 날 한 번만 보내고 다음 평일에는 다시 보낸다', async () => {
   const alerts = await loadAlertsModule();
   const targetOrder = order(32, '2026-09-12');
-  const targetProcess = { order_id: 32, step_name: '용접작업', status: 'in_progress', started_by: '강종효' };
+  const targetProcess = { order_id: 32, step_name: '용접작업', status: 'in_progress', started_by: '카우사르' };
   const dayOne = alerts.createAssemblyStartAlert({
     order: targetOrder,
     process: targetProcess,
-    workerName: '강종효',
+    workerName: '카우사르',
     today: '2026-09-01',
     nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
   });
@@ -427,7 +437,7 @@ test('조립팀 일일 문자는 같은 날 한 번만 보내고 다음 평일�
   });
 
   assert.equal(sendCount, 2);
-  assert.equal(db.notifyState.get(32)['internal:assembly_daily:강종효'].date, '2026-09-02');
+  assert.equal(db.notifyState.get(32)['internal:assembly_daily:카우사르'].date, '2026-09-02');
 });
 
 test('내부 문자 발송 실패는 실패 상태로 남겨 같은 대상의 다음 시도에서 재전송한다', async () => {
