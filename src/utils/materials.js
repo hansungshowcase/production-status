@@ -19,6 +19,7 @@ const STAGE_TOKENS = Object.freeze({
 
 const CHECK_TOKENS = new Set(['o', '○', 'check', 'true']);
 const KOREAN_COLLATOR = new Intl.Collator('ko-KR');
+const ORDER_DATE_PATTERN = /^(\d{4})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{1,2})$/;
 
 function normalizeHeader(value) {
   return String(value ?? '').replace(/\s+/g, '');
@@ -51,6 +52,59 @@ export function isValidSheetDate(value) {
   return isValidDateParts(null, Number(monthDay[1]), Number(monthDay[2]));
 }
 
+/**
+ * Order dates have a deliberately narrower parser than material-stage dates.
+ * The sheet contains yearless values such as "7. 2"; those are useful source
+ * text but cannot be placed safely in the rolling date window.
+ */
+export function parseOrderDate(value) {
+  const text = String(value ?? '').trim();
+  const match = ORDER_DATE_PATTERN.exec(text);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!isValidDateParts(year, month, day)) return null;
+
+  return {
+    year,
+    month,
+    day,
+    key: `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+  };
+}
+
+export function getKstDateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+export function getMaterialDateRange(fetchedAt) {
+  const end = getKstDateKey(fetchedAt);
+  if (!end) return null;
+
+  const [year, month, day] = end.split('-').map(Number);
+  const zeroBasedMonth = month - 1 - 3;
+  const startYear = year + Math.floor(zeroBasedMonth / 12);
+  const startMonth = ((zeroBasedMonth % 12) + 12) % 12 + 1;
+  const startDay = Math.min(day, daysInMonth(startYear, startMonth));
+  const start = `${String(startYear).padStart(4, '0')}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
+  return { start, end };
+}
+
 export function normalizeMaterialStatus(value, stage) {
   const text = String(value ?? '').trim();
   if (!text) return 'unchecked';
@@ -65,7 +119,7 @@ export function normalizeShippingStatus(value) {
   const text = String(value ?? '').trim();
   if (!text) return 'not_shipped';
   if (isValidSheetDate(text)) return 'complete';
-  if (text === '출고완료') return 'complete';
+  if (text === '출고완료' || text === '출고 완료') return 'complete';
 
   const completedWithDate = /^출고완료\s*·\s*(.+)$/.exec(text);
   if (completedWithDate && isValidSheetDate(completedWithDate[1])) return 'complete';
@@ -194,6 +248,43 @@ export function parseMaterialsCsv(csv) {
   return { orders };
 }
 
+export function scopeMaterialOrders(orders, fetchedAt) {
+  const range = getMaterialDateRange(fetchedAt);
+  if (!range) {
+    return {
+      orders: [],
+      date_range: null,
+      unknown_date_count: orders.length,
+      future_date_count: 0,
+    };
+  }
+
+  let unknownDateCount = 0;
+  let futureDateCount = 0;
+  const scopedOrders = [];
+
+  for (const order of orders) {
+    const parsed = parseOrderDate(order.order_date);
+    if (!parsed) {
+      unknownDateCount += 1;
+      continue;
+    }
+    if (parsed.key > range.end) {
+      futureDateCount += 1;
+      continue;
+    }
+    if (parsed.key < range.start || order.shipping?.status === 'complete') continue;
+    scopedOrders.push(order);
+  }
+
+  return {
+    orders: scopedOrders,
+    date_range: range,
+    unknown_date_count: unknownDateCount,
+    future_date_count: futureDateCount,
+  };
+}
+
 function matchesMaterialFilter(order, material) {
   const stages = order.materials;
   const values = [stages.receipt, stages.order, stages.arrival];
@@ -227,13 +318,22 @@ function matchesShippingFilter(order, shipping) {
   }
 }
 
-export function filterMaterialOrders(orders, filters) {
+export function filterMaterialOrders(orders, filters = {}) {
   const query = String(filters.companyQuery ?? '').trim().toLocaleLowerCase('ko-KR');
-  return orders.filter(order => {
-    const companyMatches = !query || order.company.toLocaleLowerCase('ko-KR').includes(query);
-    return companyMatches
-      && matchesShippingFilter(order, filters.shipping)
-      && matchesMaterialFilter(order, filters.material);
+  const materialFilter = filters.material ?? 'all';
+  const hasFixedScope = Boolean(filters.fetchedAt || filters.anchor || filters.anchorDate);
+  const sourceOrders = hasFixedScope
+    ? scopeMaterialOrders(orders, filters.fetchedAt || filters.anchor || filters.anchorDate).orders
+    : orders.filter(order => matchesShippingFilter(order, filters.shipping));
+  const companyMatches = new Set(sourceOrders
+    .filter(order => matchesMaterialFilter(order, materialFilter))
+    .filter(order => !query || order.company.toLocaleLowerCase('ko-KR').includes(query))
+    .map(order => order.company));
+
+  return sourceOrders.filter(order => {
+    const matchesCompany = !query || order.company.toLocaleLowerCase('ko-KR').includes(query);
+    const matchesMaterial = materialFilter === 'all' || companyMatches.has(order.company);
+    return matchesCompany && matchesMaterial;
   });
 }
 
@@ -241,6 +341,8 @@ function countStages(orders) {
   const stageKeys = ['receipt', 'order', 'arrival'];
   return Object.fromEntries(stageKeys.map(stage => [stage, {
     complete_count: orders.filter(order => order.materials[stage].status === 'complete').length,
+    unchecked_count: orders.filter(order => order.materials[stage].status === 'unchecked').length,
+    needs_review_count: orders.filter(order => order.materials[stage].status === 'needs_review').length,
     target_order_count: orders.length,
   }]));
 }
@@ -254,13 +356,27 @@ export function aggregateMaterialOrders(orders) {
   }
 
   const companies = [...grouped.entries()]
-    .sort(([left], [right]) => KOREAN_COLLATOR.compare(left, right))
-    .map(([company, companyOrders]) => ({
-      company,
-      target_order_count: companyOrders.length,
-      stages: countStages(companyOrders),
-      orders: [...companyOrders].sort((left, right) => right.source_row - left.source_row),
-    }));
+    .map(([company, companyOrders]) => {
+      const incompleteOrderCount = companyOrders.filter(order =>
+        ['receipt', 'order', 'arrival'].some(stage => order.materials[stage].status !== 'complete')).length;
+      const reviewOrderCount = companyOrders.filter(order =>
+        ['receipt', 'order', 'arrival'].some(stage => order.materials[stage].status === 'needs_review')).length;
+      return {
+        company,
+        target_order_count: companyOrders.length,
+        incomplete_order_count: incompleteOrderCount,
+        review_order_count: reviewOrderCount,
+        all_complete: incompleteOrderCount === 0,
+        stages: countStages(companyOrders),
+        orders: [...companyOrders].sort((left, right) => right.source_row - left.source_row),
+      };
+    })
+    .sort((left, right) => {
+      if (left.all_complete !== right.all_complete) return left.all_complete ? 1 : -1;
+      if (left.review_order_count !== right.review_order_count) return right.review_order_count - left.review_order_count;
+      if (left.incomplete_order_count !== right.incomplete_order_count) return right.incomplete_order_count - left.incomplete_order_count;
+      return KOREAN_COLLATOR.compare(left.company, right.company);
+    });
 
   return {
     total_orders: orders.length,

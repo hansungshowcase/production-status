@@ -1,28 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMaterials } from '../api/materials.js';
-import { aggregateMaterialOrders, filterMaterialOrders } from '../utils/materials.js';
+import {
+  aggregateMaterialOrders,
+  filterMaterialOrders,
+  scopeMaterialOrders,
+} from '../utils/materials.js';
 import ErrorState from '../components/common/ErrorState.jsx';
 import LoadingSpinner from '../components/common/LoadingSpinner.jsx';
 import './MaterialsPage.css';
 
-const SHIPPING_FILTERS = [
-  { value: 'exclude_shipped', label: '출고완료 제외' },
-  { value: 'all', label: '전체 출고' },
-  { value: 'shipped', label: '출고완료' },
-];
-
-const MATERIAL_FILTERS = [
-  { value: 'all', label: '전체' },
+const STATUS_FILTERS = [
+  { value: 'all', label: '전체 업체' },
   { value: 'incomplete', label: '미완료 포함' },
-  { value: 'needs_review', label: '확인필요' },
-  { value: 'receipt_incomplete', label: '발주서 수취 미완료' },
-  { value: 'order_incomplete', label: '자재 발주 미완료' },
-  { value: 'arrival_incomplete', label: '자재 입고 미완료' },
+  { value: 'needs_review', label: '확인필요 포함' },
+  { value: 'receipt_incomplete', label: '발주서 미완료' },
+  { value: 'order_incomplete', label: '자재발주 미완료' },
+  { value: 'arrival_incomplete', label: '자재입고 미완료' },
 ];
 
 const STAGES = [
-  { key: 'receipt', label: '발주서 수취' },
+  { key: 'receipt', label: '발주서 수령' },
   { key: 'order', label: '자재 발주' },
   { key: 'arrival', label: '자재 입고' },
 ];
@@ -48,6 +46,12 @@ function formatFetchedAt(value) {
   }).format(date);
 }
 
+function formatDateKey(value) {
+  if (!value) return '-';
+  const [year, month, day] = value.split('-');
+  return `${year}. ${Number(month)}. ${Number(day)}.`;
+}
+
 function RefreshIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -58,19 +62,31 @@ function RefreshIcon() {
 }
 
 function StatusBadge({ stage }) {
+  const raw = String(stage.raw ?? '').trim();
   return (
     <span className={`materials-status materials-status--${stage.status}`}>
       <span>{STATUS_LABELS[stage.status]}</span>
-      {stage.raw.trim() && <small>{stage.raw}</small>}
+      {raw && <small>{raw}</small>}
     </span>
   );
 }
 
 function StageCount({ label, count }) {
+  const mainLabel = count.unchecked_count > 0
+    ? `미체크 ${count.unchecked_count}건`
+    : count.needs_review_count > 0
+      ? `확인필요 ${count.needs_review_count}건`
+      : '전체 완료';
+
   return (
-    <div className="materials-stage-count">
+    <div className={`materials-stage-count materials-stage-count--${count.unchecked_count > 0
+      ? 'unchecked'
+      : count.needs_review_count > 0 ? 'needs-review' : 'complete'}`}>
       <span>{label}</span>
-      <strong>{count.complete_count}<small> / {count.target_order_count}</small></strong>
+      <strong>{mainLabel}</strong>
+      {count.unchecked_count > 0 && count.needs_review_count > 0 && (
+        <small>확인필요 {count.needs_review_count}건</small>
+      )}
     </div>
   );
 }
@@ -85,7 +101,7 @@ function OrderRow({ order }) {
       <div data-label="발주일">{order.order_date || '-'}</div>
       <div data-label="납기일">{order.due_date || '-'}</div>
       <div data-label="담당">{order.manager || '-'}</div>
-      <div data-label="출고">{order.shipping.raw.trim() || '미출고'}</div>
+      <div data-label="출고">{String(order.shipping.raw ?? '').trim() || '미출고'}</div>
       {STAGES.map(({ key, label }) => (
         <div key={key} data-label={label}>
           <StatusBadge stage={order.materials[key]} />
@@ -102,9 +118,9 @@ function CompanyCard({ company }) {
         <div className="materials-company-heading">
           <div>
             <h2>{company.company}</h2>
-            <p>{company.target_order_count}건 기준</p>
+            <p>미출고 {company.target_order_count}건</p>
           </div>
-          <span className="materials-company-disclosure" aria-hidden="true">상세</span>
+          <span className="materials-company-disclosure">상세</span>
         </div>
         <div className="materials-company-stages">
           {STAGES.map(({ key, label }) => (
@@ -115,7 +131,7 @@ function CompanyCard({ company }) {
       <div className="materials-order-list">
         <div className="materials-order-head" aria-hidden="true">
           <span>작업</span><span>발주일</span><span>납기일</span><span>담당</span><span>출고</span>
-          <span>발주서 수취</span><span>자재 발주</span><span>자재 입고</span>
+          <span>발주서 수령</span><span>자재 발주</span><span>자재 입고</span>
         </div>
         {company.orders.map(order => <OrderRow key={order.source_row} order={order} />)}
       </div>
@@ -131,7 +147,6 @@ export default function MaterialsPage() {
   const [error, setError] = useState('');
   const [refreshError, setRefreshError] = useState('');
   const [companyQuery, setCompanyQuery] = useState('');
-  const [shipping, setShipping] = useState('exclude_shipped');
   const [material, setMaterial] = useState('all');
   const [visibleCompanyCount, setVisibleCompanyCount] = useState(COMPANY_PAGE_SIZE);
 
@@ -171,17 +186,21 @@ export default function MaterialsPage() {
     }
   };
 
+  const scope = useMemo(
+    () => scopeMaterialOrders(data?.orders ?? [], data?.fetched_at),
+    [data],
+  );
   const filteredOrders = useMemo(() => filterMaterialOrders(data?.orders ?? [], {
     companyQuery,
-    shipping,
     material,
-  }), [companyQuery, data, material, shipping]);
+    fetchedAt: data?.fetched_at,
+  }), [companyQuery, data, material]);
   const summary = useMemo(() => aggregateMaterialOrders(filteredOrders), [filteredOrders]);
   const visibleCompanies = summary.companies.slice(0, visibleCompanyCount);
 
   useEffect(() => {
     setVisibleCompanyCount(COMPANY_PAGE_SIZE);
-  }, [companyQuery, material, shipping]);
+  }, [companyQuery, material]);
 
   if (loading) return <LoadingSpinner message="자재 현황을 불러오는 중입니다..." />;
   if (!data) return <ErrorState message={error} onRetry={loadInitial} />;
@@ -195,7 +214,6 @@ export default function MaterialsPage() {
           </button>
           <div className="materials-title-block">
             <h1>업체별 자재 현황</h1>
-            <p>발주서 수취부터 자재 입고까지 업체별로 확인합니다.</p>
           </div>
           <button
             className="materials-refresh"
@@ -223,6 +241,15 @@ export default function MaterialsPage() {
           </div>
         )}
 
+        <p className="materials-date-scope">
+          <span>최근 3개월 · 출고완료 제외 · </span>
+          <span className="materials-date-scope__range">
+            <span className="materials-date-scope__date">{formatDateKey(scope.date_range?.start)}</span>
+            <span aria-hidden="true">~</span>
+            <span className="materials-date-scope__date">{formatDateKey(scope.date_range?.end)}</span>
+          </span>
+        </p>
+
         <section className="materials-filters" aria-label="자재 현황 필터">
           <label className="materials-search">
             <span>업체 검색</span>
@@ -230,66 +257,39 @@ export default function MaterialsPage() {
               type="search"
               value={companyQuery}
               onChange={event => setCompanyQuery(event.target.value)}
-              placeholder="거래처명을 입력하세요"
+              placeholder="업체명 일부를 입력하세요"
             />
           </label>
 
-          <fieldset>
-            <legend>출고 구분</legend>
-            <div className="materials-filter-buttons">
-              {SHIPPING_FILTERS.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={shipping === option.value ? 'is-selected' : ''}
-                  aria-pressed={shipping === option.value}
-                  onClick={() => setShipping(option.value)}
-                >
-                  {option.label}
-                </button>
+          <label className="materials-status-filter">
+            <span>업체 찾기</span>
+            <select
+              value={material}
+              onChange={event => setMaterial(event.target.value)}
+              aria-label="업체 찾기"
+            >
+              {STATUS_FILTERS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend>자재 구분</legend>
-            <div className="materials-filter-buttons materials-filter-buttons--wide">
-              {MATERIAL_FILTERS.map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={material === option.value ? 'is-selected' : ''}
-                  aria-pressed={material === option.value}
-                  onClick={() => setMaterial(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+            </select>
+          </label>
+          <p className="materials-filter-helper">선택한 상태가 포함된 업체를 표시합니다</p>
         </section>
 
-        <section className="materials-summary" aria-label="현재 필터 집계">
-          <div className="materials-summary-primary">
-            <span>조회 업체</span>
-            <strong>{summary.total_companies}<small>곳</small></strong>
-          </div>
-          <div className="materials-summary-primary">
-            <span>대상 주문</span>
-            <strong>{summary.total_orders}<small>건</small></strong>
-          </div>
-          {STAGES.map(({ key, label }) => (
-            <StageCount key={key} label={`${label} 완료`} count={summary.stages[key]} />
-          ))}
-        </section>
+        <p className="materials-result" aria-live="polite">
+          {summary.total_companies}개 업체 · 미출고 {summary.total_orders}건
+        </p>
+        {scope.unknown_date_count > 0 && (
+          <p className="materials-date-note">발주일 미확인 {scope.unknown_date_count}건 제외</p>
+        )}
 
         <section className="materials-companies" aria-live="polite">
           {summary.companies.length > 0
             ? visibleCompanies.map(company => <CompanyCard key={company.company} company={company} />)
             : (
               <div className="materials-empty">
-                <strong>조건에 맞는 주문이 없습니다.</strong>
-                <span>업체명 또는 필터를 변경해 주세요.</span>
+                <strong>조건에 맞는 업체가 없습니다.</strong>
+                <span>업체명 또는 상태를 변경해 주세요.</span>
               </div>
             )}
         </section>

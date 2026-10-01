@@ -17,7 +17,7 @@ test('홈의 기존 진입 순서를 보존하며 자재 현황 보조 진입점
   assert.match(source, /<svg[\s\S]*aria-hidden="true"/);
 });
 
-test('자재 페이지는 lazy route와 기본 출고 제외, 검색 및 모든 자재 필터를 제공한다', async () => {
+test('자재 페이지는 lazy route와 고정 최근범위, 검색 및 업체 상태 select를 제공한다', async () => {
   const [app, page] = await Promise.all([
     read('../src/App.jsx'),
     read('../src/pages/MaterialsPage.jsx'),
@@ -26,10 +26,13 @@ test('자재 페이지는 lazy route와 기본 출고 제외, 검색 및 모든 
   assert.match(app, /const MaterialsPage = lazy\(\(\) => import\('\.\/pages\/MaterialsPage'\)\)/);
   assert.match(app, /path="\/materials" element=\{<MaterialsPage \/>\}/);
   assert.match(page, /업체별 자재 현황/);
-  assert.match(page, /useState\('exclude_shipped'\)/);
-  for (const label of ['출고완료 제외', '전체 출고', '출고완료', '전체', '미완료 포함', '확인필요', '발주서 수취 미완료', '자재 발주 미완료', '자재 입고 미완료']) {
+  for (const label of ['최근 3개월', '출고완료 제외', '전체 업체', '미완료 포함', '확인필요 포함', '발주서 미완료', '자재발주 미완료', '자재입고 미완료']) {
     assert.match(page, new RegExp(label));
   }
+  assert.match(page, /<select[\s\S]*aria-label="업체 찾기"/);
+  assert.match(page, /선택한 상태가 포함된 업체를 표시합니다/);
+  assert.doesNotMatch(page, /SHIPPING_FILTERS/);
+  assert.doesNotMatch(page, /전체 출고/);
   assert.match(page, /갱신 실패 · 이전 조회 결과/);
   assert.match(page, /시트 조회/);
   assert.match(page, /aria-label=\{refreshing \? '시트 조회 중' : '시트 새로고침'\}/);
