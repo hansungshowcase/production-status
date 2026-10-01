@@ -90,6 +90,12 @@ All spacing derives from a base of 4px.
 - **Surface**: `--surface` background, `--border` outline, and primary-blue icon/focus ring.
 - **States**: default, hover lift, active press, and visible keyboard focus.
 
+### Materials Status Dashboard
+- **Structure**: sticky title and refresh action, source-query timestamp, vendor search, shipping/material filter groups, filter-scoped KPI strip, and expandable vendor cards with retained source rows.
+- **Status semantics**: complete, unchecked, and needs-review always include text; color only reinforces the label. Stage ratios use the filtered order count as their denominator.
+- **Responsive behavior**: desktop details use a dense row grid; at mobile width each order becomes a two-column card with explicit field labels and CJK-safe wrapping.
+- **Interaction**: search, filter, refresh, and disclosure controls keep the shared 44px minimum height; manual refresh failure retains the previous result with a visible stale warning and original query time.
+
 ### Notification History Controls
 - **Structure**: one wrapping recipient grid beginning with `전체 수신자`, followed by every production, worker, and sales recipient; one native date selector with a clear action.
 - **Dimensions**: interactive controls use the shared `--control-min-height` and `--control-min-inline-size` tokens.

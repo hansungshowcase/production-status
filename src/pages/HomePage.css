@@ -566,6 +566,14 @@
   box-shadow: var(--shadow-lg);
 }
 
+.home-materials-link {
+  margin-top: 12px;
+}
+
+.home-materials-link + .home-sms-history-link {
+  margin-top: 8px;
+}
+
 .home-sms-history-link:active {
   transform: scale(0.99);
 }

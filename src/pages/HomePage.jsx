@@ -90,6 +90,23 @@ export default function HomePage() {
         </div>
 
         <button
+          className="home-sms-history-link home-materials-link"
+          onClick={() => navigate('/materials')}
+        >
+          <span className="home-sms-history-link__icon">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 7.5h16M6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11A2.5 2.5 0 0 1 6.5 4Z" />
+              <path d="M8 11h3M8 15h3M14 11h2M14 15h2" />
+            </svg>
+          </span>
+          <span className="home-sms-history-link__copy">
+            <strong>자재 발주·입고 현황</strong>
+            <small>업체별 발주서 수취와 자재 발주·입고 상태를 확인합니다</small>
+          </span>
+          <span className="home-sms-history-link__arrow" aria-hidden="true">&rarr;</span>
+        </button>
+
+        <button
           className="home-sms-history-link"
           onClick={() => navigate('/sms-history')}
         >
