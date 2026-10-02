@@ -36,6 +36,13 @@ const STATUS_LABELS = {
 
 const COMPANY_PAGE_SIZE = 40;
 
+function stageCountTone({ target_order_count: N, complete_count: C, unchecked_count: U, needs_review_count: R }) {
+  if (N > 0 && C === N) return 'complete';
+  if (R > 0) return 'review';
+  if (C > 0 && U > 0) return 'mixed';
+  return 'unchecked';
+}
+
 function formatFetchedAt(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
@@ -173,7 +180,7 @@ function StageOverviewButton({ stage, counts, selected, onSelect }) {
       </span>
       <span className="materials-overview-button__counts">
         {segments.map(([status, label, count], index) => (
-          <span key={status} className="materials-overview-count-unit">
+          <span key={status} className={`materials-overview-count-unit materials-overview-count-unit--${status}`}>
             {index > 0 && <span aria-hidden="true"> · </span>}
             {label} {count}
           </span>
@@ -222,6 +229,7 @@ function StageCheckDates({ summary, singleOrder }) {
 function StageCount({ label, stageKey, count, orders }) {
   const singleOrder = count.target_order_count === 1;
   const checkDates = summarizeMaterialCheckDates(orders, stageKey);
+  const tone = stageCountTone(count);
   let value;
   if (singleOrder) {
     const status = count.complete_count === 1
@@ -239,7 +247,7 @@ function StageCount({ label, stageKey, count, orders }) {
     count.needs_review_count > 0 ? `확인필요 ${count.needs_review_count}` : '',
   ].filter(Boolean).join(' · ');
   return (
-    <div className="materials-stage-count">
+    <div className={`materials-stage-count materials-stage-count--${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       <StageCheckDates summary={checkDates} singleOrder={singleOrder} />
@@ -521,7 +529,7 @@ export default function MaterialsPage() {
           )}
           <p>입고 기준일 = 납기 7일 전 · 미체크 = 완료 여부 미확인</p>
           <p className="materials-arrival-reminder">
-            입고 체크 필요: 기준일 지난 {arrivalCheckNeeds.overdue_count}건 · 오늘 {arrivalCheckNeeds.today_count}건
+            입고 체크 필요: 기준일 지난 <span className={`materials-arrival-reminder__unit ${arrivalCheckNeeds.overdue_count > 0 ? 'materials-arrival-reminder__unit--overdue' : 'materials-arrival-reminder__unit--unchecked'}`}>{arrivalCheckNeeds.overdue_count}건</span> · 오늘 <span className={`materials-arrival-reminder__unit ${arrivalCheckNeeds.today_count > 0 ? 'materials-arrival-reminder__unit--today' : 'materials-arrival-reminder__unit--unchecked'}`}>{arrivalCheckNeeds.today_count}건</span>
           </p>
           <p className="materials-check-date-note">체크일: 시트 기록 날짜 · 연도 없으면 월/일</p>
         </section>

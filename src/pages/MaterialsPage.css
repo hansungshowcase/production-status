@@ -3,6 +3,30 @@
   --materials-key-date-size: 18px;
   --materials-stage-label-size: 14px;
   --materials-muted: #5d6d82;
+  --materials-complete-ink: #065F46;
+  --materials-complete-bg: #ECFDF5;
+  --materials-complete-accent: #047857;
+  --materials-unchecked-ink: #475569;
+  --materials-unchecked-bg: #F1F5F9;
+  --materials-unchecked-accent: #64748B;
+  --materials-review-ink: #1E40AF;
+  --materials-review-bg: #EFF6FF;
+  --materials-review-accent: #2563EB;
+  --materials-overdue-ink: #991B1B;
+  --materials-overdue-bg: #FEF2F2;
+  --materials-overdue-accent: #B91C1C;
+  --materials-today-ink: #9A3412;
+  --materials-today-bg: #FFF7ED;
+  --materials-today-accent: #C2410C;
+  --materials-selection-ink: #1E40AF;
+  --materials-selection-bg: #EFF6FF;
+  --materials-selection-accent: #1D4ED8;
+  --materials-cell-radius: 6px;
+  --materials-cell-padding: 4px;
+  --materials-motion-enter: 280ms;
+  --materials-motion-select: 180ms;
+  --materials-motion-press: 100ms;
+  --materials-motion-ease: cubic-bezier(.22, 1, .36, 1);
   --text-dim: #5d6d82;
   --green: #047857;
   --red: #b91c1c;
@@ -203,6 +227,12 @@ body:has(.materials-page),
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+  animation: materials-overview-enter var(--materials-motion-enter) var(--materials-motion-ease) 1 both;
+}
+
+@keyframes materials-overview-enter {
+  from { opacity: 0.7; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .materials-stage-overview h2 {
@@ -221,6 +251,7 @@ body:has(.materials-page),
 
 .materials-overview-button {
   display: grid;
+  position: relative;
   min-width: 0;
   min-height: 68px;
   grid-template-rows: auto 10px auto;
@@ -229,16 +260,40 @@ body:has(.materials-page),
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text);
+  background: var(--materials-unchecked-bg);
+  color: var(--materials-unchecked-ink);
   text-align: left;
   cursor: pointer;
+  transition: transform var(--materials-motion-press) var(--materials-motion-ease);
+}
+
+.materials-overview-button::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--materials-selection-accent);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .materials-overview-button--selected {
-  border-color: var(--blue);
-  background: var(--blue-light);
-  color: var(--blue-dark);
+  border-color: var(--materials-selection-accent);
+  background: var(--materials-selection-bg);
+  color: var(--materials-selection-ink);
+}
+
+.materials-overview-button--selected::after {
+  animation: materials-overview-selection var(--materials-motion-select) var(--materials-motion-ease) 1 both;
+}
+
+@keyframes materials-overview-selection {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.materials-overview-button:active {
+  transform: scale(.985);
 }
 
 .materials-overview-button:focus-visible {
@@ -264,6 +319,9 @@ body:has(.materials-page),
 }
 
 .materials-overview-count-unit { white-space: nowrap; }
+.materials-overview-count-unit--complete { color: var(--materials-complete-ink); }
+.materials-overview-count-unit--unchecked { color: var(--materials-unchecked-ink); }
+.materials-overview-count-unit--needs_review { color: var(--materials-review-ink); }
 .materials-overview-selected { font-size: 14px; font-weight: 900; }
 
 .materials-overview-bar {
@@ -277,7 +335,7 @@ body:has(.materials-page),
 
 .materials-overview-bar > span { min-width: 0; height: 100%; }
 .materials-overview-bar [data-status='complete'] { background: var(--green); }
-.materials-overview-bar [data-status='unchecked'] { background: var(--text-dim); }
+.materials-overview-bar [data-status='unchecked'] { background: var(--materials-unchecked-accent); }
 .materials-overview-bar [data-status='needs_review'] { background: var(--blue); }
 
 .materials-stage-overview > p {
@@ -291,6 +349,10 @@ body:has(.materials-page),
 
 .materials-stage-overview > .materials-arrival-reminder { font-weight: 800; }
 .materials-stage-overview > .materials-check-date-note { color: var(--text-dim); font-size: 12px; }
+.materials-arrival-reminder__unit { white-space: nowrap; }
+.materials-arrival-reminder__unit--overdue { color: var(--materials-overdue-ink); }
+.materials-arrival-reminder__unit--today { color: var(--materials-today-ink); }
+.materials-arrival-reminder__unit--unchecked { color: var(--materials-unchecked-ink); }
 
 .materials-company-groups {
   display: grid;
@@ -329,8 +391,9 @@ body:has(.materials-page),
 }
 
 .materials-company-card--overdue { box-shadow: inset 4px 0 0 var(--red); }
-.materials-company-card--today { box-shadow: inset 4px 0 0 var(--orange); }
+.materials-company-card--today { box-shadow: inset 4px 0 0 var(--materials-today-accent); }
 .materials-company-card--review { box-shadow: inset 4px 0 0 var(--blue); }
+.materials-company-card--future { box-shadow: inset 4px 0 0 var(--materials-unchecked-accent); }
 .materials-company-card--complete { box-shadow: inset 4px 0 0 var(--green); }
 
 .materials-company-card > summary {
@@ -391,6 +454,63 @@ body:has(.materials-page),
   gap: 2px;
 }
 
+.materials-company-priority {
+  padding: var(--materials-cell-padding);
+  border-radius: var(--materials-cell-radius);
+}
+
+.materials-company-card--overdue .materials-company-priority {
+  background: var(--materials-overdue-bg);
+  color: var(--materials-overdue-ink);
+}
+
+.materials-company-card--today .materials-company-priority {
+  background: var(--materials-today-bg);
+  color: var(--materials-today-ink);
+}
+
+.materials-company-card--review .materials-company-priority {
+  background: var(--materials-review-bg);
+  color: var(--materials-review-ink);
+}
+
+.materials-company-card--future .materials-company-priority {
+  background: var(--materials-unchecked-bg);
+  color: var(--materials-unchecked-ink);
+}
+
+.materials-company-card--complete .materials-company-priority {
+  background: var(--materials-complete-bg);
+  color: var(--materials-complete-ink);
+}
+
+.materials-stage-count {
+  padding: var(--materials-cell-padding);
+  border-left: 2px solid var(--materials-unchecked-accent);
+  border-radius: var(--materials-cell-radius);
+  background: var(--materials-unchecked-bg);
+  color: var(--materials-unchecked-ink);
+}
+
+.materials-stage-count--complete {
+  border-left-color: var(--materials-complete-accent);
+  background: var(--materials-complete-bg);
+  color: var(--materials-complete-ink);
+}
+
+.materials-stage-count--review {
+  border-left-color: var(--materials-review-accent);
+  background: var(--materials-review-bg);
+  color: var(--materials-review-ink);
+}
+
+.materials-stage-count--mixed,
+.materials-stage-count--unchecked {
+  border-left-color: var(--materials-unchecked-accent);
+  background: var(--materials-unchecked-bg);
+  color: var(--materials-unchecked-ink);
+}
+
 .materials-company-priority strong,
 .materials-company-date strong,
 .materials-stage-count strong {
@@ -400,6 +520,9 @@ body:has(.materials-page),
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
+
+.materials-stage-count--complete > strong { color: var(--materials-complete-ink); }
+.materials-stage-count--review > strong { color: var(--materials-review-ink); }
 
 .materials-company-date--deadline strong,
 .materials-company-date--due strong {
@@ -416,9 +539,16 @@ body:has(.materials-page),
   word-break: keep-all;
 }
 
-.materials-company-card--overdue .materials-company-priority strong { color: var(--red); }
-.materials-company-card--review .materials-company-priority strong { color: var(--blue-dark); }
-.materials-company-card--complete .materials-company-priority strong { color: var(--green); }
+.materials-company-card--overdue .materials-company-priority strong,
+.materials-company-card--overdue .materials-company-priority small { color: var(--materials-overdue-ink); }
+.materials-company-card--today .materials-company-priority strong,
+.materials-company-card--today .materials-company-priority small { color: var(--materials-today-ink); }
+.materials-company-card--review .materials-company-priority strong,
+.materials-company-card--review .materials-company-priority small { color: var(--materials-review-ink); }
+.materials-company-card--future .materials-company-priority strong,
+.materials-company-card--future .materials-company-priority small { color: var(--materials-unchecked-ink); }
+.materials-company-card--complete .materials-company-priority strong,
+.materials-company-card--complete .materials-company-priority small { color: var(--materials-complete-ink); }
 
 .materials-company-stages { display: contents; }
 
@@ -532,15 +662,21 @@ body:has(.materials-page),
 }
 
 .materials-status--complete {
-  background: var(--green-light);
-  color: var(--text);
-  box-shadow: inset 3px 0 0 var(--green);
+  background: var(--materials-complete-bg);
+  color: var(--materials-complete-ink);
+  box-shadow: inset 3px 0 0 var(--materials-complete-accent);
+}
+
+.materials-status--unchecked {
+  background: var(--materials-unchecked-bg);
+  color: var(--materials-unchecked-ink);
+  box-shadow: inset 3px 0 0 var(--materials-unchecked-accent);
 }
 
 .materials-status--needs_review {
-  background: var(--blue-light);
-  color: var(--blue-dark);
-  box-shadow: inset 3px 0 0 var(--blue);
+  background: var(--materials-review-bg);
+  color: var(--materials-review-ink);
+  box-shadow: inset 3px 0 0 var(--materials-review-accent);
 }
 
 .materials-empty {
@@ -729,8 +865,13 @@ body:has(.materials-page),
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .materials-back,
-  .materials-refresh,
-  .materials-more,
-  .materials-company-card summary { transition: none; }
+  .materials-page,
+  .materials-page *,
+  .materials-page *::before,
+  .materials-page *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .materials-overview-button:active { transform: none; }
 }

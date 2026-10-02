@@ -80,6 +80,7 @@ test('자재 페이지는 lazy route와 고정 최근범위, 검색 및 업체 �
 
 test('자재 화면은 44px 컨트롤과 모바일 카드, 상세 행, 줄바꿈 및 동작 감소 상태를 정의한다', async () => {
   const css = await read('../src/pages/MaterialsPage.css');
+  const page = await read('../src/pages/MaterialsPage.jsx');
 
   assert.match(css, /min-height:\s*var\(--control-min-height\)/);
   assert.match(css, /overflow-wrap:\s*anywhere/);
@@ -110,7 +111,38 @@ test('자재 화면은 44px 컨트롤과 모바일 카드, 상세 행, 줄바꿈
   assert.match(css, /\.materials-result__exceptions\s*\{[^}]*display:\s*grid;[^}]*gap:\s*2px/);
   assert.match(css, /\.materials-stage-overview\s*\{[^}]*margin-bottom:\s*var\(--space-1\);[^}]*padding:\s*var\(--space-2\);/);
   assert.match(css, /@media\s*\(max-width:\s*760px\)[\s\S]*\.materials-filters\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(180px, 1fr\)/);
-  assert.doesNotMatch(css, /materials-stage-count--unchecked|materials-stage-count--complete/);
+  assert.match(page, /function stageCountTone\(\{ target_order_count: N, complete_count: C, unchecked_count: U, needs_review_count: R \}\)/);
+  assert.match(page, /if \(N > 0 && C === N\) return 'complete';/);
+  assert.match(page, /if \(R > 0\) return 'review';/);
+  assert.match(page, /if \(C > 0 && U > 0\) return 'mixed';/);
+  assert.match(page, /materials-stage-count--\$\{tone\}/);
+  for (const token of [
+    '--materials-complete-ink: #065F46',
+    '--materials-complete-bg: #ECFDF5',
+    '--materials-complete-accent: #047857',
+    '--materials-unchecked-ink: #475569',
+    '--materials-unchecked-bg: #F1F5F9',
+    '--materials-unchecked-accent: #64748B',
+    '--materials-review-ink: #1E40AF',
+    '--materials-review-bg: #EFF6FF',
+    '--materials-review-accent: #2563EB',
+    '--materials-overdue-ink: #991B1B',
+    '--materials-overdue-bg: #FEF2F2',
+    '--materials-overdue-accent: #B91C1C',
+    '--materials-today-ink: #9A3412',
+    '--materials-today-bg: #FFF7ED',
+    '--materials-today-accent: #C2410C',
+    '--materials-selection-ink: #1E40AF',
+    '--materials-selection-bg: #EFF6FF',
+    '--materials-selection-accent: #1D4ED8',
+    '--materials-cell-radius: 6px',
+    '--materials-cell-padding: 4px',
+  ]) assert.match(css, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(css, /@keyframes materials-overview-enter[\s\S]*opacity: 0\.7[\s\S]*translateY\(4px\)[\s\S]*opacity: 1[\s\S]*translateY\(0\)/);
+  assert.match(css, /@keyframes materials-overview-selection[\s\S]*opacity: 0[\s\S]*opacity: 1/);
+  assert.match(css, /materials-overview-button:active\s*\{[^}]*transform: scale\(\.985\)/);
+  assert.match(css, /\.materials-page,\s*\.materials-page \*,\s*\.materials-page \*::before,\s*\.materials-page \*::after\s*\{[\s\S]*animation: none !important;[\s\S]*transition: none !important;/);
+  assert.match(css, /\.materials-overview-button:active\s*\{\s*transform: none;/);
 });
 
 test('자재 화면에서만 스크롤 조상을 복구하고 업체 요약 포커스 링을 카드 안에 표시한다', async () => {
