@@ -97,6 +97,12 @@ export function getCalendarDayDifference(laterDateKey, earlierDateKey) {
   return later - earlier;
 }
 
+export function subtractCalendarDays(dateKey, days) {
+  const ordinal = dateOrdinal(dateKey);
+  if (ordinal === null || !Number.isInteger(days)) return null;
+  return new Date((ordinal - days) * 86400000).toISOString().slice(0, 10);
+}
+
 /**
  * Due dates are compared using calendar dates only. A due date is never
  * shifted by a guessed year or by a delivery lead-time adjustment.
@@ -206,6 +212,98 @@ export function summarizeDueOrders(orders, anchor, resolvedAnchor = resolveDateK
     details,
     earliest_due_date: validDates[0] ?? null,
     valid_due_count: validDates.length,
+  };
+}
+
+export function classifyMaterialDeadline(order, anchor, resolvedAnchor = resolveDateKey(anchor)) {
+  const raw = order?.due_date ?? '';
+  const text = String(raw).trim();
+  const dueDate = parseOrderDate(text);
+  const orderDate = parseOrderDate(order?.order_date);
+
+  if (!text) {
+    return {
+      status: 'needs_review',
+      deadline_state: 'needs_review',
+      reason: '미기재',
+      raw,
+      due_date_key: null,
+      deadline_date_key: null,
+      days: null,
+      started_after_deadline: false,
+    };
+  }
+  if (!dueDate) {
+    return {
+      status: 'needs_review',
+      deadline_state: 'needs_review',
+      reason: '날짜형식',
+      raw,
+      due_date_key: null,
+      deadline_date_key: null,
+      days: null,
+      started_after_deadline: false,
+    };
+  }
+  if (orderDate && dueDate.key < orderDate.key) {
+    return {
+      status: 'needs_review',
+      deadline_state: 'needs_review',
+      reason: '발주일이전',
+      raw,
+      due_date_key: dueDate.key,
+      deadline_date_key: null,
+      order_date_key: orderDate.key,
+      days: null,
+      started_after_deadline: false,
+    };
+  }
+
+  const deadlineDateKey = subtractCalendarDays(dueDate.key, 7);
+  const startedAfterDeadline = Boolean(orderDate && deadlineDateKey < orderDate.key);
+  if (!resolvedAnchor || !deadlineDateKey) {
+    return {
+      status: 'needs_review',
+      deadline_state: 'needs_review',
+      reason: '조회기준일미기재',
+      raw,
+      due_date_key: dueDate.key,
+      deadline_date_key: deadlineDateKey,
+      order_date_key: orderDate?.key ?? null,
+      days: null,
+      started_after_deadline: startedAfterDeadline,
+    };
+  }
+
+  const difference = getCalendarDayDifference(deadlineDateKey, resolvedAnchor);
+  const deadlineState = difference < 0 ? 'overdue' : difference === 0 ? 'today' : 'future';
+  const arrivalComplete = order?.materials?.arrival?.status === 'complete';
+  return {
+    status: arrivalComplete ? 'arrival_complete' : deadlineState,
+    deadline_state: deadlineState,
+    reason: deadlineState === 'overdue'
+      ? '입고마감경과'
+      : deadlineState === 'today' ? '오늘입고마감' : '입고마감예정',
+    raw,
+    due_date_key: dueDate.key,
+    deadline_date_key: deadlineDateKey,
+    order_date_key: orderDate?.key ?? null,
+    days: Math.abs(difference),
+    started_after_deadline: startedAfterDeadline,
+  };
+}
+
+export function summarizeMaterialDeadlines(orders, anchor, resolvedAnchor = resolveDateKey(anchor)) {
+  const details = orders.map(order => classifyMaterialDeadline(order, anchor, resolvedAnchor));
+  return {
+    enabled: Boolean(resolvedAnchor),
+    details,
+    counts: {
+      overdue_count: details.filter(item => item.deadline_state === 'overdue').length,
+      today_count: details.filter(item => item.deadline_state === 'today').length,
+      future_count: details.filter(item => item.deadline_state === 'future').length,
+      review_count: details.filter(item => item.deadline_state === 'needs_review').length,
+    },
   };
 }
 
@@ -486,53 +584,64 @@ function materialOrderIncomplete(order) {
     .some(stage => order.materials[stage].status !== 'complete');
 }
 
-function dueRiskGroup(dueSummary, incompleteOrderCount) {
-  if (dueSummary.counts.overdue_count > 0) return 'overdue';
-  if (dueSummary.counts.today_count > 0) return 'today';
-  if (dueSummary.enabled && dueSummary.counts.due_review_count > 0) return 'due_review';
-  if (incompleteOrderCount === 0) return 'complete';
-  return 'other';
+function hasRawMaterialReview(order) {
+  return ['receipt', 'order', 'arrival']
+    .some(stage => order.materials[stage].status === 'needs_review');
+}
+
+function isReviewOrder(order, deadline) {
+  return deadline.deadline_state === 'needs_review'
+    || hasRawMaterialReview(order)
+    || order.shipping?.app_match === 'ambiguous';
+}
+
+function priorityRankForOrder(order, deadline) {
+  const arrivalStatus = order.materials.arrival.status;
+  if (arrivalStatus === 'unchecked' && deadline.deadline_state === 'overdue') return 1;
+  if (arrivalStatus === 'unchecked' && deadline.deadline_state === 'today') return 2;
+  if (isReviewOrder(order, deadline)) return 3;
+  if (arrivalStatus === 'unchecked' && deadline.deadline_state === 'future') return 4;
+  if (arrivalStatus === 'complete') return 5;
+  return 3;
+}
+
+function compareRepresentative(left, right, rank) {
+  if ([1, 2, 4].includes(rank)) {
+    const dateCompare = String(left.deadline.deadline_date_key ?? '9999-12-31')
+      .localeCompare(String(right.deadline.deadline_date_key ?? '9999-12-31'));
+    if (dateCompare !== 0) return dateCompare;
+  }
+  if (rank === 5) {
+    const dueCompare = String(left.deadline.due_date_key ?? '9999-12-31')
+      .localeCompare(String(right.deadline.due_date_key ?? '9999-12-31'));
+    if (dueCompare !== 0) return dueCompare;
+  }
+  return Number(right.source_row ?? 0) - Number(left.source_row ?? 0);
+}
+
+function priorityTone(rank) {
+  return ({ 1: 'overdue', 2: 'today', 3: 'review', 4: 'future', 5: 'complete' })[rank];
 }
 
 function compareCompanySummary(left, right) {
-  const riskOrder = { overdue: 0, today: 1, due_review: 2, other: 3, complete: 3 };
-  const leftRisk = riskOrder[left.due_risk] ?? 3;
-  const rightRisk = riskOrder[right.due_risk] ?? 3;
-
-  if (!left.due_summary.enabled && !right.due_summary.enabled) {
-    if (left.all_complete !== right.all_complete) return left.all_complete ? 1 : -1;
+  if (left.priority_rank !== right.priority_rank) return left.priority_rank - right.priority_rank;
+  if ([1, 2, 4].includes(left.priority_rank)) {
+    const dateCompare = String(left.representative_order.deadline.deadline_date_key ?? '9999-12-31')
+      .localeCompare(String(right.representative_order.deadline.deadline_date_key ?? '9999-12-31'));
+    if (dateCompare !== 0) return dateCompare;
+  }
+  if (left.priority_rank === 3) {
     if (left.review_order_count !== right.review_order_count) {
       return right.review_order_count - left.review_order_count;
     }
-    if (left.incomplete_order_count !== right.incomplete_order_count) {
-      return right.incomplete_order_count - left.incomplete_order_count;
+    if (left.arrival_unconfirmed_count !== right.arrival_unconfirmed_count) {
+      return right.arrival_unconfirmed_count - left.arrival_unconfirmed_count;
     }
-    return KOREAN_COLLATOR.compare(left.company, right.company);
   }
-
-  if (leftRisk !== rightRisk) return leftRisk - rightRisk;
-
-  if (leftRisk <= 1) {
-    const leftDate = left.due_summary.earliest_due_date ?? '9999-12-31';
-    const rightDate = right.due_summary.earliest_due_date ?? '9999-12-31';
-    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
-  } else if (leftRisk === 2
-    && left.due_summary.counts.due_review_count !== right.due_summary.counts.due_review_count) {
-    return right.due_summary.counts.due_review_count - left.due_summary.counts.due_review_count;
-  } else if (leftRisk === 3) {
-    const leftIncomplete = left.incomplete_order_count > 0;
-    const rightIncomplete = right.incomplete_order_count > 0;
-    if (leftIncomplete !== rightIncomplete) return leftIncomplete ? -1 : 1;
-    const leftDate = left.due_summary.earliest_due_date ?? '9999-12-31';
-    const rightDate = right.due_summary.earliest_due_date ?? '9999-12-31';
-    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
-  }
-
-  if (left.review_order_count !== right.review_order_count) {
-    return right.review_order_count - left.review_order_count;
-  }
-  if (left.incomplete_order_count !== right.incomplete_order_count) {
-    return right.incomplete_order_count - left.incomplete_order_count;
+  if (left.priority_rank === 5) {
+    const dueCompare = String(left.earliest_valid_due_date ?? '9999-12-31')
+      .localeCompare(String(right.earliest_valid_due_date ?? '9999-12-31'));
+    if (dueCompare !== 0) return dueCompare;
   }
   return KOREAN_COLLATOR.compare(left.company, right.company);
 }
@@ -549,24 +658,41 @@ export function aggregateMaterialOrders(orders, anchor) {
   const companies = [...grouped.entries()]
     .map(([company, companyOrders]) => {
       const incompleteOrderCount = companyOrders.filter(materialOrderIncomplete).length;
-      const reviewOrderCount = companyOrders.filter(order =>
-        ['receipt', 'order', 'arrival'].some(stage => order.materials[stage].status === 'needs_review')).length;
-      const dueSummary = summarizeDueOrders(companyOrders, anchor, resolvedAnchor);
+      const decoratedOrders = companyOrders.map(order => {
+        const deadline = classifyMaterialDeadline(order, anchor, resolvedAnchor);
+        return {
+          ...order,
+          due: classifyDueDate(order, anchor, resolvedAnchor),
+          deadline,
+          priority_rank: priorityRankForOrder(order, deadline),
+        };
+      });
+      const priorityRank = Math.min(...decoratedOrders.map(order => order.priority_rank));
+      const representativeOrder = decoratedOrders
+        .filter(order => order.priority_rank === priorityRank)
+        .sort((left, right) => compareRepresentative(left, right, priorityRank))[0];
+      const reviewOrderCount = decoratedOrders.filter(order => isReviewOrder(order, order.deadline)).length;
+      const arrivalUnconfirmedCount = companyOrders
+        .filter(order => order.materials.arrival.status === 'unchecked').length;
+      const earliestValidDueDate = decoratedOrders
+        .map(order => order.deadline.due_date_key)
+        .filter(Boolean)
+        .sort()[0] ?? null;
       return {
         company,
         target_order_count: companyOrders.length,
         incomplete_order_count: incompleteOrderCount,
         review_order_count: reviewOrderCount,
+        arrival_unconfirmed_count: arrivalUnconfirmedCount,
         all_complete: incompleteOrderCount === 0,
+        all_arrival_confirmed: companyOrders.every(order => order.materials.arrival.status === 'complete'),
         stages: countStages(companyOrders),
-        due_summary: dueSummary,
-        due_risk: dueRiskGroup(dueSummary, incompleteOrderCount),
-        orders: [...companyOrders]
-          .sort((left, right) => right.source_row - left.source_row)
-          .map(order => ({
-            ...order,
-            due: classifyDueDate(order, anchor, resolvedAnchor),
-          })),
+        priority_rank: priorityRank,
+        priority_tone: priorityTone(priorityRank),
+        representative_order: representativeOrder,
+        earliest_valid_due_date: earliestValidDueDate,
+        additional_review_count: priorityRank < 3 ? reviewOrderCount : 0,
+        orders: decoratedOrders.sort((left, right) => right.source_row - left.source_row),
       };
     })
     .sort(compareCompanySummary);
@@ -575,7 +701,7 @@ export function aggregateMaterialOrders(orders, anchor) {
     total_orders: orders.length,
     total_companies: companies.length,
     stages: countStages(orders),
-    due_counts: summarizeDueOrders(orders, anchor, resolvedAnchor).counts,
+    deadline_counts: summarizeMaterialDeadlines(orders, anchor, resolvedAnchor).counts,
     companies,
   };
 }

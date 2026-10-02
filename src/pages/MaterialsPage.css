@@ -1,4 +1,8 @@
 .materials-page {
+  --materials-muted: #5d6d82;
+  --text-dim: #5d6d82;
+  --green: #047857;
+  --red: #b91c1c;
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--bg);
@@ -38,7 +42,6 @@ body:has(.materials-page),
 .materials-back,
 .materials-refresh,
 .materials-more,
-.materials-filter-buttons button,
 .materials-search input,
 .materials-status-filter select {
   min-height: var(--control-min-height);
@@ -71,7 +74,7 @@ body:has(.materials-page),
   border: 1px solid var(--blue);
   border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--blue);
+  color: var(--blue-dark);
   font-weight: 800;
   cursor: pointer;
 }
@@ -92,136 +95,20 @@ body:has(.materials-page),
 }
 
 .materials-content {
-  padding: var(--space-4) var(--space-5) var(--space-6);
+  --materials-summary-columns: minmax(148px, 1.3fr) minmax(142px, 1.1fr) minmax(102px, 0.8fr) minmax(102px, 0.8fr) repeat(3, minmax(88px, 0.72fr)) 64px;
+  padding: var(--space-3) var(--space-5) var(--space-6);
 }
 
-.materials-source-time {
+.materials-scope-line {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
   margin-bottom: var(--space-2);
-  color: var(--text-dim);
+  color: var(--materials-muted);
   font-size: 12px;
   font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.materials-date-scope,
-.materials-result,
-.materials-date-note {
-  overflow-wrap: anywhere;
-}
-
-.materials-due-result {
-  margin: 0;
-  color: var(--text-mid);
-  font-size: 12px;
-  font-weight: 800;
   line-height: 1.4;
   overflow-wrap: anywhere;
-}
-
-.materials-due-result__badge {
-  display: inline-flex;
-  max-width: 100%;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow-wrap: anywhere;
-}
-
-.materials-due-result__item,
-.materials-legend__item {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
-.materials-result-due {
-  margin-top: var(--space-1);
-}
-
-.materials-due-result__badge--overdue,
-.materials-legend__overdue {
-  color: var(--text);
-}
-
-.materials-legend__overdue,
-.materials-legend__today,
-.materials-legend__review,
-.materials-legend__complete {
-  display: inline-flex;
-  padding: 2px 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.materials-legend__overdue {
-  border-color: var(--red);
-  background: var(--red-light);
-}
-
-.materials-due-result__badge--overdue {
-  border-color: var(--red);
-  background: var(--red-light);
-}
-
-.materials-due-result__badge--today,
-.materials-legend__today {
-  color: var(--text);
-}
-
-.materials-due-result__badge--today {
-  border-color: var(--orange);
-  background: var(--orange-light);
-}
-
-.materials-legend__today {
-  border-color: var(--orange);
-  background: var(--orange-light);
-}
-
-.materials-due-result__badge--review,
-.materials-legend__review {
-  color: var(--blue-dark);
-}
-
-.materials-due-result__badge--review {
-  border-color: var(--blue);
-  background: var(--blue-light);
-}
-
-.materials-legend__review {
-  border-color: var(--blue);
-  background: var(--blue-light);
-}
-
-.materials-due-result__badge--zero {
-  border-color: var(--border);
-  background: var(--surface2);
-  color: var(--text-mid);
-}
-
-.materials-legend__complete {
-  border-color: var(--green);
-  background: var(--green-light);
-  color: var(--text);
-}
-
-.materials-legend {
-  margin: var(--space-3) 0;
-  color: var(--text-mid);
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.materials-date-scope {
-  margin-bottom: var(--space-3);
-  color: var(--text-mid);
-  font-size: 14px;
-  font-weight: 800;
 }
 
 .materials-date-scope__range {
@@ -230,15 +117,13 @@ body:has(.materials-page),
   gap: 0 var(--space-1);
 }
 
-.materials-date-scope__date {
-  white-space: nowrap;
-}
+.materials-date-scope__date { white-space: nowrap; }
 
 .materials-refresh-error {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-3);
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--red);
   border-radius: var(--radius-md);
@@ -250,28 +135,24 @@ body:has(.materials-page),
 
 .materials-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr);
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.34fr);
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .materials-search,
 .materials-status-filter {
-  display: flex;
+  display: block;
   min-width: 0;
-  flex-direction: column;
 }
 
-.materials-search span,
-.materials-status-filter span {
-  margin-bottom: var(--space-1);
-  color: var(--text-mid);
-  font-size: 14px;
-  font-weight: 800;
+.materials-search > span,
+.materials-status-filter > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .materials-search input,
@@ -284,219 +165,144 @@ body:has(.materials-page),
   color: var(--text);
 }
 
-.materials-status-filter select {
-  cursor: pointer;
-}
+.materials-status-filter select { cursor: pointer; }
 
-.materials-filter-helper {
-  grid-column: 1 / -1;
-  color: var(--text-dim);
+.materials-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-2);
+  color: var(--materials-muted);
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
-.materials-result {
-  margin: var(--space-4) 0 var(--space-1);
+.materials-result strong {
   color: var(--text);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 900;
-}
-
-.materials-date-note {
-  margin-bottom: var(--space-3);
-  color: var(--text-dim);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .materials-companies {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
+}
+
+.materials-company-columns {
+  display: grid;
+  grid-template-columns: var(--materials-summary-columns);
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-1);
+  color: var(--materials-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .materials-company-card {
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
-.materials-company-card--overdue {
-  box-shadow: inset 4px 0 0 var(--red), var(--shadow);
-}
-
-.materials-company-card--today {
-  box-shadow: inset 4px 0 0 var(--orange), var(--shadow);
-}
-
-.materials-company-card--due_review {
-  box-shadow: inset 4px 0 0 var(--blue), var(--shadow);
-}
-
-.materials-company-card--material-review {
-  box-shadow: inset 4px 0 0 var(--blue), var(--shadow);
-}
-
-.materials-company-card--complete {
-  box-shadow: inset 4px 0 0 var(--green), var(--shadow);
-}
+.materials-company-card--overdue { box-shadow: inset 4px 0 0 var(--red); }
+.materials-company-card--today { box-shadow: inset 4px 0 0 var(--orange); }
+.materials-company-card--review { box-shadow: inset 4px 0 0 var(--blue); }
+.materials-company-card--complete { box-shadow: inset 4px 0 0 var(--green); }
 
 .materials-company-card > summary {
-  min-height: 44px;
-  padding: var(--space-3) var(--space-4);
+  display: grid;
+  grid-template-columns: var(--materials-summary-columns);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 64px;
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   list-style: none;
 }
 
-.materials-company-card > summary::-webkit-details-marker {
-  display: none;
-}
+.materials-company-card > summary::-webkit-details-marker { display: none; }
 
-.materials-company-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
+.materials-company-heading,
+.materials-company-priority,
+.materials-company-date,
+.materials-stage-count { min-width: 0; }
 
 .materials-company-heading h2 {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.3;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.materials-company-heading p {
-  margin-top: var(--space-1);
-  color: var(--text-dim);
-  font-size: 14px;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.materials-company-heading .materials-company-due {
-  margin-top: var(--space-2);
-  color: var(--text);
-  font-size: 14px;
   font-weight: 900;
-  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-.materials-company-due-result {
-  margin-top: var(--space-1);
-}
-
-.materials-company-disclosure {
-  flex: 0 0 auto;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  color: var(--blue);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.materials-company-card[open] .materials-company-disclosure::after {
-  content: ' 닫기';
-}
-
-.materials-company-stages {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-
-.materials-stage-count {
-  display: flex;
-  min-width: 0;
-  min-height: 64px;
-  flex-direction: column;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface2);
-}
-
-.materials-stage-count > span {
+.materials-company-heading p,
+.materials-company-priority small,
+.materials-company-date span,
+.materials-stage-count span,
+.materials-stage-count small {
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.35;
   overflow-wrap: anywhere;
-  word-break: keep-all;
 }
 
+.materials-company-priority,
+.materials-company-date,
+.materials-stage-count {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.materials-company-priority strong,
+.materials-company-date strong,
 .materials-stage-count strong {
   color: var(--text);
   font-size: 14px;
-  line-height: 1.3;
   font-weight: 900;
+  line-height: 1.35;
   overflow-wrap: anywhere;
-  word-break: keep-all;
 }
 
-.materials-stage-count small {
-  color: var(--text-mid);
-  font-size: 12px;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-  word-break: keep-all;
+.materials-company-card--overdue .materials-company-priority strong { color: var(--red); }
+.materials-company-card--review .materials-company-priority strong { color: var(--blue-dark); }
+.materials-company-card--complete .materials-company-priority strong { color: var(--green); }
+
+.materials-company-stages { display: contents; }
+
+@media (min-width: 761px) {
+  .materials-company-date > span,
+  .materials-stage-count > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
 }
 
-.materials-stage-count--complete {
-  border-left: 3px solid var(--green);
-  background: var(--green-light);
-}
-
-.materials-stage-count--unchecked {
-  border-left: 3px solid var(--orange);
-  background: var(--orange-light);
-}
-
-.materials-stage-count--unchecked strong {
-  color: var(--text);
-}
-
-.materials-stage-count__review {
+.materials-company-disclosure {
+  min-height: 44px;
   display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  background: var(--blue-light);
-  color: var(--blue-dark) !important;
-}
-
-.materials-stage-count--complete strong {
-  color: var(--text);
-}
-
-.materials-stage-count--needs-review {
-  border-left: 3px solid var(--blue);
-  background: var(--blue-light);
-}
-
-.materials-stage-count--needs-review strong {
+  align-items: center;
+  justify-content: flex-end;
   color: var(--blue-dark);
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-.materials-stage-count--needs-review > span {
-  color: var(--text-mid);
-}
-
-.materials-order-list {
-  border-top: 1px solid var(--border);
-}
+.materials-company-card[open] .materials-company-disclosure::after { content: ' 닫기'; }
+.materials-order-list { border-top: 1px solid var(--border); }
 
 .materials-order-head,
 .materials-order-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1.5fr) repeat(4, minmax(72px, 0.7fr)) repeat(3, minmax(104px, 0.9fr));
+  grid-template-columns: minmax(150px, 1.4fr) minmax(88px, 0.65fr) minmax(160px, 1.15fr) minmax(72px, 0.6fr) minmax(88px, 0.65fr) repeat(3, minmax(104px, 0.85fr));
   align-items: center;
   gap: var(--space-2);
 }
@@ -517,7 +323,8 @@ body:has(.materials-page),
   font-size: 14px;
 }
 
-.materials-order-identity {
+.materials-order-identity,
+.materials-order-due {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -525,46 +332,30 @@ body:has(.materials-page),
 }
 
 .materials-order-identity strong,
-.materials-order-row > div {
+.materials-order-row > div,
+.materials-order-due small {
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
-.materials-order-identity strong {
-  color: var(--text);
-  font-size: 14px;
-}
-
-.materials-order-identity small {
-  color: var(--text-dim);
-  font-size: 12px;
-}
-
-.materials-order-due {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
+.materials-order-identity strong,
 .materials-order-due strong {
   color: var(--text);
+  font-size: 14px;
   font-weight: 800;
 }
 
+.materials-order-identity small,
 .materials-order-due small {
-  color: var(--text-mid);
+  color: var(--text-dim);
   font-size: 12px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
+  font-weight: 700;
 }
 
-.materials-order-due__review {
-  color: var(--blue-dark) !important;
-}
-
-.materials-order-due__meaning {
-  white-space: nowrap;
-}
+.materials-order-due__review { color: var(--blue-dark) !important; }
+.materials-order-due__meaning { white-space: nowrap; }
+.materials-order-due__date,
+.materials-order-due__deadline { white-space: nowrap; }
 
 .materials-status {
   display: inline-flex;
@@ -573,8 +364,7 @@ body:has(.materials-page),
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  gap: 1px;
-  padding: 4px 7px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   background: var(--surface2);
   color: var(--text-mid);
@@ -612,28 +402,23 @@ body:has(.materials-page),
   gap: var(--space-2);
   padding: var(--space-5);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text-dim);
   text-align: center;
 }
 
-.materials-empty strong {
-  color: var(--text);
-  font-size: 16px;
-}
+.materials-empty strong { color: var(--text); font-size: 16px; }
 
 .materials-more {
   display: block;
   width: min(100%, 420px);
-  min-height: var(--control-min-height);
-  margin: var(--space-4) auto 0;
+  margin: var(--space-3) auto 0;
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--blue);
   border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--blue-dark);
-  font: inherit;
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
@@ -645,63 +430,76 @@ body:has(.materials-page),
 .materials-search input:focus-visible,
 .materials-status-filter select:focus-visible,
 .materials-company-card summary:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline: 3px solid var(--blue);
   outline-offset: var(--space-1);
 }
 
-.materials-company-card > summary:focus-visible {
-  outline-offset: -3px;
-}
-
-@media (min-width: 901px) {
-  .materials-company-card > summary {
-    display: grid;
-    grid-template-columns: minmax(180px, 1.2fr) repeat(3, minmax(120px, 0.8fr)) auto;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .materials-company-heading {
-    display: contents;
-  }
-
-  .materials-company-heading > div {
-    grid-column: 1;
-    min-width: 0;
-  }
-
-  .materials-company-disclosure {
-    grid-column: 5;
-    grid-row: 1;
-    justify-self: end;
-  }
-
-  .materials-company-stages {
-    display: grid;
-    grid-column: 2 / 5;
-    grid-row: 1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
-    margin-top: 0;
-  }
-
-  .materials-stage-count {
-    min-height: 48px;
-  }
-}
+.materials-company-card > summary:focus-visible { outline-offset: -3px; }
 
 @media (max-width: 1100px) {
-  .materials-order-head {
-    display: none;
+  .materials-company-columns { display: none; }
+  .materials-company-card > summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'heading disclosure'
+      'priority priority'
+      'dates dates'
+      'stages stages';
+    gap: var(--space-1) var(--space-2);
+    min-height: 120px;
+    padding: var(--space-2) var(--space-3);
   }
-
+  .materials-company-heading {
+    grid-area: heading;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .materials-company-heading p { flex: 0 0 auto; }
+  .materials-company-priority {
+    grid-area: priority;
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .materials-company-disclosure { grid-area: disclosure; }
+  .materials-company-date {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-1);
+  }
+  .materials-company-date > span,
+  .materials-stage-count > span {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+  .materials-company-date--deadline { grid-column: 1; grid-row: 3; }
+  .materials-company-date--due { grid-column: 2; grid-row: 3; }
+  .materials-company-stages {
+    grid-area: stages;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-1);
+  }
+  .materials-stage-count {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 2px var(--space-1);
+    padding-top: var(--space-1);
+    border-top: 1px solid var(--border);
+  }
+  .materials-stage-count small { grid-column: 1 / -1; }
+  .materials-order-head { display: none; }
   .materials-order-list {
     display: grid;
     gap: var(--space-2);
     padding: var(--space-3);
     background: var(--surface2);
   }
-
   .materials-order-row {
     min-width: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -711,13 +509,11 @@ body:has(.materials-page),
     border-radius: var(--radius-md);
     background: var(--surface);
   }
-
   .materials-order-identity {
     grid-column: 1 / -1;
     padding-bottom: var(--space-2);
     border-bottom: 1px solid var(--border);
   }
-
   .materials-order-row > div:not(.materials-order-identity)::before {
     content: attr(data-label);
     display: block;
@@ -730,19 +526,9 @@ body:has(.materials-page),
 
 @media (max-width: 760px) {
   .materials-header__inner,
-  .materials-content {
-    padding: var(--space-3);
-  }
-
-  .materials-title-block h1 {
-    font-size: 20px;
-  }
-
-  .materials-refresh {
-    width: var(--control-min-height);
-    padding: 0;
-  }
-
+  .materials-content { padding: var(--space-3); }
+  .materials-title-block h1 { font-size: 20px; }
+  .materials-refresh { width: var(--control-min-height); padding: 0; }
   .materials-refresh span {
     position: absolute;
     width: 1px;
@@ -750,48 +536,12 @@ body:has(.materials-page),
     overflow: hidden;
     clip: rect(0 0 0 0);
   }
-
-  .materials-source-time {
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .materials-filters {
-    grid-template-columns: 1fr;
-  }
-
-  .materials-filter-helper {
-    grid-column: auto;
-  }
-
-  .materials-company-card > summary {
-    padding: var(--space-3);
-  }
-
-  .materials-company-stages {
-    gap: var(--space-1);
-  }
-
-  .materials-stage-count {
-    min-height: 60px;
-    padding: var(--space-2) var(--space-1);
-  }
-
-  .materials-stage-count > span,
-  .materials-stage-count small {
-    font-size: 12px;
-  }
-
-  .materials-stage-count strong {
-    font-size: 14px;
-  }
+  .materials-filters { grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .materials-back,
   .materials-refresh,
   .materials-more,
-  .materials-company-card summary {
-    transition: none;
-  }
+  .materials-company-card summary { transition: none; }
 }

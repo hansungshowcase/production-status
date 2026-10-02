@@ -53,6 +53,15 @@ function csvResponse(csv, options = {}) {
   });
 }
 
+function createTestDataSource(options = {}) {
+  return createMaterialsDataSource({
+    ...options,
+    getDbImpl: options.getDbImpl ?? (() => ({
+      execute: async () => ({ rows: [] }),
+    })),
+  });
+}
+
 test('CSV 파서는 BOM과 쉼표, 이스케이프 따옴표, 셀 내부 줄바꿈을 보존한다', () => {
   const csv = `\uFEFF${makeCsv([
     row({
@@ -159,12 +168,13 @@ test('필터된 전체 주문을 기준으로 업체별 분모와 단계별 완�
   const summary = aggregateMaterialOrders(visible);
 
   assert.equal(summary.total_orders, 3);
-  assert.deepEqual(summary.companies.map(company => company.company), ['가업체', '나업체', '다업체']);
-  assert.equal(summary.companies[0].target_order_count, 1);
-  assert.equal(summary.companies[0].stages.receipt.complete_count, 1);
-  assert.equal(summary.companies[0].stages.order.complete_count, 1);
-  assert.equal(summary.companies[0].stages.arrival.complete_count, 0);
-  assert.deepEqual(summary.companies[0].orders.map(item => item.source_row), [8]);
+  assert.deepEqual(summary.companies.map(company => company.company).sort(), ['가업체', '나업체', '다업체']);
+  const company = summary.companies.find(item => item.company === '가업체');
+  assert.equal(company.target_order_count, 1);
+  assert.equal(company.stages.receipt.complete_count, 1);
+  assert.equal(company.stages.order.complete_count, 1);
+  assert.equal(company.stages.arrival.complete_count, 0);
+  assert.deepEqual(company.orders.map(item => item.source_row), [8]);
 });
 
 test('상류 HTTP 실패, HTML 로그인 응답, 손상 CSV를 빈 성공으로 바꾸지 않는다', async () => {
@@ -187,7 +197,7 @@ test('상류 HTTP 실패, HTML 로그인 응답, 손상 CSV를 빈 성공으로 
   ];
 
   for (const fixture of cases) {
-    const source = createMaterialsDataSource({ fetchImpl: fixture.fetchImpl });
+    const source = createTestDataSource({ fetchImpl: fixture.fetchImpl });
     await assert.rejects(source.load(), fixture.pattern, fixture.name);
   }
 });
@@ -196,11 +206,11 @@ test('10초 제한을 적용할 수 있고 다운로드 최대 크기를 넘으�
   const timeoutFetch = (_url, { signal }) => new Promise((resolve, reject) => {
     signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
   });
-  const timeoutSource = createMaterialsDataSource({ fetchImpl: timeoutFetch, timeoutMs: 5 });
+  const timeoutSource = createTestDataSource({ fetchImpl: timeoutFetch, timeoutMs: 5 });
 
   await assert.rejects(timeoutSource.load(), /시간이 초과/);
 
-  const oversizedSource = createMaterialsDataSource({
+  const oversizedSource = createTestDataSource({
     fetchImpl: async () => csvResponse('123456789'),
     maxBytes: 8,
   });
@@ -211,7 +221,7 @@ test('10초 제한을 적용할 수 있고 다운로드 최대 크기를 넘으�
 test('60초 이내 캐시를 재사용하고 수동 갱신은 우회하며 실제 조회 완료 시각을 기록한다', async () => {
   let calls = 0;
   let now = Date.parse('2026-10-01T00:00:00.000Z');
-  const source = createMaterialsDataSource({
+  const source = createTestDataSource({
     now: () => now,
     fetchImpl: async () => {
       calls += 1;
@@ -238,7 +248,7 @@ test('진행 중인 시트 조회는 일반 요청과 수동 갱신 요청에 �
   let calls = 0;
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  const source = createMaterialsDataSource({
+  const source = createTestDataSource({
     fetchImpl: async () => {
       calls += 1;
       await gate;

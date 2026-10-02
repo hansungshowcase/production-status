@@ -1,4 +1,5 @@
 import { parseMaterialsCsv } from '../../src/utils/materials.js';
+import { parseMaterialsMatchingRows, reconcileMaterialsShipping } from './materialsShipping.js';
 
 const MATERIALS_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM/export?format=csv&gid=0';
 const MATERIALS_TIMEOUT_MS = 10_000;
@@ -129,9 +130,10 @@ export function createMaterialsDataSource({
   timeoutMs = MATERIALS_TIMEOUT_MS,
   maxBytes = MATERIALS_MAX_BYTES,
   cacheTtlMs = MATERIALS_CACHE_TTL_MS,
+  getDbImpl,
 } = {}) {
   let cached = null;
-  let inFlight = null;
+  let csvInFlight = null;
 
   const readFresh = async () => {
     const csv = await fetchMaterialsCsv({ fetchImpl, timeoutMs, maxBytes });
@@ -143,7 +145,7 @@ export function createMaterialsDataSource({
     }
 
     const completedAt = now();
-    const result = {
+    const publicResult = {
       fetched_at: new Date(completedAt).toISOString(),
       source: {
         title: '작업일보',
@@ -151,21 +153,41 @@ export function createMaterialsDataSource({
       },
       orders: parsed.orders,
     };
-    cached = { completedAt, result };
-    return result;
+    const snapshot = {
+      completedAt,
+      publicResult,
+      matchingRows: parseMaterialsMatchingRows(csv),
+    };
+    cached = snapshot;
+    return snapshot;
+  };
+
+  const loadCsvSnapshot = async refresh => {
+    if (csvInFlight) return csvInFlight;
+    if (!refresh && cached && now() - cached.completedAt <= cacheTtlMs) return cached;
+
+    csvInFlight = readFresh();
+    try {
+      return await csvInFlight;
+    } finally {
+      csvInFlight = null;
+    }
   };
 
   return {
     async load({ refresh = false } = {}) {
-      if (inFlight) return inFlight;
-      if (!refresh && cached && now() - cached.completedAt <= cacheTtlMs) return cached.result;
-
-      inFlight = readFresh();
-      try {
-        return await inFlight;
-      } finally {
-        inFlight = null;
-      }
+      const snapshot = await loadCsvSnapshot(refresh);
+      const shipping = await reconcileMaterialsShipping({
+        orders: snapshot.publicResult.orders,
+        matchingRows: snapshot.matchingRows,
+        getDbImpl,
+        now,
+      });
+      return {
+        ...snapshot.publicResult,
+        orders: shipping.orders,
+        shipping_match: shipping.shipping_match,
+      };
     },
   };
 }

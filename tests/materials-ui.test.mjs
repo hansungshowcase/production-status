@@ -30,7 +30,17 @@ test('자재 페이지는 lazy route와 고정 최근범위, 검색 및 업체 �
     assert.match(page, new RegExp(label));
   }
   assert.match(page, /<select[\s\S]*aria-label="업체 찾기"/);
-  assert.match(page, /선택한 상태가 포함된 업체를 표시합니다/);
+  assert.match(page, /입고마감 = 납기 7일 전/);
+  assert.match(page, /미체크는 입고 여부 미확인입니다/);
+  assert.match(page, /summaryLabel: '발주서'/);
+  assert.match(page, /placeholder="업체 검색"/);
+  assert.match(page, /앱 출고 대조 미확인/);
+  assert.match(page, /우선 확인 주문 기준/);
+  assert.match(page, /전체 입고 확인/);
+  for (const heading of ['업체 \/ 건수', '우선 확인', '입고마감', '납기', '발주서', '자재발주', '자재입고', '상세']) {
+    assert.match(page, new RegExp(heading));
+  }
+  assert.doesNotMatch(page, /DueResultBadges|materials-legend/);
   assert.doesNotMatch(page, /SHIPPING_FILTERS/);
   assert.doesNotMatch(page, /전체 출고/);
   assert.match(page, /갱신 실패 · 이전 조회 결과/);
@@ -50,6 +60,18 @@ test('자재 화면은 44px 컨트롤과 모바일 카드, 상세 행, 줄바꿈
   assert.match(css, /\.materials-order-row/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.doesNotMatch(css, /font-size:\s*(?:10|11)px/);
+  assert.match(css, /--materials-summary-columns:\s*minmax\(148px,[\s\S]*repeat\(3,[\s\S]*64px/);
+  assert.match(css, /min-height:\s*120px/);
+  assert.match(css, /--materials-muted:\s*#5d6d82/);
+  assert.match(css, /\.materials-company-columns\s*\{[\s\S]*grid-template-columns:\s*var\(--materials-summary-columns\)/);
+  assert.match(css, /@media\s*\(max-width:\s*1100px\)\s*\{[\s\S]*\.materials-company-columns\s*\{\s*display:\s*none;\s*\}[\s\S]*\.materials-company-card > summary/);
+  assert.match(css, /\.materials-company-heading\s*\{[\s\S]*display:\s*flex/);
+  assert.match(css, /\.materials-stage-count\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.materials-company-disclosure\s*\{[\s\S]*white-space:\s*nowrap/);
+  assert.match(css, /minmax\(160px,\s*1\.15fr\)/);
+  assert.match(css, /\.materials-order-due__date,[\s\S]*\.materials-order-due__deadline\s*\{\s*white-space:\s*nowrap/);
+  assert.match(css, /@media\s*\(max-width:\s*760px\)[\s\S]*\.materials-filters\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(180px, 1fr\)/);
+  assert.doesNotMatch(css, /materials-stage-count--unchecked|materials-stage-count--complete/);
 });
 
 test('자재 화면에서만 스크롤 조상을 복구하고 업체 요약 포커스 링을 카드 안에 표시한다', async () => {

@@ -73,3 +73,20 @@ test('시트 오류를 빈 200 응답으로 바꾸지 않는다', async () => {
     error: { message: '원본 시트 헤더가 예상과 다릅니다.', status: 502 },
   });
 });
+
+test('앱 출고 대조 실패의 안전한 503 메시지를 그대로 전파한다', async () => {
+  const response = createResponse();
+  const databaseError = Object.assign(new Error('database offline'), {
+    status: 503,
+    publicMessage: '앱 출고 상태를 확인하지 못했습니다. 다시 조회해 주세요.',
+  });
+
+  await handleMaterials({ method: 'GET', query: {} }, response, {
+    loadMaterialsData: async () => { throw databaseError; },
+  });
+
+  assert.equal(response.statusCode, 503);
+  assert.deepEqual(response.payload, {
+    error: { message: '앱 출고 상태를 확인하지 못했습니다. 다시 조회해 주세요.', status: 503 },
+  });
+});
