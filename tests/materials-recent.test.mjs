@@ -10,12 +10,12 @@ import {
   scopeMaterialOrders,
 } from '../src/utils/materials.js';
 
-function order({ company = '업체', date = '2026-07-01', row = 1, shipping = '', receipt = '', materialOrder = '', arrival = '' } = {}) {
+function order({ company = '업체', date = '2026-07-01', due_date = '', row = 1, shipping = '', receipt = '', materialOrder = '', arrival = '' } = {}) {
   return {
     source_row: row,
     company,
     order_date: date,
-    due_date: '',
+    due_date,
     manager: '',
     product_label: `작업 ${row}`,
     shipping: { raw: shipping, status: normalizeShippingStatus(shipping) },
@@ -61,23 +61,87 @@ test('KST 기준 최근 3개월 범위는 양끝을 포함하고 월말을 clamp
   });
 });
 
-test('최근 scope는 start/end 날짜와 unshipped만 유지하고 이전/미래/미확인 날짜를 분리한다', () => {
+test('최근 scope는 start/end·출고·납기 5일 경과 조건을 적용하고 제외 사유를 분리한다', () => {
   const orders = [
     order({ row: 1, date: '2026-06-30' }),
-    order({ row: 2, date: '2026-07-01' }),
-    order({ row: 3, date: '2026-10-01' }),
+    order({ row: 2, date: '2026-07-01', due_date: '2026-09-26' }),
+    order({ row: 3, date: '2026-10-01', due_date: '2026-09-27' }),
     order({ row: 4, date: '2026-10-02' }),
     order({ row: 5, date: '7. 2' }),
     order({ row: 6, date: '2026/02/30' }),
-    order({ row: 7, date: '', shipping: '출고 완료' }),
-    order({ row: 8, date: '2026-08-01', shipping: '출고 완료' }),
-    order({ row: 9, date: '2026-08-02', shipping: '포장완료' }),
+    order({ row: 7, date: '', shipping: '출고 완료', due_date: '2026-09-26' }),
+    order({ row: 8, date: '2026-08-01', shipping: '출고 완료', due_date: '2026-09-26' }),
+    order({ row: 9, date: '2026-08-02', shipping: '포장완료', due_date: '2026-09-26' }),
+    order({ row: 10, date: '2026-08-03', due_date: '2026-09-26', arrival: '완료' }),
+    order({ row: 11, date: '2026-08-04', due_date: '2026-09-27' }),
+    order({ row: 12, date: '2026-08-05', due_date: '9. 26' }),
+    order({ row: 13, date: '2026-08-06', due_date: '' }),
+    order({ row: 14, date: '2026-08-07', due_date: '2026-10-01' }),
   ];
   const result = scopeMaterialOrders(orders, '2026-10-01T06:20:00.000Z');
 
-  assert.deepEqual(result.orders.map(item => item.source_row), [2, 3, 9]);
+  assert.deepEqual(result.orders.map(item => item.source_row), [3, 11, 12, 13, 14]);
   assert.equal(result.unknown_date_count, 3);
   assert.equal(result.future_date_count, 1);
+  assert.equal(result.overdue_due_count, 3);
+});
+
+test('납기 기준은 KST 조회일의 달력 차이로 계산하고 월말·윤년을 처리한다', () => {
+  const orders = [
+    order({ row: 1, date: '2026-08-01', due_date: '2026-09-26' }),
+    order({ row: 2, date: '2026-08-02', due_date: '2026-09-27' }),
+    order({ row: 3, date: '2026-08-03', due_date: '2026-09-28' }),
+    order({ row: 4, date: '2026-08-04', due_date: '2026-09-29' }),
+    order({ row: 5, date: '2026-08-05', due_date: '2026-09-30' }),
+    order({ row: 6, date: '2026-08-06', due_date: '2026-10-01' }),
+    order({ row: 7, date: '2026-08-07', due_date: '2024-02-28' }),
+    order({ row: 8, date: '2026-08-08', due_date: '2024-02-29' }),
+  ];
+  const result = scopeMaterialOrders(orders, '2026-10-01T06:20:00.000Z');
+  assert.deepEqual(result.orders.map(item => item.source_row), [2, 3, 4, 5, 6]);
+  assert.equal(result.overdue_due_count, 3);
+});
+
+test('납기 4일은 정상/before-order 모두 남고 5일과 6일은 둘 다 제외한다', () => {
+  const orders = [
+    order({ row: 1, date: '2026-09-01', due_date: '2026-09-27' }),
+    order({ row: 2, date: '2026-09-30', due_date: '2026-09-27' }),
+    order({ row: 3, date: '2026-09-01', due_date: '2026-09-26' }),
+    order({ row: 4, date: '2026-09-30', due_date: '2026-09-26' }),
+    order({ row: 5, date: '2026-09-01', due_date: '2026-09-25' }),
+    order({ row: 6, date: '2026-09-30', due_date: '2026-09-25' }),
+  ];
+  const result = scopeMaterialOrders(orders, '2026-10-01T06:20:00.000Z');
+  assert.deepEqual(result.orders.map(item => item.source_row), [1, 2]);
+  assert.equal(result.overdue_due_count, 4);
+});
+
+test('조회 기준을 계산할 수 없으면 납기 제외 수는 0이며 모든 row는 기존처럼 빈 scope다', () => {
+  const result = scopeMaterialOrders([order({ due_date: '2020-01-01' })], 'invalid');
+  assert.deepEqual(result.orders, []);
+  assert.equal(result.overdue_due_count, 0);
+});
+
+test('한 업체의 일부 주문만 납기 제외하면 남은 분모·대표 주문·상세를 다시 계산한다', () => {
+  const source = [
+    order({ company: '같은업체', row: 1, date: '2026-09-30', due_date: '2026-09-26', receipt: '완료' }),
+    order({ company: '같은업체', row: 2, date: '2026-09-30', due_date: '2026-09-27', materialOrder: '검토' }),
+    order({ company: '다른업체', row: 3, date: '2026-09-30', due_date: '2026-09-20' }),
+  ];
+  const scoped = scopeMaterialOrders(source, '2026-10-01T06:20:00.000Z');
+  const filtered = filterMaterialOrders(source, {
+    material: 'needs_review',
+    fetchedAt: '2026-10-01T06:20:00.000Z',
+  });
+  const summary = aggregateMaterialOrders(filtered, '2026-10-01');
+
+  assert.equal(scoped.overdue_due_count, 2);
+  assert.deepEqual(filtered.map(item => item.source_row), [2]);
+  assert.equal(summary.total_companies, 1);
+  assert.equal(summary.total_orders, 1);
+  assert.equal(summary.companies[0].target_order_count, 1);
+  assert.equal(summary.companies[0].representative_order.source_row, 2);
+  assert.deepEqual(summary.companies[0].orders.map(item => item.source_row), [2]);
 });
 
 test('출고 완료 spelling은 정확히 인정하고 계획/설비 메모는 미출고로 남긴다', () => {

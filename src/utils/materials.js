@@ -488,11 +488,13 @@ export function scopeMaterialOrders(orders, fetchedAt) {
       date_range: null,
       unknown_date_count: orders.length,
       future_date_count: 0,
+      overdue_due_count: 0,
     };
   }
 
   let unknownDateCount = 0;
   let futureDateCount = 0;
+  let overdueDueCount = 0;
   const scopedOrders = [];
 
   for (const order of orders) {
@@ -506,6 +508,11 @@ export function scopeMaterialOrders(orders, fetchedAt) {
       continue;
     }
     if (parsed.key < range.start || order.shipping?.status === 'complete') continue;
+    const dueDate = parseOrderDate(order.due_date);
+    if (dueDate && getCalendarDayDifference(range.end, dueDate.key) >= 5) {
+      overdueDueCount += 1;
+      continue;
+    }
     scopedOrders.push(order);
   }
 
@@ -514,6 +521,7 @@ export function scopeMaterialOrders(orders, fetchedAt) {
     date_range: range,
     unknown_date_count: unknownDateCount,
     future_date_count: futureDateCount,
+    overdue_due_count: overdueDueCount,
   };
 }
 

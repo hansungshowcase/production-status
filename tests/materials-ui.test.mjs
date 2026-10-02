@@ -47,8 +47,16 @@ test('자재 페이지는 lazy route와 고정 최근범위, 검색 및 업체 �
   assert.match(page, /시트 조회/);
   assert.match(page, /aria-label=\{refreshing \? '시트 조회 중' : '시트 새로고침'\}/);
   assert.match(page, /const COMPANY_PAGE_SIZE = 40/);
-  assert.match(page, /summary\.companies\.slice\(0, visibleCompanyCount\)/);
+  assert.match(page, /groupedCompanies\.slice\(0, visibleCompanyCount\)/);
   assert.match(page, /더 보기/);
+  assert.match(page, /납기 5일 이상 경과 \{scope\.overdue_due_count\}건 제외/);
+  assert.match(page, /summary\.deadline_counts\.review_count > 0/);
+  assert.match(page, /납기 확인필요 \{summary\.deadline_counts\.review_count\}건 · 날짜 미확인 유지/);
+  assert.match(page, /대상 \{summary\.total_orders\}건/);
+  assert.match(page, /aria-label="입고 일정 확인"/);
+  assert.match(page, /aria-label="확인이 필요한 업체"/);
+  assert.match(page, /확인할 수 없어 유지/);
+  assert.match(page, /전체 완료/);
 });
 
 test('자재 화면은 44px 컨트롤과 모바일 카드, 상세 행, 줄바꿈 및 동작 감소 상태를 정의한다', async () => {
@@ -66,7 +74,13 @@ test('자재 화면은 44px 컨트롤과 모바일 카드, 상세 행, 줄바꿈
   assert.match(css, /\.materials-company-columns\s*\{[\s\S]*grid-template-columns:\s*var\(--materials-summary-columns\)/);
   assert.match(css, /@media\s*\(max-width:\s*1100px\)\s*\{[\s\S]*\.materials-company-columns\s*\{\s*display:\s*none;\s*\}[\s\S]*\.materials-company-card > summary/);
   assert.match(css, /\.materials-company-heading\s*\{[\s\S]*display:\s*flex/);
-  assert.match(css, /\.materials-stage-count\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.materials-stage-count\s*\{[\s\S]*display:\s*flex/);
+  assert.match(css, /--materials-company-name-size:\s*18px/);
+  assert.match(css, /--materials-key-date-size:\s*18px/);
+  assert.match(css, /\.materials-status > span\s*\{\s*font-size:\s*14px/);
+  assert.match(css, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.materials-company-priority\s*\{[^}]*flex-direction:\s*row;[^}]*flex-wrap:\s*wrap;/);
+  assert.match(css, /\.materials-company-priority strong,[\s\S]*\.materials-company-priority small\s*\{\s*word-break:\s*keep-all;[\s\S]*overflow-wrap:\s*anywhere;/);
   assert.match(css, /\.materials-company-disclosure\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(css, /minmax\(160px,\s*1\.15fr\)/);
   assert.match(css, /\.materials-order-due__date,[\s\S]*\.materials-order-due__deadline\s*\{\s*white-space:\s*nowrap/);

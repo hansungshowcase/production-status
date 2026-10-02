@@ -101,10 +101,9 @@ function priorityLabel(company) {
   if (company.priority_rank === 2) return '오늘 입고마감';
   if (company.priority_rank === 4) return `입고마감 D-${deadline.days}`;
   if (company.priority_rank === 5) return '전체 입고 확인';
-  if (deadline.reason === '발주일이전') return '납기 확인필요 · 발주일 이전';
-  if (deadline.reason === '날짜형식') return '납기 확인필요 · 날짜 형식';
-  if (deadline.reason === '미기재') return '납기 확인필요 · 미기재';
-  return '확인 필요';
+  const reason = DUE_REVIEW_SEGMENTS[deadline.reason]?.join(' · ')
+    || (deadline.deadline_state === 'needs_review' ? '납기 확인필요' : '자재 상태 확인');
+  return `확인필요 ${company.review_order_count}건 · ${reason}`;
 }
 
 function priorityDetail(company) {
@@ -113,6 +112,7 @@ function priorityDetail(company) {
   if (company.priority_rank === 5 && deadline.deadline_state === 'overdue') {
     details.push(`입고 확인 · 마감 ${deadline.days}일 경과`);
   }
+  if (company.priority_rank === 3) details.push('확인할 수 없어 유지');
   if (company.additional_review_count > 0) details.push(`추가 확인 ${company.additional_review_count}건`);
   if (company.target_order_count > 1) details.push('우선 확인 주문 기준');
   return details.join(' · ');
@@ -138,6 +138,27 @@ function StatusBadge({ stage }) {
 }
 
 function StageCount({ label, count }) {
+  if (count.target_order_count === 1) {
+    const status = count.complete_count === 1
+      ? 'complete'
+      : count.unchecked_count === 1 ? 'unchecked' : 'needs_review';
+    return (
+      <div className="materials-stage-count">
+        <span>{label}</span>
+        <strong>{STATUS_LABELS[status]}</strong>
+      </div>
+    );
+  }
+
+  if (count.complete_count === count.target_order_count) {
+    return (
+      <div className="materials-stage-count">
+        <span>{label}</span>
+        <strong>전체 완료</strong>
+      </div>
+    );
+  }
+
   const secondary = [
     count.unchecked_count > 0 ? `미체크 ${count.unchecked_count}` : '',
     count.needs_review_count > 0 ? `확인필요 ${count.needs_review_count}` : '',
@@ -145,7 +166,7 @@ function StageCount({ label, count }) {
   return (
     <div className="materials-stage-count">
       <span>{label}</span>
-      <strong>확인 {count.complete_count}/{count.target_order_count}</strong>
+      <strong>완료 {count.complete_count}/{count.target_order_count}</strong>
       {secondary && <small>{secondary}</small>}
     </div>
   );
@@ -184,12 +205,15 @@ function OrderRow({ order }) {
 function CompanyCard({ company }) {
   const representative = company.representative_order;
   const detail = priorityDetail(company);
+  const deadlineReason = DUE_REVIEW_LABELS[representative.deadline.reason]
+    || '입고마감 계산불가 · 조회 기준일 미기재';
+  const dueNeedsReview = representative.due.status === 'needs_review';
   return (
     <details className={`materials-company-card materials-company-card--${company.priority_tone}`}>
       <summary>
         <div className="materials-company-heading">
           <h2>{company.company}</h2>
-          <p>미출고 {company.target_order_count}건</p>
+          <p>대상 {company.target_order_count}건</p>
         </div>
         <div className="materials-company-priority">
           <strong>{priorityLabel(company)}</strong>
@@ -197,11 +221,17 @@ function CompanyCard({ company }) {
         </div>
         <div className="materials-company-date materials-company-date--deadline" data-label="입고마감">
           <span>입고마감</span>
-          <strong>{formatDateKey(representative.deadline.deadline_date_key)}</strong>
+          <strong>{representative.deadline.deadline_date_key
+            ? formatDateKey(representative.deadline.deadline_date_key)
+            : '계산 불가'}</strong>
+          {!representative.deadline.deadline_date_key && <small>{deadlineReason}</small>}
         </div>
         <div className="materials-company-date materials-company-date--due" data-label="납기">
           <span>납기</span>
-          <strong>{formatDateKey(representative.deadline.due_date_key)}</strong>
+          <strong>{representative.deadline.due_date_key
+            ? formatDateKey(representative.deadline.due_date_key)
+            : '납기 확인필요'}</strong>
+          {dueNeedsReview && <small>{formatDueDetail(representative.due)}</small>}
           {company.priority_rank === 5 && ['overdue', 'today'].includes(representative.due.status) && (
             <small>{formatDueState(representative.due)}</small>
           )}
@@ -285,7 +315,13 @@ export default function MaterialsPage() {
     () => aggregateMaterialOrders(filteredOrders, dueAnchor),
     [dueAnchor, filteredOrders],
   );
-  const visibleCompanies = summary.companies.slice(0, visibleCompanyCount);
+  const groupedCompanies = [
+    ...summary.companies.filter(company => company.priority_rank !== 3),
+    ...summary.companies.filter(company => company.priority_rank === 3),
+  ];
+  const visibleCompanies = groupedCompanies.slice(0, visibleCompanyCount);
+  const scheduleCompanies = visibleCompanies.filter(company => company.priority_rank !== 3);
+  const reviewCompanies = visibleCompanies.filter(company => company.priority_rank === 3);
   const unverifiedShippingCount = filteredOrders
     .filter(order => order.shipping?.app_match !== 'verified').length;
 
@@ -323,7 +359,7 @@ export default function MaterialsPage() {
         <div className="materials-scope-line">
           <span>{data.source.title} · {data.source.tab}</span>
           <span>시트 조회 {formatFetchedAt(data.fetched_at)}</span>
-          <span>최근 3개월 · 출고완료 제외</span>
+          <span>최근 3개월 · 출고완료 제외 · 납기 5일 경과 제외</span>
           <span className="materials-date-scope__range">
             <span className="materials-date-scope__date">{formatDateKey(scope.date_range?.start)}</span>
             <span aria-hidden="true">~</span>
@@ -365,9 +401,13 @@ export default function MaterialsPage() {
         </section>
 
         <div className="materials-result" aria-live="polite">
-          <strong>{summary.total_companies}개 업체 · 미출고 {summary.total_orders}건</strong>
+          <strong>{summary.total_companies}개 업체 · 대상 {summary.total_orders}건</strong>
           <span>미체크는 입고 여부 미확인입니다.</span>
           {scope.unknown_date_count > 0 && <span>발주일 미확인 {scope.unknown_date_count}건 제외</span>}
+          <span>납기 5일 이상 경과 {scope.overdue_due_count}건 제외</span>
+          {summary.deadline_counts.review_count > 0 && (
+            <span>납기 확인필요 {summary.deadline_counts.review_count}건 · 날짜 미확인 유지</span>
+          )}
           {unverifiedShippingCount > 0 && (
             <span>앱 출고 대조 미확인 {unverifiedShippingCount}건 · 해당 행 유지</span>
           )}
@@ -384,15 +424,29 @@ export default function MaterialsPage() {
           <span>상세</span>
         </div>
 
-        <section className="materials-companies" aria-live="polite">
-          {summary.companies.length > 0
-            ? visibleCompanies.map(company => <CompanyCard key={company.company} company={company} />)
-            : (
-              <div className="materials-empty">
-                <strong>조건에 맞는 업체가 없습니다.</strong>
-                <span>업체명 또는 상태를 변경해 주세요.</span>
+        <section className="materials-company-groups" aria-live="polite">
+          {scheduleCompanies.length > 0 && (
+            <section className="materials-company-group" aria-label="입고 일정 확인">
+              <h2>입고 일정 확인</h2>
+              <div className="materials-companies">
+                {scheduleCompanies.map(company => <CompanyCard key={company.company} company={company} />)}
               </div>
-            )}
+            </section>
+          )}
+          {reviewCompanies.length > 0 && (
+            <section className="materials-company-group" aria-label="확인이 필요한 업체">
+              <h2>확인이 필요한 업체</h2>
+              <div className="materials-companies">
+                {reviewCompanies.map(company => <CompanyCard key={company.company} company={company} />)}
+              </div>
+            </section>
+          )}
+          {summary.companies.length === 0 && (
+            <div className="materials-empty">
+              <strong>조건에 맞는 업체가 없습니다.</strong>
+              <span>업체명 또는 상태를 변경해 주세요.</span>
+            </div>
+          )}
         </section>
         {visibleCompanyCount < summary.companies.length && (
           <button
