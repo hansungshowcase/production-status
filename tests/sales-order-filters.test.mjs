@@ -70,11 +70,17 @@ test('a shipped order can never remain in overdue or in-production filters', () 
   assert.deepEqual(filterSalesOrders(orders, 'overdue').map(item => item.id), [3]);
 });
 
-test('sales shipping switches to the shipped tab and rejects stale order fetches', () => {
+test('sales shipping preserves the current tab and rejects stale order fetches', () => {
+  const handlerStart = salesPageSource.indexOf('async function handleShipOrder(order)');
+  const handlerEnd = salesPageSource.indexOf('\n  function handleEditOrder', handlerStart);
+  const handler = salesPageSource.slice(handlerStart, handlerEnd);
+
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
   assert.match(salesPageSource, /const ordersFetchIdRef = useRef\(0\)/);
   assert.match(salesPageSource, /if \(fetchId !== ordersFetchIdRef\.current\) return/);
-  assert.match(salesPageSource, /\{ \.\.\.o, \.\.\.updated, status: 'shipped' \}/);
-  assert.match(salesPageSource, /handleFilterChange\('shipped'\)/);
+  assert.match(handler, /ordersFetchIdRef\.current \+= 1/);
+  assert.match(handler, /\{ \.\.\.o, \.\.\.updated, status: 'shipped' \}/);
+  assert.doesNotMatch(handler, /handleFilterChange\('shipped'\)/);
 });
 
 test('sales order cards prefer the live shipped state over stale expanded details', () => {
