@@ -188,6 +188,110 @@ body:has(.materials-page),
   font-weight: 900;
 }
 
+.materials-result__exceptions {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 2px;
+  min-width: 0;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.materials-stage-overview {
+  margin-bottom: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.materials-stage-overview h2 {
+  margin: 0 0 var(--space-2);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.materials-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.materials-overview-button {
+  display: grid;
+  min-width: 0;
+  min-height: 68px;
+  grid-template-rows: auto 10px auto;
+  gap: var(--space-1);
+  align-content: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.materials-overview-button--selected {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue-dark);
+}
+
+.materials-overview-button:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.materials-overview-button__label,
+.materials-overview-button__counts {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.3;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.materials-overview-button__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1);
+  font-weight: 700;
+}
+
+.materials-overview-count-unit { white-space: nowrap; }
+.materials-overview-selected { font-size: 14px; font-weight: 900; }
+
+.materials-overview-bar {
+  display: flex;
+  min-width: 0;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface2);
+}
+
+.materials-overview-bar > span { min-width: 0; height: 100%; }
+.materials-overview-bar [data-status='complete'] { background: var(--green); }
+.materials-overview-bar [data-status='unchecked'] { background: var(--text-dim); }
+.materials-overview-bar [data-status='needs_review'] { background: var(--blue); }
+
+.materials-stage-overview > p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-mid);
+  font-size: 14px;
+  line-height: 1.35;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.materials-stage-overview > .materials-arrival-reminder { font-weight: 800; }
+.materials-stage-overview > .materials-check-date-note { color: var(--text-dim); font-size: 12px; }
+
 .materials-company-groups {
   display: grid;
   gap: var(--space-4);
@@ -266,6 +370,16 @@ body:has(.materials-page),
   font-size: 12px;
   font-weight: 700;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.materials-stage-count .materials-stage-check-date,
+.materials-order-row .materials-check-date {
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
@@ -554,6 +668,19 @@ body:has(.materials-page),
     font-size: var(--materials-stage-label-size);
   }
   .materials-stage-count > strong { font-size: 14px; }
+  .materials-stage-count .materials-stage-check-date,
+  .materials-order-row .materials-check-date { font-size: 14px; }
+  .materials-overview-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .materials-overview-button {
+    min-height: 48px;
+    grid-template-columns: minmax(72px, 0.3fr) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 2px var(--space-2);
+  }
+  .materials-overview-button__label { grid-row: 1 / 3; }
+  .materials-overview-bar { grid-column: 2; grid-row: 1; }
+  .materials-overview-button__counts { grid-column: 2; grid-row: 2; }
   .materials-order-head { display: none; }
   .materials-order-list {
     display: grid;
@@ -598,6 +725,7 @@ body:has(.materials-page),
     clip: rect(0 0 0 0);
   }
   .materials-filters { grid-template-columns: minmax(0, 1fr) minmax(180px, 1fr); }
+  .materials-overview-button__counts { font-size: 14px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

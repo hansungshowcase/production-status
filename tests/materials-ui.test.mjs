@@ -30,14 +30,33 @@ test('자재 페이지는 lazy route와 고정 최근범위, 검색 및 업체 �
     assert.match(page, new RegExp(label));
   }
   assert.match(page, /<select[\s\S]*aria-label="업체 찾기"/);
-  assert.match(page, /입고마감 = 납기 7일 전/);
-  assert.match(page, /미체크는 입고 여부 미확인입니다/);
+  assert.match(page, /입고 기준일 = 납기 7일 전 · 미체크 = 완료 여부 미확인/);
+  assert.match(page, /체크일: 시트 기록 날짜 · 연도 없으면 월\/일/);
+  assert.match(page, /제외:\s*\{scope\.unknown_date_count/);
+  assert.match(page, /납기 5일 이상 경과 \{scope\.overdue_due_count\}건/);
+  assert.match(page, /유지:/);
+  assert.match(page, /앱 출고 대조 미확인 \{unverifiedShippingCount\}건/);
   assert.match(page, /summaryLabel: '발주서'/);
+  assert.match(page, /자재 단계별 확인 현황/);
+  assert.match(page, /data-stage=\{stage\.key\}/);
+  assert.match(page, /data-status=\{status\}/);
+  assert.match(page, /segments\.map\(\(\[status, label, count\], index\) => \(/);
+  assert.match(page, /materials-overview-count-unit/);
+  const overviewStart = page.indexOf('<section className="materials-stage-overview"');
+  const overviewEnd = page.indexOf('</section>', overviewStart);
+  const overview = page.slice(overviewStart, overviewEnd);
+  assert.match(overview, /summary\.total_orders === 0 && \([\s\S]*?<p className="materials-overview-empty">표시할 대상 없음<\/p>/);
+  assert.match(page, /aria-pressed=\{selected\}/);
+  assert.match(page, /선택됨/);
+  assert.match(page, /미완료 포함 업체 보기/);
+  assert.doesNotMatch(page, /입고 기준일 = 납기 7일 전<\/span>/);
+  assert.match(page, /summarizeArrivalCheckNeeds\(filteredOrders, dueAnchor\)/);
+  assert.match(page, /입고 체크 필요: 기준일 지난/);
   assert.match(page, /placeholder="업체 검색"/);
   assert.match(page, /앱 출고 대조 미확인/);
   assert.match(page, /우선 확인 주문 기준/);
   assert.match(page, /전체 입고 확인/);
-  for (const heading of ['업체 \/ 건수', '우선 확인', '입고마감', '납기', '발주서', '자재발주', '자재입고', '상세']) {
+  for (const heading of ['업체 \/ 건수', '우선 확인', '입고 기준일', '납기', '발주서', '자재발주', '자재입고', '상세']) {
     assert.match(page, new RegExp(heading));
   }
   assert.doesNotMatch(page, /DueResultBadges|materials-legend/);
@@ -49,9 +68,9 @@ test('자재 페이지는 lazy route와 고정 최근범위, 검색 및 업체 �
   assert.match(page, /const COMPANY_PAGE_SIZE = 40/);
   assert.match(page, /groupedCompanies\.slice\(0, visibleCompanyCount\)/);
   assert.match(page, /더 보기/);
-  assert.match(page, /납기 5일 이상 경과 \{scope\.overdue_due_count\}건 제외/);
+  assert.match(page, /납기 5일 이상 경과 \{scope\.overdue_due_count\}건/);
   assert.match(page, /summary\.deadline_counts\.review_count > 0/);
-  assert.match(page, /납기 확인필요 \{summary\.deadline_counts\.review_count\}건 · 날짜 미확인 유지/);
+  assert.match(page, /납기 확인필요 \{summary\.deadline_counts\.review_count\}건\{unverifiedShippingCount > 0 && ' · '\}/);
   assert.match(page, /대상 \{summary\.total_orders\}건/);
   assert.match(page, /aria-label="입고 일정 확인"/);
   assert.match(page, /aria-label="확인이 필요한 업체"/);
@@ -84,6 +103,12 @@ test('자재 화면은 44px 컨트롤과 모바일 카드, 상세 행, 줄바꿈
   assert.match(css, /\.materials-company-disclosure\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(css, /minmax\(160px,\s*1\.15fr\)/);
   assert.match(css, /\.materials-order-due__date,[\s\S]*\.materials-order-due__deadline\s*\{\s*white-space:\s*nowrap/);
+  assert.match(css, /\.materials-overview-button\s*\{[\s\S]*min-height:\s*68px/);
+  assert.match(css, /\.materials-overview-count-unit\s*\{[^}]*white-space:\s*nowrap/);
+  assert.match(css, /\.materials-overview-bar \[data-status='needs_review'\][\s\S]*background:\s*var\(--blue\)/);
+  assert.match(css, /\.materials-stage-count \.materials-stage-check-date,[\s\S]*\.materials-order-row \.materials-check-date\s*\{[^}]*font-size:\s*14px/);
+  assert.match(css, /\.materials-result__exceptions\s*\{[^}]*display:\s*grid;[^}]*gap:\s*2px/);
+  assert.match(css, /\.materials-stage-overview\s*\{[^}]*margin-bottom:\s*var\(--space-1\);[^}]*padding:\s*var\(--space-2\);/);
   assert.match(css, /@media\s*\(max-width:\s*760px\)[\s\S]*\.materials-filters\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(180px, 1fr\)/);
   assert.doesNotMatch(css, /materials-stage-count--unchecked|materials-stage-count--complete/);
 });

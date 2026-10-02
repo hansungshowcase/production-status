@@ -52,6 +52,61 @@ export function isValidSheetDate(value) {
   return isValidDateParts(null, Number(monthDay[1]), Number(monthDay[2]));
 }
 
+export function parseMaterialCheckDate(value) {
+  const text = String(value ?? '').trim();
+  const fullDate = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(text);
+  if (fullDate && isValidSheetDate(text)) {
+    const year = Number(fullDate[1]);
+    const month = Number(fullDate[2]);
+    const day = Number(fullDate[3]);
+    return {
+      identity: `year:${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      label: `체크 ${year}. ${month}. ${day}.`,
+      year,
+      month,
+      day,
+    };
+  }
+
+  const monthDay = /^(\d{1,2})[/.](\d{1,2})$/.exec(text);
+  if (monthDay && isValidSheetDate(text)) {
+    const month = Number(monthDay[1]);
+    const day = Number(monthDay[2]);
+    return {
+      identity: `yearless:${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      label: `체크 ${month}/${day}`,
+      year: null,
+      month,
+      day,
+    };
+  }
+
+  return null;
+}
+
+export function summarizeMaterialCheckDates(orders, stageKey) {
+  const dates = new Map();
+  let missing_date_count = 0;
+
+  for (const order of orders) {
+    const stage = order.materials?.[stageKey];
+    if (stage?.status !== 'complete') continue;
+    const date = parseMaterialCheckDate(stage.raw);
+    if (!date) {
+      missing_date_count += 1;
+      continue;
+    }
+    if (!dates.has(date.identity)) dates.set(date.identity, date);
+  }
+
+  const uniqueDates = [...dates.values()];
+  return {
+    dates: uniqueDates.slice(0, 2),
+    additional_date_count: Math.max(0, uniqueDates.length - 2),
+    missing_date_count,
+  };
+}
+
 /**
  * Order dates have a deliberately narrower parser than material-stage dates.
  * The sheet contains yearless values such as "7. 2"; those are useful source
@@ -304,6 +359,17 @@ export function summarizeMaterialDeadlines(orders, anchor, resolvedAnchor = reso
       future_count: details.filter(item => item.deadline_state === 'future').length,
       review_count: details.filter(item => item.deadline_state === 'needs_review').length,
     },
+  };
+}
+
+export function summarizeArrivalCheckNeeds(orders, anchor) {
+  const resolvedAnchor = resolveDateKey(anchor);
+  const deadlines = orders
+    .filter(order => order.materials?.arrival?.status === 'unchecked')
+    .map(order => classifyMaterialDeadline(order, anchor, resolvedAnchor));
+  return {
+    overdue_count: deadlines.filter(item => item.deadline_state === 'overdue').length,
+    today_count: deadlines.filter(item => item.deadline_state === 'today').length,
   };
 }
 
