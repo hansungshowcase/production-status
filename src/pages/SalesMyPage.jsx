@@ -231,7 +231,6 @@ export default function SalesMyPage() {
       setOrders(prev => prev.map(o => o.id === order.id
         ? { ...o, ...updated, status: 'shipped' }
         : o));
-      handleFilterChange('shipped');
       void Promise.all([fetchOrders(), fetchFeed()]);
     } catch (err) {
       alert('출고 처리 실패: ' + (err.message || ''));

@@ -124,3 +124,17 @@ test('mobile controls keep 44px targets and narrow summary cards keep useful spa
   assert.match(narrowSummary, /sales-summary-card[\s\S]*?padding:\s*12px 9px/);
   assert.match(narrowSummary, /sales-summary-card[\s\S]*?gap:\s*8px/);
 });
+
+test('출고 처리는 현재 필터·검색·계정·표시 개수를 바꾸거나 출고 탭으로 자동 이동하지 않는다', () => {
+  const start = pageSource.indexOf('async function handleShipOrder(order)');
+  const end = pageSource.indexOf('\n  function handleEditOrder', start);
+  const handler = pageSource.slice(start, end);
+
+  assert.ok(start >= 0 && end > start);
+  assert.match(handler, /shipOrder\(order\.id, mySalesPerson\)/);
+  assert.match(handler, /ordersFetchIdRef\.current \+= 1/);
+  assert.match(handler, /setOrders\(prev => prev\.map/);
+  assert.match(handler, /status: 'shipped'/);
+  assert.match(handler, /Promise\.all\(\[fetchOrders\(\), fetchFeed\(\)\]\)/);
+  assert.doesNotMatch(handler, /handleFilterChange|setFilter|setSearchQuery|setViewingPerson|setVisibleOrderCount|scroll/);
+});
