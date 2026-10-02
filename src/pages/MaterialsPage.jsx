@@ -9,6 +9,7 @@ import {
   summarizeArrivalCheckNeeds,
   summarizeMaterialCheckDates,
 } from '../utils/materials.js';
+import { deriveMaterialsPresentation } from './materialsPresentation.js';
 import ErrorState from '../components/common/ErrorState.jsx';
 import LoadingSpinner from '../components/common/LoadingSpinner.jsx';
 import './MaterialsPage.css';
@@ -23,9 +24,9 @@ const STATUS_FILTERS = [
 ];
 
 const STAGES = [
-  { key: 'receipt', label: '발주서 수령', summaryLabel: '발주서' },
-  { key: 'order', label: '자재 발주', summaryLabel: '자재 발주' },
-  { key: 'arrival', label: '자재 입고', summaryLabel: '자재 입고' },
+  { key: 'receipt', index: 1, label: '발주서 수령', summaryLabel: '발주서' },
+  { key: 'order', index: 2, label: '자재 발주', summaryLabel: '자재 발주' },
+  { key: 'arrival', index: 3, label: '자재 입고', summaryLabel: '자재 입고' },
 ];
 
 const STATUS_LABELS = {
@@ -147,44 +148,62 @@ function StatusBadge({ stage }) {
   );
 }
 
-function StageOverviewButton({ stage, counts, selected, onSelect }) {
+function StageOverviewButton({ stage, counts, selected, onSelect, maxIncompleteCount, dataIdentity }) {
   const segments = [
     ['complete', '완료', counts.complete_count],
     ['unchecked', '미체크', counts.unchecked_count],
     ['needs_review', '확인필요', counts.needs_review_count],
   ];
-  const accessibleCounts = segments.map(([, label, count]) => `${label} ${count}건`).join(' · ');
+  const incompleteCount = counts.unchecked_count + counts.needs_review_count;
+  const hasTarget = counts.target_order_count > 0;
+  const hasReview = counts.needs_review_count > 0;
+  const isMostIncomplete = incompleteCount > 0 && incompleteCount === maxIncompleteCount;
+  const accessibleCounts = `${stage.label}: 완료 ${counts.complete_count}건 · 미체크 ${counts.unchecked_count}건 · 확인필요 ${counts.needs_review_count}건 · 대상 ${counts.target_order_count}건`;
 
   return (
     <button
-      className={`materials-overview-button${selected ? ' materials-overview-button--selected' : ''}`}
+      className={`materials-overview-button${selected ? ' materials-overview-button--selected' : ''}${isMostIncomplete ? ' materials-overview-button--most' : ''}${!hasTarget ? ' materials-overview-button--empty' : ''}${hasTarget && !incompleteCount ? ' materials-overview-button--complete' : ''}`}
       type="button"
       data-stage={stage.key}
       data-stage-count={counts.target_order_count}
+      data-incomplete-count={incompleteCount}
       aria-pressed={selected}
-      aria-label={`${stage.label}: ${accessibleCounts}. 미완료 포함 업체 보기`}
+      aria-label={`${accessibleCounts}. 미완료 포함 업체 보기`}
       onClick={onSelect}
     >
       <span className="materials-overview-button__label">
-        {stage.label}{selected && <span className="materials-overview-selected"> · 선택됨</span>}
+        <span className="materials-stage-index" aria-hidden="true">{stage.index}</span>{stage.label}{selected && <span className="materials-overview-selected"> · 선택됨</span>}
+      </span>
+      <span className="materials-overview-primary">
+        <span className="materials-overview-total">
+          <strong className="materials-overview-total__number">{incompleteCount}</strong>
+          <span className="materials-overview-total__unit">건</span>
+        </span>
+        {(incompleteCount === 0 || !hasTarget) && (
+          <span className="materials-overview-status">{hasTarget ? '전체 완료' : '대상 없음'}</span>
+        )}
+        {isMostIncomplete && <em>최다</em>}
+      </span>
+      <span className="materials-overview-secondary">
+        {hasTarget ? (
+          <>
+            <span className="materials-overview-completion-label">완료</span>{' '}
+            <span className="materials-overview-completion-ratio">{counts.complete_count}/{counts.target_order_count}</span>
+          </>
+        ) : '대상 없음'}
+        {hasReview && ` · 미체크 ${counts.unchecked_count} · 확인필요 ${counts.needs_review_count}`}
       </span>
       <span className="materials-overview-bar" aria-hidden="true">
-        {segments.map(([status, , count]) => (
-          <span
-            key={status}
-            data-status={status}
-            data-count={count}
-            style={{ width: `${counts.target_order_count ? (count / counts.target_order_count) * 100 : 0}%` }}
-          />
-        ))}
-      </span>
-      <span className="materials-overview-button__counts">
-        {segments.map(([status, label, count], index) => (
-          <span key={status} className={`materials-overview-count-unit materials-overview-count-unit--${status}`}>
-            {index > 0 && <span aria-hidden="true"> · </span>}
-            {label} {count}
-          </span>
-        ))}
+        <span className="materials-stage-segments" key={dataIdentity}>
+          {segments.map(([status, , count]) => (
+            <span
+              key={status}
+              data-status={status}
+              data-count={count}
+              style={{ width: `${counts.target_order_count ? (count / counts.target_order_count) * 100 : 0}%` }}
+            />
+          ))}
+        </span>
       </span>
     </button>
   );
@@ -349,12 +368,16 @@ export default function MaterialsPage() {
   const [companyQuery, setCompanyQuery] = useState('');
   const [material, setMaterial] = useState('all');
   const [visibleCompanyCount, setVisibleCompanyCount] = useState(COMPANY_PAGE_SIZE);
+  const [displayGeneration, setDisplayGeneration] = useState(0);
 
   const loadInitial = () => {
     setLoading(true);
     setError('');
     getMaterials()
-      .then(result => setData(result))
+      .then(result => {
+        setData(result);
+        setDisplayGeneration(generation => generation + 1);
+      })
       .catch(requestError => setError(requestError.message || '자재 현황을 불러오지 못했습니다.'))
       .finally(() => setLoading(false));
   };
@@ -363,7 +386,10 @@ export default function MaterialsPage() {
     let active = true;
     getMaterials()
       .then(result => {
-        if (active) setData(result);
+        if (active) {
+          setData(result);
+          setDisplayGeneration(generation => generation + 1);
+        }
       })
       .catch(requestError => {
         if (active) setError(requestError.message || '자재 현황을 불러오지 못했습니다.');
@@ -378,7 +404,9 @@ export default function MaterialsPage() {
     setRefreshing(true);
     setRefreshError('');
     try {
-      setData(await getMaterials({ refresh: true }));
+      const result = await getMaterials({ refresh: true });
+      setData(result);
+      setDisplayGeneration(generation => generation + 1);
     } catch (requestError) {
       setRefreshError(requestError.message || '자재 현황을 갱신하지 못했습니다.');
     } finally {
@@ -404,6 +432,11 @@ export default function MaterialsPage() {
     () => summarizeArrivalCheckNeeds(filteredOrders, dueAnchor),
     [dueAnchor, filteredOrders],
   );
+  const presentation = useMemo(
+    () => deriveMaterialsPresentation(summary, arrivalCheckNeeds),
+    [arrivalCheckNeeds, summary],
+  );
+  const dataIdentity = displayGeneration;
   const groupedCompanies = [
     ...summary.companies.filter(company => company.priority_rank !== 3),
     ...summary.companies.filter(company => company.priority_rank === 3),
@@ -451,14 +484,8 @@ export default function MaterialsPage() {
 
       <div className="materials-content">
         <div className="materials-scope-line">
-          <span>{data.source.title} · {data.source.tab}</span>
           <span>시트 조회 {formatFetchedAt(data.fetched_at)}</span>
           <span>최근 3개월 · 출고완료 제외 · 납기 5일 경과 제외</span>
-          <span className="materials-date-scope__range">
-            <span className="materials-date-scope__date">{formatDateKey(scope.date_range?.start)}</span>
-            <span aria-hidden="true">~</span>
-            <span className="materials-date-scope__date">{formatDateKey(scope.date_range?.end)}</span>
-          </span>
         </div>
 
         {refreshError && (
@@ -467,6 +494,64 @@ export default function MaterialsPage() {
             <span>{refreshError}</span>
           </div>
         )}
+
+        <section className={`materials-urgency materials-urgency--${presentation.urgency.tone}${presentation.show_empty ? ' materials-urgency--empty' : ''}`} aria-labelledby="materials-urgency-title" data-urgency-tone={presentation.urgency.tone}>
+          <div className="materials-urgency__heading">
+            <h2 id="materials-urgency-title">
+              {presentation.show_empty
+                ? '표시할 대상 없음'
+                : presentation.show_all_complete
+                  ? '모든 단계 완료 기록 확인'
+                  : '입고 기록 우선 확인'}
+            </h2>
+            {!presentation.show_empty && !presentation.show_all_complete && (
+              <strong className="materials-urgency__total">{presentation.urgency.overdue_count + presentation.urgency.today_count}건</strong>
+            )}
+          </div>
+          {presentation.show_empty ? (
+            <div className="materials-urgency__empty">
+              <span>검색 또는 업체 상태를 변경해 주세요</span>
+            </div>
+          ) : presentation.show_all_complete ? null : presentation.urgency.neutral ? (
+            <p className="materials-urgency__neutral">기준일 지난·오늘 미체크 0건</p>
+          ) : (
+            <div className="materials-urgency__breakdown">
+              <span>기준일 지남 {presentation.urgency.overdue_count}건</span>
+              <span>오늘 기준일 {presentation.urgency.today_count}건</span>
+            </div>
+          )}
+          {(presentation.review_order_count > 0 || presentation.show_arrival_action) && (
+            <div className="materials-urgency__footer">
+              {presentation.review_order_count > 0 && (
+                <p className="materials-urgency__review">일정·원본 확인 {presentation.review_order_count}건</p>
+              )}
+              {presentation.show_arrival_action && (
+                <button className="materials-urgency__action" type="button" onClick={() => selectStage('arrival')}>
+                  입고 미확인 업체 보기 →
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section className="materials-stage-overview" aria-labelledby="materials-stage-overview-title">
+          <h2 id="materials-stage-overview-title">단계별 완료 미확인 · 업체 보기</h2>
+          <div className="materials-overview-grid">
+            {STAGES.map(stage => (
+              <StageOverviewButton
+                key={stage.key}
+                stage={stage}
+                counts={summary.stages[stage.key]}
+                selected={material === `${stage.key}_incomplete`}
+                onSelect={() => selectStage(stage.key)}
+                maxIncompleteCount={presentation.max_incomplete_count}
+                dataIdentity={dataIdentity}
+              />
+            ))}
+          </div>
+          <p className="materials-stage-overview__guide">미확인 = 완료 기록을 확인할 수 없는 주문</p>
+          <p className="materials-stage-overview__guide">입고 기준일 = 납기 7일 전 · 단계 간 중복 집계</p>
+        </section>
 
         <section className="materials-filters" aria-label="자재 현황 필터">
           <label className="materials-search">
@@ -493,46 +578,35 @@ export default function MaterialsPage() {
           </label>
         </section>
 
-        <div className="materials-result" aria-live="polite">
-          <strong>{summary.total_companies}개 업체 · 대상 {summary.total_orders}건</strong>
-          <div className="materials-result__exceptions">
-            <span>
-              제외: {scope.unknown_date_count > 0 && <>발주일 미확인 {scope.unknown_date_count}건 · </>}
-              납기 5일 이상 경과 {scope.overdue_due_count}건
-            </span>
-            {(summary.deadline_counts.review_count > 0 || unverifiedShippingCount > 0) && (
-              <span>
-                유지: {summary.deadline_counts.review_count > 0 && (
-                  <>납기 확인필요 {summary.deadline_counts.review_count}건{unverifiedShippingCount > 0 && ' · '}</>
-                )}
-                {unverifiedShippingCount > 0 && <>앱 출고 대조 미확인 {unverifiedShippingCount}건</>}
-              </span>
-            )}
+        <div className="materials-result-row">
+          <div className="materials-result" aria-live="polite">
+            <span className="materials-result__unit">{summary.total_companies}개 업체</span>
+            <span className="materials-result__separator" aria-hidden="true"> · </span>
+            <span className="materials-result__unit">대상 {summary.total_orders}건</span>
           </div>
-        </div>
 
-        <section className="materials-stage-overview" aria-labelledby="materials-stage-overview-title">
-          <h2 id="materials-stage-overview-title">자재 단계별 확인 현황</h2>
-          <div className="materials-overview-grid">
-            {STAGES.map(stage => (
-              <StageOverviewButton
-                key={stage.key}
-                stage={stage}
-                counts={summary.stages[stage.key]}
-                selected={material === `${stage.key}_incomplete`}
-                onSelect={() => selectStage(stage.key)}
-              />
-            ))}
-          </div>
-          {summary.total_orders === 0 && (
-            <p className="materials-overview-empty">표시할 대상 없음</p>
-          )}
-          <p>입고 기준일 = 납기 7일 전 · 미체크 = 완료 여부 미확인</p>
-          <p className="materials-arrival-reminder">
-            입고 체크 필요: 기준일 지난 <span className={`materials-arrival-reminder__unit ${arrivalCheckNeeds.overdue_count > 0 ? 'materials-arrival-reminder__unit--overdue' : 'materials-arrival-reminder__unit--unchecked'}`}>{arrivalCheckNeeds.overdue_count}건</span> · 오늘 <span className={`materials-arrival-reminder__unit ${arrivalCheckNeeds.today_count > 0 ? 'materials-arrival-reminder__unit--today' : 'materials-arrival-reminder__unit--unchecked'}`}>{arrivalCheckNeeds.today_count}건</span>
-          </p>
-          <p className="materials-check-date-note">체크일: 시트 기록 날짜 · 연도 없으면 월/일</p>
-        </section>
+          <details className="materials-scope-details">
+            <summary>조회 범위·제외 내역</summary>
+            <div className="materials-scope-details__body">
+              <span>{data.source.title} · {data.source.tab}</span>
+              <span>조회 범위 {formatDateKey(scope.date_range?.start)} ~ {formatDateKey(scope.date_range?.end)}</span>
+              <span>
+                제외: {scope.unknown_date_count > 0 && <>발주일 미확인 {scope.unknown_date_count}건 · </>}
+                납기 5일 이상 경과 {scope.overdue_due_count}건
+              </span>
+              {(summary.deadline_counts.review_count > 0 || unverifiedShippingCount > 0) && (
+                <span>
+                  유지: {summary.deadline_counts.review_count > 0 && (
+                    <>납기 확인필요 {summary.deadline_counts.review_count}건{unverifiedShippingCount > 0 && ' · '}</>
+                  )}
+                  {unverifiedShippingCount > 0 && <>앱 출고 대조 미확인 {unverifiedShippingCount}건</>}
+                </span>
+              )}
+              <p>입고 기준일 = 납기 7일 전 · 미체크 = 완료 여부 미확인</p>
+              <p>체크일: 시트 기록 날짜 · 연도 없으면 월/일</p>
+            </div>
+          </details>
+        </div>
 
         <div className="materials-company-columns" aria-hidden="true">
           <span>업체 / 건수</span>

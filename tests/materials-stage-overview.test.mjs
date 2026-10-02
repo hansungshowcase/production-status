@@ -10,6 +10,7 @@ import {
   summarizeArrivalCheckNeeds,
   summarizeMaterialCheckDates,
 } from '../src/utils/materials.js';
+import { deriveMaterialsPresentation } from '../src/pages/materialsPresentation.js';
 
 function makeOrder({ company = '업체', row = 1, receipt = '', order = '', arrival = '', dueDate = '2026-10-08' } = {}) {
   const stage = (raw, key) => ({ raw, status: normalizeMaterialStatus(raw, key) });
@@ -111,4 +112,77 @@ test('overview 집계는 40개사 창과 독립적으로 고정 범위 전체 41
   assert.equal(summary.stages.receipt.target_order_count, 41);
   assert.equal(summary.stages.receipt.complete_count, 21);
   assert.equal(summary.stages.receipt.unchecked_count, 20);
+});
+
+test('Materials presentation derives urgency, review, completion, action, and tied maximum stages', () => {
+  const summary = {
+    total_orders: 103,
+    stages: {
+      receipt: { complete_count: 0, unchecked_count: 103, needs_review_count: 0, target_order_count: 103 },
+      order: { complete_count: 0, unchecked_count: 103, needs_review_count: 0, target_order_count: 103 },
+      arrival: { complete_count: 0, unchecked_count: 103, needs_review_count: 0, target_order_count: 103 },
+    },
+    companies: [{ review_order_count: 1 }, { review_order_count: 2 }],
+  };
+  const presentation = deriveMaterialsPresentation(summary, { overdue_count: 40, today_count: 2 });
+
+  assert.deepEqual(presentation.urgency, {
+    overdue_count: 40,
+    today_count: 2,
+    tone: 'overdue',
+    neutral: false,
+  });
+  assert.equal(presentation.review_order_count, 3);
+  assert.equal(presentation.show_all_complete, false);
+  assert.equal(presentation.show_empty, false);
+  assert.equal(presentation.show_arrival_action, true);
+  assert.equal(presentation.max_incomplete_count, 103);
+  assert.deepEqual(presentation.max_stage_keys, ['receipt', 'order', 'arrival']);
+  assert.deepEqual(presentation.stages.arrival, {
+    complete_count: 0,
+    unchecked_count: 103,
+    needs_review_count: 0,
+    target_order_count: 103,
+    incomplete_count: 103,
+  });
+
+  const completeSummary = {
+    total_orders: 2,
+    stages: Object.fromEntries(['receipt', 'order', 'arrival'].map(key => [key, {
+      complete_count: 2,
+      unchecked_count: 0,
+      needs_review_count: 0,
+      target_order_count: 2,
+    }])),
+    companies: [{ review_order_count: 0 }],
+  };
+  const complete = deriveMaterialsPresentation(completeSummary, { overdue_count: 0, today_count: 0 });
+  assert.equal(complete.show_all_complete, true);
+  assert.equal(complete.show_arrival_action, false);
+  assert.equal(complete.urgency.tone, 'complete');
+  assert.equal(complete.urgency.neutral, false);
+
+  const incompleteStageSummary = {
+    ...completeSummary,
+    stages: {
+      ...completeSummary.stages,
+      arrival: { complete_count: 0, unchecked_count: 0, needs_review_count: 0, target_order_count: 0 },
+    },
+  };
+  const incompleteStage = deriveMaterialsPresentation(incompleteStageSummary, { overdue_count: 0, today_count: 0 });
+  assert.equal(incompleteStage.show_all_complete, false);
+  assert.notEqual(incompleteStage.urgency.tone, 'complete');
+
+  const empty = deriveMaterialsPresentation({
+    total_orders: 0,
+    stages: Object.fromEntries(['receipt', 'order', 'arrival'].map(key => [key, {
+      complete_count: 0,
+      unchecked_count: 0,
+      needs_review_count: 0,
+      target_order_count: 0,
+    }])),
+    companies: [],
+  }, { overdue_count: 0, today_count: 0 });
+  assert.equal(empty.show_empty, true);
+  assert.equal(empty.show_all_complete, false);
 });
