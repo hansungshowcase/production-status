@@ -45,6 +45,19 @@ test('도면 화면은 다음 공정·건너뛰기 버튼 대신 수령 대기 �
   assert.match(workerSource, /isDrawingStep &&[\s\S]*executeComplete\(null\)/);
 });
 
+test('완료 확인 팝업은 변환된 station 외부의 body portal에서 작업장 글꼴을 유지한다', () => {
+  const confirmPopupStart = workerSource.indexOf('{confirmTarget &&');
+  const directShipPopupStart = workerSource.indexOf('{directShipTarget &&', confirmPopupStart);
+  assert.ok(confirmPopupStart >= 0 && directShipPopupStart > confirmPopupStart);
+
+  const confirmPopupSource = workerSource.slice(confirmPopupStart, directShipPopupStart);
+  assert.match(confirmPopupSource, /\{confirmTarget && createPortal\(/);
+  assert.match(confirmPopupSource, /style=\{\{ fontFamily: "'Noto Sans KR', sans-serif" \}\}/);
+  assert.match(confirmPopupSource, /,\s*document\.body\s*\)\}/);
+  assert.match(confirmPopupSource, /decodedStep === '포장'/);
+  assert.match(confirmPopupSource, /setConfirmTarget\(null\); setPackingPhotoFile\(null\)/);
+});
+
 test('영업 카드 요약과 상세는 대기 또는 최초 수령자·시간을 읽기 전용으로 표시한다', () => {
   assert.match(salesSource, /getWorkInstructionHandoverState/);
   assert.match(salesSource, /sales-order-card__handover/);

@@ -1582,10 +1582,10 @@ export default function WorkerStationViewPage() {
         </>
       )}
 
-      {confirmTarget && (
+      {confirmTarget && createPortal(
         <>
           <div className="sv-overlay" onClick={() => { setConfirmTarget(null); setPackingPhotoFile(null); }} />
-          <div className="sv-card-popup">
+          <div className="sv-card-popup" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             <div className="sv-card-popup__title">{confirmTarget.clientName}</div>
             {isDrawingStep ? (
               <>
@@ -1703,7 +1703,8 @@ export default function WorkerStationViewPage() {
               <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => { setConfirmTarget(null); setPackingPhotoFile(null); }}>취소</button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {directShipTarget && createPortal(
