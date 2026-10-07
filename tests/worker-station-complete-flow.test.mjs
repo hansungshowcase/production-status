@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCompleteProcessPayload,
+  getCompletionDestination,
   getConfirmedNextStep,
   shouldStartNextStepOnServer,
   shouldStartSelectedNextStepInClient,
@@ -17,10 +18,26 @@ test('packing to shipping is handled by the complete API fast path', () => {
 });
 
 test('non packing transitions are handled by the complete API instead of client-side chaining', () => {
-  assert.equal(shouldStartNextStepOnServer('도면설계', '설비작업'), true);
+  assert.equal(shouldStartNextStepOnServer('절곡작업', '설비작업'), true);
+  assert.equal(shouldStartSelectedNextStepInClient({
+    currentStep: '절곡작업',
+    selectedNextStep: '설비작업',
+    targetStatus: 'waiting',
+  }), false);
+});
+
+test('도면 완료는 어떤 다음 공정도 시작하지 않고 작업지시서 수령 대기로 보낸다', () => {
+  assert.equal(shouldStartNextStepOnServer('도면설계', '레이저작업'), false);
+  assert.equal(shouldStartNextStepOnServer('도면설계', '설비작업'), false);
+  assert.deepEqual(buildCompleteProcessPayload({
+    actor: '김보수 팀장',
+    currentStep: '도면설계',
+    selectedNextStep: '레이저작업',
+  }), { actor: '김보수 팀장' });
+  assert.equal(getCompletionDestination('도면설계', '레이저작업'), '작업지시서 수령 대기');
   assert.equal(shouldStartSelectedNextStepInClient({
     currentStep: '도면설계',
-    selectedNextStep: '설비작업',
+    selectedNextStep: '레이저작업',
     targetStatus: 'waiting',
   }), false);
 });
@@ -39,7 +56,7 @@ test('complete payload requests server-side selected routing for any selected ta
 
   assert.deepEqual(buildCompleteProcessPayload({
     actor: '작업자A',
-    currentStep: '도면설계',
+    currentStep: '절곡작업',
     selectedNextStep: '설비작업',
   }), {
     actor: '작업자A',

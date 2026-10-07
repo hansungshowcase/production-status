@@ -95,6 +95,8 @@ export async function handleGet(req, res, db = getDb()) {
       o.width, o.depth, o.height, o.quantity, o.color,
       o.notes, o.remarks, o.etc_notes, o.ship_scheduled_date,
       o.sms_sent, o.safe_delivery, o.status, o.created_at, o.updated_at,
+      o.work_instruction_revision, o.work_instruction_received_revision,
+      o.work_instruction_received_at, o.work_instruction_received_by,
       CASE WHEN o.work_order_image_url IS NULL OR o.work_order_image_url = '' THEN 0 ELSE 1 END AS has_work_order_image,
       (
         SELECT ph.file_path

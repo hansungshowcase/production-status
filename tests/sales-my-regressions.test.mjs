@@ -48,6 +48,7 @@ test('Korean activity types normalize to the canonical client event contract', (
     ['이슈해결', 'ISSUE_RESOLVED'],
     ['주문등록', 'ORDER_CREATED'],
     ['주문수정', 'ORDER_UPDATED'],
+    ['작업지시서수령', 'ORDER_UPDATED'],
     ['주문삭제', 'ORDER_DELETED'],
     ['출고완료', 'ORDER_SHIPPED'],
     ['사전생산수정', 'PRE_PRODUCTION_UPDATED'],

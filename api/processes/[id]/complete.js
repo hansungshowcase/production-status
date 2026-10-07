@@ -43,7 +43,8 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   const db = dependencies.db || getDb();
   const notify = dependencies.notify || defaultNotify;
   const notifyInternalCompletion = dependencies.notifyInternalCompletion || defaultInternalCompletionNotify;
-  const { completed_date, actor, start_next_step, assigned_worker } = req.body || {};
+  const requestBody = req.body || {};
+  const { completed_date, actor, start_next_step, assigned_worker } = requestBody;
 
   // Find process
   const { rows: processRows } = await db.execute({
@@ -54,6 +55,16 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
     return res.status(404).json({ error: { message: '공정을 찾을 수 없습니다.', status: 404 } });
   }
   const process = processRows[0];
+
+  if (process.step_name === '도면설계'
+    && Object.prototype.hasOwnProperty.call(requestBody, 'start_next_step')) {
+    return res.status(400).json({
+      error: {
+        message: '도면 완료 후에는 작업지시서 수령 대기로 이동합니다. 다음 공정을 자동 시작할 수 없습니다.',
+        status: 400,
+      },
+    });
+  }
 
   const currentStepIndex = STEPS.indexOf(process.step_name);
   const targetStepIndex = start_next_step ? STEPS.indexOf(start_next_step) : -1;

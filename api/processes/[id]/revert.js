@@ -48,6 +48,137 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
   }
   const process = processRows[0];
 
+  if (process.step_name === '도면설계') {
+    const now = new Date(Date.now()).toISOString();
+    const laterSteps = STEPS.slice(STEPS.indexOf('도면설계') + 1);
+    let resultSets;
+    try {
+      resultSets = await db.atomicBatch([
+        {
+          sql: `SELECT o.*
+                  FROM orders o
+                 WHERE o.id = (SELECT p.order_id FROM processes p WHERE p.id = ?)
+                 FOR UPDATE`,
+          args: [id],
+        },
+        {
+          sql: `SELECT *
+                  FROM processes
+                 WHERE order_id = (SELECT order_id FROM processes WHERE id = ?)
+                 ORDER BY id`,
+          args: [id],
+        },
+        {
+          sql: `WITH input AS (
+                  SELECT ?::BIGINT AS process_id,
+                         ?::TIMESTAMPTZ AS requested_at
+                ),
+                eligible AS (
+                  SELECT p.id, p.order_id, p.status
+                    FROM processes p
+                    JOIN input i ON i.process_id = p.id
+                   WHERE p.step_name = '도면설계'
+                     AND p.status IN ('completed', 'in_progress')
+                     AND (
+                       p.status != 'completed'
+                       OR CASE
+                         WHEN p.completed_at IS NOT NULL AND p.completed_at ~ '^[0-9]{4}-'
+                         THEN p.completed_at::TIMESTAMPTZ >= i.requested_at - INTERVAL '3 days'
+                         ELSE FALSE
+                       END
+                     )
+                     AND NOT EXISTS (
+                       SELECT 1 FROM processes later
+                        WHERE later.order_id = p.order_id
+                          AND later.step_name IN (${laterSteps.map(() => '?').join(', ')})
+                          AND later.status != 'waiting'
+                     )
+                ),
+                mutated_process AS (
+                  UPDATE processes p
+                     SET status = CASE WHEN e.status = 'completed' THEN 'in_progress' ELSE 'waiting' END,
+                         started_at = CASE WHEN e.status = 'in_progress' THEN NULL ELSE p.started_at END,
+                         started_by = CASE WHEN e.status = 'in_progress' THEN NULL ELSE p.started_by END,
+                         completed_at = NULL,
+                         completed_by = NULL,
+                         completed_date = NULL
+                    FROM eligible e
+                   WHERE p.id = e.id AND p.status = e.status
+                   RETURNING p.*
+                ),
+                invalidated_order AS (
+                  UPDATE orders o
+                     SET work_instruction_revision = work_instruction_revision + 1,
+                         work_instruction_received_revision = NULL,
+                         work_instruction_received_at = NULL,
+                         work_instruction_received_by = NULL,
+                         updated_at = CURRENT_TIMESTAMP
+                    FROM mutated_process p
+                   WHERE o.id = p.order_id
+                   RETURNING o.id, o.work_instruction_revision
+                )
+                SELECT p.*, o.work_instruction_revision
+                  FROM mutated_process p
+                  JOIN invalidated_order o ON o.id = p.order_id`,
+          args: [id, now, ...laterSteps],
+        },
+      ]);
+    } catch (error) {
+      const status = error.status || 500;
+      return res.status(status).json({
+        error: { message: error.publicMessage || '도면 공정 되돌리기에 실패했습니다.', status },
+      });
+    }
+
+    const lockedOrder = resultSets[0]?.rows?.[0];
+    const lockedProcesses = resultSets[1]?.rows || [];
+    const revertedProcess = resultSets[2]?.rows?.[0];
+    if (!lockedOrder) {
+      return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
+    }
+    const lockedProcess = lockedProcesses.find((row) => String(row.id) === String(id));
+    if (!lockedProcess) {
+      return res.status(404).json({ error: { message: '공정을 찾을 수 없습니다.', status: 404 } });
+    }
+    if (lockedProcess.status === 'waiting') {
+      return res.status(400).json({ error: { message: '대기 상태의 공정은 되돌릴 수 없습니다.', status: 400 } });
+    }
+    const laterStarted = lockedProcesses.some((row) => (
+      laterSteps.includes(row.step_name) && row.status !== 'waiting'
+    ));
+    if (laterStarted) {
+      return res.status(400).json({
+        error: { message: '이후 공정이 이미 진행/완료되어 되돌릴 수 없습니다.', status: 400 },
+      });
+    }
+    if (lockedProcess.status === 'completed') {
+      const completedAt = lockedProcess.completed_at ? new Date(lockedProcess.completed_at).getTime() : NaN;
+      if (!Number.isFinite(completedAt) || Date.now() - completedAt > PROCESS_UNDO_WINDOW_MS) {
+        return res.status(400).json({
+          error: { message: '공정 완료 후 3일이 지나 되돌릴 수 없습니다.', status: 400 },
+        });
+      }
+    }
+    if (!revertedProcess) {
+      return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
+    }
+
+    try {
+      await db.execute({
+        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
+        args: [
+          lockedProcess.order_id,
+          '공정되돌리기',
+          `${lockedOrder.client_name} - 도면설계 공정이 되돌려졌습니다.`,
+          actor || workerAction.actor,
+        ],
+      });
+    } catch (e) {
+      console.error('활동 로그 기록 실패:', e);
+    }
+    return res.json(revertedProcess);
+  }
+
   if (process.status === 'waiting') {
     return res.status(400).json({ error: { message: '대기 상태의 공정은 되돌릴 수 없습니다.', status: 400 } });
   }

@@ -388,6 +388,63 @@
   background: linear-gradient(90deg, #059669, #10b981);
 }
 
+.sales-order-card__handover {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sales-order-card__handover--pending {
+  border-color: var(--orange);
+  background: var(--orange-light);
+  color: var(--text-mid);
+}
+
+.sales-order-card__handover--received {
+  border-color: var(--green);
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.sales-order-card__handover-detail {
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.sales-order-card__handover-units {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-1);
+  min-width: 0;
+}
+
+.sales-order-card__handover-unit {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.sales-order-card__handover-receiver,
+.sales-order-card__handover-time {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.sales-order-card__handover-value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Step chain with arrows */
 .sales-order-card__step-chain {
   display: flex;
@@ -751,6 +808,10 @@
 
   .sales-order-card__progress {
     padding: 4px 12px 14px;
+  }
+
+  .sales-order-card__handover {
+    margin: 0 var(--space-3) var(--space-2);
   }
 }
 

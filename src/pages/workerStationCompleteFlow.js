@@ -1,5 +1,10 @@
 export function shouldStartNextStepOnServer(currentStep, selectedNextStep) {
-  return Boolean(currentStep && selectedNextStep);
+  return Boolean(currentStep && selectedNextStep && currentStep !== '도면설계');
+}
+
+export function getCompletionDestination(currentStep, selectedNextStep) {
+  if (currentStep === '도면설계') return '작업지시서 수령 대기';
+  return selectedNextStep || null;
 }
 
 export function getConfirmedNextStep({ processSteps, currentStep, selectedNextStep }) {
@@ -12,6 +17,7 @@ export function getConfirmedNextStep({ processSteps, currentStep, selectedNextSt
 
 export function shouldStartSelectedNextStepInClient({ currentStep, selectedNextStep, targetStatus }) {
   if (!selectedNextStep) return false;
+  if (currentStep === '도면설계') return false;
   if (shouldStartNextStepOnServer(currentStep, selectedNextStep)) return false;
   return targetStatus !== 'in_progress' && targetStatus !== 'completed';
 }

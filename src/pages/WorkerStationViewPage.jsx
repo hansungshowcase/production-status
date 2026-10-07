@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getProcessesByStep, startProcess, completeProcess, revertProcess } from '../api/processes';
+import {
+  getProcessesByStep,
+  getWorkInstructionReceiptPending,
+  receiveWorkInstruction,
+  startProcess,
+  completeProcess,
+  revertProcess,
+} from '../api/processes';
 import { reportIssue, getIssues, resolveIssue } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { attachWorkOrderImage, getWorkOrderImage } from '../api/workOrderImages';
@@ -12,6 +19,7 @@ import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY } from
 import { shouldAskWorkerIdentity } from './workerIdentityConfirm';
 import { extractDueDateFromOrder, formatProcessCompletionTime, getDaysUntilDue, parseDate } from '../utils/dateUtils';
 import { getVisibleOrderMemo } from '../utils/orderText';
+import { isWorkInstructionReceiver } from '../../shared/workInstructionReceipt.js';
 import './WorkerStationViewPage.css';
 
 const REFRESH_INTERVAL = 180000;
@@ -105,6 +113,10 @@ export default function WorkerStationViewPage() {
   });
 
   const [items, setItems] = useState([]);
+  const [receiptPendingItems, setReceiptPendingItems] = useState([]);
+  const [receiptPendingLoading, setReceiptPendingLoading] = useState(false);
+  const [receiptPendingError, setReceiptPendingError] = useState('');
+  const [receiptActionError, setReceiptActionError] = useState('');
   const [factoryStats, setFactoryStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -142,6 +154,8 @@ export default function WorkerStationViewPage() {
   const currentStepIndex = PROCESS_STEPS.indexOf(decodedStep);
   const nextSteps = PROCESS_STEPS.slice(currentStepIndex + 1, currentStepIndex + 3); // 다음 2개 공정
   const isLastStep = currentStepIndex === PROCESS_STEPS.length - 1;
+  const isDrawingStep = decodedStep === '도면설계';
+  const isLaserStep = decodedStep === '레이저작업';
   const canUndoProcess = String(workerName || '').replace(/\s+/g, '').includes('김보수');
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
@@ -156,10 +170,33 @@ export default function WorkerStationViewPage() {
     toastTimerRef.current = setTimeout(() => setToast(null), canUndoProcess ? 10000 : 3500);
   }
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async ({ forceStats = false } = {}) => {
+    let receiptRequest = Promise.resolve();
+    if (decodedStep === '레이저작업') {
+      setReceiptPendingLoading(true);
+      receiptRequest = getWorkInstructionReceiptPending(decodedStep)
+        .then((data) => {
+          const raw = Array.isArray(data) ? data : data.processes || [];
+          setReceiptPendingItems(raw.map(item => ({
+            ...item,
+            status: item.status || item.process_status || 'waiting',
+          })));
+          setReceiptPendingError('');
+        })
+        .catch((err) => {
+          console.error('Failed to fetch work instruction receipt pending:', err);
+          setReceiptPendingError('수령 대기 목록을 불러오지 못했습니다.');
+        })
+        .finally(() => setReceiptPendingLoading(false));
+    } else {
+      setReceiptPendingItems([]);
+      setReceiptPendingError('');
+      setReceiptPendingLoading(false);
+    }
+
     try {
       const now = Date.now();
-      const shouldFetchStats = !lastStatsFetchRef.current || now - lastStatsFetchRef.current > STATS_REFRESH_INTERVAL;
+      const shouldFetchStats = forceStats || !lastStatsFetchRef.current || now - lastStatsFetchRef.current > STATS_REFRESH_INTERVAL;
       if (shouldFetchStats) lastStatsFetchRef.current = now;
       const [data, stats] = await Promise.all([
         getProcessesByStep(decodedStep),
@@ -185,6 +222,7 @@ export default function WorkerStationViewPage() {
     } finally {
       setLoading(false);
     }
+    await receiptRequest;
   }, [decodedStep]);
 
   useEffect(() => {
@@ -222,6 +260,41 @@ export default function WorkerStationViewPage() {
     if (actionLoading || !item?.order_id) return;
     closeAllModals();
     setDirectShipTarget({ orderId: item.order_id, clientName: item.client_name || '거래처' });
+  }
+
+  async function executeReceipt(item) {
+    if (!item?.order_id || actionLoading) return;
+    setReceiptActionError('');
+    if (!identityAsked) {
+      setReceiptActionError('작업자 본인 확인 후 수령할 수 있습니다.');
+      return;
+    }
+    if (!isWorkInstructionReceiver(workerName)) {
+      setReceiptActionError('수령 권한이 없습니다.');
+      return;
+    }
+
+    const actionKey = `receipt-${item.order_id}`;
+    setActionLoading(actionKey);
+    try {
+      await receiveWorkInstruction(item.order_id, {
+        actor: workerName,
+        expectedRevision: item.work_instruction_revision,
+      });
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      setToast({
+        type: 'complete',
+        client: item.client_name || '거래처',
+        step: decodedStep,
+        message: '작업지시서 수령 확인 완료',
+      });
+      toastTimerRef.current = setTimeout(() => setToast(null), 3500);
+      await fetchData({ forceStats: true });
+    } catch (err) {
+      setReceiptActionError(err.message || '작업지시서 수령 확인에 실패했습니다.');
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function executeDirectShip() {
@@ -273,7 +346,7 @@ export default function WorkerStationViewPage() {
       await completeProcess(processId, { actor: workerName });
 
       // 중간 공정 건너뛰기 (선택된 다음 공정이 인접하지 않은 경우)
-      if (selectedNextStep && orderId) {
+      if (!isDrawingStep && selectedNextStep && orderId) {
         const selectedIdx = PROCESS_STEPS.indexOf(selectedNextStep);
         const skipSteps = PROCESS_STEPS.slice(currentStepIndex + 1, selectedIdx);
 
@@ -305,7 +378,7 @@ export default function WorkerStationViewPage() {
       }
 
       // 화살표 모션 토스트 표시 (검은화면 없이)
-      const nextStep = selectedNextStep || (currentStepIndex < PROCESS_STEPS.length - 1 ? PROCESS_STEPS[currentStepIndex + 1] : null);
+      const nextStep = isDrawingStep ? '작업지시서 수령 대기' : selectedNextStep || (currentStepIndex < PROCESS_STEPS.length - 1 ? PROCESS_STEPS[currentStepIndex + 1] : null);
       if (nextStep) {
         if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
         setToast({ type: 'transition', client: clientName, fromStep: decodedStep, toStep: nextStep, fromIcon: STEP_ICONS[decodedStep] || '', toIcon: STEP_ICONS[nextStep] || '' });
@@ -968,6 +1041,9 @@ export default function WorkerStationViewPage() {
                       <span className="factory-delay-alert__client">{order.client_name || '거래처 미입력'}</span>
                       <span className="factory-delay-alert__product">{product}{size ? ` · ${size}` : ''}</span>
                       <span className="factory-delay-alert__step">{order.step_name}</span>
+                      {order.work_instruction_receipt_pending && (
+                        <span className="factory-delay-alert__receipt">작업지시서 수령 대기</span>
+                      )}
                       <span className="factory-delay-alert__due">납기 {order.due_date || '-'}</span>
                       <span className="factory-delay-alert__worker">담당 {order.started_by || '미배정'}</span>
                       <span className="factory-delay-alert__dday">D-Day</span>
@@ -1019,6 +1095,9 @@ export default function WorkerStationViewPage() {
                       <span className="factory-delay-alert__client">{order.client_name || '거래처 미입력'}</span>
                       <span className="factory-delay-alert__product">{product}{size ? ` · ${size}` : ''}</span>
                       <span className="factory-delay-alert__step">{order.step_name}</span>
+                      {order.work_instruction_receipt_pending && (
+                        <span className="factory-delay-alert__receipt">작업지시서 수령 대기</span>
+                      )}
                       <span className="factory-delay-alert__due">납기 {order.due_date || '-'}</span>
                       <span className="factory-delay-alert__worker">담당 {order.started_by || '미배정'}</span>
                       <span className="factory-delay-alert__dday">D+{order.days_overdue}</span>
@@ -1137,6 +1216,66 @@ export default function WorkerStationViewPage() {
       </div>
 
       <div className="station-view__body">
+        {isLaserStep && (
+          <section className="station-view__receipt-pending" aria-labelledby="receipt-pending-title">
+            <div className="station-view__receipt-header">
+              <div>
+                <h2 id="receipt-pending-title">작업지시서 수령 대기</h2>
+                <p>종이 작업지시서를 받은 뒤 확인하세요.<br />수령 확인은 레이저 시작이 아닙니다.</p>
+              </div>
+              <span className="station-view__receipt-count">{receiptPendingItems.length}</span>
+            </div>
+
+            {receiptPendingLoading && (
+              <div className="station-view__receipt-state" role="status">수령 대기 목록을 불러오는 중...</div>
+            )}
+            {receiptPendingError && (
+              <div className="station-view__receipt-state station-view__receipt-state--error" role="alert">
+                <span>{receiptPendingError}</span>
+                <button type="button" onClick={fetchData}>다시 시도</button>
+              </div>
+            )}
+            {receiptActionError && (
+              <div className="station-view__receipt-state station-view__receipt-state--error" role="alert">
+                {receiptActionError}
+              </div>
+            )}
+            {!receiptPendingLoading && !receiptPendingError && receiptPendingItems.length === 0 && (
+              <div className="station-view__receipt-state station-view__receipt-state--empty">
+                받을 작업지시서가 없습니다.
+              </div>
+            )}
+            {!receiptPendingLoading && receiptPendingItems.length > 0 && (
+              <div className="station-view__receipt-list">
+                {receiptPendingItems.map((item) => {
+                  const dimensions = [item.width, item.depth, item.height].filter(Boolean).join('x');
+                  const receiving = actionLoading === `receipt-${item.order_id}`;
+                  return (
+                    <article className="station-view__receipt-item" key={item.order_id}>
+                      <div className="station-view__receipt-copy">
+                        <strong>{item.client_name || '거래처 미입력'}</strong>
+                        <span>{[item.product_type, item.door_type].filter(Boolean).join(' / ') || '제품 미입력'}</span>
+                        <span>{dimensions || '규격 미입력'} · 납기 {extractDueDateFromOrder(item) || '-'}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="station-view__receipt-button"
+                        onClick={() => executeReceipt(item)}
+                        disabled={receiving || !identityAsked || !isWorkInstructionReceiver(workerName)}
+                      >
+                        {receiving ? '확인 중...' : '작업지시서 받음'}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+            {identityAsked && !isWorkInstructionReceiver(workerName) && (
+              <p className="station-view__receipt-permission">수령 권한이 없습니다.</p>
+            )}
+          </section>
+        )}
+
         {loading && <div className="station-view__loading">불러오는 중...</div>}
         {error && <div className="station-view__error">{error}</div>}
 
@@ -1448,7 +1587,27 @@ export default function WorkerStationViewPage() {
           <div className="sv-overlay" onClick={() => { setConfirmTarget(null); setPackingPhotoFile(null); }} />
           <div className="sv-card-popup">
             <div className="sv-card-popup__title">{confirmTarget.clientName}</div>
-            {isLastStep ? (
+            {isDrawingStep ? (
+              <>
+                <div className="sv-card-popup__desc">도면을 완료하고 수령 대기로 보낼까요?</div>
+                <div className="sv-card-popup__flow">
+                  <div className="sv-card-popup__flow-step sv-card-popup__flow-step--from">
+                    <span className="sv-card-popup__flow-icon">{icon}</span>
+                    <span className="sv-card-popup__flow-name">{decodedStep}</span>
+                  </div>
+                  <div className="sv-card-popup__flow-arrow">
+                    <div className="sv-card-popup__flow-arrow-track">
+                      <div className="sv-card-popup__flow-arrow-dot" />
+                    </div>
+                    <span className="sv-card-popup__flow-arrow-head">▶</span>
+                  </div>
+                  <div className="sv-card-popup__flow-step sv-card-popup__flow-step--to">
+                    <span className="sv-card-popup__flow-icon">📄</span>
+                    <span className="sv-card-popup__flow-name">작업지시서 수령 대기</span>
+                  </div>
+                </div>
+              </>
+            ) : isLastStep ? (
               <>
                 <div className="sv-card-popup__desc">최종 공정을 완료하시겠습니까?</div>
                 <div className="sv-card-popup__flow">
@@ -1519,7 +1678,7 @@ export default function WorkerStationViewPage() {
                 )}
               </div>
             )}
-            {!isLastStep && nextSteps.length > 0 && (
+            {!isDrawingStep && !isLastStep && nextSteps.length > 0 && (
               <div className="sv-card-popup__next-steps">
                 {nextSteps.map((step, idx) => (
                   <button
@@ -1535,6 +1694,9 @@ export default function WorkerStationViewPage() {
               </div>
             )}
             <div className="sv-card-popup__actions">
+              {isDrawingStep && (
+                <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>도면 완료</button>
+              )}
               {isLastStep && (
                 <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => executeComplete(null)}>출고완료</button>
               )}

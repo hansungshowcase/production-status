@@ -5,6 +5,7 @@ import { extractDueDateFromOrder, formatDueStatus, formatProcessCompletionTime }
 import { getVisibleOrderMemo } from '../../utils/orderText';
 import { getOrder } from '../../api/orders';
 import { buildShippingDocumentData, buildShippingDocumentPrintHtml } from './shippingDocuments';
+import { getWorkInstructionHandoverState } from '../../../shared/workInstructionReceipt.js';
 import './SalesOrderCard.css';
 
 function parseProcessSummary(value) {
@@ -75,6 +76,20 @@ function getOpenIssues(order) {
 function getPhotoHref(photo) {
   if (photo?.id) return `/api/photos/${encodeURIComponent(photo.id)}?download=1`;
   return photo?.file_path || photo?.url || '#';
+}
+
+function formatReceiptTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function renderDocumentMultiline(value, className) {
@@ -199,6 +214,35 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const stepWorkerMap = {};
   const stepTimeMap = {};
   const processSummary = parseProcessSummary(displayOrder.process_summary);
+  const handoverState = getWorkInstructionHandoverState(displayOrder, processSummary);
+  const receiptTime = formatReceiptTime(displayOrder.work_instruction_received_at);
+  const handoverText = handoverState === 'received'
+    ? `작업지시서 수령 · ${displayOrder.work_instruction_received_by}${receiptTime ? ` · ${receiptTime}` : ''}`
+    : handoverState === 'pending'
+      ? '작업지시서 전달 대기'
+      : '';
+  const handoverContent = handoverState === 'received' ? (
+    <span className="sales-order-card__handover-units" aria-label={handoverText}>
+      <span className="sales-order-card__handover-unit">작업지시서 수령</span>
+      <span className="sales-order-card__handover-unit">
+        <span aria-hidden="true">·</span>
+        <span className="sales-order-card__handover-receiver">
+          {displayOrder.work_instruction_received_by}
+        </span>
+      </span>
+      {receiptTime && (
+        <span className="sales-order-card__handover-unit">
+          <span aria-hidden="true">·</span>
+          <time
+            className="sales-order-card__handover-time"
+            dateTime={displayOrder.work_instruction_received_at}
+          >
+            {receiptTime}
+          </time>
+        </span>
+      )}
+    </span>
+  ) : handoverText;
   processes.forEach(p => {
     stepStatusMap[p.step_name] = p.status;
     const worker = getDisplayWorker(p.step_name, p, displayOrder.sales_person);
@@ -333,6 +377,12 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
         </div>
       </div>
 
+      {handoverText && (
+        <div className={`sales-order-card__handover sales-order-card__handover--${handoverState}`}>
+          {handoverContent}
+        </div>
+      )}
+
       <div className="sales-order-card__info">
         {specParts && (
           <div className="sales-order-card__info-item">
@@ -368,6 +418,14 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
       {expanded && (
         <div className="sales-order-card__detail">
           <div className="sales-order-card__detail-grid">
+            {handoverText && (
+              <div className="sales-order-card__detail-item sales-order-card__detail-item--full sales-order-card__handover-detail">
+                <span className="sales-order-card__detail-label">작업지시서 전달</span>
+                <span className="sales-order-card__detail-value sales-order-card__handover-value">
+                  {handoverContent}
+                </span>
+              </div>
+            )}
             {isShipped && displayOrder.ship_date && (
               <div className="sales-order-card__detail-item">
                 <span className="sales-order-card__detail-label">출고일</span>

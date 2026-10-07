@@ -15,6 +15,18 @@ export function getProcessesByStep(stepName) {
   return request(`/processes/by-step/${encodeURIComponent(stepName)}?_=${Date.now()}`);
 }
 
+export function getWorkInstructionReceiptPending(stepName = '레이저작업') {
+  return request(`/processes/by-step/${encodeURIComponent(stepName)}?mode=work_instruction_receipt_pending&_=${Date.now()}`);
+}
+
+export function receiveWorkInstruction(orderId, { actor, expectedRevision }) {
+  if (!orderId) throw new Error('orderId is required');
+  return request(`/orders/${orderId}/work-instruction-receipt`, {
+    method: 'PATCH',
+    body: { actor, expected_revision: expectedRevision },
+  });
+}
+
 export function revertProcess(processId, actor) {
   if (!processId) throw new Error('processId is required');
   return request(`/processes/${processId}/revert`, { method: 'PATCH', body: { actor: actor || '작업자' } });

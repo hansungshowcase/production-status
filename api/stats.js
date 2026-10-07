@@ -47,7 +47,7 @@ export default cors(async function handler(req, res) {
   const [
     totalResult, inProdResult, shippedResult,
     waitingResult, inProgressResult, completedResult,
-    openIssuesResult, byStepResult, actionableResult,
+    openIssuesResult, byStepResult, actionableResult, receiptPendingResult,
     bySalesResult, overdueResult, dueTodayResult, dueSoonResult, delayedByStepResult, delayedOrdersResult, dueTodayOrdersResult,
   ] = await Promise.all([
     db.execute({ sql: 'SELECT COUNT(*) AS count FROM orders', args: [] }),
@@ -93,7 +93,53 @@ export default cors(async function handler(req, res) {
                   AND p_done.status = 'completed'
                   AND ${doneStepOrder} < ${processStepOrder}
               ) = ${processStepOrder}
+              AND (
+                p.step_name != '레이저작업'
+                OR p.status = 'in_progress'
+                OR (
+                  o.work_instruction_received_revision = o.work_instruction_revision
+                  AND o.work_instruction_received_at IS NOT NULL
+                  AND NULLIF(BTRIM(o.work_instruction_received_by), '') IS NOT NULL
+                )
+              )
             GROUP BY p.step_name`,
+      args: [],
+    }),
+    db.execute({
+      sql: `SELECT COUNT(*) AS count
+              FROM orders o
+             WHERE o.status = 'in_production'
+               AND NOT COALESCE((
+                 o.work_instruction_received_revision = o.work_instruction_revision
+                 AND o.work_instruction_received_at IS NOT NULL
+                 AND NULLIF(BTRIM(o.work_instruction_received_by), '') IS NOT NULL
+               ), FALSE)
+               AND EXISTS (
+                 SELECT 1 FROM processes p_draw
+                  WHERE p_draw.order_id = o.id AND p_draw.step_name = '도면설계'
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM processes p_draw
+                  WHERE p_draw.order_id = o.id
+                    AND p_draw.step_name = '도면설계'
+                    AND p_draw.status != 'completed'
+               )
+               AND (
+                 SELECT COUNT(*) FROM processes p_laser
+                  WHERE p_laser.order_id = o.id AND p_laser.step_name = '레이저작업'
+               ) = 1
+               AND EXISTS (
+                 SELECT 1 FROM processes p_laser
+                  WHERE p_laser.order_id = o.id
+                    AND p_laser.step_name = '레이저작업'
+                    AND p_laser.status = 'waiting'
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM processes p_after
+                  WHERE p_after.order_id = o.id
+                    AND p_after.step_name IN ('V-커팅작업', '절곡작업', '용접작업', '분체작업', '조립작업', '설비작업', '포장', '출고')
+                    AND p_after.status IN ('in_progress', 'completed')
+               )`,
       args: [],
     }),
     db.execute({
@@ -160,10 +206,42 @@ export default cors(async function handler(req, res) {
           o.quantity,
           o.due_date,
           o.sales_person,
+          o.work_instruction_revision,
+          o.work_instruction_received_revision,
+          o.work_instruction_received_at,
+          o.work_instruction_received_by,
           p.id AS process_id,
           p.step_name,
           p.status AS process_status,
           p.started_by,
+          (o.status = 'in_production'
+            AND p.step_name = '레이저작업'
+            AND p.status = 'waiting'
+            AND NOT COALESCE((
+              o.work_instruction_received_revision = o.work_instruction_revision
+              AND o.work_instruction_received_at IS NOT NULL
+              AND NULLIF(BTRIM(o.work_instruction_received_by), '') IS NOT NULL
+            ), FALSE)
+            AND EXISTS (
+              SELECT 1 FROM processes p_draw
+               WHERE p_draw.order_id = o.id AND p_draw.step_name = '도면설계'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM processes p_draw
+               WHERE p_draw.order_id = o.id
+                 AND p_draw.step_name = '도면설계'
+                 AND p_draw.status != 'completed'
+            )
+            AND (
+              SELECT COUNT(*) FROM processes p_laser
+               WHERE p_laser.order_id = o.id AND p_laser.step_name = '레이저작업'
+            ) = 1
+            AND NOT EXISTS (
+              SELECT 1 FROM processes p_after
+               WHERE p_after.order_id = o.id
+                 AND p_after.step_name IN ('V-커팅작업', '절곡작업', '용접작업', '분체작업', '조립작업', '설비작업', '포장', '출고')
+                 AND p_after.status IN ('in_progress', 'completed')
+            )) AS work_instruction_receipt_pending,
           ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY ${processStepOrder}) AS rn
         FROM orders o
         JOIN ${canonicalProcesses} p ON p.order_id = o.id
@@ -223,6 +301,7 @@ export default cors(async function handler(req, res) {
   const overdue_count = overdueResult.rows[0].count;
   const due_today_count = dueTodayResult.rows[0].count;
   const due_soon_count = dueSoonResult.rows[0].count;
+  const work_instruction_receipt_pending = Number(receiptPendingResult.rows[0]?.count || 0);
 
   const actionableMap = {};
   for (const row of actionableResult.rows) {
@@ -271,6 +350,7 @@ export default cors(async function handler(req, res) {
     overdue_count,
     due_today_count,
     due_soon_count,
+    work_instruction_receipt_pending,
     by_step,
     delayed_by_step,
     delayed_orders,
