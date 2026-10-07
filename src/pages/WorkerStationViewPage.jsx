@@ -19,6 +19,7 @@ import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY } from
 import { shouldAskWorkerIdentity } from './workerIdentityConfirm';
 import { extractDueDateFromOrder, formatProcessCompletionTime, getDaysUntilDue, parseDate } from '../utils/dateUtils';
 import { getVisibleOrderMemo } from '../utils/orderText';
+import { useDialogFocus } from '../utils/useDialogFocus';
 import { isWorkInstructionReceiver } from '../../shared/workInstructionReceipt.js';
 import './WorkerStationViewPage.css';
 
@@ -163,6 +164,14 @@ export default function WorkerStationViewPage() {
   const localWorkOrderUrlsRef = useRef(new Map());
   const cardRefs = useRef(new Map());
   const consumedFocusRef = useRef('');
+  const identityDialogRef = useRef(null);
+  const identityInitialFocusRef = useRef(null);
+  const overdueDialogRef = useRef(null);
+  const overdueInitialFocusRef = useRef(null);
+
+  const dismissOverdueDialog = useCallback(() => {
+    setOverdueAlertDismissed(true);
+  }, []);
 
   function showResultToast(type, clientName) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -788,6 +797,22 @@ export default function WorkerStationViewPage() {
 
   const sorted = [...visibleItems].sort(sortByDueDate);
   const sortedOverdueAlertItems = [...overdueAlertItems].sort(sortByDueDate);
+  const showOverdueDialog = identityAsked
+    && !loading
+    && overdueAlertItems.length > 0
+    && !overdueAlertDismissed
+    && !confirmTarget
+    && !directShipTarget
+    && !issueModal
+    && !workOrderViewer;
+  const activeBlockingDialog = !identityAsked ? 'identity' : (showOverdueDialog ? 'overdue' : null);
+
+  useDialogFocus({
+    active: activeBlockingDialog !== null,
+    dialogRef: activeBlockingDialog === 'identity' ? identityDialogRef : overdueDialogRef,
+    initialFocusRef: activeBlockingDialog === 'identity' ? identityInitialFocusRef : overdueInitialFocusRef,
+    onEscape: activeBlockingDialog === 'overdue' ? dismissOverdueDialog : null,
+  });
 
   // 한 화면에 10개씩만 보여준다. 공정 하나에 수십 건이 쌓이면 스크롤로는 못 찾는다.
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
@@ -1722,10 +1747,10 @@ export default function WorkerStationViewPage() {
         document.body
       )}
 
-      {!loading && overdueAlertItems.length > 0 && !overdueAlertDismissed && !confirmTarget && !directShipTarget && !issueModal && !workOrderViewer && (
+      {showOverdueDialog && createPortal(
         <>
-          <div className="sv-overlay sv-overdue-overlay" onClick={() => setOverdueAlertDismissed(true)} />
-          <div className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림">
+          <div className="sv-overlay sv-overdue-overlay" onClick={dismissOverdueDialog} />
+          <div ref={overdueDialogRef} className="sv-card-popup sv-overdue-popup" role="dialog" aria-modal="true" aria-label="납기 초과 작업 알림" tabIndex={-1}>
             <div className="sv-overdue-popup__eyebrow">납기 초과</div>
             <div className="sv-card-popup__title">빠른 진행이 필요한 작업 {overdueAlertTotalCount}건</div>
             <div className="sv-card-popup__desc">
@@ -1754,6 +1779,7 @@ export default function WorkerStationViewPage() {
             </div>
             <div className="sv-card-popup__actions">
               <button
+                ref={overdueInitialFocusRef}
                 className="sv-card-popup__btn sv-card-popup__btn--ok"
                 onClick={() => {
                   const first = sortedOverdueAlertItems[0];
@@ -1763,12 +1789,13 @@ export default function WorkerStationViewPage() {
               >
                 확인
               </button>
-              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setOverdueAlertDismissed(true)}>
+              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={dismissOverdueDialog}>
                 닫기
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── Global Popup: Issue ── */}
@@ -1907,11 +1934,11 @@ export default function WorkerStationViewPage() {
       )}
       {/* 이슈 목록은 상단 버튼 옆 드롭다운으로 이동됨 */}
 
-      {!identityAsked && (
+      {!identityAsked && createPortal(
         <>
           {/* 오버레이를 눌러서는 닫히지 않는다 — 반드시 확인 또는 재선택을 고르게 한다. */}
           <div className="sv-overlay sv-identity-overlay" />
-          <div className="sv-card-popup" role="dialog" aria-modal="true" aria-label="작업자 확인">
+          <div ref={identityDialogRef} className="sv-card-popup" role="dialog" aria-modal="true" aria-label="작업자 확인" tabIndex={-1}>
             <div className="sv-card-popup__icon">👤</div>
             <div className="sv-card-popup__title">작업자 {workerName} 님이 맞으실까요?</div>
             <div className="sv-card-popup__desc">
@@ -1919,6 +1946,7 @@ export default function WorkerStationViewPage() {
             </div>
             <div className="sv-card-popup__actions">
               <button
+                ref={identityInitialFocusRef}
                 type="button"
                 className="sv-card-popup__btn sv-card-popup__btn--ok"
                 onClick={() => {
@@ -1943,7 +1971,8 @@ export default function WorkerStationViewPage() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
