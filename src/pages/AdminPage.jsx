@@ -33,29 +33,41 @@ async function fetchAllAdminOrders() {
 export default function AdminPage() {
   const navigate = useNavigate();
   const [salesPersons, setSalesPersons] = useState([]);
-  const [authState, setAuthState] = useState({ checking: true, needLogin: false });
+  const [authState, setAuthState] = useState({ checking: true, needLogin: false, error: null });
   const [pwd, setPwd] = useState('');
   const [loginErr, setLoginErr] = useState(null);
   const [logging, setLogging] = useState(false);
 
-  useEffect(() => {
-    fetchAuthStatus().then(s => {
+  async function retryAuthStatus() {
+    setAuthState({ checking: true, needLogin: false, error: null });
+    try {
+      const s = await fetchAuthStatus();
       if (!s.enabled) {
         // 인증 비활성 — 기존 동작
-        setAuthState({ checking: false, needLogin: false });
+        setAuthState({ checking: false, needLogin: false, error: null });
         return;
       }
       // 활성 — admin 토큰 있어야 통과
       const t = getToken();
       if (t && getRole() === 'admin') {
-        setAuthState({ checking: false, needLogin: false });
+        setAuthState({ checking: false, needLogin: false, error: null });
       } else {
-        setAuthState({ checking: false, needLogin: true });
+        setAuthState({ checking: false, needLogin: true, error: null });
       }
-    });
+    } catch (err) {
+      setAuthState({
+        checking: false,
+        needLogin: false,
+        error: err.message || '인증 상태를 확인할 수 없습니다.',
+      });
+    }
+  }
+
+  useEffect(() => {
+    retryAuthStatus();
   }, []);
 
-  const authorized = !authState.checking && !authState.needLogin;
+  const authorized = !authState.checking && !authState.needLogin && !authState.error;
 
   useEffect(() => {
     if (!authorized) return;
@@ -82,7 +94,7 @@ export default function AdminPage() {
     setLoginErr(null);
     try {
       await login('admin', { password: pwd });
-      setAuthState({ checking: false, needLogin: false });
+      setAuthState({ checking: false, needLogin: false, error: null });
     } catch (err) {
       setLoginErr(err.message || '로그인 실패');
     } finally {
@@ -92,6 +104,24 @@ export default function AdminPage() {
 
   if (authState.checking) {
     return <div className="admin-container"><div className="admin-content">확인 중...</div></div>;
+  }
+
+  if (authState.error) {
+    return (
+      <div className="admin-container">
+        <div className="admin-header">
+          <button className="admin-back-btn" onClick={() => navigate('/')}>&#8592;</button>
+          <div className="admin-header-title">관리자 접근 확인</div>
+        </div>
+        <div className="admin-content auth-status-error" role="alert">
+          <div className="auth-status-error__card">
+            <strong>인증 상태를 확인하지 못했습니다.</strong>
+            <span>잠시 후 다시 시도해 주세요.</span>
+            <button type="button" onClick={retryAuthStatus}>다시 시도</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (authState.needLogin) {

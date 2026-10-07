@@ -66,6 +66,41 @@
   border-top: 1px solid var(--border, #d0d9e8);
 }
 
+.auth-status-error {
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 40px;
+}
+
+.auth-status-error__card {
+  width: min(100%, 380px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff;
+  color: #991b1b;
+}
+
+.auth-status-error__card span {
+  color: #7f1d1d;
+  font-size: 14px;
+}
+
+.auth-status-error__card button {
+  min-height: 44px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* ─── Responsive ──────────────────────────────────────── */
 
 /* Mobile base: already mobile-first (max-width: 640px container).

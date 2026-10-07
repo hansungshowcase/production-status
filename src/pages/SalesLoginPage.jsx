@@ -11,16 +11,32 @@ export default function SalesLoginPage() {
   const navigate = useNavigate();
   const lastPerson = safeGet(LS_KEY);
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authError, setAuthError] = useState(null);
   const [pwdModal, setPwdModal] = useState(null); // { name } | null
   const [pwd, setPwd] = useState('');
   const [loginErr, setLoginErr] = useState(null);
   const [logging, setLogging] = useState(false);
 
+  async function retryAuthStatus() {
+    setAuthChecking(true);
+    setAuthError(null);
+    try {
+      const status = await fetchAuthStatus();
+      setAuthEnabled(status.enabled);
+    } catch (err) {
+      setAuthError(err.message || '인증 상태를 확인할 수 없습니다.');
+    } finally {
+      setAuthChecking(false);
+    }
+  }
+
   useEffect(() => {
-    fetchAuthStatus().then(s => setAuthEnabled(!!s.enabled));
+    retryAuthStatus();
   }, []);
 
   function handleSelect(name) {
+    if (authChecking || authError) return;
     if (!authEnabled) {
       // opt-in 비활성 — 기존 동작
       safeSet(LS_KEY, name);
@@ -90,11 +106,23 @@ export default function SalesLoginPage() {
           담당자를 선택하여 발주현황을 확인하세요
         </p>
 
+        {authChecking && (
+          <div className="sl-page__auth-checking" role="status">인증 상태 확인 중...</div>
+        )}
+        {authError && (
+          <div className="sl-page__auth-error" role="alert">
+            <strong>인증 상태를 확인하지 못했습니다.</strong>
+            <span>잠시 후 다시 시도해 주세요.</span>
+            <button type="button" onClick={retryAuthStatus}>다시 시도</button>
+          </div>
+        )}
+
         {/* Quick re-login */}
         {lastPerson && (
           <button
             className="sl-page__quick"
             onClick={() => handleSelect(lastPerson)}
+            disabled={authChecking || !!authError}
           >
             <div className="sl-page__quick-avatar">
               {lastPerson.charAt(0)}
@@ -125,6 +153,7 @@ export default function SalesLoginPage() {
               key={person.name}
               className={`sl-page__card${lastPerson === person.name ? ' sl-page__card--last' : ''}`}
               onClick={() => handleSelect(person.name)}
+              disabled={authChecking || !!authError}
               style={{ '--accent': person.color }}
             >
               <div className="sl-page__card-avatar" style={{ background: person.color }}>

@@ -124,6 +124,54 @@
   word-break: keep-all;
 }
 
+.sl-page__auth-checking,
+.sl-page__auth-error {
+  width: 100%;
+  margin: -20px 0 24px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+
+.sl-page__auth-checking {
+  background: #eff6ff;
+  color: #1d4ed8;
+  text-align: center;
+  font-weight: 700;
+}
+
+.sl-page__auth-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
+.sl-page__auth-error span {
+  font-size: 13px;
+}
+
+.sl-page__auth-error button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sl-page__quick:disabled,
+.sl-page__card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 /* ── Quick re-login ── */
 .sl-page__quick {
   width: 100%;

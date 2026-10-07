@@ -43,19 +43,28 @@ export function clearToken() {
 export async function fetchAuthStatus() {
   if (statusPromise) return statusPromise;
   statusPromise = (async () => {
-    try {
-      const t = getToken();
-      const res = await fetch('/api/auth/status', {
-        headers: t ? { Authorization: `Bearer ${t}` } : {},
-      });
-      if (!res.ok) return { enabled: false, authenticated: false };
-      const data = await res.json();
-      cachedEnabled = !!data.enabled;
-      return data;
-    } catch {
-      return { enabled: false, authenticated: false };
+    const t = getToken();
+    const res = await fetch('/api/auth/status', {
+      headers: t ? { Authorization: `Bearer ${t}` } : {},
+    });
+    if (!res.ok) {
+      throw new Error(`인증 상태를 확인할 수 없습니다. (${res.status})`);
     }
-  })();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error('인증 상태 응답을 확인할 수 없습니다.');
+    }
+    if (!data || typeof data.enabled !== 'boolean') {
+      throw new Error('인증 상태 응답을 확인할 수 없습니다.');
+    }
+    cachedEnabled = data.enabled;
+    return data;
+  })().catch((err) => {
+    statusPromise = null;
+    throw err;
+  });
   return statusPromise;
 }
 
