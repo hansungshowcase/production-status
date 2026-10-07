@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
@@ -29,10 +29,15 @@ export default function WorkerSelectPage() {
   const [step, setStep] = useState(deptChangeOnly ? 'department' : 'worker');
   const [selectedWorker, setSelectedWorker] = useState(deptChangeOnly ? existingWorker : null);
   const [factoryStats, setFactoryStats] = useState(null);
+  const [statsError, setStatsError] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsLastSuccess, setStatsLastSuccess] = useState(null);
   const [workOrderSearch, setWorkOrderSearch] = useState('');
   const [workOrderResults, setWorkOrderResults] = useState([]);
   const [workOrderLoading, setWorkOrderLoading] = useState(false);
   const workOrderSearchSeqRef = useRef(0);
+  const statsRequestSeqRef = useRef(0);
+  const statsMountedRef = useRef(false);
   const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
   const delayedOrders = factoryStats?.delayed_orders || [];
   const delayedSteps = factoryStats?.delayed_by_step || [];
@@ -40,9 +45,33 @@ export default function WorkerSelectPage() {
   const dueTodayOrdersTotalCount = Number(factoryStats?.due_today_count || 0) || dueTodayOrders.length;
   const delayedOrdersTotalCount = Number(factoryStats?.overdue_count || 0) || delayedOrders.length;
 
-  useEffect(() => {
-    getStats().then(setFactoryStats).catch(() => {});
+  const loadStats = useCallback(async () => {
+    const requestSeq = ++statsRequestSeqRef.current;
+    setStatsLoading(true);
+    try {
+      const stats = await getStats();
+      if (!statsMountedRef.current || requestSeq !== statsRequestSeqRef.current) return;
+      setFactoryStats(stats);
+      setStatsLastSuccess(new Date());
+      setStatsError(null);
+    } catch (err) {
+      if (statsMountedRef.current && requestSeq === statsRequestSeqRef.current) {
+        setStatsError(err.message || '공장 현황을 불러오지 못했습니다.');
+      }
+    } finally {
+      if (statsMountedRef.current && requestSeq === statsRequestSeqRef.current) {
+        setStatsLoading(false);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    statsMountedRef.current = true;
+    loadStats();
+    return () => {
+      statsMountedRef.current = false;
+    };
+  }, [loadStats]);
 
   useEffect(() => {
     const query = workOrderSearch.trim();
@@ -245,6 +274,29 @@ export default function WorkerSelectPage() {
       {/* 공장 전체 현황 - 항상 렌더링하여 레이아웃 시프트 방지 */}
       <div className="worker-select-page__factory">
         <h2 className="worker-select-page__factory-title">공장 전체 현황</h2>
+        <div className="worker-select-page__stats-status">
+          <span>
+            {statsLastSuccess
+              ? `${statsError ? '마지막 정상 조회' : '조회'} ${statsLastSuccess.getHours().toString().padStart(2, '0')}:${statsLastSuccess.getMinutes().toString().padStart(2, '0')}`
+              : (statsLoading ? '현황 조회 중...' : '현황 조회 실패')}
+          </span>
+          <button
+            type="button"
+            className="worker-select-page__stats-refresh"
+            onClick={loadStats}
+            disabled={statsLoading}
+          >
+            {statsLoading ? '새로고침 중...' : '새로고침'}
+          </button>
+        </div>
+        {statsError && (
+          <div className="worker-select-page__stats-error" role="alert">
+            <span>
+              공장 현황을 불러오지 못했습니다. {statsLastSuccess ? '이전 정상 현황을 표시합니다.' : '잠시 후 다시 시도해 주세요.'}
+            </span>
+            <button type="button" onClick={loadStats} disabled={statsLoading}>다시 시도</button>
+          </div>
+        )}
         <div className="worker-select-page__factory-global">
           <span className="worker-select-page__factory-stat">
             주문 <strong>{factoryStats?.total_orders ?? '-'}</strong>

@@ -67,6 +67,44 @@
   transform: scale(0.95);
 }
 
+.tablet-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.tablet-order-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tablet-order-error button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tablet-order-error button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* Loading overlay */
 .tablet-loading {
   position: fixed;
@@ -96,6 +134,11 @@
    behind a navigation paradigm — show only the left (list) panel
    by default; the right panel overlays when an order is selected. */
 @media (max-width: 767px) {
+  .tablet-order-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .tablet-worker-page {
     flex-direction: column;
     overflow: auto;

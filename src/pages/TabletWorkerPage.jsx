@@ -43,6 +43,8 @@ export default function TabletWorkerPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [orderError, setOrderError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState(null); // {message, type} | null
   const [issueModal, setIssueModal] = useState(null); // { orderId } | null
   const [issueType, setIssueType] = useState('자재부족');
@@ -53,6 +55,8 @@ export default function TabletWorkerPage() {
   const fileInputRef = useRef(null);
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
+  const orderRequestSeqRef = useRef(0);
+  const mountedRef = useRef(false);
 
   const workerName = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(WORKER_STORAGE_KEY)) || '현장작업자';
 
@@ -67,18 +71,28 @@ export default function TabletWorkerPage() {
   }, []);
 
   const fetchOrderList = useCallback(async () => {
+    const requestSeq = ++orderRequestSeqRef.current;
+    setRefreshing(true);
     try {
       const list = await fetchAllActiveOrders();
+      if (!mountedRef.current || requestSeq !== orderRequestSeqRef.current) return;
       // Filter to active orders (not shipped)
       const active = list.filter(
         (o) => o.status !== '출고완료'
       );
       setOrders(active.filter((o) => o.status !== 'shipped' && o.status !== '출고완료'));
       setLastRefresh(new Date());
+      setOrderError(null);
     } catch (err) {
       console.error('Failed to fetch orders:', err);
+      if (mountedRef.current && requestSeq === orderRequestSeqRef.current) {
+        setOrderError('주문 목록을 불러오지 못했습니다.');
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current && requestSeq === orderRequestSeqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -94,9 +108,13 @@ export default function TabletWorkerPage() {
 
   // Initial load + auto-refresh
   useEffect(() => {
+    mountedRef.current = true;
     fetchOrderList();
     timerRef.current = setInterval(fetchOrderList, REFRESH_INTERVAL);
-    return () => clearInterval(timerRef.current);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timerRef.current);
+    };
   }, [fetchOrderList]);
 
   useEffect(() => {
@@ -289,18 +307,26 @@ export default function TabletWorkerPage() {
           <span>
             <span className="tablet-refresh-dot" />
             {lastRefresh
-              ? `${lastRefresh.getHours().toString().padStart(2, '0')}:${lastRefresh.getMinutes().toString().padStart(2, '0')} 갱신`
-              : '로딩 중...'}
+              ? `${orderError ? '마지막 정상 조회 ' : ''}${lastRefresh.getHours().toString().padStart(2, '0')}:${lastRefresh.getMinutes().toString().padStart(2, '0')}`
+              : (loading ? '로딩 중...' : '조회 실패')}
           </span>
-          <button className="tablet-refresh-btn" onClick={fetchOrderList}>
-            새로고침
+          <button className="tablet-refresh-btn" onClick={fetchOrderList} disabled={refreshing}>
+            {refreshing ? '새로고침 중...' : '새로고침'}
           </button>
         </div>
-        <OrderListPanel
-          orders={orders}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-        />
+        {orderError && (
+          <div className="tablet-order-error" role="alert">
+            <span>{orderError} {lastRefresh ? '이전 정상 목록을 표시합니다.' : '잠시 후 다시 시도해 주세요.'}</span>
+            <button type="button" onClick={fetchOrderList} disabled={refreshing}>다시 시도</button>
+          </div>
+        )}
+        {lastRefresh && (
+          <OrderListPanel
+            orders={orders}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        )}
       </div>
 
       {/* Right panel: order detail */}
