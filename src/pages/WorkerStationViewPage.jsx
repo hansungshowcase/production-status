@@ -1275,6 +1275,8 @@ export default function WorkerStationViewPage() {
                 {receiptPendingItems.map((item) => {
                   const dimensions = [item.width, item.depth, item.height].filter(Boolean).join('x');
                   const receiving = actionLoading === `receipt-${item.order_id}`;
+                  const canUndoReceipt = identityAsked && canUndoItemToPrevious(item);
+                  const undoingReceipt = actionLoading === `undo-${item.process_id}`;
                   return (
                     <article className="station-view__receipt-item" key={item.order_id}>
                       <div className="station-view__receipt-copy">
@@ -1282,14 +1284,26 @@ export default function WorkerStationViewPage() {
                         <span>{[item.product_type, item.door_type].filter(Boolean).join(' / ') || '제품 미입력'}</span>
                         <span>{dimensions || '규격 미입력'} · 납기 {extractDueDateFromOrder(item) || '-'}</span>
                       </div>
-                      <button
-                        type="button"
-                        className="station-view__receipt-button"
-                        onClick={() => executeReceipt(item)}
-                        disabled={receiving || !identityAsked || !isWorkInstructionReceiver(workerName)}
-                      >
-                        {receiving ? '확인 중...' : '작업지시서 받음'}
-                      </button>
+                      <div className="station-view__receipt-actions">
+                        <button
+                          type="button"
+                          className="station-view__receipt-button"
+                          onClick={() => executeReceipt(item)}
+                          disabled={!!actionLoading || !identityAsked || !isWorkInstructionReceiver(workerName)}
+                        >
+                          {receiving ? '확인 중...' : '작업지시서 받음'}
+                        </button>
+                        {canUndoReceipt && (
+                          <button
+                            type="button"
+                            className="station-view__receipt-button station-view__receipt-button--undo"
+                            onClick={() => handleUndoItemToPrevious(item)}
+                            disabled={!!actionLoading}
+                          >
+                            {undoingReceipt ? '되돌리는 중...' : '도면설계로 되돌리기'}
+                          </button>
+                        )}
+                      </div>
                     </article>
                   );
                 })}
