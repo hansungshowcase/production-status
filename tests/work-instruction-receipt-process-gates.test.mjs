@@ -236,7 +236,9 @@ test('도면 되돌리기는 공정 복구와 개정 증가·수령 3필드 무�
   const originalNow = Date.now;
   Date.now = () => Date.parse('2026-10-07T02:00:00.000Z');
   try {
-    await handleRevertProcess(processRequest(), res, dependencies(db));
+    await handleRevertProcess(processRequest({ actor: '김보수 팀장' }), res, dependencies(db, {
+      requireWorkerAction: () => ({ actor: '김보수 팀장' }),
+    }));
   } finally {
     Date.now = originalNow;
   }
@@ -284,7 +286,9 @@ test('레이저 시작만 되돌리면 유효 수령 정보와 개정은 그대�
     },
   };
   const res = response();
-  await handleRevertProcess(processRequest(), res, dependencies(db));
+  await handleRevertProcess(processRequest({ actor: '김보수 팀장' }), res, dependencies(db, {
+    requireWorkerAction: () => ({ actor: '김보수 팀장' }),
+  }));
 
   assert.equal(res.statusCode, 200);
   assert.equal(process.status, 'waiting');

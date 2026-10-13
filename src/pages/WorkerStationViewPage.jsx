@@ -21,12 +21,12 @@ import { extractDueDateFromOrder, formatProcessCompletionTime, getDaysUntilDue, 
 import { getVisibleOrderMemo } from '../utils/orderText';
 import { useDialogFocus } from '../utils/useDialogFocus';
 import { isWorkInstructionReceiver } from '../../shared/workInstructionReceipt.js';
+import { isProcessUndoManager } from '../../shared/processUndoPermission.js';
 import './WorkerStationViewPage.css';
 
 const REFRESH_INTERVAL = 180000;
 const STATS_REFRESH_INTERVAL = 120000;
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-const PROCESS_UNDO_MANAGER = '김보수 팀장';
 const PAGE_SIZE = 10;
 
 // 현직 영업 담당자와 일치해야 한다. 백엔드 지연경보 라우팅(api/_lib/alertRoutes.js)과
@@ -157,7 +157,7 @@ export default function WorkerStationViewPage() {
   const isLastStep = currentStepIndex === PROCESS_STEPS.length - 1;
   const isDrawingStep = decodedStep === '도면설계';
   const isLaserStep = decodedStep === '레이저작업';
-  const canUndoProcess = String(workerName || '').replace(/\s+/g, '').includes('김보수');
+  const canUndoProcess = identityAsked && isProcessUndoManager(workerName);
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
   const lastStatsFetchRef = useRef(0);

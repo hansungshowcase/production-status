@@ -145,7 +145,7 @@ function makeRequest() {
   return {
     method: 'PATCH',
     query: { id: String(PROCESS_ID) },
-    body: { actor: '작업자 A' },
+    body: { actor: '김보수 팀장' },
   };
 }
 
@@ -179,7 +179,7 @@ function dependencies(db, { clearShippedSheet } = {}) {
   return {
     db,
     rateLimitCheck: () => true,
-    requireWorkerAction: () => ({ actor: '작업자 A' }),
+    requireWorkerAction: () => ({ actor: '김보수 팀장' }),
     clearShippedSheet: clearShippedSheet || (async () => ({ updatedRow: 6 })),
   };
 }
@@ -334,7 +334,7 @@ test('the revert activity log wording is unchanged', async () => {
     order_id: ORDER_ID,
     action_type: '공정되돌리기',
     description: '한성거래처 - 출고 공정이 되돌려졌습니다.',
-    actor: '작업자 A',
+    actor: '김보수 팀장',
   }]);
 });
 

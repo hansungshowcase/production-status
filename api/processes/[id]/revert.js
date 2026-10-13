@@ -4,6 +4,7 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { clearShippedOnSheet } from '../../_lib/googleSheets.js';
+import { PROCESS_UNDO_MANAGER, isProcessUndoManager } from '../../../shared/processUndoPermission.js';
 
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -28,6 +29,12 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
     ? dependencies.requireWorkerAction(req, res)
     : requireWorkerAction(req, res);
   if (!workerAction) return;
+  if (!isProcessUndoManager(workerAction.actor)) {
+    return res.status(403).json({
+      error: { message: '김보수 팀장만 공정을 되돌릴 수 있습니다.', status: 403 },
+    });
+  }
+  const auditActor = PROCESS_UNDO_MANAGER;
 
   const id = req.query.id;
   if (!id || isNaN(Number(id))) {
@@ -36,7 +43,6 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const clearShippedSheet = dependencies.clearShippedSheet || clearShippedOnSheet;
-  const { actor } = req.body || {};
 
   // Find process
   const { rows: processRows } = await db.execute({
@@ -170,7 +176,7 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
           lockedProcess.order_id,
           '공정되돌리기',
           `${lockedOrder.client_name} - 도면설계 공정이 되돌려졌습니다.`,
-          actor || workerAction.actor,
+          auditActor,
         ],
       });
     } catch (e) {
@@ -263,7 +269,7 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
           process.order_id,
           '공정되돌리기',
           `${order.client_name} - ${process.step_name} 공정이 되돌려졌습니다.`,
-          actor || workerAction.actor
+          auditActor
         ]
       });
     } catch (e) {
