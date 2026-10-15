@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchInternalNotifications } from '../api/internalNotifications';
+import NotificationOverview from '../components/NotificationOverview';
 import {
   groupNotificationsByKstDate,
   NOTIFICATION_RECIPIENT_FILTERS,
@@ -119,16 +120,18 @@ export default function SmsHistoryPage() {
             </svg>
           </button>
           <div>
-            <p className="sms-history-eyebrow">내부 생산 자동문자</p>
+            <p className="sms-history-eyebrow">자동문자 운영 현황</p>
             <h1>문자 발송내역</h1>
           </div>
         </div>
       </header>
 
       <main className="sms-history-main">
+        <NotificationOverview />
+
         <section className="sms-history-intro" aria-labelledby="sms-history-title">
           <div>
-            <h2 id="sms-history-title">쏠라피 발송 현황</h2>
+            <h2 id="sms-history-title">직원 알림 발송내역</h2>
             <p>
               생산 담당자, 작업자, 영업담당자에게 자동 발송된{' '}
               <span className="sms-history-keep-together">문자 내용과 요청 결과입니다.</span>

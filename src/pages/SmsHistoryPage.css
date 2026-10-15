@@ -87,6 +87,7 @@
 }
 
 .sms-history-intro {
+  margin-top: var(--space-5);
   padding: 20px;
   display: flex;
   align-items: flex-start;
