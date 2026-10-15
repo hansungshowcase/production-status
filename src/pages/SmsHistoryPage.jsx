@@ -60,6 +60,7 @@ export default function SmsHistoryPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [expandedId, setExpandedId] = useState(null);
+  const [activePanel, setActivePanel] = useState('history');
   const requestIdRef = useRef(0);
 
   const loadNotifications = useCallback(async () => {
@@ -127,7 +128,47 @@ export default function SmsHistoryPage() {
       </header>
 
       <main className="sms-history-main">
-        <NotificationOverview />
+        <div className="sms-history-view-tabs" role="tablist" aria-label="문자 현황 보기">
+          <button
+            type="button"
+            role="tab"
+            id="sms-history-tab-history"
+            aria-selected={activePanel === 'history'}
+            aria-controls="sms-history-panel-history"
+            onClick={() => setActivePanel('history')}
+          >
+            발송 내역
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="sms-history-tab-overview"
+            aria-selected={activePanel === 'overview'}
+            aria-controls="sms-history-panel-overview"
+            onClick={() => setActivePanel('overview')}
+          >
+            적용 현황
+          </button>
+        </div>
+
+        <div className="sms-history-workspace">
+          <section
+            className={`sms-history-workspace-panel sms-history-workspace-panel--overview ${activePanel === 'overview' ? 'is-active' : ''}`}
+            id="sms-history-panel-overview"
+            role="tabpanel"
+            aria-labelledby="sms-history-tab-overview"
+            data-sms-panel="overview"
+          >
+            <NotificationOverview />
+          </section>
+
+          <section
+            className={`sms-history-workspace-panel sms-history-workspace-panel--history ${activePanel === 'history' ? 'is-active' : ''}`}
+            id="sms-history-panel-history"
+            role="tabpanel"
+            aria-labelledby="sms-history-tab-history"
+            data-sms-panel="history"
+          >
 
         <section className="sms-history-intro" aria-labelledby="sms-history-title">
           <div>
@@ -144,40 +185,27 @@ export default function SmsHistoryPage() {
         </section>
 
         <section className="sms-history-filter-panel" aria-label="발송내역 조회 조건">
-          <div className="sms-history-filter-section">
-            <strong className="sms-history-filter-label">수신자별 발송내역</strong>
-            <div className="sms-history-recipient-filters" role="group" aria-label="수신자별 발송내역">
-              <button
-                type="button"
-                className={!recipient ? 'is-selected' : ''}
-                aria-pressed={!recipient}
-                onClick={() => {
-                  setRecipient('');
+          <div className="sms-history-filter-controls">
+            <label className="sms-history-filter-section" htmlFor="sms-history-recipient">
+              <span className="sms-history-filter-label">수신자별 발송내역</span>
+              <select
+                id="sms-history-recipient"
+                aria-label="수신자별 발송내역"
+                value={recipient}
+                onChange={event => {
+                  setRecipient(event.target.value);
                   setPage(1);
                   setExpandedId(null);
                 }}
               >
-                전체 수신자
-              </button>
-              {NOTIFICATION_RECIPIENT_FILTERS.map(name => (
-                <button
-                  type="button"
-                  key={name}
-                  className={recipient === name ? 'is-selected' : ''}
-                  aria-pressed={recipient === name}
-                  onClick={() => {
-                    setRecipient(name);
-                    setPage(1);
-                    setExpandedId(null);
-                  }}
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-          </div>
+                <option value="">전체 수신자</option>
+                {NOTIFICATION_RECIPIENT_FILTERS.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </label>
 
-          <div className="sms-history-date-filter">
+            <div className="sms-history-date-filter">
             <label htmlFor="sms-history-date">
               <span className="sms-history-date-label">
                 <span className="sms-history-filter-label">날짜별 보기</span>
@@ -207,6 +235,7 @@ export default function SmsHistoryPage() {
             >
               전체 날짜
             </button>
+            </div>
           </div>
           <p
             className="sms-history-live-status"
@@ -233,6 +262,7 @@ export default function SmsHistoryPage() {
           </div>
         </section>
 
+        <div className="sms-history-list-scroll" data-history-scroll aria-label="문자 발송 기록" tabIndex={0}>
         {status === 'loading' && (
           <div className="sms-history-state" role="status" aria-live="polite">
             <span className="sms-history-spinner" aria-hidden="true" />
@@ -320,6 +350,7 @@ export default function SmsHistoryPage() {
             ))}
           </section>
         )}
+        </div>
 
         {status === 'ready' && pagination.total_pages > 0 && (
           <nav className="sms-history-pagination" aria-label="문자 발송내역 페이지">
@@ -360,6 +391,8 @@ export default function SmsHistoryPage() {
             </button>
           </nav>
         )}
+          </section>
+        </div>
       </main>
     </div>
   );

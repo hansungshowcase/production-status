@@ -33,18 +33,6 @@ function recentSummary(recent, days) {
   return `최근 ${days}일 · ${parts.join(' · ')}`;
 }
 
-function aggregateRecent(groups) {
-  const totals = { total: 0, received: 0, processing: 0, accepted: 0, failed: 0, dry_run: 0 };
-  for (const group of groups || []) {
-    for (const item of group.items || []) {
-      for (const key of Object.keys(totals)) {
-        totals[key] += Number(item.recent?.counts?.[key]) || 0;
-      }
-    }
-  }
-  return totals;
-}
-
 function OverviewItem({ item, days, expanded, onToggle }) {
   const detailsId = `notification-overview-details-${item.id}`;
   return (
@@ -69,10 +57,6 @@ function OverviewItem({ item, days, expanded, onToggle }) {
             <dt>대상</dt>
             <dd>{item.target}</dd>
           </div>
-          <div>
-            <dt>발송 조건</dt>
-            <dd>{item.trigger}</dd>
-          </div>
         </dl>
 
         <button
@@ -82,7 +66,7 @@ function OverviewItem({ item, days, expanded, onToggle }) {
           aria-controls={detailsId}
           onClick={onToggle}
         >
-          <span>{expanded ? '접기' : '상세'}</span>
+          <span>{expanded ? '조건·최근 결과 접기' : '조건·최근 결과'}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -92,6 +76,7 @@ function OverviewItem({ item, days, expanded, onToggle }) {
       {expanded && (
         <div className="notification-overview-details" id={detailsId}>
           <dl>
+            <div><dt>발송 조건</dt><dd>{item.trigger}</dd></div>
             <div><dt>최근 결과</dt><dd>{recentSummary(item.recent, days)}</dd></div>
             <div><dt>발송 시간</dt><dd>{item.timing}</dd></div>
             <div><dt>채널</dt><dd>{item.configuration.channel}</dd></div>
@@ -115,7 +100,8 @@ function OverviewItem({ item, days, expanded, onToggle }) {
 export default function NotificationOverview() {
   const [status, setStatus] = useState('loading');
   const [overview, setOverview] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
+  const [activeGroupId, setActiveGroupId] = useState('customer');
+  const [expandedByGroup, setExpandedByGroup] = useState({ customer: null, internal: null });
   const requestIdRef = useRef(0);
 
   const loadOverview = useCallback(async () => {
@@ -138,7 +124,13 @@ export default function NotificationOverview() {
   }, [loadOverview]);
 
   const days = Number(overview?.recent_period?.days) || 7;
-  const recentTotals = aggregateRecent(overview?.groups);
+  const groups = overview?.groups || [];
+  const customerCount = groups.find(group => group.id === 'customer')?.items?.length || 0;
+  const internalCount = groups.find(group => group.id === 'internal')?.items?.length || 0;
+  const pausedCount = groups.reduce(
+    (count, group) => count + (group.items || []).filter(item => item.policy?.status === 'paused').length,
+    0,
+  );
 
   return (
     <section
@@ -149,8 +141,7 @@ export default function NotificationOverview() {
       <div className="notification-overview__intro">
         <div>
           <p className="notification-overview__eyebrow">자동 알림 적용 현황</p>
-          <h2 id="notification-overview-title">현재 어떤 알림이 누구에게 가는지</h2>
-          <p>실제 발송 진입점과 실행 설정을 기준으로 확인한 현황입니다.</p>
+          <h2 id="notification-overview-title">적용 중인 알림과 대상</h2>
         </div>
         {status === 'ready' && (
           <time dateTime={overview?.checked_at || undefined}>
@@ -179,48 +170,68 @@ export default function NotificationOverview() {
 
       {status === 'ready' && (
         <>
+          <dl className="notification-overview-summary" aria-label="자동 알림 규칙 요약">
+            <div><dt>고객 알림</dt><dd>{customerCount}</dd></div>
+            <div><dt>사내·관리</dt><dd>{internalCount}</dd></div>
+            <div><dt>정책 중단</dt><dd>{pausedCount}</dd></div>
+          </dl>
           {overview?.log_status?.state === 'unavailable' && (
             <p className="notification-overview__log-warning" role="status">
               {overview.log_status.message}
             </p>
           )}
-          {overview?.log_status?.state === 'available' && (
-            <section className="notification-overview-summary" aria-label={`최근 ${days}일 처리 결과`}>
-              <h3>최근 {days}일 처리 결과</h3>
-              <dl>
-                <div><dt>전체</dt><dd>{recentTotals.total}</dd></div>
-                <div><dt>수신 확인</dt><dd>{recentTotals.received}</dd></div>
-                <div><dt>접수 성공</dt><dd>{recentTotals.accepted}</dd></div>
-                <div><dt>처리 중</dt><dd>{recentTotals.processing}</dd></div>
-                <div><dt>실패</dt><dd>{recentTotals.failed}</dd></div>
-                <div><dt>테스트</dt><dd>{recentTotals.dry_run}</dd></div>
-              </dl>
-            </section>
-          )}
-          <div className="notification-overview-groups">
-            {(overview?.groups || []).map(group => (
+          <div
+            className="notification-overview-group-tabs"
+            role="tablist"
+            aria-label="알림 대상 그룹"
+          >
+            {groups.map(group => {
+              const tabId = `notification-overview-tab-${group.id}`;
+              const panelId = `notification-overview-panel-${group.id}`;
+              const label = group.id === 'internal' ? '사내·관리' : group.label;
+              return (
+                <button
+                  type="button"
+                  role="tab"
+                  id={tabId}
+                  key={group.id}
+                  aria-selected={activeGroupId === group.id}
+                  aria-controls={panelId}
+                  onClick={() => setActiveGroupId(group.id)}
+                >
+                  {label} <strong>{group.items.length}</strong>
+                </button>
+              );
+            })}
+          </div>
+          <div className="notification-overview-scroll" aria-label="자동 알림 규칙 목록" tabIndex={0}>
+            <div className="notification-overview-groups">
+            {groups.map(group => (
               <section
                 className="notification-overview-group"
-                aria-labelledby={`notification-overview-group-${group.id}`}
+                role="tabpanel"
+                id={`notification-overview-panel-${group.id}`}
+                aria-labelledby={`notification-overview-tab-${group.id}`}
                 key={group.id}
+                hidden={activeGroupId !== group.id}
               >
-                <div className="notification-overview-group__heading">
-                  <h3 id={`notification-overview-group-${group.id}`}>{group.label}</h3>
-                  <span>{group.items.length}개 규칙</span>
-                </div>
                 <div className="notification-overview-list">
                   {group.items.map(item => (
                     <OverviewItem
                       key={item.id}
                       item={item}
                       days={days}
-                      expanded={expandedId === item.id}
-                      onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
+                      expanded={expandedByGroup[group.id] === item.id}
+                      onToggle={() => setExpandedByGroup(current => ({
+                        ...current,
+                        [group.id]: current[group.id] === item.id ? null : item.id,
+                      }))}
                     />
                   ))}
                 </div>
               </section>
             ))}
+            </div>
           </div>
         </>
       )}

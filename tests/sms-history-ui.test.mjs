@@ -24,7 +24,8 @@ test('문자 발송내역 화면은 모든 수신자를 한 필터에서 선택�
   assert.match(pageSource, /발송 요청 실패/);
   assert.match(pageSource, /테스트 기록/);
   assert.match(pageSource, /aria-label="수신자별 발송내역"/);
-  assert.match(pageSource, /aria-pressed=/);
+  assert.match(pageSource, /<select[\s\S]*id="sms-history-recipient"/);
+  assert.match(pageSource, /<option value="">전체 수신자<\/option>/);
 });
 
 test('상단에서 문자 수신자 전원과 날짜를 선택하고 최신 날짜순으로 묶어 본다', () => {
@@ -66,13 +67,16 @@ test('발송 본문은 접근 가능한 펼침 버튼으로 확인하고 과거 
   assert.match(pageSource, /timeZone:\s*'Asia\/Seoul'/);
   assert.match(pageSource, /role="status"/);
   assert.match(pageSource, /className="sms-history-live-status"/);
+  assert.match(pageCss, /\.sms-history-live-status\s*\{[^}]*word-break:\s*keep-all/s);
   assert.match(pageSource, /aria-live="polite"/);
   assert.match(pageSource, /aria-atomic="true"/);
   assert.match(pageSource, /다시 불러오기/);
 });
 
 test('발송내역 스타일은 공통 토큰과 모바일·태블릿·데스크톱 폭을 지원한다', () => {
-  assert.match(pageCss, /width:\s*min\([^)]+1000px\)/);
+  assert.match(pageCss, /@media \(min-width: 1100px\)[\s\S]*width:\s*calc\(100% - 48px\)/);
+  assert.match(pageCss, /\.sms-history-main\s*\{[\s\S]*width:\s*calc\(100% - 32px\)/);
+  assert.match(pageCss, /grid-template-columns:\s*minmax\(0, 44fr\) minmax\(0, 56fr\)/);
   assert.match(pageCss, /var\(--surface\)/);
   assert.match(pageCss, /var\(--border\)/);
   assert.match(variablesCss, /--space-2:\s*8px/);
@@ -80,10 +84,10 @@ test('발송내역 스타일은 공통 토큰과 모바일·태블릿·데스크
   assert.match(variablesCss, /--space-3:\s*12px/);
   assert.match(pageCss, /padding:\s*var\(--space-2\) var\(--space-3\)/);
   assert.match(variablesCss, /--control-min-inline-size:\s*104px/);
-  assert.match(pageCss, /minmax\(var\(--control-min-inline-size\), 1fr\)/);
+  assert.match(pageCss, /min-height:\s*var\(--control-min-height\)/);
   assert.doesNotMatch(pageCss, /border-radius:\s*9px/);
   assert.doesNotMatch(pageCss, /border-color:\s*rgba\(37, 99, 235, 0\.16\)/);
-  assert.match(pageCss, /@media\s*\(min-width:\s*768px\)/);
+  assert.match(pageCss, /@media\s*\(min-width:\s*1100px\)/);
   assert.match(pageCss, /@media\s*\(max-width:\s*480px\)/);
   assert.match(pageCss, /overflow-wrap:\s*anywhere/);
   assert.match(pageCss, /\.sms-history-body\s*\{[^}]*word-break:\s*keep-all/s);

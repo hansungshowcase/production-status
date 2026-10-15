@@ -112,10 +112,11 @@ All spacing derives from a base of 4px.
 - **Materials motion**: retain page-local `--materials-motion-press: 100ms` and `--materials-motion-ease: cubic-bezier(.22,1,.36,1)`, and add `--materials-motion-reveal: 560ms` plus `--materials-motion-status: 240ms`. On first data and successful new data only, the inner C/U/R segment wrapper scales from `scaleX(0)` to `scaleX(1)` from the left once; the track, counts, and accessible values are final immediately. Selection decoration alone fades/scales from `.45/.98` to `1/1` over 240ms. Do not animate list/card layout, width, height, color, shadow, counts, or use timers/rAF. Reduced motion disables animation and transition across the Materials subtree and removes active transform while leaving final ratios visible.
 
 ### Notification History Controls
-- **Structure**: one wrapping recipient grid beginning with `전체 수신자`, followed by every production, worker, and sales recipient; one native date selector with a clear action.
+- **Workspace**: at 1100px and wider, `/sms-history` uses the viewport width minus 24px on each side, a 20px gap, and a 44/56 split between current notification rules and delivery history. Both panels share the remaining app height; the rule content and history list own independent vertical scrolling while the history filters, summary, and pagination stay visible. Below 1100px, a 44px `발송 내역 / 적용 현황` tab control shows one still-mounted panel at a time, defaults to history, and restores filter, page, disclosure, and scroll state when switched.
+- **Structure**: one native recipient selector beginning with `전체 수신자`, followed by every production, worker, and sales recipient; one native date selector with a clear action. Recipient and date changes keep the existing automatic query behavior.
 - **Dimensions**: interactive controls use the shared `--control-min-height` and `--control-min-inline-size` tokens.
-- **Selected state**: `--blue` text and `--blue-light` surface, reinforced by `aria-pressed`.
-- **Responsive behavior**: recipient buttons wrap by available width and use two equal columns on narrow mobile screens; the date clear action stacks below the input on mobile.
+- **Selected state**: page and group tabs use `--blue` text and `--blue-light` surface, reinforced by `aria-selected`; native filter values remain visible in their controls.
+- **Responsive behavior**: desktop recipient, date, and clear controls share one row; controls and summary values wrap naturally on mobile without clipping or horizontal scroll.
 - **Ordering**: records always render in KST newest-date and newest-time order, independent of API input order; choosing a date narrows the already ordered list.
 - **History boundary**: list and summary queries begin at KST 2026-09-01; older stored records remain intact but are not displayed.
 - **Pagination**: the server returns 10 records per page; navigation shows previous/next actions and at most five numbered pages, resetting to page 1 whenever recipient or date changes.
@@ -126,6 +127,11 @@ All spacing derives from a base of 4px.
 - **Structure**: records are grouped under a KST date heading and count; each surface row contains recipient, masked phone, request status, timestamp, subject, and one disclosure button.
 - **States**: collapsed, expanded, legacy-content fallback, failed, and dry-run.
 - **Accessibility**: status is never color-only; the disclosure exposes `aria-expanded` and `aria-controls`.
+
+### Notification Overview Panel
+- **Overview navigation**: the compact header reports customer 5, internal/administrative 9, and paused 1. A persistent `고객 알림 5 / 사내·관리 9` tab control defaults to customer rules and shows one group at a time; each group retains its own single expanded rule when the group changes.
+- **Rule row**: every collapsed rule shows its full name, policy/configuration badges, and full recipient description. One 44px `조건·최근 결과` disclosure contains the trigger, timing, channel, recent result, configuration reason, and checked time. Text wraps naturally and is never ellipsized.
+- **Scroll and accessibility**: the rule list is the overview panel's desktop scroll owner. Page tabs, group tabs, retry actions, and disclosures keep visible keyboard focus, native button semantics, and shared spacing, surface, radius, and color tokens.
 
 ## 6. Motion & Interaction
 
