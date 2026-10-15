@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getTrackInfo, TrackApiError } from '../api/track';
+import { resolveInquiryRoute } from './inquiryRouting';
 import './TrackPage.css';
 
 /* ── 상수 ─────────────────────────────────────────── */
@@ -272,6 +273,7 @@ export default function TrackPage() {
     ? `#${data.order_no}`
     : (token ? `#HS-${String(token).slice(0, 6).toUpperCase()}` : '');
   const managerName = data?.manager_name || null;
+  const inquiryRoute = resolveInquiryRoute(managerName);
 
   // 카카오 문의 클릭 → 주문번호·담당자가 담긴 문의 문구를 클립보드에 복사 (채팅방에 붙여넣기용)
   // 복사 실패해도 채팅방 이동은 그대로 진행
@@ -286,7 +288,7 @@ export default function TrackPage() {
       `· 주문번호: ${orderNo.replace(/^#/, '')}`,
     ];
     if (product) lines.push(`· 문형: ${product}`);
-    if (managerName) lines.push(`· 담당: ${managerName}`);
+    if (inquiryRoute.manager) lines.push(`· 담당: ${inquiryRoute.manager}`);
     lines.push('', '문의 내용: ');
     return lines.join('\n');
   };
@@ -424,31 +426,42 @@ export default function TrackPage() {
                 </div>
               ) : null}
 
-              {/* 문의 안내 — 카카오톡 채널 채팅으로만 접수 (전화 문의 없음).
-                  클릭 시 주문번호·담당자 문구 자동 복사 → 채널 채팅에서 담당자 즉시 식별 */}
+              {/* 문의 안내 — 담당 영업자별 고객 문의 경로 */}
               <div className="track-notice">
                 <b>궁금하신 점이 있으신가요?</b><br />
-                제작·출고 일정은 이 페이지에서 실시간으로 안내됩니다. 추가 문의는 카카오톡으로 편하게 남겨주세요.
-                {managerName ? (
-                  <div className="track-manager">담당 영업: <b>{managerName}</b></div>
+                제작·출고 일정은 이 페이지에서 실시간으로 안내됩니다.{' '}
+                {inquiryRoute.kind === 'kakao' && '추가 문의는 카카오톡으로 편하게 남겨주세요.'}
+                {inquiryRoute.kind === 'sms' && '출고 관련 문의는 신은철 담당자에게 문자로 문의해 주세요.'}
+                {inquiryRoute.kind === 'manager' && '출고 관련 문의는 담당 영업사원에게 확인해 주세요.'}
+                {inquiryRoute.manager ? (
+                  <div className="track-manager">담당 영업: <b>{inquiryRoute.manager}</b></div>
                 ) : null}
-                <a
-                  className="track-btn-kakao"
-                  href="http://pf.kakao.com/_vxmpfn/chat"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={handleKakaoInquiry}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">
-                    <path d="M12 3C6.48 3 2 6.58 2 10.5c0 2.52 1.65 4.73 4.13 6.01l-.98 3.62c-.09.32.28.58.56.4l4.34-2.86c.63.09 1.28.13 1.95.13 5.52 0 10-3.58 10-7.5S17.52 3 12 3z" />
-                  </svg>
-                  카카오톡으로 문의하기
-                </a>
-                <div className="track-inquiry-hint">
-                  {inquiryCopied
-                    ? '주문번호가 복사되었습니다. 채팅창에 붙여넣어 주세요 ✓'
-                    : '버튼을 누르면 주문번호가 자동 복사됩니다'}
-                </div>
+                {inquiryRoute.kind === 'kakao' && (
+                  <>
+                    <a
+                      className="track-btn-kakao"
+                      href={inquiryRoute.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={handleKakaoInquiry}
+                    >
+                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor">
+                        <path d="M12 3C6.48 3 2 6.58 2 10.5c0 2.52 1.65 4.73 4.13 6.01l-.98 3.62c-.09.32.28.58.56.4l4.34-2.86c.63.09 1.28.13 1.95.13 5.52 0 10-3.58 10-7.5S17.52 3 12 3z" />
+                      </svg>
+                      카카오톡으로 문의하기
+                    </a>
+                    <div className="track-inquiry-hint">
+                      {inquiryCopied
+                        ? '주문번호가 복사되었습니다. 채팅창에 붙여넣어 주세요 ✓'
+                        : '버튼을 누르면 주문번호가 자동 복사됩니다'}
+                    </div>
+                  </>
+                )}
+                {inquiryRoute.kind === 'sms' && (
+                  <a className="track-btn-sms" href={inquiryRoute.href}>
+                    문자로 문의하기 <span>{inquiryRoute.phone}</span>
+                  </a>
+                )}
               </div>
             </>
           )}

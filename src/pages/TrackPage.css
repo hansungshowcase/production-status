@@ -427,22 +427,27 @@
   margin-bottom: 14px;
 }
 .track-notice b { color: var(--tp-text); }
-/* 카카오톡 문의 버튼 — 전화 문의 없음, 카카오 채널 채팅 단일 창구 */
-.track-btn-kakao {
+/* 담당 영업자별 고객 문의 버튼 */
+.track-btn-kakao,
+.track-btn-sms {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   margin-top: 13px;
   padding: 12px 10px;
+  min-height: 44px;
   border-radius: 11px;
-  background: #fee500;
-  color: #191919;
   font-size: 14px;
   font-weight: 800;
   text-decoration: none;
 }
-.track-btn-kakao:active { filter: brightness(0.95); }
+.track-btn-kakao { background: #fee500; color: #191919; }
+.track-btn-sms { background: var(--tp-brand-soft); color: var(--tp-brand); }
+.track-btn-kakao:active,
+.track-btn-sms:active { filter: brightness(0.95); }
+.track-btn-kakao:focus-visible,
+.track-btn-sms:focus-visible { outline: 3px solid var(--tp-brand-2); outline-offset: 2px; }
 .track-manager {
   margin-top: 10px;
   font-size: 12.5px;
