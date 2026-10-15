@@ -8,7 +8,8 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--sms-white);
+  color: var(--sms-ink);
   box-shadow: var(--shadow);
 }
 
@@ -21,7 +22,7 @@
 
 .notification-overview__eyebrow {
   margin: 0 0 var(--space-1);
-  color: var(--blue);
+  color: var(--sms-selected);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -54,8 +55,8 @@
   margin: var(--space-2) 0 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--blue-light);
-  color: var(--blue-dark);
+  background: var(--sms-customer-bg);
+  color: var(--sms-customer-ink);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
@@ -63,8 +64,8 @@
 }
 
 .notification-overview__log-warning {
-  background: var(--orange-light);
-  color: var(--text-mid);
+  background: var(--sms-attention-bg);
+  color: var(--sms-attention-ink);
 }
 
 .notification-overview-state {
@@ -84,7 +85,7 @@
   text-align: center;
 }
 
-.notification-overview-state--error { background: var(--red-light); }
+.notification-overview-state--error { background: var(--sms-paused-bg); color: var(--sms-paused-ink); }
 .notification-overview-state strong { color: var(--text); font-size: 16px; }
 
 .notification-overview-state button {
@@ -107,7 +108,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface2);
+  background: var(--sms-white);
 }
 
 .notification-overview-summary > div {
@@ -120,9 +121,15 @@
 }
 
 .notification-overview-summary > div + div { border-left: 1px solid var(--border); }
+.notification-overview-summary > div:nth-child(1) { background: var(--sms-customer-bg); }
+.notification-overview-summary > div:nth-child(2) { background: var(--sms-employee-bg); }
+.notification-overview-summary > div:nth-child(3) { background: var(--sms-paused-bg); }
+.notification-overview-summary > div:nth-child(1) dd { color: var(--sms-customer-ink); }
+.notification-overview-summary > div:nth-child(2) dd { color: var(--sms-employee-ink); }
+.notification-overview-summary > div:nth-child(3) dd { color: var(--sms-paused-ink); }
 
 .notification-overview-summary dt {
-  color: var(--text-dim);
+  color: var(--sms-ink);
   font-size: 12px;
   font-weight: 700;
 }
@@ -142,7 +149,7 @@
   padding: var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface2);
+  background: var(--sms-customer-bg);
 }
 
 .notification-overview-group-tabs button {
@@ -159,8 +166,8 @@
 }
 
 .notification-overview-group-tabs button[aria-selected='true'] {
-  background: var(--surface);
-  color: var(--blue-dark);
+  background: var(--sms-selected);
+  color: var(--sms-white);
   box-shadow: var(--shadow);
 }
 
@@ -187,7 +194,8 @@
   padding: var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface2);
+  border-left: 3px solid var(--sms-unknown-ink);
+  background: var(--sms-white);
 }
 
 .notification-overview-item__row {
@@ -221,30 +229,40 @@
   min-height: 24px;
   padding: var(--space-1) var(--space-2);
   border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-mid);
+  background: var(--sms-unknown-bg);
+  color: var(--sms-unknown-ink);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.3;
 }
 
-.notification-overview-badge--policy-active,
 .notification-overview-badge--ready {
-  background: var(--green-light);
-  color: var(--text);
+  background: var(--sms-employee-bg);
+  color: var(--sms-employee-ink);
 }
 
-.notification-overview-badge--policy-paused,
-.notification-overview-badge--incomplete {
-  background: var(--red-light);
-  color: var(--text);
+.notification-overview-badge--paused,
+.notification-overview-badge--off {
+  background: var(--sms-paused-bg);
+  color: var(--sms-paused-ink);
 }
 
-.notification-overview-badge--test,
+.notification-overview-badge--incomplete,
 .notification-overview-badge--conditional {
-  background: var(--orange-light);
-  color: var(--text-mid);
+  background: var(--sms-attention-bg);
+  color: var(--sms-attention-ink);
 }
+
+.notification-overview-badge--test { background: var(--sms-test-bg); color: var(--sms-test-ink); }
+.notification-overview-badge--unknown { background: var(--sms-unknown-bg); color: var(--sms-unknown-ink); }
+
+.notification-overview-item--ready { border-left-color: var(--sms-employee-ink); }
+.notification-overview-item--paused,
+.notification-overview-item--off { border-left-color: var(--sms-paused-ink); }
+.notification-overview-item--incomplete,
+.notification-overview-item--conditional { border-left-color: var(--sms-attention-ink); }
+.notification-overview-item--test { border-left-color: var(--sms-test-ink); }
+.notification-overview-item--unknown { border-left-color: var(--sms-unknown-ink); }
 
 .notification-overview-facts {
   grid-column: 1 / -1;
@@ -256,7 +274,7 @@
 
 .notification-overview-facts dt,
 .notification-overview-details dt {
-  color: var(--text-dim);
+  color: var(--sms-unknown-ink);
   font-size: 12px;
   font-weight: 800;
 }
@@ -308,9 +326,9 @@
 .notification-overview-details {
   margin-top: var(--space-2);
   padding: var(--space-3);
-  border-left: 3px solid var(--blue);
+  border-left: 3px solid var(--sms-selected);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--blue-light);
+  background: var(--sms-customer-bg);
 }
 
 .notification-overview-details dl {

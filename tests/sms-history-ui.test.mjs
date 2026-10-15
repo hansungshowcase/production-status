@@ -17,12 +17,13 @@ test('문자 발송내역은 인증 없이 여는 지연 로딩 경로로 연결
   assert.match(apiSource, /cache:\s*'no-store'/);
 });
 
-test('문자 발송내역 화면은 모든 수신자를 한 필터에서 선택하고 쏠라피 접수 상태를 제공한다', () => {
+test('문자 발송내역 화면은 모든 수신자를 한 필터에서 선택하고 쉬운 요청 상태를 제공한다', () => {
   assert.doesNotMatch(pageSource, /label:\s*'간부'/);
   assert.doesNotMatch(pageSource, /label:\s*'팀원'/);
-  assert.match(pageSource, /쏠라피 접수 성공/);
+  assert.match(pageSource, /발송 요청 완료/);
   assert.match(pageSource, /발송 요청 실패/);
-  assert.match(pageSource, /테스트 기록/);
+  assert.match(pageSource, /시험 기록/);
+  assert.match(pageSource, /실제 수신 여부와는 다릅니다/);
   assert.match(pageSource, /aria-label="수신자별 발송내역"/);
   assert.match(pageSource, /<select[\s\S]*id="sms-history-recipient"/);
   assert.match(pageSource, /<option value="">전체 수신자<\/option>/);

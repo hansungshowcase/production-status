@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchNotificationOverview } from '../api/notificationOverview';
+import {
+  notificationChannelPresentation,
+  notificationLogMessagePresentation,
+  notificationReasonPresentation,
+  notificationRecentLabelPresentation,
+  notificationStatusPresentation,
+  notificationTextPresentation,
+} from './notificationOverviewPresentation';
 import './NotificationOverview.css';
 
 const KST_DATE_TIME = new Intl.DateTimeFormat('ko-KR', {
@@ -18,44 +26,43 @@ function formatDateTime(value) {
   return Number.isNaN(date.getTime()) ? '기록 없음' : KST_DATE_TIME.format(date);
 }
 function recentSummary(recent, days) {
-  if (recent?.state === 'unavailable') return '최근 처리 결과 조회 불가';
+  if (recent?.state === 'unavailable') return '최근 처리 결과를 불러올 수 없음';
   const counts = recent?.counts || {};
   if (!counts.total) return `최근 ${days}일 기록 없음`;
   const parts = [
     `총 ${counts.total}건`,
     `수신 확인 ${counts.received || 0}건`,
-    `접수 성공 ${counts.accepted || 0}건`,
+    `발송 요청 완료 ${counts.accepted || 0}건`,
   ];
-  if (counts.processing) parts.push(`처리 중 ${counts.processing}건`);
+  if (counts.processing) parts.push(`전달 확인 중 ${counts.processing}건`);
   if (counts.failed) parts.push(`실패 ${counts.failed}건`);
-  if (counts.dry_run) parts.push(`테스트 ${counts.dry_run}건`);
-  if (counts.other) parts.push(`기타 ${counts.other}건`);
+  if (counts.dry_run) parts.push(`시험 ${counts.dry_run}건`);
+  if (counts.other) parts.push(`상태 확인 필요 ${counts.other}건`);
   return `최근 ${days}일 · ${parts.join(' · ')}`;
 }
 
 function OverviewItem({ item, days, expanded, onToggle }) {
   const detailsId = `notification-overview-details-${item.id}`;
+  const state = notificationStatusPresentation(item);
   return (
-    <article className="notification-overview-item" data-notification-rule={item.id}>
+    <article
+      className={`notification-overview-item notification-overview-item--${state.key}`}
+      data-notification-rule={item.id}
+    >
       <div className="notification-overview-item__row">
         <div className="notification-overview-item__heading">
           <h4>{item.name}</h4>
           <div className="notification-overview-badges">
-            <span className={`notification-overview-badge notification-overview-badge--policy-${item.policy.status}`}>
-              {item.policy.label}
+            <span className={`notification-overview-badge notification-overview-badge--${state.key}`}>
+              {state.label}
             </span>
-            {item.policy.status !== 'paused' && (
-              <span className={`notification-overview-badge notification-overview-badge--${item.configuration.status}`}>
-                {item.configuration.label}
-              </span>
-            )}
           </div>
         </div>
 
         <dl className="notification-overview-facts">
           <div>
-            <dt>대상</dt>
-            <dd>{item.target}</dd>
+            <dt>받는 사람</dt>
+            <dd>{notificationTextPresentation(item.target)}</dd>
           </div>
         </dl>
 
@@ -66,7 +73,7 @@ function OverviewItem({ item, days, expanded, onToggle }) {
           aria-controls={detailsId}
           onClick={onToggle}
         >
-          <span>{expanded ? '조건·최근 결과 접기' : '조건·최근 결과'}</span>
+          <span>{expanded ? '자세히 접기' : '자세히 보기'}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -76,17 +83,17 @@ function OverviewItem({ item, days, expanded, onToggle }) {
       {expanded && (
         <div className="notification-overview-details" id={detailsId}>
           <dl>
-            <div><dt>발송 조건</dt><dd>{item.trigger}</dd></div>
+            <div><dt>언제 보내나</dt><dd>{notificationTextPresentation(item.trigger)}</dd></div>
             <div><dt>최근 결과</dt><dd>{recentSummary(item.recent, days)}</dd></div>
-            <div><dt>발송 시간</dt><dd>{item.timing}</dd></div>
-            <div><dt>채널</dt><dd>{item.configuration.channel}</dd></div>
-            <div><dt>설정 판단</dt><dd>{item.configuration.reason}</dd></div>
+            <div><dt>발송 시간</dt><dd>{notificationTextPresentation(item.timing)}</dd></div>
+            <div><dt>보내는 방법</dt><dd>{notificationChannelPresentation(item.configuration.channel)}</dd></div>
+            <div><dt>이 상태로 표시한 이유</dt><dd>{notificationReasonPresentation(item.configuration.reason)}</dd></div>
             <div><dt>확인 시각</dt><dd>{formatDateTime(item.checked_at)}</dd></div>
             {item.recent?.latest && (
               <div>
                 <dt>마지막 기록</dt>
                 <dd>
-                  {`${item.recent.latest.label}${item.recent.latest.channel ? ` · ${item.recent.latest.channel}` : ''} · ${formatDateTime(item.recent.latest.occurred_at)}`}
+                  {`${notificationRecentLabelPresentation(item.recent.latest.label)}${item.recent.latest.channel ? ` · ${notificationChannelPresentation(item.recent.latest.channel)}` : ''} · ${formatDateTime(item.recent.latest.occurred_at)}`}
                 </dd>
               </div>
             )}
@@ -141,7 +148,7 @@ export default function NotificationOverview() {
       <div className="notification-overview__intro">
         <div>
           <p className="notification-overview__eyebrow">자동 알림 적용 현황</p>
-          <h2 id="notification-overview-title">적용 중인 알림과 대상</h2>
+          <h2 id="notification-overview-title">자동 알림과 받는 사람</h2>
         </div>
         {status === 'ready' && (
           <time dateTime={overview?.checked_at || undefined}>
@@ -151,7 +158,7 @@ export default function NotificationOverview() {
       </div>
 
       <p className="notification-overview__notice">
-        제공사 접수 성공은 전송 요청이 접수됐다는 뜻입니다. 실제 수신은 전달 결과가 확인된 기록만 별도로 표시합니다.
+        발송 요청 완료는 문자 서비스에 요청이 접수됐다는 뜻이며, 실제 수신 여부와는 다릅니다.
       </p>
 
       {status === 'loading' && (
@@ -170,14 +177,14 @@ export default function NotificationOverview() {
 
       {status === 'ready' && (
         <>
-          <dl className="notification-overview-summary" aria-label="자동 알림 규칙 요약">
+          <dl className="notification-overview-summary" aria-label="자동 알림 종류 요약">
             <div><dt>고객 알림</dt><dd>{customerCount}</dd></div>
-            <div><dt>사내·관리</dt><dd>{internalCount}</dd></div>
-            <div><dt>정책 중단</dt><dd>{pausedCount}</dd></div>
+            <div><dt>직원 알림</dt><dd>{internalCount}</dd></div>
+            <div><dt>보내지 않음</dt><dd>{pausedCount}</dd></div>
           </dl>
           {overview?.log_status?.state === 'unavailable' && (
             <p className="notification-overview__log-warning" role="status">
-              {overview.log_status.message}
+              {notificationLogMessagePresentation(overview.log_status.message)}
             </p>
           )}
           <div
@@ -188,7 +195,7 @@ export default function NotificationOverview() {
             {groups.map(group => {
               const tabId = `notification-overview-tab-${group.id}`;
               const panelId = `notification-overview-panel-${group.id}`;
-              const label = group.id === 'internal' ? '사내·관리' : group.label;
+              const label = group.id === 'internal' ? '직원 알림' : group.label;
               return (
                 <button
                   type="button"
@@ -204,7 +211,7 @@ export default function NotificationOverview() {
               );
             })}
           </div>
-          <div className="notification-overview-scroll" aria-label="자동 알림 규칙 목록" tabIndex={0}>
+          <div className="notification-overview-scroll" aria-label="자동 알림 종류 목록" tabIndex={0}>
             <div className="notification-overview-groups">
             {groups.map(group => (
               <section

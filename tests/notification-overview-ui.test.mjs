@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import {
+  notificationChannelPresentation,
+  notificationRecentLabelPresentation,
+  notificationReasonPresentation,
+  notificationStatusPresentation,
+  notificationTextPresentation,
+} from '../src/components/notificationOverviewPresentation.js';
 
 const pageSource = readFileSync(new URL('../src/pages/SmsHistoryPage.jsx', import.meta.url), 'utf8');
 const pageCss = readFileSync(new URL('../src/pages/SmsHistoryPage.css', import.meta.url), 'utf8');
@@ -33,14 +40,14 @@ test('규칙 상세는 키보드 버튼 의미와 상태 연결을 제공한다'
   assert.match(componentSource, /aria-controls=\{detailsId\}/);
   assert.match(componentCss, /\.notification-overview-disclosure:focus-visible/);
   assert.match(componentCss, /outline:\s*3px solid var\(--blue\)/);
-  assert.match(componentSource, /item\.policy\.status !== 'paused'/);
+  assert.doesNotMatch(componentSource, /item\.policy\.label|item\.configuration\.label/);
 });
 
 test('현황은 요약과 고객·사내 그룹 탭을 고정하고 선택 그룹만 노출한다', () => {
   assert.match(componentSource, /className="notification-overview-summary"/);
   assert.match(componentSource, /고객 알림/);
-  assert.match(componentSource, /사내·관리/);
-  assert.match(componentSource, /정책 중단/);
+  assert.match(componentSource, /직원 알림/);
+  assert.match(componentSource, /보내지 않음/);
   assert.match(componentSource, /role="tablist"/);
   assert.match(componentSource, /activeGroupId/);
   assert.match(componentSource, /hidden=\{activeGroupId !== group\.id\}/);
@@ -51,14 +58,13 @@ test('현황은 요약과 고객·사내 그룹 탭을 고정하고 선택 그�
 });
 
 test('규칙 기본 행은 전체 대상을 보이고 조건과 최근 결과는 하나의 상세에 보존한다', () => {
-  assert.match(componentSource, /<dt>대상<\/dt>/);
-  assert.match(componentSource, /조건·최근 결과/);
-  assert.match(componentSource, /<dt>발송 조건<\/dt>/);
+  assert.match(componentSource, /<dt>받는 사람<\/dt>/);
+  assert.match(componentSource, /자세히 보기/);
+  assert.match(componentSource, /<dt>언제 보내나<\/dt>/);
   assert.match(componentSource, /<dt>최근 결과<\/dt>/);
   assert.match(componentCss, /@media \(max-width: 480px\)/);
   assert.match(componentCss, /overflow-wrap:\s*anywhere/);
   assert.match(componentCss, /min-width:\s*0/);
-  assert.doesNotMatch(componentCss, /#[0-9a-f]{3,8}/i);
 });
 
 test('데스크톱은 44대56 패널과 독립 스크롤, 좁은 화면은 상태 보존 탭을 사용한다', () => {
@@ -75,7 +81,69 @@ test('데스크톱은 44대56 패널과 독립 스크롤, 좁은 화면은 상�
   assert.match(componentCss, /\.notification-overview-disclosure\s*\{[\s\S]*grid-column:\s*2;[\s\S]*grid-row:\s*1/);
 });
 
-test('작은 상태 배지는 기존 배경 토큰과 고대비 text 토큰을 사용한다', () => {
-  assert.match(componentCss, /notification-overview-badge--ready[\s\S]*background:\s*var\(--green-light\)[\s\S]*color:\s*var\(--text\)/);
-  assert.match(componentCss, /notification-overview-badge--incomplete[\s\S]*background:\s*var\(--red-light\)[\s\S]*color:\s*var\(--text\)/);
+test('상태는 우선순위에 따라 쉬운 문구 하나로 표시하고 미지원 값은 단정하지 않는다', () => {
+  assert.deepEqual(
+    notificationStatusPresentation({ policy: { status: 'paused' }, configuration: { status: 'ready' } }),
+    { key: 'paused', label: '보내지 않음' },
+  );
+  assert.deepEqual(
+    notificationStatusPresentation({
+      id: 'customer_started',
+      policy: { status: 'active' },
+      configuration: { status: 'incomplete', reason: '제작 시작 알림 사용 설정이 꺼져 있습니다.' },
+    }),
+    { key: 'off', label: '알림 꺼짐' },
+  );
+  for (const [status, label] of [
+    ['test', '시험 모드'],
+    ['incomplete', '설정 필요'],
+    ['ready', '자동 발송 설정됨'],
+    ['conditional', '추가 확인 필요'],
+    ['unknown', '상태 확인 필요'],
+  ]) {
+    assert.equal(notificationStatusPresentation({ policy: { status: 'active' }, configuration: { status } }).label, label);
+  }
+  assert.equal(
+    notificationStatusPresentation({
+      id: 'different_rule',
+      policy: { status: 'active' },
+      configuration: { status: 'incomplete', reason: '제작 시작 알림 사용 설정이 꺼져 있습니다.' },
+    }).label,
+    '설정 필요',
+  );
+  assert.equal(notificationStatusPresentation({ policy: { status: 'active' }, configuration: { status: 'future-mode' } }).label, '상태 확인 필요');
+  for (const unsupportedStatus of ['off', 'paused', '__proto__', 'toString']) {
+    assert.equal(
+      notificationStatusPresentation({ policy: { status: 'active' }, configuration: { status: unsupportedStatus } }).label,
+      '상태 확인 필요',
+    );
+  }
+  assert.equal(notificationStatusPresentation({ policy: { status: 'future-policy' }, configuration: { status: 'ready' } }).label, '상태 확인 필요');
+  assert.equal(notificationReasonPresentation('지원하지 않는 새 사유'), '자세한 이유는 확인이 필요합니다.');
+  assert.notEqual(
+    notificationReasonPresentation('평일 예약 실행과 LMS 발송 조건이 충족되었습니다.'),
+    notificationReasonPresentation('이벤트 발생 시 LMS 발송 조건이 충족되었습니다.'),
+  );
+  assert.doesNotMatch(componentSource, /정책 사용/);
+});
+
+test('기술 용어는 정해진 쉬운 말로만 바꾸고 의미와 조건을 보존한다', () => {
+  assert.equal(notificationTextPresentation('KST 08:00 · 멱등 발송'), '한국시간 08:00 · 같은 안내를 중복해서 보내지 않음');
+  assert.equal(
+    notificationTextPresentation('사내 internal_* 및 chonbe_alert의 수신거부·차단 결과 감지'),
+    '직원 알림과 분체 미착수 영업 알림에서 수신거부·차단 결과가 확인될 때',
+  );
+  assert.match(notificationTextPresentation('미매핑 담당자는 제외'), /연락처가 등록되지 않은 담당자는 제외/);
+  assert.equal(notificationChannelPresentation('LMS'), '장문문자');
+  assert.equal(notificationChannelPresentation('future-channel'), '보내는 방법 확인 필요');
+  assert.equal(notificationRecentLabelPresentation('제공사 접수 성공'), '발송 요청 완료');
+  assert.equal(notificationRecentLabelPresentation('future-result'), '처리 상태 확인 필요');
+});
+
+test('페이지 전용 밝은 상태 팔레트는 지정 색과 텍스트 대비 조합을 사용한다', () => {
+  for (const color of ['#FFFFFF', '#172033', '#EAF4FF', '#174EA6', '#1D4ED8', '#DDF8EE', '#065F46', '#FFE4EC', '#9F1239', '#FFF2CC', '#854D0E', '#EEE8FF', '#5B21B6', '#EEF2F7', '#374151']) {
+    assert.match(pageCss, new RegExp(color, 'i'));
+  }
+  assert.match(componentCss, /notification-overview-badge--ready[^}]*background:\s*var\(--sms-employee-bg\)[^}]*color:\s*var\(--sms-employee-ink\)/s);
+  assert.match(componentCss, /notification-overview-badge--paused[\s\S]*background:\s*var\(--sms-paused-bg\)[\s\S]*color:\s*var\(--sms-paused-ink\)/);
 });

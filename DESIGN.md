@@ -125,13 +125,15 @@ All spacing derives from a base of 4px.
 
 ### Notification History Item
 - **Structure**: records are grouped under a KST date heading and count; each surface row contains recipient, masked phone, request status, timestamp, subject, and one disclosure button.
-- **States**: collapsed, expanded, legacy-content fallback, failed, and dry-run.
+- **States**: collapsed, expanded, legacy-content fallback, failed, and dry-run. Provider acceptance is displayed as `발송 요청 완료`; it is always explained as distinct from confirmed receipt.
 - **Accessibility**: status is never color-only; the disclosure exposes `aria-expanded` and `aria-controls`.
 
 ### Notification Overview Panel
-- **Overview navigation**: the compact header reports customer 5, internal/administrative 9, and paused 1. A persistent `고객 알림 5 / 사내·관리 9` tab control defaults to customer rules and shows one group at a time; each group retains its own single expanded rule when the group changes.
-- **Rule row**: every collapsed rule shows its full name, policy/configuration badges, and full recipient description. One 44px `조건·최근 결과` disclosure contains the trigger, timing, channel, recent result, configuration reason, and checked time. Text wraps naturally and is never ellipsized.
+- **Overview navigation**: the compact header reports customer 5, employee 9, and not-sent 1. A persistent `고객 알림 5 / 직원 알림 9` tab control defaults to customer rules and shows one group at a time; each group retains its own single expanded rule when the group changes.
+- **Plain-language state**: every rule shows exactly one visible state in this priority: `보내지 않음`, the exact supported `알림 꺼짐`, `시험 모드`, `설정 필요`, `자동 발송 설정됨`, `추가 확인 필요`, then `상태 확인 필요`. `자동 발송 설정됨` means the system is configured to try when its condition applies; it never claims delivery or receipt. Unknown reasons remain `자세한 이유는 확인이 필요합니다.` instead of being inferred.
+- **Rule row**: every collapsed rule shows its full name, one state badge, and full `받는 사람` description. One 44px `자세히 보기` disclosure contains when it sends, timing in `한국시간`, `보내는 방법`, recent result, the reason for the displayed state, and checked time. `장문문자` replaces the provider term `LMS`; duplicate prevention is explained as `같은 안내를 중복해서 보내지 않음`. Text wraps naturally and is never ellipsized.
 - **Scroll and accessibility**: the rule list is the overview panel's desktop scroll owner. Page tabs, group tabs, retry actions, and disclosures keep visible keyboard focus, native button semantics, and shared spacing, surface, radius, and color tokens.
+- **Page-local status palette**: `/sms-history` defines white/ink `#FFFFFF/#172033`, customer sky `#EAF4FF/#174EA6`, selected tab `#1D4ED8/#FFFFFF`, employee/ready mint `#DDF8EE/#065F46`, paused/off pink `#FFE4EC/#9F1239`, setup/check amber `#FFF2CC/#854D0E`, test violet `#EEE8FF/#5B21B6`, and unknown gray `#EEF2F7/#374151`. Summary cells, selected tabs, the history heading, and the filter area use these surfaces; color always accompanies visible text and never implies confirmed receipt.
 
 ## 6. Motion & Interaction
 

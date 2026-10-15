@@ -10,9 +10,9 @@ import {
 import './SmsHistoryPage.css';
 
 const STATUS_META = {
-  success: { label: '쏠라피 접수 성공', className: 'success' },
+  success: { label: '발송 요청 완료', className: 'success' },
   failed: { label: '발송 요청 실패', className: 'failed' },
-  dry_run: { label: '테스트 기록', className: 'dry-run' },
+  dry_run: { label: '시험 기록', className: 'dry-run' },
 };
 
 const AUDIENCE_LABELS = {
@@ -179,8 +179,8 @@ export default function SmsHistoryPage() {
             </p>
           </div>
           <p className="sms-history-notice">
-            ‘접수 성공’은 쏠라피가 발송 요청을{' '}
-            <span className="sms-history-keep-together">정상 접수했다는 뜻입니다.</span>
+            발송 요청 완료는 문자 서비스에 요청이 접수됐다는 뜻이며,{' '}
+            <span className="sms-history-keep-together">실제 수신 여부와는 다릅니다.</span>
           </p>
         </section>
 
@@ -253,7 +253,7 @@ export default function SmsHistoryPage() {
             <strong>{summary.total}</strong>
           </div>
           <div className="sms-history-summary__cell sms-history-summary__cell--success">
-            <span>접수 성공</span>
+            <span>발송 요청 완료</span>
             <strong>{summary.success}</strong>
           </div>
           <div className="sms-history-summary__cell sms-history-summary__cell--failed">
