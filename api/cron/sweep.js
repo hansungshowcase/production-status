@@ -1,6 +1,6 @@
 // 스윕 크론 — 매일 23:30 UTC (= KST 08:30, 조용시간 해제 직후)
 // 1) queued(조용시간 대기)/failed(재시도, 최대 3회)/sending(5분+ 방치 = 크래시 잔재) 마일스톤 재발송
-// 2) 훅 누락 복구: 마일스톤에 도달했는데 notify_state 미기록인 packed/shipped 스캔
+// 2) 훅 누락 복구: 포장 완료에 도달했는데 notify_state 미기록인 packed 스캔
 //    (최근 3일 내 발생 건만 — 과거 데이터에 뒤늦은 알림 폭주 방지)
 // 인증: Authorization: Bearer {CRON_SECRET} (Vercel Cron 이 CRON_SECRET env 존재 시 자동 첨부)
 import crypto from 'crypto';
@@ -57,8 +57,11 @@ export default cors(async function handler(req, res) {
     sql: `SELECT o.* FROM orders o
            WHERE EXISTS (
              SELECT 1 FROM jsonb_each(COALESCE(o.notify_state, '{}'::jsonb)) kv
-              WHERE kv.value ->> 'status' IN ('queued', 'failed')
-                 OR (kv.value ->> 'status' = 'sending' AND COALESCE(kv.value ->> 'at', '') < ?)
+              WHERE kv.key <> 'shipped'
+                AND (
+                  kv.value ->> 'status' IN ('queued', 'failed')
+                  OR (kv.value ->> 'status' = 'sending' AND COALESCE(kv.value ->> 'at', '') < ?)
+                )
            )
            ORDER BY o.id
            LIMIT 100`,
@@ -72,6 +75,7 @@ export default cors(async function handler(req, res) {
   for (const order of pendingOrders) {
     const state = (order.notify_state && typeof order.notify_state === 'object') ? order.notify_state : {};
     for (const [key, val] of Object.entries(state)) {
+      if (key === 'shipped') continue;
       const status = val?.status;
       const staleSending = status === 'sending' && String(val?.at || '') < staleBefore;
       if (status !== 'queued' && status !== 'failed' && !staleSending) continue;
@@ -105,9 +109,8 @@ export default cors(async function handler(req, res) {
   }
 
   const sinceIso = new Date(Date.now() - RECOVER_WINDOW_MS).toISOString();
-  const sinceDate = sinceIso.slice(0, 10);
 
-  // packed: 포장 공정 completed 인데 notify_state.packed 미기록 (미출고 건만 — 이미 출고면 shipped 가 우선)
+  // packed: 포장 공정 completed 인데 notify_state.packed 미기록인 미출고 건
   const { rows: missedPacked } = await db.execute({
     sql: `SELECT DISTINCT ON (o.id) o.*
             FROM orders o
@@ -121,20 +124,6 @@ export default cors(async function handler(req, res) {
   });
   for (const order of missedPacked) {
     await runNotify(order, 'packed', {}, 'recoveredPacked');
-  }
-
-  // shipped: status='shipped' 인데 notify_state.shipped 미기록
-  const { rows: missedShipped } = await db.execute({
-    sql: `SELECT o.* FROM orders o
-           WHERE o.status = 'shipped'
-             AND (o.notify_state -> 'shipped') IS NULL
-             AND COALESCE(o.ship_date, '') >= ?
-           ORDER BY o.id
-           LIMIT 50`,
-    args: [sinceDate],
-  });
-  for (const order of missedShipped) {
-    await runNotify(order, 'shipped', {}, 'recoveredShipped');
   }
 
   return res.json({ ok: true, ...summary });

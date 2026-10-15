@@ -151,7 +151,7 @@ export function buildMessage(order, milestone, trackUrl, extra = {}) {
         `- 예상 출고일: ${출고예정}`,
         ...(조회링크 ? ['', '포장 상태는 아래 링크에서 확인하실 수 있습니다.', `▶ ${조회링크}`] : []),
         '',
-        '출고 완료 시 다시 안내드립니다.',
+        '진행 현황은 아래 조회 링크에서 확인해 주세요.',
         ...footer.slice(1),
       ];
       break;
@@ -318,6 +318,9 @@ async function setNotifyState(db, orderId, key, stateObj) {
 //   extra: rescheduled 일 때 { date: 'YYYY-MM-DD' } (또는 날짜 문자열)
 // 반환: { ok?, queued?, skipped?, dryRun?, channel?, reason?, error? }
 export async function maybeNotify(db, order, milestone, extra = {}) {
+  if (milestone === 'shipped') {
+    return { skipped: true, reason: 'shipped_notification_disabled' };
+  }
   await ensureNotifySchema(db);
   if (typeof extra === 'string') extra = { date: extra };
 
