@@ -32,7 +32,7 @@ const SALES_REFRESH_EVENT_TYPES = new Set([
 ]);
 
 const SALES_SHIPPING_MANAGERS = ['신은철', '이준형'];
-const SALES_PERSONS = ['신은철', '이준형'];
+const SALES_PERSONS = ['신은철', '이준형', '황보민수'];
 
 const FILTER_TABS = [
   { label: '전체', value: 'all' },

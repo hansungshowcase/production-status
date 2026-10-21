@@ -4,7 +4,7 @@ import { parsePositiveIntegerQuantity } from '../utils/quantity.js';
 export const PRODUCT_TYPE_OPTIONS = ['제과', '정육', '반찬', '꽃', '대면', '오픈', '진열', '마카롱', '샌드위치', '쇼케이스', '버티칼', '냉장고', '냉동고'];
 export const DOOR_TYPE_OPTIONS = ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운드앞문', '라운드뒷문', '평대'];
 export const COLOR_OPTIONS = ['화이트', '올백색', '올스텐', '올검정', '블랙', '골드스텐', '골드미러'];
-export const CANONICAL_SALES_PERSONS = ['신은철', '이준형'];
+export const CANONICAL_SALES_PERSONS = ['신은철', '이준형', '황보민수'];
 
 export const OCR_CONFIRMATION_FIELD_DEFINITIONS = [
   { key: 'client_name', label: '거래처', required: true },

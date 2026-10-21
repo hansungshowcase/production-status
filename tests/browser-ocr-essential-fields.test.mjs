@@ -23,6 +23,7 @@ test('browser OCR essential parser maps legacy manager aliases to canonical assi
   const aliases = [
     ['\uAE40\uBCF4\uC218', '\uC774\uC900\uD615'],
     ['\uC2E0\uC740\uC808', '\uC2E0\uC740\uCCA0'],
+    ['\uD669\uBCF4\uBBFC\uC218', '\uD669\uBCF4\uBBFC\uC218'],
   ];
 
   // When / Then: each recognized alias resolves to its canonical assignee.

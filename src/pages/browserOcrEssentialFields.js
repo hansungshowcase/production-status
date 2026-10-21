@@ -4,6 +4,7 @@ import { extractIndividualQuantity } from '../utils/quantity.js';
 const CANONICAL_SALES_PERSON_BY_OCR_NAME = {
   '\uC2E0\uC740\uCCA0': '\uC2E0\uC740\uCCA0',
   '\uC774\uC900\uD615': '\uC774\uC900\uD615',
+  '\uD669\uBCF4\uBBFC\uC218': '\uD669\uBCF4\uBBFC\uC218',
   '\uAE40\uBCF4\uC218': '\uC774\uC900\uD615',
   '\uC2E0\uC740\uC808': '\uC2E0\uC740\uCCA0',
 };

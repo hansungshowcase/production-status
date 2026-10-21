@@ -14,6 +14,24 @@ import {
 } from '../api/_lib/orderCreateInput.js';
 import * as orderCreateInput from '../api/_lib/orderCreateInput.js';
 import * as sanitizeUtils from '../api/_lib/sanitize.js';
+import { getOcrConfirmationValidation } from '../src/pages/ocrConfirmationValidation.js';
+
+test('Hwangbo Minsu can register work orders through OCR, form and server validation', () => {
+  const form = {
+    order_date: '2026-10-21',
+    due_date: '2026-10-28',
+    sales_person: '황보민수',
+    client_name: '한성거래처',
+    product_type: '제과',
+    quantity: '1',
+  };
+
+  assert.equal(getOcrConfirmationValidation(form).isValid, true);
+  assert.deepEqual(validateOrderEntryForm(form, true), {});
+  const payload = buildOrderPayload(form, 'https://example.com/work-order.jpg', form.order_date);
+  assert.equal(payload.sales_person, '황보민수');
+  assert.equal(normalizeOrderCreateInput(payload).sales_person, '황보민수');
+});
 
 function mockResponse() {
   return {

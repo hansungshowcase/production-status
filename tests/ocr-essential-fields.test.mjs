@@ -17,6 +17,8 @@ test('normalizes known OCR sales-person aliases to canonical owners', () => {
     ['신은절', '신은철'],
     ['김보수 팀장', '이준형'],
     [' 이준형 ', '이준형'],
+    ['황보민수', '황보민수'],
+    ['황보민수 담당', '황보민수'],
   ];
 
   // When / Then: only canonical order owners are returned.
@@ -73,6 +75,7 @@ test('marks OCR data usable only when every essential field is canonical', () =>
 
   // When / Then: the caller can distinguish data safe to prefill from manual-review data.
   assert.equal(hasCompleteOcrEssentials(complete), true);
+  assert.equal(hasCompleteOcrEssentials({ ...complete, sales_person: '황보민수' }), true);
   assert.equal(hasCompleteOcrEssentials({ ...complete, due_date: '' }), false);
   assert.equal(hasCompleteOcrEssentials({ ...complete, sales_person: '김보수' }), false);
   assert.equal(hasCompleteOcrEssentials({ ...complete, quantity: 0 }), false);

@@ -8,12 +8,13 @@ const filesToCheck = [
   'src/pages/ocrConfirmationValidation.js',
 ];
 
-test('sales management people are Shin Euncheol and Lee Junhyeong only', () => {
+test('sales management includes Shin Euncheol, Lee Junhyeong and Hwangbo Minsu', () => {
   for (const file of filesToCheck) {
     const source = readFileSync(file, 'utf8');
 
     assert.match(source, /신은철/, `${file} should include 신은철`);
     assert.match(source, /이준형/, `${file} should include 이준형`);
+    assert.match(source, /황보민수/, `${file} should include 황보민수`);
     assert.doesNotMatch(source, /이시아/, `${file} should not include 이시아`);
   }
 });

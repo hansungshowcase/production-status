@@ -17,11 +17,12 @@ const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 const OPENAI_SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const CANONICAL_SALES_PERSONS = new Set(['신은철', '이준형']);
+const CANONICAL_SALES_PERSONS = new Set(['신은철', '이준형', '황보민수']);
 const SALES_PERSON_ALIASES = [
   ['신은철', '신은철'],
   ['신은절', '신은철'],
   ['이준형', '이준형'],
+  ['황보민수', '황보민수'],
   ['김보수', '이준형'],
 ];
 const EMPTY_OCR_DATA = {
@@ -114,7 +115,7 @@ JSON만 반환하세요. 다른 텍스트 없이 순수 JSON만 반환하세요.
 const ESSENTIAL_FIELD_PROMPT = `
 
 필수 정확도 규칙:
-- sales_person은 신은철 또는 이준형만 반환한다. 김보수(김보수 팀장 포함)는 이준형으로, 신은절은 신은철로 정규화한다. 판독 불가하면 null로 둔다.
+- sales_person은 신은철, 이준형 또는 황보민수만 반환한다. 김보수(김보수 팀장 포함)는 이준형으로, 신은절은 신은철로 정규화한다. 판독 불가하면 null로 둔다.
 - due_date는 납기/납기일/납기일자 라벨 바로 뒤의 날짜를 우선 읽고 반드시 실제 YYYY-MM-DD 날짜로 반환한다. 연도가 없으면 ${CURRENT_YEAR}년을 사용하며, 읽지 못하면 null로 둔다.
 - quantity는 수량 칸의 개별 제작 대수만 반환한다. "1대(급) 총6대"이면 1을 반환하고, 총수량만 보이거나 확실하지 않으면 null로 둔다.`;
 

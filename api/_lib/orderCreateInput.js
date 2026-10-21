@@ -72,13 +72,13 @@ export function assertImageBackedOrderHasCanonicalDueDate(order) {
   }
 }
 
-// 작업지시서 이미지 등록 건은 담당자(신은철·이준형)를 반드시 지정해야 한다.
-export const ALLOWED_SALES_PERSONS = ['신은철', '이준형'];
+// 작업지시서 이미지 등록 건은 담당자(신은철·이준형·황보민수)를 반드시 지정해야 한다.
+export const ALLOWED_SALES_PERSONS = ['신은철', '이준형', '황보민수'];
 
 export function assertImageBackedOrderHasSalesPerson(order) {
   if (order.work_order_image_url && !ALLOWED_SALES_PERSONS.includes(order.sales_person)) {
     throw new OrderCreateInputValidationError(
-      '작업지시서가 등록된 주문은 담당자(신은철·이준형)를 지정해야 합니다.',
+      '작업지시서가 등록된 주문은 담당자(신은철·이준형·황보민수)를 지정해야 합니다.',
     );
   }
 }

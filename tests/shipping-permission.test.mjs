@@ -14,6 +14,7 @@ test('both approved sales managers can ship from sales management at any process
   assert.equal(canShipFromSales(SHIN_EUNCHEOL), true);
   assert.equal(canShipFromSales(` ${SHIN_EUNCHEOL} `), true);
   assert.equal(canShipFromSales(KIM_BOSU), false);
+  assert.equal(canShipFromSales('황보민수'), false);
   assert.equal(canShipFromSales(''), false);
 });
 
