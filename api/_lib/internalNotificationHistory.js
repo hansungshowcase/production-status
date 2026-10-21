@@ -10,6 +10,7 @@ const EXECUTIVE_NAMES = {
 export const PUBLIC_CHONBE_RECIPIENTS = Object.freeze([
   Object.freeze({ name: '신은철', maskedPhone: '010****7407' }),
   Object.freeze({ name: '이준형', maskedPhone: '010****4237' }),
+  Object.freeze({ name: '황보민수', maskedPhone: '010****0220' }),
 ]);
 
 const SALES_NAMES_BY_MASKED_PHONE = Object.fromEntries(
@@ -40,6 +41,7 @@ const RECIPIENT_FILTERS = {
   '정영호 팀장': { milestone: 'internal_packing_due' },
   '신은철': { milestone: 'chonbe_alert', maskedPhone: '010****7407' },
   '이준형': { milestone: 'chonbe_alert', maskedPhone: '010****4237' },
+  '황보민수': { milestone: 'chonbe_alert', maskedPhone: '010****0220' },
   ...Object.fromEntries(
     Object.entries(MEMBER_MASKED_PHONE_BY_NAME).map(([name, maskedPhone]) => [
       name,

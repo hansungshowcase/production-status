@@ -110,7 +110,7 @@ test('예약·혼합·영업 대체 라우팅 설정을 각각 판정한다', ()
   const noFallback = readyEnv({ ALERT_FALLBACK: '' });
   const chonbe = itemById(noFallback, 'chonbe_alert');
   assert.equal(chonbe.configuration.status, 'conditional');
-  assert.match(chonbe.target, /신은철.*이준형.*미매핑 담당자는 제외/);
+  assert.match(chonbe.target, /신은철.*이준형.*황보민수.*미매핑 담당자는 제외/);
 
   const injectedFallback = itemById(readyEnv({ ALERT_FALLBACK: '010 1111 2222' }), 'chonbe_alert');
   assert.match(injectedFallback.target, /미매핑 담당자는 대체 수신번호 \(010\*{4}2222\)/);

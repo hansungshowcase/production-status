@@ -13,5 +13,9 @@ export function resolveInquiryRoute(managerName) {
     return { kind: 'sms', manager, href: SMS_HREF, phone: SMS_PHONE };
   }
 
+  if (manager === '황보민수') {
+    return { kind: 'sms', manager, href: 'sms:01029150220', phone: '010-2915-0220' };
+  }
+
   return { kind: 'manager', manager: manager || null, href: null, phone: null };
 }

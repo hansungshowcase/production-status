@@ -431,7 +431,7 @@ export default function TrackPage() {
                 <b>궁금하신 점이 있으신가요?</b><br />
                 제작·출고 일정은 이 페이지에서 실시간으로 안내됩니다.{' '}
                 {inquiryRoute.kind === 'kakao' && '추가 문의는 카카오톡으로 편하게 남겨주세요.'}
-                {inquiryRoute.kind === 'sms' && '출고 관련 문의는 신은철 담당자에게 문자로 문의해 주세요.'}
+                {inquiryRoute.kind === 'sms' && `출고 관련 문의는 ${inquiryRoute.manager} 담당자에게 문자로 문의해 주세요.`}
                 {inquiryRoute.kind === 'manager' && '출고 관련 문의는 담당 영업사원에게 확인해 주세요.'}
                 {inquiryRoute.manager ? (
                   <div className="track-manager">담당 영업: <b>{inquiryRoute.manager}</b></div>

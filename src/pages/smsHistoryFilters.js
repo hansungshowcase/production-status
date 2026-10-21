@@ -7,6 +7,7 @@ export const NOTIFICATION_RECIPIENT_FILTERS = [
   '정영호 팀장',
   '신은철',
   '이준형',
+  '황보민수',
   '강종효',
   '카우사르',
   '나타왓',

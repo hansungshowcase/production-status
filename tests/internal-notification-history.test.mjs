@@ -94,7 +94,7 @@ test('분체 미착수 문자는 영업담당자명·제목·본문을 발송내
   });
 });
 
-test('분체 미착수 공개 이력은 신은철·이준형 영업담당자 기록만 허용한다', async () => {
+test('분체 미착수 공개 이력은 등록된 영업담당자 기록만 허용한다', async () => {
   const { isPublicNotificationRow } = await import('../api/_lib/internalNotificationHistory.js');
 
   assert.equal(isPublicNotificationRow({
@@ -164,9 +164,9 @@ function makeHistoryDb(rows = historyRows) {
   const publicRows = rows.filter(row => {
     if (String(row?.milestone || '').startsWith('internal_')) return true;
     if (row?.milestone !== 'chonbe_alert') return false;
-    if (['신은철', '이준형'].includes(String(row?.recipient_name || '').trim())) return true;
+    if (['신은철', '이준형', '황보민수'].includes(String(row?.recipient_name || '').trim())) return true;
     return !String(row?.recipient_name || '').trim()
-      && ['010****7407', '010****4237'].includes(row?.to_phone);
+      && ['010****7407', '010****4237', '010****0220'].includes(row?.to_phone);
   });
   return {
     calls,
@@ -275,8 +275,10 @@ test('공개 발송내역 API는 모든 수신자명과 한국 시간 날짜를 
   assert.deepEqual(db.calls.at(-1).args, [
     '신은철',
     '이준형',
+    '황보민수',
     '010****7407',
     '010****4237',
+    '010****0220',
     '2026-09-01',
     '이준형',
     'chonbe_alert',
@@ -339,8 +341,10 @@ test('수신자별 조회는 이름이 없는 기존 팀원 기록도 마스킹 
   assert.deepEqual(db.calls.at(-1).args, [
     '신은철',
     '이준형',
+    '황보민수',
     '010****7407',
     '010****4237',
+    '010****0220',
     '2026-09-01',
     '카우사르',
     'internal_assembly_daily',
@@ -370,8 +374,10 @@ test('공개 발송내역 API는 잘못된 요청을 거절하고 조회 개수�
   assert.deepEqual(limited.db.calls.at(-1).args, [
     '신은철',
     '이준형',
+    '황보민수',
     '010****7407',
     '010****4237',
+    '010****0220',
     '2026-09-01',
     10,
     0,

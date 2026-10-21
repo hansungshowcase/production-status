@@ -4,12 +4,14 @@ export const ALERT_ROUTES = {
   '신은철': '010-7346-7407',
   '신은절': '010-7346-7407', // 데이터 오타(철→절) 대응 — 같은 담당자
   '이준형': '010-7731-4237',
+  '황보민수': '010-2915-0220',
 };
 
 export function canonicalAlertRecipientName(value) {
   const name = String(value || '').trim();
   if (name === '신은철' || name === '신은절') return '신은철';
   if (name === '이준형') return '이준형';
+  if (name === '황보민수') return '황보민수';
   return '';
 }
 
