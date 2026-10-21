@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('migration installs a database guard for image-backed order essentials only', async () => {
+test('migration allows Hwangbo Minsu without weakening image-backed order essentials', async () => {
   const source = await readFile(new URL('../scripts/migrate.js', import.meta.url), 'utf8');
 
   assert.match(source, /CREATE OR REPLACE FUNCTION enforce_image_backed_order_integrity\(\)/);
@@ -19,7 +19,7 @@ test('migration installs a database guard for image-backed order essentials only
   assert.match(source, /NULLIF\(BTRIM\(NEW\.client_name\), ''\) IS NULL/);
   assert.match(source, /NEW\.order_date !~ '\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$'/);
   assert.match(source, /to_char\(to_date\(NEW\.order_date, 'YYYY-MM-DD'\), 'YYYY-MM-DD'\) <> NEW\.order_date/);
-  assert.match(source, /NEW\.sales_person NOT IN \('\uC2E0\uC740\uCCA0', '\uC774\uC900\uD615'\)/);
+  assert.match(source, /NEW\.sales_person NOT IN \('\uC2E0\uC740\uCCA0', '\uC774\uC900\uD615', '\uD669\uBCF4\uBBFC\uC218'\)/);
   assert.match(source, /NEW\.due_date !~ '\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$'/);
   assert.match(source, /to_char\(to_date\(NEW\.due_date, 'YYYY-MM-DD'\), 'YYYY-MM-DD'\) <> NEW\.due_date/);
   assert.match(source, /NULLIF\(BTRIM\(NEW\.product_type\), ''\) IS NULL/);

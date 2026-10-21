@@ -129,7 +129,7 @@ function migrationStatements() {
         END IF;
 
         IF check_all OR NEW.sales_person IS DISTINCT FROM OLD.sales_person THEN
-          IF NEW.sales_person IS NULL OR NEW.sales_person NOT IN ('신은철', '이준형') THEN
+          IF NEW.sales_person IS NULL OR NEW.sales_person NOT IN ('신은철', '이준형', '황보민수') THEN
             RAISE EXCEPTION 'Image-backed orders require an assigned sales person';
           END IF;
         END IF;

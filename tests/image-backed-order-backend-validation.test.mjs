@@ -255,7 +255,7 @@ test('migration trigger enforces every essential on future image-backed writes w
     source,
     /to_char\(to_date\(NEW\.order_date, 'YYYY-MM-DD'\), 'YYYY-MM-DD'\) <> NEW\.order_date/,
   );
-  assert.match(source, /NEW\.sales_person NOT IN \('신은철', '이준형'\)/);
+  assert.match(source, /NEW\.sales_person NOT IN \('신은철', '이준형', '황보민수'\)/);
   assert.match(source, /NULLIF\(BTRIM\(NEW\.product_type\), ''\) IS NULL/);
   assert.match(source, /NEW\.quantity <= 0/);
   assert.match(
