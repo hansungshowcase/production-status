@@ -1,8 +1,13 @@
-const SECRET = 'hansung-production-status';
+const WEBHOOK_SECRET_PROPERTY = 'PRODUCTION_STATUS_WEBHOOK_SECRET';
+const LEGACY_SECRET_PROPERTY = 'PRODUCTION_STATUS_WEBHOOK_LEGACY_SECRET';
+const ROTATION_CONSUMED_PROPERTY = 'PRODUCTION_STATUS_ROTATION_CONSUMED_HASH';
+const ROTATION_TOKEN_SHA256 = 'dd8c3bf935d59090674118fc560faac38bb5bb43dbf3ed42ca175929c231e0f9';
+const SCRIPT_VERSION = '6-transition';
 const SPREADSHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const TARGET_SHEET_ID = 0;
 const SHIPPING_COLUMN = 5;
-const ID_COLUMN = 20;
+const ID_COLUMN = 44;
+const LEGACY_ID_COLUMN = 20;
 const WRITE_WIDTH = 19;
 // 여러 직원이 동시에 출고를 눌러도 락을 기다렸다 처리한다.
 // 백엔드 SHIPPING_WEBHOOK_TIMEOUT_MS(30초)보다 반드시 짧아야 한다.
@@ -109,16 +114,23 @@ function parseRequest(event) {
   }
 }
 
-// T열에 박힌 orderId가 최우선. 없을 때만 T열에 유효 orderId가 없는 레거시 행을 보이는 값으로 대조한다.
-// 스크립트 락이 요청을 직렬화하므로, T열 매칭이 되는 흔한 경우에는 넓은 읽기를 아예 하지 않는다.
-function locateOrderRow(idColumnValues, startRow, orderId, targetValues, readVisibleRows) {
+// AR의 확정된 orderId가 최우선이며 pending 예약은 배송 대상에서 제외한다.
+// AR이 빈 과거 행은 기존처럼 T에 숫자 ID가 없을 때만 보이는 값으로 대조한다.
+function locateOrderRow(idColumnValues, legacyIdValues, startRow, orderId, targetValues, readVisibleRows) {
   const idMatches = [];
   const legacyOffsets = [];
+  let unresolvedRequestedId = false;
 
   for (let rowIndex = 0; rowIndex < idColumnValues.length; rowIndex += 1) {
-    const rowOrderId = normalizeOrderId(idColumnValues[rowIndex][0]);
+    const rawId = String(idColumnValues[rowIndex][0] || '').trim();
+    const rowOrderId = normalizeOrderId(rawId);
     if (rowOrderId === null) {
-      legacyOffsets.push(rowIndex);
+      const hasUnresolvedArValue = rawId !== '';
+      const hasLegacyNumericId = normalizeOrderId(legacyIdValues[rowIndex][0]) !== null;
+      if (rawId.startsWith(`pending:${orderId}:`) || normalizeOrderId(legacyIdValues[rowIndex][0]) === orderId) {
+        unresolvedRequestedId = true;
+      }
+      if (!hasUnresolvedArValue && !hasLegacyNumericId) legacyOffsets.push(rowIndex);
     } else if (rowOrderId === orderId) {
       idMatches.push(startRow + rowIndex);
     }
@@ -129,6 +141,9 @@ function locateOrderRow(idColumnValues, startRow, orderId, targetValues, readVis
   }
   if (idMatches.length === 1) {
     return { row: idMatches[0] };
+  }
+  if (unresolvedRequestedId) {
+    return { error: 'unresolved legacy order id' };
   }
   if (!hasLegacyMatchableValues(targetValues) || legacyOffsets.length === 0) {
     return { error: 'orderId not found' };
@@ -311,14 +326,75 @@ function withMaintenanceLock(callback) {
   }
 }
 
+function sha256Hex(value) {
+  return Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value),
+    Utilities.Charset.UTF_8,
+  ).map((byte) => (`0${(byte & 0xff).toString(16)}`).slice(-2)).join('');
+}
+
+function constantTimeEquals(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (a.charCodeAt(index % Math.max(a.length, 1)) || 0)
+      ^ (b.charCodeAt(index % Math.max(b.length, 1)) || 0);
+  }
+  return difference === 0;
+}
+
+function isAuthorizedSecret(value) {
+  const properties = PropertiesService.getScriptProperties();
+  const current = properties.getProperty(WEBHOOK_SECRET_PROPERTY);
+  const legacy = properties.getProperty(LEGACY_SECRET_PROPERTY);
+  return (current && constantTimeEquals(value, current))
+    || (legacy && constantTimeEquals(value, legacy));
+}
+
+function rotateWebhookSecret(data) {
+  return withMaintenanceLock(function () {
+    const tokenHash = sha256Hex(data.rotationToken || '');
+    const properties = PropertiesService.getScriptProperties();
+    if (!constantTimeEquals(tokenHash, ROTATION_TOKEN_SHA256)) {
+      return jsonOutput({ ok: false, error: 'unauthorized' });
+    }
+    if (properties.getProperty(ROTATION_CONSUMED_PROPERTY) === ROTATION_TOKEN_SHA256) {
+      return jsonOutput({ ok: false, error: 'rotation already consumed' });
+    }
+    const nextSecret = String(data.newSecret || '');
+    if (nextSecret.length < 32) {
+      return jsonOutput({ ok: false, error: 'invalid new secret' });
+    }
+    const values = {
+      [WEBHOOK_SECRET_PROPERTY]: nextSecret,
+      [ROTATION_CONSUMED_PROPERTY]: ROTATION_TOKEN_SHA256,
+    };
+    const legacySecret = String(data.legacySecret || '');
+    if (legacySecret) values[LEGACY_SECRET_PROPERTY] = legacySecret;
+    properties.setProperties(values, false);
+    return jsonOutput({ ok: true, action: 'rotateWebhookSecret', version: SCRIPT_VERSION });
+  });
+}
+
 function doPost(event) {
   const data = parseRequest(event);
   if (!data) {
     return jsonOutput({ ok: false, error: 'invalid JSON' });
   }
 
-  if (data.secret !== SECRET) {
+  if (data.action === 'rotateWebhookSecret') {
+    return rotateWebhookSecret(data);
+  }
+
+  if (!isAuthorizedSecret(data.secret)) {
     return jsonOutput({ ok: false, error: 'unauthorized' });
+  }
+
+  if (data.action === 'authProbe') {
+    return jsonOutput({ ok: true, version: SCRIPT_VERSION, idColumn: ID_COLUMN, idSchema: 'ar-v1' });
   }
 
   // 운영자 수동 정비용(백엔드는 호출하지 않는다).
@@ -388,8 +464,10 @@ function doPost(event) {
     }
 
     const idColumnValues = sheet.getRange(startRow, ID_COLUMN, rowCount, 1).getValues();
+    const legacyIdValues = sheet.getRange(startRow, LEGACY_ID_COLUMN, rowCount, 1).getValues();
     const located = locateOrderRow(
       idColumnValues,
+      legacyIdValues,
       startRow,
       orderId,
       targetValues,

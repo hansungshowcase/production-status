@@ -1,8 +1,12 @@
-const SECRET = 'hansung-production-status';
+const WEBHOOK_SECRET_PROPERTY = 'PRODUCTION_STATUS_WEBHOOK_SECRET';
+const LEGACY_SECRET_PROPERTY = 'PRODUCTION_STATUS_WEBHOOK_LEGACY_SECRET';
+const ROTATION_CONSUMED_PROPERTY = 'PRODUCTION_STATUS_ROTATION_CONSUMED_HASH';
+const ROTATION_TOKEN_SHA256 = 'dd8c3bf935d59090674118fc560faac38bb5bb43dbf3ed42ca175929c231e0f9';
+const SCRIPT_VERSION = '24-transition';
 const SPREADSHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const TARGET_SHEET_ID = 0;
 const WRITE_WIDTH = 19;
-const ID_COLUMN = 20;
+const ID_COLUMN = 44;
 const ROW_WIDTH = 20;
 const LOCK_TIMEOUT_MS = 5000;
 const REQUIRED_HEADERS = ['발주일', '납기일', '담당', '거래처', '전화번호'];
@@ -57,7 +61,7 @@ function findTargetSheet(spreadsheet, requestedSheetId) {
 function nextInputRow(sheet) {
   const startRow = firstDataRow(sheet);
   const lastRow = Math.max(sheet.getLastRow(), startRow);
-  const range = sheet.getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH);
+  const range = sheet.getRange(startRow, 1, lastRow - startRow + 1, ID_COLUMN);
   const values = range.getDisplayValues();
   const formulas = range.getFormulas();
   let lastOccupiedRow = startRow - 1;
@@ -117,24 +121,69 @@ function normalizeOrderId(value) {
 
 function findOrderRowById(sheet, orderId) {
   const normalizedOrderId = normalizeOrderId(orderId);
-  if (!normalizedOrderId) return null;
+  if (!normalizedOrderId) return { row: null, duplicate: false };
 
   const startRow = firstDataRow(sheet);
   const lastRow = sheet.getLastRow();
-  if (lastRow < startRow) return null;
+  if (lastRow < startRow) return { row: null, duplicate: false };
 
   const rows = sheet
     .getRange(startRow, ID_COLUMN, lastRow - startRow + 1, 1)
     .getValues();
 
+  const matches = [];
   for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
     const value = rows[rowIndex][0];
     if (String(value ?? '').trim() !== '' && Number(value) === normalizedOrderId) {
-      return startRow + rowIndex;
+      matches.push(startRow + rowIndex);
     }
   }
 
-  return null;
+  return { row: matches[0] || null, duplicate: matches.length > 1 };
+}
+
+function findOrderReservation(sheet, orderId, payloadHash) {
+  const startRow = firstDataRow(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return { row: null, conflict: false };
+
+  const expected = `pending:${orderId}:${payloadHash}`;
+  const prefix = `pending:${orderId}:`;
+  const rows = sheet.getRange(startRow, ID_COLUMN, lastRow - startRow + 1, 1).getDisplayValues();
+  let row = null;
+  let conflict = false;
+  rows.forEach((entry, index) => {
+    const value = String(entry[0] || '').trim();
+    if (value === expected) row = startRow + index;
+    else if (value.startsWith(prefix)) conflict = true;
+  });
+  return { row, conflict };
+}
+
+function hasUnmigratedLegacyId(sheet, orderId) {
+  const startRow = firstDataRow(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < startRow) return false;
+  const rows = sheet.getRange(startRow, ROW_WIDTH, lastRow - startRow + 1, 1).getValues();
+  return rows.some((entry) => normalizeOrderId(entry[0]) === orderId);
+}
+
+function isEmptyPayloadRow(sheet, row) {
+  const values = sheet.getRange(row, 1, 1, WRITE_WIDTH).getDisplayValues()[0];
+  const formulas = sheet.getRange(row, 1, 1, WRITE_WIDTH).getFormulas()[0];
+  return values.every((value, index) => String(value).trim() === '' && String(formulas[index] || '').trim() === '');
+}
+
+function payloadMatchesReservedRow(sheet, row, expectedValues) {
+  const actual = sheet.getRange(row, 1, 1, WRITE_WIDTH).getValues()[0];
+  return expectedValues.every((expected, index) => {
+    if (index === 0 || index === 1) return normalizeDate(actual[index]) === normalizeDate(expected);
+    if (typeof expected === 'number') return Number(actual[index]) === expected;
+    const expectedText = String(expected ?? '');
+    const actualText = String(actual[index] ?? '');
+    if (/^'[=+\-@]/.test(expectedText)) return actualText === expectedText.slice(1) || actualText === expectedText;
+    return actualText === expectedText;
+  });
 }
 
 // KEY_COLUMNS 가 출고완료(E)·문/디자인·비고를 보지 않으므로 같은 거래처의 같은 날 같은 사양 발주는
@@ -144,14 +193,15 @@ function findMatchingLegacyOrderRows(sheet, targetValues) {
   const lastRow = sheet.getLastRow();
   if (lastRow < startRow) return [];
 
-  const rows = sheet
-    .getRange(startRow, 1, lastRow - startRow + 1, ROW_WIDTH)
-    .getValues();
+  const rowCount = lastRow - startRow + 1;
+  const rows = sheet.getRange(startRow, 1, rowCount, ROW_WIDTH).getValues();
+  const idValues = sheet.getRange(startRow, ID_COLUMN, rowCount, 1).getDisplayValues();
 
   const matches = [];
   for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
-    const hasOrderId = String(rows[rowIndex][ID_COLUMN - 1] ?? '').trim() !== '';
-    if (!hasOrderId && isMatchingOrderRow(rows[rowIndex], targetValues)) {
+    const hasDedicatedId = String(idValues[rowIndex][0] || '').trim() !== '';
+    const hasLegacyTValue = String(rows[rowIndex][ROW_WIDTH - 1] ?? '').trim() !== '';
+    if (!hasDedicatedId && !hasLegacyTValue && isMatchingOrderRow(rows[rowIndex], targetValues)) {
       matches.push(startRow + rowIndex);
     }
   }
@@ -159,11 +209,20 @@ function findMatchingLegacyOrderRows(sheet, targetValues) {
   return matches;
 }
 
-function deleteMatchingOrder(sheet, orderId, targetValues) {
-  const rowById = findOrderRowById(sheet, orderId);
-  if (rowById) {
-    sheet.deleteRow(rowById);
-    return { deletedRow: rowById };
+function deleteMatchingOrder(sheet, orderId, targetValues, strictOrderId) {
+  const identity = findOrderRowById(sheet, orderId);
+  if (identity.duplicate) return { error: 'duplicate order id' };
+  if (identity.row) {
+    sheet.deleteRow(identity.row);
+    return { deletedRow: identity.row };
+  }
+  if (strictOrderId) {
+    const reservation = findOrderReservation(sheet, orderId, '');
+    const hasPending = reservation.conflict || reservation.row !== null;
+    if (hasPending || hasUnmigratedLegacyId(sheet, orderId)) {
+      return { error: 'unresolved legacy order id' };
+    }
+    return { deletedRow: null, strictOrderId: true };
   }
 
   const legacyMatches = findMatchingLegacyOrderRows(sheet, targetValues);
@@ -172,6 +231,59 @@ function deleteMatchingOrder(sheet, orderId, targetValues) {
 
   sheet.deleteRow(legacyMatches[0]);
   return { deletedRow: legacyMatches[0] };
+}
+
+function sha256Hex(value) {
+  return Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value),
+    Utilities.Charset.UTF_8,
+  ).map((byte) => (`0${(byte & 0xff).toString(16)}`).slice(-2)).join('');
+}
+
+function constantTimeEquals(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (a.charCodeAt(index % Math.max(a.length, 1)) || 0)
+      ^ (b.charCodeAt(index % Math.max(b.length, 1)) || 0);
+  }
+  return difference === 0;
+}
+
+function isAuthorizedSecret(value) {
+  const properties = PropertiesService.getScriptProperties();
+  const current = properties.getProperty(WEBHOOK_SECRET_PROPERTY);
+  const legacy = properties.getProperty(LEGACY_SECRET_PROPERTY);
+  return (current && constantTimeEquals(value, current))
+    || (legacy && constantTimeEquals(value, legacy));
+}
+
+function rotateWebhookSecret(data) {
+  return withMutationLock(() => {
+    const tokenHash = sha256Hex(data.rotationToken || '');
+    const properties = PropertiesService.getScriptProperties();
+    if (!constantTimeEquals(tokenHash, ROTATION_TOKEN_SHA256)) {
+      return jsonOutput({ ok: false, error: 'unauthorized' });
+    }
+    if (properties.getProperty(ROTATION_CONSUMED_PROPERTY) === ROTATION_TOKEN_SHA256) {
+      return jsonOutput({ ok: false, error: 'rotation already consumed' });
+    }
+    const nextSecret = String(data.newSecret || '');
+    if (nextSecret.length < 32) {
+      return jsonOutput({ ok: false, error: 'invalid new secret' });
+    }
+    const values = {
+      [WEBHOOK_SECRET_PROPERTY]: nextSecret,
+      [ROTATION_CONSUMED_PROPERTY]: ROTATION_TOKEN_SHA256,
+    };
+    const legacySecret = String(data.legacySecret || '');
+    if (legacySecret) values[LEGACY_SECRET_PROPERTY] = legacySecret;
+    properties.setProperties(values, false);
+    return jsonOutput({ ok: true, action: 'rotateWebhookSecret', version: SCRIPT_VERSION });
+  });
 }
 
 function withMutationLock(callback) {
@@ -199,8 +311,14 @@ function sortOrdersByDate(sheet) {
 
 function doPost(e) {
   const data = JSON.parse(e.postData.contents || '{}');
-  if (data.secret !== SECRET) {
+  if (data.action === 'rotateWebhookSecret') {
+    return rotateWebhookSecret(data);
+  }
+  if (!isAuthorizedSecret(data.secret)) {
     return jsonOutput({ ok: false, error: 'unauthorized' });
+  }
+  if (data.action === 'authProbe') {
+    return jsonOutput({ ok: true, version: SCRIPT_VERSION, strictOrderId: true, idColumn: ID_COLUMN, idSchema: 'ar-v1' });
   }
 
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -266,11 +384,17 @@ function doPost(e) {
 
   if (data.action === 'deleteOrder') {
     return withMutationLock(() => {
-      const result = deleteMatchingOrder(sheet, data.orderId, values);
+      const strictOrderId = data.strictOrderId === true;
+      const result = deleteMatchingOrder(sheet, data.orderId, values, strictOrderId);
       if (result.error) {
         return jsonOutput({ ok: false, error: result.error });
       }
-      return jsonOutput({ ok: true, deletedRow: result.deletedRow });
+      const response = {
+        ok: true,
+        deletedRow: result.deletedRow,
+      };
+      if (strictOrderId) response.strictOrderId = true;
+      return jsonOutput(response);
     });
   }
 
@@ -280,19 +404,39 @@ function doPost(e) {
   }
 
   return withMutationLock(() => {
-    const matchingRow = findOrderRowById(sheet, orderId);
-    if (matchingRow) {
+    const identity = findOrderRowById(sheet, orderId);
+    if (identity.duplicate) {
+      return jsonOutput({ ok: false, error: 'duplicate order id' });
+    }
+    if (identity.row) {
       return jsonOutput({
         ok: true,
-        row: matchingRow,
+        row: identity.row,
         deduplicated: true,
         spreadsheetId: SPREADSHEET_ID,
       });
     }
 
-    const inputRow = nextInputRow(sheet);
-    sheet.hideColumns(ID_COLUMN);
-    sheet.getRange(inputRow, 1, 1, ROW_WIDTH).setValues([[...values, orderId]]);
+    const payloadHash = sha256Hex(JSON.stringify(values));
+    const reservation = findOrderReservation(sheet, orderId, payloadHash);
+    if (reservation.conflict) {
+      return jsonOutput({ ok: false, error: 'conflicting pending order' });
+    }
+    if (!reservation.row && hasUnmigratedLegacyId(sheet, orderId)) {
+      return jsonOutput({ ok: false, error: 'unresolved legacy order id' });
+    }
+
+    const inputRow = reservation.row || nextInputRow(sheet);
+    const pendingValue = `pending:${orderId}:${payloadHash}`;
+    if (!reservation.row) {
+      sheet.getRange(inputRow, ID_COLUMN, 1, 1).setValues([[pendingValue]]);
+    }
+    if (isEmptyPayloadRow(sheet, inputRow)) {
+      sheet.getRange(inputRow, 1, 1, WRITE_WIDTH).setValues([values]);
+    } else if (!payloadMatchesReservedRow(sheet, inputRow, values)) {
+      return jsonOutput({ ok: false, error: 'pending order payload mismatch' });
+    }
+    sheet.getRange(inputRow, ID_COLUMN, 1, 1).setValues([[orderId]]);
 
     return jsonOutput({
       ok: true,
