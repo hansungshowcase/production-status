@@ -186,6 +186,7 @@ export async function handleGet(req, res, db = getDb()) {
     const cols = isWorkOrderSearch ? [
       'CAST(o.id AS TEXT)',
       'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
+      'o.notes', 'o.remarks', 'o.etc_notes',
       'o.phone', 'o.color', 'o.design', 'o.lead_source',
       'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
       'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
@@ -259,6 +260,7 @@ export async function handleGet(req, res, db = getDb()) {
     const cols = isWorkOrderSearch ? [
       'CAST(o.id AS TEXT)',
       'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
+      'o.notes', 'o.remarks', 'o.etc_notes',
       'o.phone', 'o.color', 'o.design', 'o.lead_source',
       'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
       'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
