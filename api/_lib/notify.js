@@ -350,8 +350,13 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
                COALESCE(notify_state -> (?::text) ->> 'status', '') = 'sending'
                AND COALESCE(notify_state -> (?::text) ->> 'at', '') > ?
              )
+             AND NOT EXISTS (
+               SELECT 1 FROM notification_log receipt
+                WHERE receipt.order_id = orders.id AND receipt.milestone = ?
+                  AND (receipt.status = 'success' OR COALESCE(receipt.provider_msgid, '') <> '')
+             )
            RETURNING id`,
-    args: [key, JSON.stringify({ status: 'sending', at: nowIso }), orderId, key, key, key, staleBefore],
+    args: [key, JSON.stringify({ status: 'sending', at: nowIso }), orderId, key, key, key, staleBefore, key],
   });
   if (claimed.length === 0) {
     return { skipped: true, reason: 'already_sent_or_claimed' };
