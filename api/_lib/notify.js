@@ -13,8 +13,6 @@ import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
 
 const SOLAPI_ENDPOINT = 'https://api.solapi.com/messages/v4/send';
-// 종결 상태 = success/dry_run/skipped (claim SQL 에 인라인) — queued/failed/sending(stale) 은 스윕이 재처리
-const STALE_SENDING_MS = 5 * 60 * 1000; // 'sending' 이 5분 넘게 방치되면 크래시로 보고 재선점 허용
 
 const TEMPLATE_ENV = {
   ordered: 'SOLAPI_TPL_ORDERED',
@@ -50,6 +48,33 @@ export function maskPhone(phone) {
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '');
+}
+
+export function normalizeNotificationPhone(phone) {
+  const digits = normalizePhone(phone);
+  return digits.length >= 9 ? digits : null;
+}
+
+export function isNoPhoneRecoveryTransition({
+  phoneFieldChanged,
+  beforePhone,
+  afterPhone,
+  orderStatus,
+  orderedState,
+  eventAt,
+  activationAt,
+} = {}) {
+  const eventMs = Date.parse(String(eventAt || ''));
+  const activationMs = Date.parse(String(activationAt || ''));
+  return phoneFieldChanged === true
+    && normalizeNotificationPhone(beforePhone) === null
+    && normalizeNotificationPhone(afterPhone) !== null
+    && orderStatus === 'in_production'
+    && orderedState?.status === 'skipped'
+    && orderedState?.reason === 'no_phone'
+    && Number.isFinite(eventMs)
+    && Number.isFinite(activationMs)
+    && eventMs >= activationMs;
 }
 
 function fmtDate(d, fallback = '협의 예정') {
@@ -217,6 +242,13 @@ function solapiAuthHeader() {
   return `HMAC-SHA256 apiKey=${process.env.SOLAPI_API_KEY}, date=${date}, salt=${salt}, signature=${signature}`;
 }
 
+export function classifyProviderOutcome(result) {
+  if (result?.dryRun) return 'dry_run';
+  if (result?.ok && result?.msgId) return 'accepted';
+  if (result?.explicitFailure) return 'explicit_failure';
+  return 'uncertain';
+}
+
 async function solapiSend(message, channel) {
   try {
     const res = await fetch(SOLAPI_ENDPOINT, {
@@ -234,18 +266,28 @@ async function solapiSend(message, channel) {
     try { data = await res.json(); } catch { /* 비JSON 응답 방어 */ }
     if (!res.ok) {
       const detail = [data?.errorCode, data?.errorMessage].filter(Boolean).join(' ');
-      return { ok: false, channel, msgId: null, error: `HTTP ${res.status}${detail ? ' ' + detail : ''}` };
+      return {
+        ok: false,
+        channel,
+        msgId: null,
+        error: `HTTP ${res.status}${detail ? ' ' + detail : ''}`,
+        ...(res.status >= 400 && res.status < 500
+          ? { explicitFailure: true }
+          : { uncertain: true }),
+      };
     }
     const msgId = data?.messageId || data?.groupId || data?.groupInfo?.groupId || null;
-    return { ok: true, channel, msgId };
+    return msgId
+      ? { ok: true, channel, msgId }
+      : { ok: false, channel, msgId: null, uncertain: true, error: 'Provider acceptance receipt missing' };
   } catch (err) {
-    return { ok: false, channel, msgId: null, error: err?.message || String(err) };
+    return { ok: false, channel, msgId: null, uncertain: true, error: err?.message || String(err) };
   }
 }
 
 // 고객 발송: 알림톡(템플릿 env 있을 때) 시도 + disableSms:false 로 문자 자동 대체.
 // 템플릿 코드 없으면 LMS 직발송(SMS_SENDER 필수). 솔라피 env 없으면 dry_run.
-async function sendCustomerMessage({ to, subject, text, variables, templateEnv }) {
+async function sendCustomerMessage({ to, subject, text, variables, templateEnv, customFields }) {
   const templateId = templateEnv ? process.env[templateEnv] : null;
   const pfId = process.env.KAKAO_PF_ID;
   const from = normalizePhone(process.env.SMS_SENDER);
@@ -265,6 +307,7 @@ async function sendCustomerMessage({ to, subject, text, variables, templateEnv }
     }
     const message = {
       to,
+      customFields,
       text, // 대체 문자 본문
       kakaoOptions: {
         pfId,
@@ -278,9 +321,9 @@ async function sendCustomerMessage({ to, subject, text, variables, templateEnv }
   }
 
   if (!from) {
-    return { ok: false, channel: 'lms', msgId: null, error: 'SMS_SENDER 미설정 — LMS 직발송 불가' };
+    return { ok: false, channel: 'lms', msgId: null, explicitFailure: true, error: 'SMS_SENDER 미설정 — LMS 직발송 불가' };
   }
-  return solapiSend({ to, from, subject: String(subject || '').slice(0, 40), text, type: 'LMS' }, 'lms');
+  return solapiSend({ to, from, subject: String(subject || '').slice(0, 40), text, type: 'LMS', customFields }, 'lms');
 }
 
 // ── notification_log 기록 (attempt = 해당 주문·마일스톤의 기존 로그 수 + 1) ──
@@ -304,13 +347,38 @@ async function logAttempt(db, { orderId, milestoneKey, channel, toPhone, status,
   return attempt;
 }
 
-async function setNotifyState(db, orderId, key, stateObj) {
-  await db.execute({
+async function setNotifyStateForAttempt(db, orderId, key, attemptToken, stateObj) {
+  const { rows } = await db.execute({
     sql: `UPDATE orders
              SET notify_state = COALESCE(notify_state, '{}'::jsonb) || jsonb_build_object(?::text, ?::jsonb)
-           WHERE id = ?`,
-    args: [key, JSON.stringify(stateObj), orderId],
+           WHERE id = ?
+             AND COALESCE(notify_state -> (?::text) ->> 'attempt_token', '') = ?
+           RETURNING id`,
+    args: [key, JSON.stringify(stateObj), orderId, key, attemptToken],
   });
+  return rows.length > 0;
+}
+
+export async function reconcileCustomerAttemptReceipt(db, order, milestoneKey, state, receipt, nowMs = Date.now()) {
+  if (!state?.attempt_token || !receipt?.messageId) return false;
+  const channel = state.channel || null;
+  const recorded = await setNotifyStateForAttempt(db, Number(order.id), milestoneKey, state.attempt_token, {
+    status: 'success',
+    channel,
+    msg_id: receipt.messageId,
+    at: new Date(nowMs).toISOString(),
+    attempt_token: state.attempt_token,
+  });
+  if (!recorded) return false;
+  await logAttempt(db, {
+    orderId: Number(order.id),
+    milestoneKey,
+    channel,
+    toPhone: maskPhone(order.phone),
+    status: 'success',
+    msgId: receipt.messageId,
+  });
+  return true;
 }
 
 // ── 핵심 진입점 ──────────────────────────────────────────────────
@@ -337,44 +405,39 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
   if (!TEMPLATE_ENV[milestone]) return { skipped: true, reason: 'unknown_milestone' };
 
   const nowIso = new Date().toISOString();
-  const staleBefore = new Date(Date.now() - STALE_SENDING_MS).toISOString();
+  const attemptToken = crypto.randomUUID();
 
-  // 1) 멱등 선점 — 조건부 UPDATE (success/dry_run/skipped 는 재발송 금지,
-  //    5분 이내의 'sending' 은 동시 발송 중으로 보고 양보)
   const { rows: claimed } = await db.execute({
     sql: `UPDATE orders
              SET notify_state = COALESCE(notify_state, '{}'::jsonb) || jsonb_build_object(?::text, ?::jsonb)
            WHERE id = ?
-             AND COALESCE(notify_state -> (?::text) ->> 'status', '') NOT IN ('success', 'dry_run', 'skipped')
-             AND NOT (
-               COALESCE(notify_state -> (?::text) ->> 'status', '') = 'sending'
-               AND COALESCE(notify_state -> (?::text) ->> 'at', '') > ?
-             )
+             AND COALESCE(notify_state -> (?::text) ->> 'status', '') NOT IN ('success', 'dry_run', 'skipped', 'uncertain', 'sending')
              AND NOT EXISTS (
                SELECT 1 FROM notification_log receipt
                 WHERE receipt.order_id = orders.id AND receipt.milestone = ?
                   AND (receipt.status = 'success' OR COALESCE(receipt.provider_msgid, '') <> '')
              )
            RETURNING id`,
-    args: [key, JSON.stringify({ status: 'sending', at: nowIso }), orderId, key, key, key, staleBefore, key],
+    args: [key, JSON.stringify({ status: 'sending', at: nowIso, attempt_token: attemptToken }), orderId, key, key],
   });
   if (claimed.length === 0) {
     return { skipped: true, reason: 'already_sent_or_claimed' };
   }
 
   const toPhoneMasked = maskPhone(order.phone);
+  let providerAttempted = false;
 
   try {
     // 2) 대상성 검사 — 전화번호 없으면 skip 확정
     const to = normalizePhone(order.phone);
     if (!to || to.length < 9) {
-      await setNotifyState(db, orderId, key, { status: 'skipped', reason: 'no_phone', at: nowIso });
+      await setNotifyStateForAttempt(db, orderId, key, attemptToken, { status: 'skipped', reason: 'no_phone', at: nowIso, attempt_token: attemptToken });
       await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status: 'skipped', error: 'no_phone' });
       return { skipped: true, reason: 'no_phone' };
     }
     // 이미 출고된 주문에 일정조정 안내는 무의미 → skip 확정
     if (milestone === 'rescheduled' && order.status === 'shipped') {
-      await setNotifyState(db, orderId, key, { status: 'skipped', reason: 'already_shipped', at: nowIso });
+      await setNotifyStateForAttempt(db, orderId, key, attemptToken, { status: 'skipped', reason: 'already_shipped', at: nowIso, attempt_token: attemptToken });
       await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status: 'skipped', error: 'already_shipped' });
       return { skipped: true, reason: 'already_shipped' };
     }
@@ -382,14 +445,14 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
     // (조용시간 중 날짜가 두 번 바뀌면 아침 스윕이 폐기된 날짜 안내까지 발송하는 것 방지 —
     //  스윕은 항상 최신 order row 를 넘기므로 이 검사로 낡은 키가 자동 소멸)
     if (milestone === 'rescheduled' && extra.date !== fmtDate(order.ship_scheduled_date, '')) {
-      await setNotifyState(db, orderId, key, { status: 'skipped', reason: 'superseded', at: nowIso });
+      await setNotifyStateForAttempt(db, orderId, key, attemptToken, { status: 'skipped', reason: 'superseded', at: nowIso, attempt_token: attemptToken });
       await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status: 'skipped', error: 'superseded' });
       return { skipped: true, reason: 'superseded' };
     }
 
     // 3) 조용시간(KST 08~21시 밖) → queued 기록, 아침 스윕 크론이 발송
     if (isQuietHours()) {
-      await setNotifyState(db, orderId, key, { status: 'queued', at: nowIso });
+      await setNotifyStateForAttempt(db, orderId, key, attemptToken, { status: 'queued', at: nowIso, attempt_token: attemptToken });
       await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status: 'queued' });
       return { queued: true };
     }
@@ -408,7 +471,12 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
     const msg = buildMessage(order, milestone, trackUrl, extra);
 
     // 5) 발송 (env 없으면 dry_run)
-    const result = await sendCustomerMessage({ to, ...msg });
+    providerAttempted = true;
+    const result = await sendCustomerMessage({
+      to,
+      ...msg,
+      customFields: { notificationAttemptToken: attemptToken },
+    });
     const doneAt = new Date().toISOString();
 
     // 6) 상태 확정 + 로그
@@ -422,8 +490,10 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
       let recorded = false;
       for (let i = 0; i < 3 && !recorded; i += 1) {
         try {
-          await setNotifyState(db, orderId, key, stateObj);
-          recorded = true;
+          recorded = await setNotifyStateForAttempt(db, orderId, key, attemptToken, {
+            ...stateObj,
+            attempt_token: attemptToken,
+          });
         } catch (recErr) {
           console.error(`[notify] ${finalStatus} 상태 기록 실패 (${i + 1}/3):`, recErr?.message || recErr);
         }
@@ -437,15 +507,31 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
         ? { ok: true, dryRun: true, channel: result.channel }
         : { ok: true, channel: result.channel, msgId: result.msgId };
     }
-    await setNotifyState(db, orderId, key, { status: 'failed', channel: result.channel, error: String(result.error || '').slice(0, 200), at: doneAt });
-    await logAttempt(db, { orderId, milestoneKey: key, channel: result.channel, toPhone: toPhoneMasked, status: 'failed', error: result.error });
+    const outcome = classifyProviderOutcome(result);
+    const status = outcome === 'explicit_failure' ? 'failed' : 'uncertain';
+    for (let index = 0, recorded = false; index < 3 && !recorded; index += 1) {
+      recorded = await setNotifyStateForAttempt(db, orderId, key, attemptToken, {
+        status,
+        channel: result.channel,
+        error: String(result.error || '').slice(0, 200),
+        at: doneAt,
+        attempt_token: attemptToken,
+      });
+    }
+    await logAttempt(db, { orderId, milestoneKey: key, channel: result.channel, toPhone: toPhoneMasked, status, error: result.error });
     return { ok: false, error: result.error };
   } catch (err) {
     // 발송 '이전' 단계 예외 → failed 기록 (스윕이 최대 3회까지 재시도)
     // 발송 성공 이후의 기록 예외는 위 블록에서 개별 처리되므로 여기로 오지 않음 (중복 발송 방지 불변식)
     try {
-      await setNotifyState(db, orderId, key, { status: 'failed', error: String(err?.message || err).slice(0, 200), at: new Date().toISOString() });
-      await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status: 'failed', error: err?.message || err });
+      const status = providerAttempted ? 'uncertain' : 'failed';
+      await setNotifyStateForAttempt(db, orderId, key, attemptToken, {
+        status,
+        error: String(err?.message || err).slice(0, 200),
+        at: new Date().toISOString(),
+        attempt_token: attemptToken,
+      });
+      await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status, error: err?.message || err });
     } catch (inner) {
       console.error('[notify] 실패 상태 기록마저 실패:', inner?.message || inner);
     }

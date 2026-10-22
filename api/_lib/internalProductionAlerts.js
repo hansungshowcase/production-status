@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { daysBetween, isKstWeekend, kstToday } from './risk.js';
 import { STEPS } from './steps.js';
 import { sendAdminLms } from './notify.js';
@@ -327,7 +329,7 @@ export function createAssemblyStartAlert({ order, process, workerName, today, no
 
 const INTERNAL_SENDING_STALE_MS = 5 * 60 * 1000;
 
-async function claimInternalAlert(db, item, nowMs) {
+async function claimInternalAlert(db, item, nowMs, attemptToken) {
   const nowIso = new Date(nowMs).toISOString();
   const staleBefore = new Date(nowMs - INTERNAL_SENDING_STALE_MS).toISOString();
   const state = {
@@ -335,6 +337,8 @@ async function claimInternalAlert(db, item, nowMs) {
     at: nowIso,
     type: item.type,
     recipient: item.recipientName,
+    attempt_token: attemptToken,
+    attempts: Math.max(0, Number(item.attempts) || 0) + 1,
     ...(item.alertDate ? { date: item.alertDate } : {}),
   };
 
@@ -367,40 +371,42 @@ async function claimInternalAlert(db, item, nowMs) {
     return rows.length > 0;
   }
 
+  const vcutCondition = item.type === 'vcut_completed'
+    ? `AND COALESCE(notify_state -> (?::text) ->> 'status', '') IN ('', 'internal_failed')
+       AND COALESCE((notify_state -> (?::text) ->> 'attempts')::int, 0) < 3`
+    : `AND COALESCE(notify_state -> (?::text) ->> 'status', '') NOT IN ('internal_success', 'internal_dry_run', 'internal_uncertain')
+       AND NOT (
+         COALESCE(notify_state -> (?::text) ->> 'status', '') = 'internal_sending'
+         AND COALESCE(notify_state -> (?::text) ->> 'at', '') >= ?
+       )`;
   const { rows } = await db.execute({
     sql: `UPDATE orders
              SET notify_state = COALESCE(notify_state, '{}'::jsonb) || jsonb_build_object(?::text, ?::jsonb)
            WHERE id = ?
-             AND COALESCE(notify_state -> (?::text) ->> 'status', '') NOT IN ('internal_success', 'internal_dry_run')
-             AND NOT (
-               COALESCE(notify_state -> (?::text) ->> 'status', '') = 'internal_sending'
-               AND COALESCE(notify_state -> (?::text) ->> 'at', '') >= ?
-             )
+              ${vcutCondition}
            RETURNING id`,
-    args: [
-      item.stateKey,
-      JSON.stringify(state),
-      item.orderId,
-      item.stateKey,
-      item.stateKey,
-      item.stateKey,
-      staleBefore,
-    ],
+    args: item.type === 'vcut_completed'
+      ? [item.stateKey, JSON.stringify(state), item.orderId, item.stateKey, item.stateKey]
+      : [item.stateKey, JSON.stringify(state), item.orderId, item.stateKey, item.stateKey, item.stateKey, staleBefore],
   });
   return rows.length > 0;
 }
 
-async function finishInternalAlert(db, item, result, nowMs) {
+async function finishInternalAlert(db, item, result, nowMs, attemptToken) {
   const status = result.dryRun
     ? 'internal_dry_run'
     : result.ok
       ? 'internal_success'
-      : 'internal_failed';
+      : item.type === 'vcut_completed' && !result.explicitFailure
+        ? 'internal_uncertain'
+        : 'internal_failed';
   const state = {
     status,
     at: new Date(nowMs).toISOString(),
     type: item.type,
     recipient: item.recipientName,
+    attempt_token: attemptToken,
+    attempts: Math.max(0, Number(item.attempts) || 0) + 1,
     ...(item.alertDate ? { date: item.alertDate } : {}),
     ...(result.msgId ? { msg_id: result.msgId } : {}),
     ...(result.error ? { error: String(result.error).slice(0, 200) } : {}),
@@ -408,8 +414,9 @@ async function finishInternalAlert(db, item, result, nowMs) {
   await db.execute({
     sql: `UPDATE orders
              SET notify_state = COALESCE(notify_state, '{}'::jsonb) || jsonb_build_object(?::text, ?::jsonb)
-           WHERE id = ?`,
-    args: [item.stateKey, JSON.stringify(state), item.orderId],
+           WHERE id = ?
+             AND COALESCE(notify_state -> (?::text) ->> 'attempt_token', '') = ?`,
+    args: [item.stateKey, JSON.stringify(state), item.orderId, item.stateKey, attemptToken],
   });
 }
 
@@ -418,10 +425,11 @@ export async function sendInternalAlertGroup(db, group, options = {}) {
   const ensureSchema = options.ensureSchema || ensureNotifySchema;
   const nowMs = options.nowMs ?? Date.now();
   await ensureSchema(db);
+  const attemptToken = crypto.randomUUID();
 
   const claimed = [];
   for (const item of group?.items || []) {
-    if (await claimInternalAlert(db, item, nowMs)) claimed.push(item);
+    if (await claimInternalAlert(db, item, nowMs, attemptToken)) claimed.push(item);
   }
   const skipped = (group?.items?.length || 0) - claimed.length;
   if (claimed.length === 0) return { sent: 0, failed: 0, skipped };
@@ -436,18 +444,60 @@ export async function sendInternalAlertGroup(db, group, options = {}) {
       subject: message.subject,
       text: message.text,
       tag: `internal_${group.type}`,
+      customFields: { notificationAttemptToken: attemptToken },
     });
   } catch (error) {
     result = { ok: false, channel: 'lms', error: error?.message || String(error) };
   }
 
   for (const item of claimed) {
-    await finishInternalAlert(db, item, result, nowMs);
+    await finishInternalAlert(db, item, result, nowMs, attemptToken);
   }
   if (result.ok || result.dryRun) {
     return { sent: claimed.length, failed: 0, skipped, dryRun: Boolean(result.dryRun) };
   }
   return { sent: 0, failed: claimed.length, skipped, error: result.error || null };
+}
+
+export async function reconcileInternalAlertReceipt(db, item, state, receipt, nowMs = Date.now()) {
+  if (!state?.attempt_token || !receipt?.messageId) return false;
+  const finalState = {
+    ...state,
+    status: 'internal_success',
+    at: new Date(nowMs).toISOString(),
+    msg_id: receipt.messageId,
+    error: undefined,
+  };
+  delete finalState.error;
+  const { rows } = await db.execute({
+    sql: `UPDATE orders
+             SET notify_state = COALESCE(notify_state, '{}'::jsonb) || jsonb_build_object(?::text, ?::jsonb)
+           WHERE id = ?
+             AND COALESCE(notify_state -> (?::text) ->> 'attempt_token', '') = ?
+           RETURNING id`,
+    args: [item.stateKey, JSON.stringify(finalState), item.orderId, item.stateKey, state.attempt_token],
+  });
+  if (!rows.length) return false;
+  await db.execute({
+    sql: `INSERT INTO notification_log (
+            order_id, milestone, channel, to_phone, status, provider_msgid, error, attempt,
+            recipient_name, message_subject, message_text
+          )
+          SELECT ?, ?, 'lms', ?, 'success', ?, NULL, ?, ?, NULL, NULL
+           WHERE NOT EXISTS (
+             SELECT 1 FROM notification_log WHERE provider_msgid = ?
+           )`,
+    args: [
+      item.orderId,
+      `internal_${item.type}`,
+      item.phone,
+      receipt.messageId,
+      Number(finalState.attempts) || 1,
+      item.recipientName,
+      receipt.messageId,
+    ],
+  });
+  return true;
 }
 
 export async function notifyInternalProcessCompletion(db, payload = {}, options = {}) {

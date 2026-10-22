@@ -4,6 +4,7 @@ import { requireWorkerAction } from '../../_lib/auth.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { completeOrderShipping } from '../../_lib/directShipping.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
+import { canWorkerAccessDepartment } from '../../../shared/workerAccess.js';
 
 export async function handleWorkerShip(req, res, dependencies = {}) {
   if (req.method !== 'PATCH') {
@@ -13,7 +14,7 @@ export async function handleWorkerShip(req, res, dependencies = {}) {
   if (!checkRateLimit(req, res)) return;
 
   const checkWorker = dependencies.requireWorkerAction || requireWorkerAction;
-  const worker = checkWorker(req, res);
+  const worker = await checkWorker(req, res);
   if (!worker) return;
 
   const id = parsePositiveInt4Id(req.query.id);
@@ -21,8 +22,22 @@ export async function handleWorkerShip(req, res, dependencies = {}) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 
+  const db = dependencies.db || getDb();
+  const { rows: orderRows } = await db.execute({
+    sql: 'SELECT id FROM orders WHERE id = ?',
+    args: [id],
+  });
+  if (orderRows.length === 0) {
+    return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
+  }
+  if (!canWorkerAccessDepartment(worker.actor, '출고')) {
+    return res.status(403).json({
+      error: { message: '담당 공정에 대한 권한이 없습니다.', status: 403 },
+    });
+  }
+
   const completeShipping = dependencies.completeOrderShipping || completeOrderShipping;
-  const result = await completeShipping({ db: dependencies.db || getDb(), orderId: id, actor: worker.actor });
+  const result = await completeShipping({ db, orderId: id, actor: worker.actor });
   return res.status(result.status).json(result.body);
 }
 

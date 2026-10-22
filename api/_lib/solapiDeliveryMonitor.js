@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 
 import { sendAdminLms } from './notify.js';
 import { ensureSmsDeliveryMonitorSchema } from './notifySchema.js';
+import { readPrivateConfig } from './privateConfig.js';
 
 const SOLAPI_LIST_ENDPOINT = 'https://api.solapi.com/messages/v4/list';
 const MONITOR_START_DATE = '2026-09-03';
@@ -9,9 +10,43 @@ const DEFAULT_BATCH_SIZE = 50;
 const MAX_LOGS_PER_RUN = 20;
 const MAX_ADMIN_ALERT_ACTIONS_PER_RUN = 2;
 const ADMIN_ALERT_CUSTOM_FIELD = 'deliveryAlertKey';
+const ATTEMPT_TOKEN_CUSTOM_FIELD = 'notificationAttemptToken';
 
 export const DELIVERY_ALERT_ADMIN_PHONE = '010-7731-4237';
 export const BLOCK_STATUS_CODES = new Set(['1061', '2061', '3047', '3054', '3055', '3061']);
+export const FINAL_FAILURE_ALERT_CODES = new Set(['3040']);
+
+function parseStringArray(raw) {
+  const value = JSON.parse(raw);
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item)) throw new Error('invalid string array');
+  return value;
+}
+
+function parsePositiveIntegerArray(raw) {
+  const value = JSON.parse(raw);
+  if (!Array.isArray(value) || value.some(item => !Number.isInteger(item) || item <= 0)) throw new Error('invalid integer array');
+  return value;
+}
+
+async function loadRepairPolicy(db, options) {
+  if (options.repairPolicy) return options.repairPolicy;
+  const readConfig = options.readPrivateConfig || readPrivateConfig;
+  try {
+    const activationAt = await readConfig('repairs.activation_at', { db });
+    if (!Number.isFinite(Date.parse(activationAt))) throw new Error('invalid activation time');
+    const [providerRaw, sourceRaw] = await Promise.all([
+      readConfig('repairs.delivery_provider_ids', { db }),
+      readConfig('repairs.delivery_source_log_ids', { db }),
+    ]);
+    return {
+      activationAt,
+      deliveryProviderIds: parseStringArray(providerRaw),
+      deliverySourceLogIds: parsePositiveIntegerArray(sourceRaw),
+    };
+  } catch {
+    return null;
+  }
+}
 
 const ALERT_LABELS = {
   internal_vcut_completed: 'V-커팅 완료 자재 입고 요청',
@@ -113,6 +148,30 @@ export async function findSolapiAdminAlert(alertToken, options = {}) {
   return null;
 }
 
+export async function findSolapiAttemptReceipt(toPhone, attemptToken, options = {}) {
+  const fetchImpl = options.fetchImpl || fetch;
+  const atMs = Date.parse(options.at || '') || (options.nowMs ?? Date.now());
+  const startDate = kstDate(atMs);
+  const startMs = Date.parse(`${startDate}T00:00:00+09:00`);
+  const currentDayStartMs = Date.parse(`${kstDate(options.nowMs ?? Date.now())}T00:00:00+09:00`);
+  const endMs = Math.max(startMs, currentDayStartMs) + 24 * 60 * 60 * 1000;
+  const url = new URL(SOLAPI_LIST_ENDPOINT);
+  url.searchParams.set('to', String(toPhone || '').replace(/\D/g, ''));
+  url.searchParams.set('startDate', new Date(startMs).toISOString());
+  url.searchParams.set('endDate', new Date(endMs).toISOString());
+  url.searchParams.set('limit', '500');
+  const response = await fetchImpl(url, {
+    headers: { Authorization: solapiAuthHeader() },
+    signal: AbortSignal.timeout(5_000),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`Solapi attempt receipt lookup failed: HTTP ${response.status}`);
+  for (const message of Object.values(payload?.messageList || {})) {
+    if (message?.customFields?.[ATTEMPT_TOKEN_CUSTOM_FIELD] === attemptToken) return sanitizedReport(message);
+  }
+  return null;
+}
+
 function isMonitoredMilestone(milestone) {
   const value = String(milestone || '');
   return value.startsWith('internal_') || value === 'chonbe_alert';
@@ -154,6 +213,21 @@ function buildAdminAlert(row, report, nowMs, alertToken) {
   const label = ALERT_LABELS[row.milestone] || row.milestone;
   const reason = report.reason || '수신거부 또는 차단';
   const subject = '[한성쇼케이스 문자 수신 이상]';
+  if (FINAL_FAILURE_ALERT_CODES.has(report.statusCode)) {
+    return {
+      to: DELIVERY_ALERT_ADMIN_PHONE,
+      subject,
+      tag: 'sms_delivery_final_failure_admin_alert',
+      customFields: { [ADMIN_ALERT_CUSTOM_FIELD]: alertToken },
+      text: [
+        subject,
+        `수신자: ${recipient} (${phone})`,
+        `알림 종류: ${label}`,
+        `최종 전달 실패: ${report.statusCode} ${reason}`,
+        `확인 시각: ${kstDateTime(nowMs)}`,
+      ].join('\n'),
+    };
+  }
   return {
     to: DELIVERY_ALERT_ADMIN_PHONE,
     subject,
@@ -190,6 +264,16 @@ async function updateDeliveryReport(db, row, report) {
       report.dateReceived,
       row.id,
     ],
+  });
+}
+
+async function markDeliveryChecked(db, row) {
+  await db.execute({
+    sql: `UPDATE notification_log
+             SET delivery_checked_at = NOW()
+           WHERE id = ?
+           RETURNING id`,
+    args: [row.id],
   });
 }
 
@@ -258,14 +342,15 @@ async function finishAdminAlert(db, alertKey, result) {
     return true;
   }
 
+  const failureStatus = result?.uncertain ? 'uncertain' : 'failed';
   await db.execute({
     sql: `UPDATE notification_delivery_alerts
-             SET status = 'failed',
+             SET status = ?,
                  error = ?,
                  updated_at = NOW()
            WHERE alert_key = ?
            RETURNING alert_key`,
-    args: [String(result?.error || '관리자 문자 발송 실패').slice(0, 500), alertKey],
+    args: [failureStatus, String(result?.error || '관리자 문자 발송 실패').slice(0, 500), alertKey],
   });
   return false;
 }
@@ -277,8 +362,9 @@ export async function runSmsDeliveryMonitor(db, options = {}) {
   const sendAdmin = options.sendAdmin || sendAdminLms;
   const nowMs = options.nowMs ?? Date.now();
   await ensureSchema(db);
+  const repairPolicy = await loadRepairPolicy(db, options);
 
-  const { rows } = await db.execute({
+  const { rows: internalRows } = await db.execute({
     sql: `SELECT notification_log.id AS id,
                  notification_log.milestone AS milestone,
                  notification_log.recipient_name AS recipient_name,
@@ -304,16 +390,53 @@ export async function runSmsDeliveryMonitor(db, options = {}) {
                  AND delivery_alert.updated_at < NOW() - INTERVAL '10 minutes'
                )
              )
-           ORDER BY COALESCE(
-                      delivery_alert.updated_at,
-                      notification_log.delivery_checked_at,
-                      notification_log.created_at
-                    ) ASC,
+           ORDER BY notification_log.delivery_checked_at NULLS FIRST,
+                    notification_log.delivery_checked_at ASC,
                     notification_log.id ASC
            LIMIT ?`,
     args: [MONITOR_START_DATE, MAX_LOGS_PER_RUN],
   });
-  const candidates = rows.filter((row) => isMonitoredMilestone(row.milestone));
+  let customerRows = [];
+  if (repairPolicy) {
+    const result = await db.execute({
+      sql: `SELECT notification_log.id AS id,
+                   notification_log.milestone AS milestone,
+                   notification_log.recipient_name AS recipient_name,
+                   notification_log.to_phone AS to_phone,
+                   notification_log.provider_msgid AS provider_msgid,
+                   notification_log.created_at AS created_at,
+                   notification_log.delivery_status_code AS delivery_status_code,
+                   NULL AS delivery_alert_key
+              FROM notification_log
+             WHERE notification_log.status = 'success'
+               AND notification_log.provider_msgid IS NOT NULL
+               AND (milestone IN ('ordered', 'packed') OR milestone LIKE 'rescheduled:%')
+               AND (
+                 notification_log.created_at >= ?::timestamptz
+                 OR notification_log.provider_msgid IN (
+                   SELECT jsonb_array_elements_text(?::jsonb)
+                 )
+               )
+               AND (
+                 delivery_status_code IS NULL
+                 OR delivery_status_code IN ('2000', '3000')
+               )
+             ORDER BY notification_log.delivery_checked_at NULLS FIRST,
+                      notification_log.delivery_checked_at ASC,
+                      notification_log.id ASC
+             LIMIT ?`,
+      args: [
+        repairPolicy.activationAt,
+        JSON.stringify(repairPolicy.deliveryProviderIds || []),
+        MAX_LOGS_PER_RUN,
+      ],
+    });
+    customerRows = result.rows;
+  }
+  const candidates = [
+    ...internalRows.filter((row) => isMonitoredMilestone(row.milestone)).map(row => ({ ...row, deliveryLane: 'internal' })),
+    ...customerRows.map(row => ({ ...row, deliveryLane: 'customer' })),
+  ];
   const reports = await fetchReports(candidates.map((row) => row.provider_msgid));
   const reportsById = new Map(reports.map((report) => [report.messageId, report]));
   const summary = {
@@ -329,15 +452,29 @@ export async function runSmsDeliveryMonitor(db, options = {}) {
 
   for (const row of candidates) {
     const report = reportsById.get(row.provider_msgid);
-    if (!report) continue;
+    if (!report) {
+      await markDeliveryChecked(db, row);
+      continue;
+    }
     summary.reported += 1;
     if (report.statusCode === '4000') summary.received += 1;
-    if (!BLOCK_STATUS_CODES.has(report.statusCode)) {
+    if (row.deliveryLane === 'customer') {
+      await updateDeliveryReport(db, row, report);
+      continue;
+    }
+    const isBlocked = BLOCK_STATUS_CODES.has(report.statusCode);
+    const isEligibleFinalFailure = FINAL_FAILURE_ALERT_CODES.has(report.statusCode)
+      && repairPolicy
+      && (
+        Date.parse(row.created_at) >= Date.parse(repairPolicy.activationAt)
+        || (repairPolicy.deliverySourceLogIds || []).includes(Number(row.id))
+      );
+    if (!isBlocked && !isEligibleFinalFailure) {
       await updateDeliveryReport(db, row, report);
       continue;
     }
 
-    summary.blocked += 1;
+    if (isBlocked) summary.blocked += 1;
     const alertKey = row.delivery_alert_key || buildAlertKey(row, report, nowMs);
     if (handledAlertKeys.has(alertKey)) {
       await updateDeliveryReport(db, row, report);
@@ -380,7 +517,7 @@ export async function runSmsDeliveryMonitor(db, options = {}) {
     try {
       result = await sendAdmin(db, buildAdminAlert(row, report, nowMs, alertToken));
     } catch (error) {
-      result = { ok: false, error: error?.message || String(error) };
+      result = { ok: false, uncertain: true, error: error?.message || String(error) };
     }
     if (await finishAdminAlert(db, claim.alertKey, result)) summary.alerted += 1;
     else summary.failed += 1;

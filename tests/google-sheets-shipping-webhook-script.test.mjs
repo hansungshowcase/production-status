@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -8,7 +9,9 @@ const manifestPath = new URL('../.apps-script-shipping/appsscript.json', import.
 const spreadsheetId = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const secret = 'hansung-production-status';
 
-const ROW_WIDTH = 20;
+const ROW_WIDTH = 44;
+const LEGACY_ID_INDEX = 19;
+const ID_INDEX = 43;
 const SHIPPING_VALUE = '출고완료 · 2026-08-04';
 
 // 백엔드 orderValues(order)가 보내는 A~S 19칸과 동일한 모양.
@@ -46,7 +49,8 @@ function padRow(values) {
 function dataRow({ orderId = '', shipping = '', values = ORDER_VALUES } = {}) {
   const row = padRow(values);
   row[4] = shipping;
-  row[ROW_WIDTH - 1] = orderId;
+  if (typeof orderId === 'number') row[ID_INDEX] = orderId;
+  else row[LEGACY_ID_INDEX] = orderId;
   return row;
 }
 
@@ -152,6 +156,10 @@ function makeSheet({
 
 async function createAppsScriptHarness({ sheets = [makeSheet()] } = {}) {
   const source = await readFile(sourcePath, 'utf8');
+  const properties = new Map([
+    ['PRODUCTION_STATUS_WEBHOOK_SECRET', secret],
+  ]);
+  const propertyWrites = [];
   const lockState = {
     available: true,
     held: false,
@@ -173,6 +181,11 @@ async function createAppsScriptHarness({ sheets = [makeSheet()] } = {}) {
       getScriptTimeZone: () => 'Asia/Seoul',
     },
     Utilities: {
+      DigestAlgorithm: { SHA_256: 'sha256' },
+      Charset: { UTF_8: 'utf8' },
+      computeDigest(_algorithm, value) {
+        return Array.from(createHash('sha256').update(String(value)).digest());
+      },
       formatDate(date, timeZone, format) {
         assert.equal(timeZone, 'Asia/Seoul');
         assert.equal(format, 'yyyy-MM-dd');
@@ -180,6 +193,17 @@ async function createAppsScriptHarness({ sheets = [makeSheet()] } = {}) {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+      },
+    },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) { return properties.get(key) ?? null; },
+          setProperties(values) {
+            propertyWrites.push({ ...values });
+            Object.entries(values).forEach(([key, value]) => properties.set(key, value));
+          },
+        };
       },
     },
     LockService: {
@@ -233,6 +257,8 @@ async function createAppsScriptHarness({ sheets = [makeSheet()] } = {}) {
     sheets,
     sheet: sheets[0],
     lockState,
+    properties,
+    propertyWrites,
     spreadsheetAccess,
     post,
     postWithSecret(requestSecret, payload = {}) {
@@ -960,4 +986,43 @@ test('the shipping script never appends, deletes, hides, or sorts rows', async (
   assert.equal(sheet.deleteCalls, 0);
   assert.equal(sheet.hideCalls, 0);
   assert.equal(sheet.sortCalls, 0);
+});
+
+test('pending AR and unmigrated numeric T hold shipping without changing E', async () => {
+  const pending = dataRow({ orderId: '', shipping: '수기 메모' });
+  pending[ID_INDEX] = 'pending:101:abc';
+  const pendingSheet = makeSheet({ dataRows: [pending] });
+  const pendingHarness = await createAppsScriptHarness({ sheets: [pendingSheet] });
+  assert.deepEqual(pendingHarness.post(), { ok: false, error: 'unresolved legacy order id' });
+  assert.equal(pendingSheet.shippingCell(6), '수기 메모');
+  assert.equal(pendingSheet.setValuesCalls.length, 0);
+
+  const numericT = dataRow({ orderId: '', shipping: '수기 메모' });
+  numericT[LEGACY_ID_INDEX] = 101;
+  const numericSheet = makeSheet({ dataRows: [numericT] });
+  const numericHarness = await createAppsScriptHarness({ sheets: [numericSheet] });
+  assert.deepEqual(numericHarness.post(), { ok: false, error: 'unresolved legacy order id' });
+  assert.equal(numericSheet.shippingCell(6), '수기 메모');
+  assert.equal(numericSheet.setValuesCalls.length, 0);
+});
+
+test('shipping auth probe reports AR identity capability without sheet access', async () => {
+  const harness = await createAppsScriptHarness();
+  const result = harness.post({ action: 'authProbe' });
+  assert.deepEqual(result, { ok: true, version: '6-transition', idColumn: 44, idSchema: 'ar-v1' });
+  assert.deepEqual(harness.spreadsheetAccess, []);
+});
+
+test('shipping final source removes rotation and rejects the legacy secret without sheet mutation', async () => {
+  const source = await readFile(sourcePath, 'utf8');
+  assert.doesNotMatch(source, /ROTATION_|rotateWebhookSecret|LEGACY_SECRET_PROPERTY|legacySecret/);
+
+  const harness = await createAppsScriptHarness();
+  harness.properties.set('PRODUCTION_STATUS_WEBHOOK_LEGACY_SECRET', 'retired-legacy-secret');
+  harness.properties.delete('PRODUCTION_STATUS_WEBHOOK_SECRET');
+  const legacy = harness.postWithSecret('retired-legacy-secret', { action: 'authProbe' });
+
+  assert.deepEqual(legacy, { ok: false, error: 'unauthorized' });
+  assert.equal(harness.sheet.setValuesCalls.length, 0);
+  assert.equal(harness.propertyWrites.length, 0);
 });

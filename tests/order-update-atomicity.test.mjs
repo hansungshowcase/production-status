@@ -43,7 +43,9 @@ function orderDb({ atomicRows, atomicError = null } = {}) {
     async atomicBatch(queries) {
       state.batches.push(queries);
       assert.equal(queries.length, 1);
-      assert.match(queries[0].sql, /^WITH updated_order AS/i);
+      assert.match(queries[0].sql, /^WITH locked_order AS/i);
+      assert.match(queries[0].sql, /FOR UPDATE/i);
+      assert.match(queries[0].sql, /UPDATE orders o/i);
       assert.match(queries[0].sql, /INSERT INTO activity_feed/i);
       assert.match(queries[0].sql, /FROM updated_order/i);
       if (atomicError) throw atomicError;
@@ -82,9 +84,51 @@ test('주문 PATCH는 UPDATE와 감사를 한 guarded CTE로 커밋한 뒤 resch
   assert.deepEqual(res.body, updated);
   assert.equal(db.state.batches.length, 1);
   assert.equal(db.state.writesOutsideAtomic, 0);
+  const mutation = db.state.batches[0][0];
+  assert.match(mutation.sql, /notify_state = COALESCE\(locked\.notify_state/i);
+  assert.match(mutation.sql, /jsonb_exists\(COALESCE\(locked\.notify_state/i);
+  assert.ok(mutation.args.includes('rescheduled:2026-11-01'));
+  const queued = mutation.args.map(value => {
+    try { return JSON.parse(value); } catch { return null; }
+  }).find(value => value?.status === 'queued');
+  assert.match(queued.at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(queued.queued_at, undefined);
   assert.equal(external.length, 1);
   assert.equal(external[0].milestone, 'rescheduled');
   assert.deepEqual(external[0].extra, { date: '2026-11-01' });
+});
+
+test('주문 PATCH의 rescheduled 알림 실패는 200과 커밋된 intent를 보존한다', async () => {
+  const updated = {
+    ...orderDb().state.order,
+    ship_scheduled_date: '2026-11-02',
+  };
+  const db = orderDb({ atomicRows: [{ order_row: updated }] });
+  const res = response();
+
+  await handleUpdate('41', {
+    body: { ship_scheduled_date: '2026-11-02', actor: '영업 담당자' },
+  }, res, {
+    ...dependencies(db, []),
+    notify: async () => { throw new Error('simulated notify claim failure'); },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(db.state.batches[0][0].args.includes('rescheduled:2026-11-02'));
+});
+
+test('동일 일정 재저장은 rescheduled intent와 hook을 활성화하지 않는다', async () => {
+  const unchanged = { ...orderDb().state.order };
+  const db = orderDb({ atomicRows: [{ order_row: unchanged }] });
+  const external = [];
+
+  await handleUpdate('41', {
+    body: { ship_scheduled_date: '2026-10-25', actor: '영업 담당자' },
+  }, response(), dependencies(db, external));
+
+  const args = db.state.batches[0][0].args;
+  assert.equal(args.includes('rescheduled:2026-10-25'), false);
+  assert.deepEqual(external, []);
 });
 
 test('주문 PATCH 감사 실패는 값을 rollback하고 알림을 호출하지 않는다', async () => {

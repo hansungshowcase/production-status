@@ -65,50 +65,56 @@ test('orders GET executes only read queries and never schema DDL', async () => {
   assert.doesNotMatch(statements.join('\n'), SCHEMA_DDL_PATTERN);
 });
 
-test('orders POST prepares the optional schema before opening its write transaction', async () => {
+test('orders POST prepares the optional schema before its single atomic creation CTE', async () => {
   assert.equal(
     typeof ordersModule.handlePost,
     'function',
     'orders POST needs an injectable handler export for behavioral regression coverage',
   );
 
-  const transactionReached = new Error('transaction reached');
+  const creationReached = new Error('creation CTE reached');
   const events = [];
   const db = {
     async execute(query) {
-      events.push({ kind: 'execute', sql: querySql(query) });
+      const sql = querySql(query);
+      events.push({ kind: 'execute', sql });
+      if (/^\s*WITH inserted_order AS\s*\(/i.test(sql)) throw creationReached;
       return { rows: [] };
     },
-    async transaction(mode) {
-      events.push({ kind: 'transaction', mode });
-      throw transactionReached;
+    async transaction() {
+      events.push({ kind: 'transaction' });
+      throw new Error('legacy transaction API must not be used');
     },
   };
 
   await assert.rejects(
     () => ordersModule.handlePost({
       body: { client_name: 'schema preparation regression', quantity: 1 },
-    }, mockResponse(), db),
-    (error) => error === transactionReached,
+    }, mockResponse(), db, {
+      requireAuth: async () => ({ role: 'sales', actor: '신은철' }),
+    }),
+    (error) => error === creationReached,
   );
 
-  const executedBeforeTransaction = events
+  const creationEvent = events.at(-1);
+  const executedBeforeCreation = events
+    .slice(0, -1)
     .filter((event) => event.kind === 'execute')
     .map((event) => event.sql);
   assert.deepEqual(
-    executedBeforeTransaction.slice(0, OPTIONAL_ORDER_COLUMN_STATEMENTS.length),
+    executedBeforeCreation.slice(0, OPTIONAL_ORDER_COLUMN_STATEMENTS.length),
     OPTIONAL_ORDER_COLUMN_STATEMENTS,
   );
   for (const statement of TRACK_TOKEN_SCHEMA_STATEMENTS) {
     assert.ok(
-      executedBeforeTransaction.includes(statement),
-      `쓰기 트랜잭션 전에 실행되어야 한다: ${statement}`,
+      executedBeforeCreation.includes(statement),
+      `단일 생성 CTE 전에 실행되어야 한다: ${statement}`,
     );
   }
-  for (const statement of executedBeforeTransaction) {
-    assert.match(statement, /^(?:ALTER TABLE|CREATE UNIQUE INDEX|CREATE TABLE) /i);
-  }
-  assert.deepEqual(events.at(-1), { kind: 'transaction', mode: 'write' });
+  assert.equal(executedBeforeCreation.some((statement) => /^\s*WITH inserted_order AS\s*\(/i.test(statement)), false);
+  assert.equal(creationEvent.kind, 'execute');
+  assert.match(creationEvent.sql, /^\s*WITH inserted_order AS\s*\(/i);
+  assert.equal(events.some((event) => event.kind === 'transaction'), false);
 });
 
 test('migration runner executes all five optional columns with exact schema types', () => {

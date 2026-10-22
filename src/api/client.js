@@ -1,4 +1,4 @@
-import { getToken, clearToken } from '../utils/authClient.js';
+import { authHeaders, clearToken } from '../utils/authClient.js';
 import { parseResponseBody, shouldRetryRequest } from './clientCore.js';
 
 const BASE_URL = '/api';
@@ -21,13 +21,12 @@ async function request(endpoint, options = {}, _retryCount = 0) {
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
   const isFormData = body instanceof FormData;
-  const token = getToken();
-
   const config = {
     method,
+    credentials: 'same-origin',
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders({ write: !['GET', 'HEAD'].includes(method) }),
       ...customHeaders,
     },
     ...(cache ? { cache } : {}),

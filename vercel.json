@@ -12,7 +12,8 @@
     { "path": "/api/cron/risk-daily", "schedule": "40 23 * * 0-4" },
     { "path": "/api/cron/internal-production-daily", "schedule": "40 23 * * 0-4" },
     { "path": "/api/cron/sms-delivery-monitor", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sheet-sync", "schedule": "* * * * *" }
+    { "path": "/api/cron/sheet-sync", "schedule": "* * * * *" },
+    { "path": "/api/cron/external-cleanup", "schedule": "*/5 * * * *" }
   ],
   "rewrites": [
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }

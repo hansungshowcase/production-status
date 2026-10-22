@@ -1,23 +1,19 @@
 import { cors } from '../_lib/cors.js';
-import { authConfigurationError, authEnabled, authRequired, checkPassword, issueToken } from '../_lib/auth.js';
+import { checkPassword, ensureSigningSecret, issueToken, setAuthCookie, verifyDatabaseLogin } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
+import { SALES_PERSON_NAMES } from '../../shared/workerAccess.js';
 
 export default cors(async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: { message: 'Method not allowed' } });
-  }
-  if (!rateLimitCheck(req, res, { windowMs: 60000, max: 10 })) return;
-  if (!authEnabled()) {
-    if (authRequired()) {
-      return authConfigurationError(res);
-    }
-    // 인증 비활성 — 아무 사용자나 통과시키되 토큰 발급은 안 함 (클라이언트는 토큰 없이도 진입)
-    return res.json({ enabled: false });
-  }
-  const { password, actor } = req.body || {};
-  if (!checkPassword(password, process.env.SALES_PASSWORD)) {
-    return res.status(401).json({ error: { message: '비밀번호가 일치하지 않습니다.', status: 401 } });
-  }
-  const token = issueToken({ role: 'sales', actor: actor || null });
-  return res.json({ enabled: true, token, role: 'sales', actor: actor || null });
+  if (req.method !== 'POST') return res.status(405).json({ error: { message: 'Method not allowed', status: 405 } });
+  const actor = String(req.body?.actor || '').trim();
+  if (!rateLimitCheck(req, res, { windowMs: 60000, max: 10, keySuffix: actor })) return;
+  await ensureSigningSecret();
+  if (!SALES_PERSON_NAMES.includes(actor)) return res.status(401).json({ error: { message: '이름 또는 비밀번호가 일치하지 않습니다.', status: 401 } });
+  let credential = null;
+  const envLogin = process.env.SALES_PASSWORD && checkPassword(req.body?.password, process.env.SALES_PASSWORD);
+  if (!envLogin) credential = await verifyDatabaseLogin('sales', '*', req.body?.password);
+  if (!envLogin && !credential) return res.status(401).json({ error: { message: '이름 또는 비밀번호가 일치하지 않습니다.', status: 401 } });
+  const token = issueToken({ role: 'sales', actor, credentialId: credential?.id, credentialVersion: credential?.credential_version });
+  setAuthCookie(res, token);
+  return res.json({ enabled: true, token, role: 'sales', actor });
 });

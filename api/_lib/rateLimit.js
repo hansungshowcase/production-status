@@ -23,10 +23,11 @@ function evictIfNeeded(now, windowMs) {
   }
 }
 
-export function rateLimitCheck(req, res, { windowMs = 60000, max = 30 } = {}) {
+export function rateLimitCheck(req, res, { windowMs = 60000, max = 30, keySuffix = '' } = {}) {
   const ip = getClientIp(req);
   const route = (req.url || '').split('?')[0] || 'unknown';
-  const key = `${ip}|${route}`;
+  const safeSuffix = String(keySuffix).trim().slice(0, 100);
+  const key = `${ip}|${route}|${safeSuffix}`;
   const now = Date.now();
   const windowStart = now - windowMs;
 

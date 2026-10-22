@@ -1,11 +1,6 @@
-import { clearToken, getToken } from '../utils/authClient';
+import { authHeaders, clearToken } from '../utils/authClient';
 
 const FALLBACK_TARGET_BYTES = 1200 * 1024;
-
-function authHeaders() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 async function canvasToFile(canvas, name, quality) {
   return new Promise((resolve) => {
@@ -98,7 +93,8 @@ export async function uploadWorkOrderImage(file) {
 
   return fetch('/api/work-order-images', {
     method: 'POST',
-    headers: authHeaders(),
+    credentials: 'same-origin',
+    headers: authHeaders({ write: true }),
     body: formData,
     signal: controller.signal,
   }).then(async (response) => {
@@ -131,7 +127,8 @@ export async function attachWorkOrderImage(orderId, file) {
 
   return fetch(`/api/orders/${orderId}/work-order-image`, {
     method: 'POST',
-    headers: authHeaders(),
+    credentials: 'same-origin',
+    headers: authHeaders({ write: true }),
     body: formData,
     signal: controller.signal,
   }).then(async (response) => {
@@ -154,7 +151,7 @@ export async function attachWorkOrderImage(orderId, file) {
 export async function getWorkOrderImage(orderId) {
   if (!orderId) throw new Error('주문 ID가 필요합니다.');
 
-  const response = await fetch(`/api/orders/${orderId}/work-order-image`, { headers: authHeaders() });
+  const response = await fetch(`/api/orders/${orderId}/work-order-image`, { credentials: 'same-origin', headers: authHeaders() });
   if (!response.ok) {
     if (response.status === 401) clearToken();
     const errorData = await response.json().catch(() => ({}));

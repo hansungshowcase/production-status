@@ -686,8 +686,7 @@ test('cron authorizes first, installs shipping schema, then retries append befor
     }, authorized, db, {
       retry: async (_db, options) => {
         events.push('append-retry');
-        // 등록 큐에 상한(10초)을 둔다. 상한이 없으면 등록이 예산을 다 쓰고 출고가 굶는다.
-        assert.deepEqual(options, { limit: 25, deadlineMs: 10_000 });
+        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
         return appendSummary;
       },
       retryShipping: async (_db, options) => {

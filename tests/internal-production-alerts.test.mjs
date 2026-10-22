@@ -31,6 +31,59 @@ test('내부 생산 알림 수신자와 조립팀 작업자 별칭을 정확히 
   assert.equal(alerts.assemblyWorkerPhone('거니'), '');
 });
 
+test('internal daily adds only activated explicit V-cut failures below attempt three', async () => {
+  const { handleInternalProductionDaily } = await import(`../api/cron/internal-production-daily.js?vcutRetry=${Math.random()}`);
+  const originalSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'internal-alert-secret';
+  const queries = [];
+  const retryOrder = { ...order(77, '2026-10-30'), attempts: 2 };
+  const db = {
+    async execute({ sql }) {
+      const statement = sql.replace(/\s+/g, ' ').trim();
+      queries.push(statement);
+      if (statement.startsWith('SELECT id, client_name')) return { rows: [] };
+      if (statement.startsWith('SELECT p.order_id')) return { rows: [] };
+      if (statement.includes('AS held_state')) return { rows: [] };
+      if (statement.includes("notify_state -> 'internal:vcut_completed'")) return { rows: [retryOrder] };
+      throw new Error(`Unexpected SQL: ${statement}`);
+    },
+  };
+  const groups = [];
+  const config = new Map([
+    ['repairs.activation_at', '2026-10-22T00:00:00.000Z'],
+    ['repairs.vcut_order_ids', '[]'],
+  ]);
+
+  try {
+    const res = mockResponse();
+    await handleInternalProductionDaily({
+      method: 'POST',
+      headers: { authorization: 'Bearer internal-alert-secret' },
+    }, res, {
+      db,
+      ensureSchema: async () => {},
+      today: '2026-10-22',
+      nowMs: Date.parse('2026-10-21T23:40:00.000Z'),
+      readPrivateConfig: async key => config.get(key),
+      sendGroup: async (_db, group) => {
+        groups.push(group);
+        return { sent: group.items.length, failed: 0, skipped: 0 };
+      },
+    });
+
+    assert.equal(res.body.sent, 1);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].type, 'vcut_completed');
+    assert.equal(groups[0].items[0].attempts, 2);
+    assert.match(queries[3], /status' = 'internal_failed'/);
+    assert.match(queries[3], /< 3/);
+    assert.match(queries[3], /notification_log receipt/);
+  } finally {
+    if (originalSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = originalSecret;
+  }
+});
+
 function order(id, dueDate, over = {}) {
   return {
     id,
@@ -364,7 +417,9 @@ function makeInternalStateDb() {
         const previous = orderState[key];
         const staleBefore = args.at(-1);
         const staleSending = previous?.status === 'internal_sending' && String(previous?.at || '') < staleBefore;
-        const eligible = payload.date
+        const eligible = statement.includes("IN ('', 'internal_failed')")
+          ? ['', 'internal_failed'].includes(previous?.status || '') && (previous?.attempts || 0) < 3
+          : payload.date
           ? previous?.date !== payload.date || previous?.status === 'internal_failed' || staleSending
           : !['internal_success', 'internal_dry_run'].includes(previous?.status) && (previous?.status !== 'internal_sending' || staleSending);
         if (!eligible) return { rows: [] };
@@ -450,7 +505,7 @@ test('내부 문자 발송 실패는 실패 상태로 남겨 같은 대상의 �
     ensureSchema: async () => {},
     nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
     sendLms: async () => (++attempts === 1
-      ? { ok: false, channel: 'lms', error: 'temporary failure' }
+      ? { ok: false, channel: 'lms', explicitFailure: true, error: 'temporary failure' }
       : { ok: true, channel: 'lms', msgId: 'retry-ok' }),
   };
 
@@ -461,6 +516,61 @@ test('내부 문자 발송 실패는 실패 상태로 남겨 같은 대상의 �
   assert.equal(retried.sent, 1);
   assert.equal(attempts, 2);
   assert.equal(db.notifyState.get(33)['internal:vcut_completed'].status, 'internal_success');
+});
+
+test('V-cut provider uncertainty is held with one stable attempt token and is not retried', async () => {
+  const alerts = await loadAlertsModule();
+  const item = alerts.createVcutCompletionAlert({ order: order(34, '2026-09-10'), today: '2026-09-01' });
+  const group = alerts.groupInternalAlerts([item])[0];
+  const db = makeInternalStateDb();
+  const sent = [];
+  const options = {
+    ensureSchema: async () => {},
+    nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
+    sendLms: async (_db, message) => {
+      sent.push(message);
+      return { ok: false, channel: 'lms', uncertain: true, error: 'timeout' };
+    },
+  };
+
+  const first = await alerts.sendInternalAlertGroup(db, group, options);
+  const second = await alerts.sendInternalAlertGroup(db, group, options);
+  const state = db.notifyState.get(34)['internal:vcut_completed'];
+
+  assert.equal(first.failed, 1);
+  assert.equal(second.skipped, 1);
+  assert.equal(sent.length, 1);
+  assert.equal(state.status, 'internal_uncertain');
+  assert.equal(sent[0].customFields.notificationAttemptToken, state.attempt_token);
+});
+
+test('V-cut receipt reconciliation completes only the matching attempt without sending', async () => {
+  const alerts = await loadAlertsModule();
+  const item = alerts.createVcutCompletionAlert({ order: order(35, '2026-09-10'), today: '2026-09-01' });
+  const calls = [];
+  const db = {
+    async execute({ sql, args }) {
+      const compact = sql.replace(/\s+/g, ' ').trim();
+      calls.push({ sql: compact, args });
+      if (compact.startsWith('UPDATE orders')) return { rows: [{ id: 35 }] };
+      if (compact.startsWith('INSERT INTO notification_log')) return { rows: [] };
+      throw new Error(`Unexpected SQL: ${compact}`);
+    },
+  };
+  const state = { status: 'internal_uncertain', attempt_token: 'vcut-token-35', attempts: 2 };
+
+  const reconciled = await alerts.reconcileInternalAlertReceipt(
+    db,
+    item,
+    state,
+    { messageId: 'provider-vcut-35' },
+    Date.parse('2026-09-01T01:00:00.000Z'),
+  );
+
+  assert.equal(reconciled, true);
+  assert.equal(calls[0].args.at(-1), 'vcut-token-35');
+  assert.match(calls[1].sql, /WHERE NOT EXISTS/);
+  assert.equal(calls[1].args.at(-1), 'provider-vcut-35');
 });
 
 function mockResponse() {
@@ -551,6 +661,7 @@ test('내부 생산 알림 크론은 평일 주문·공정을 조회해 수신�
       },
       today: '2026-09-01',
       nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
+      readPrivateConfig: async () => { throw new Error('feature disabled'); },
       sendGroup: async (_db, group) => {
         sentGroups.push(group);
         return { sent: group.items.length, failed: 0, skipped: 0 };

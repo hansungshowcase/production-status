@@ -16,7 +16,7 @@ export async function handleTrackLink(req, res, dependencies = {}) {
   if (!checkRateLimit(req, res)) return;
 
   const checkAuth = dependencies.requireAuth || requireAuth;
-  const auth = checkAuth(req, res, { roles: ['sales'] });
+  const auth = await checkAuth(req, res, { roles: ['sales'] });
   if (!auth) return;
 
   const id = parsePositiveInt4Id(req.query.id);

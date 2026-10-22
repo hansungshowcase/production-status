@@ -1,10 +1,10 @@
 import { createSign } from 'node:crypto';
+import { readPrivateConfig } from './privateConfig.js';
 
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwIcl2eMEutqooqlERMOiLZAjo3SkuZDuKkaRpYN_75FjDl6ke2hlugkqJlmf2QutRv/exec';
-const DEFAULT_WEBHOOK_SECRET = 'hansung-production-status';
 const WEBHOOK_TIMEOUT_MS = 15_000;
 // 출고 전용: Apps Script 스크립트 락 대기(25초)를 백엔드가 먼저 끊지 않도록 더 길게 잡는다.
 const SHIPPING_WEBHOOK_TIMEOUT_MS = 30_000;
@@ -16,6 +16,10 @@ export const SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS = 5_000;
 const SHIPPED_VALUE_PREFIX = '출고완료 · ';
 
 let cachedToken = null;
+
+async function webhookSecret() {
+  return readPrivateConfig('sheets.webhook_secret');
+}
 
 function orderValues(order) {
   const hasWidth = order.width !== null && order.width !== undefined && order.width !== '';
@@ -63,11 +67,12 @@ async function appendViaWebhook(order) {
   const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
 
   try {
+    const secret = await webhookSecret();
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        secret,
         sheetId: 0,
         orderId: Number(order.id),
         values: neutralizeAppendFormulaStrings(orderValues(order)),
@@ -100,25 +105,27 @@ async function appendViaWebhook(order) {
   }
 }
 
-async function deleteViaWebhook(order) {
+async function deleteViaWebhook(order, { strictOrderId = false, timeoutMs = WEBHOOK_TIMEOUT_MS } = {}) {
   const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
   if (!webhookUrl) {
     return { skipped: true };
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const secret = await webhookSecret();
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        secret,
         sheetId: 0,
         action: 'deleteOrder',
         orderId: Number(order.id),
         values: orderValues(order),
+        strictOrderId,
       }),
       signal: controller.signal,
     });
@@ -140,10 +147,21 @@ async function deleteViaWebhook(order) {
       const detail = result && typeof result === 'object' && !Array.isArray(result) && result.error
         ? `: ${String(result.error)}`
         : '';
-      throw new Error(`Google Sheets webhook delete failed${detail}`);
+      const error = new Error(`Google Sheets webhook delete failed${detail}`);
+      if (['unresolved legacy order id', 'duplicate order id'].includes(result?.error)) {
+        error.code = 'SHEET_ID_UNRESOLVED';
+      }
+      throw error;
     }
 
-    return { skipped: false, deletedRow: result.deletedRow ?? null };
+    if (strictOrderId && result.strictOrderId !== true) {
+      throw new Error('Google Sheets webhook does not support strict order ID deletion');
+    }
+    return {
+      skipped: false,
+      deletedRow: result.deletedRow ?? null,
+      strictOrderId: result.strictOrderId === true,
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -167,11 +185,12 @@ export async function markOrderShippedOnSheet(order, shipDate, { timeoutMs = SHI
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const secret = await webhookSecret();
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        secret,
         action: 'markShipped',
         sheetId: 0,
         orderId,
@@ -235,11 +254,12 @@ export async function clearShippedOnSheet(order, shipDate, { timeoutMs = SHIPPIN
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const secret = await webhookSecret();
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
+        secret,
         action: 'clearShipped',
         sheetId: 0,
         orderId,
@@ -397,6 +417,49 @@ export async function appendOrderToSheet(order) {
   }
 }
 
-export async function deleteOrderFromSheet(order) {
-  return deleteViaWebhook(order);
+export async function probeSheetWebhook({ timeoutMs = 5000 } = {}) {
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const secret = await webhookSecret();
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ secret, action: 'authProbe' }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Google Sheets webhook probe failed: ${response.status}`);
+    const result = await response.json();
+    if (result?.ok !== true) throw new Error('Google Sheets webhook probe was rejected');
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function probeShippingWebhook({ timeoutMs = 5000 } = {}) {
+  const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+  if (!webhookUrl) throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const secret = await webhookSecret();
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ secret, action: 'authProbe' }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Google Sheets shipping webhook probe failed: ${response.status}`);
+    const result = await response.json();
+    if (result?.ok !== true) throw new Error('Google Sheets shipping webhook probe was rejected');
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function deleteOrderFromSheet(order, options = {}) {
+  return deleteViaWebhook(order, options);
 }

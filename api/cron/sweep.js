@@ -7,7 +7,8 @@ import crypto from 'crypto';
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
-import { maybeNotify } from '../_lib/notify.js';
+import { maybeNotify, reconcileCustomerAttemptReceipt } from '../_lib/notify.js';
+import { findSolapiAttemptReceipt } from '../_lib/solapiDeliveryMonitor.js';
 
 const RECOVER_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const STALE_SENDING_MS = 5 * 60 * 1000; // notify.js 의 STALE_SENDING_MS 와 동일 기준
@@ -53,6 +54,7 @@ export default cors(async function handler(req, res) {
   // stale sending: 발송 도중 함수 크래시/타임아웃으로 'sending' 인 채 방치된 건 —
   // maybeNotify 의 claim SQL 이 5분 지난 sending 재선점을 허용하므로 여기서 재시도 주체가 되어 준다.
   const staleBefore = new Date(Date.now() - STALE_SENDING_MS).toISOString();
+  const retryAfter = String(process.env.NOTIFY_RETRY_AFTER || '').trim();
   const { rows: pendingOrders } = await db.execute({
     sql: `SELECT o.* FROM orders o
            WHERE EXISTS (
@@ -60,24 +62,39 @@ export default cors(async function handler(req, res) {
               WHERE kv.key <> 'shipped'
                 AND (
                   kv.value ->> 'status' IN ('queued', 'failed')
-                  OR (kv.value ->> 'status' = 'sending' AND COALESCE(kv.value ->> 'at', '') < ?)
+                  OR (
+                    kv.value ->> 'status' = 'sending'
+                    AND COALESCE(kv.value ->> 'attempt_token', '') = ''
+                    AND COALESCE(kv.value ->> 'at', '') < ?
+                  )
+                )
+                AND (? = '' OR COALESCE(kv.value ->> 'at', '') >= ?)
+                AND (
+                  kv.value ->> 'status' = 'queued'
+                  OR (
+                    SELECT COUNT(*) FROM notification_log retry_log
+                     WHERE retry_log.order_id = o.id AND retry_log.milestone = kv.key
+                       AND retry_log.status = 'failed'
+                  ) < 3
                 )
            )
            ORDER BY o.id
            LIMIT 100`,
-    args: [staleBefore],
+    args: [staleBefore, retryAfter, retryAfter],
   });
 
   // 발송 켜기 이전에 쌓인 backlog(막혀서 failed 로 남은 과거 건)를 소급 발송하지 않도록 하는 컷오프.
   // NOTIFY_RETRY_AFTER(ISO) 보다 오래된 queued/failed 는 재발송 대상에서 제외 → "지금부터 새로".
-  const retryAfter = String(process.env.NOTIFY_RETRY_AFTER || '').trim();
+  // SQL에서도 같은 기준을 LIMIT 전에 적용하고, 발송 직전 아래에서 다시 확인한다.
 
   for (const order of pendingOrders) {
     const state = (order.notify_state && typeof order.notify_state === 'object') ? order.notify_state : {};
     for (const [key, val] of Object.entries(state)) {
       if (key === 'shipped') continue;
       const status = val?.status;
-      const staleSending = status === 'sending' && String(val?.at || '') < staleBefore;
+      const staleSending = status === 'sending'
+        && !val?.attempt_token
+        && String(val?.at || '') < staleBefore;
       if (status !== 'queued' && status !== 'failed' && !staleSending) continue;
 
       // 컷오프 이전(발송 켜기 전) 건은 소급 발송 안 함
@@ -97,6 +114,31 @@ export default cors(async function handler(req, res) {
       const milestone = isReschedule ? 'rescheduled' : key;
       const extra = isReschedule ? { date: key.slice('rescheduled:'.length) } : {};
       await runNotify(order, milestone, extra, 'retried');
+    }
+  }
+
+  const { rows: heldOrders } = await db.execute({
+    sql: `SELECT o.* FROM orders o
+           WHERE EXISTS (
+             SELECT 1 FROM jsonb_each(COALESCE(o.notify_state, '{}'::jsonb)) kv
+              WHERE kv.key NOT LIKE 'internal:%'
+                AND kv.key <> 'shipped'
+                AND kv.value ->> 'status' IN ('sending', 'uncertain')
+                AND COALESCE(kv.value ->> 'attempt_token', '') <> ''
+           )
+           ORDER BY o.id
+           LIMIT 20`,
+    args: [],
+  });
+  for (const order of heldOrders) {
+    const state = order.notify_state && typeof order.notify_state === 'object' ? order.notify_state : {};
+    for (const [key, value] of Object.entries(state)) {
+      if (key === 'shipped' || key.startsWith('internal:')) continue;
+      if (!['sending', 'uncertain'].includes(value?.status) || !value?.attempt_token) continue;
+      try {
+        const receipt = await findSolapiAttemptReceipt(order.phone, value.attempt_token, { at: value.at });
+        if (receipt?.messageId) await reconcileCustomerAttemptReceipt(db, order, key, value, receipt);
+      } catch {}
     }
   }
 

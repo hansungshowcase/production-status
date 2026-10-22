@@ -10,6 +10,11 @@ const EXP_KEY = 'auth_exp';
 let cachedEnabled = null; // null = 미조회, true/false = 결과
 let statusPromise = null;
 
+export function invalidateAuthStatus() {
+  statusPromise = null;
+  cachedEnabled = null;
+}
+
 export function getToken() {
   const t = safeGet(TOKEN_KEY);
   const exp = Number(safeGet(EXP_KEY) || 0);
@@ -37,15 +42,24 @@ export function clearToken() {
   safeRemove(ROLE_KEY);
   safeRemove(ACTOR_KEY);
   safeRemove(EXP_KEY);
+  invalidateAuthStatus();
+}
+
+export function authHeaders({ write = false } = {}) {
+  const token = getToken();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(write ? { 'X-Requested-With': 'production-status' } : {}),
+  };
 }
 
 // 서버에 인증 활성 여부 + 현재 토큰 유효성 조회 (1회 캐시)
 export async function fetchAuthStatus() {
   if (statusPromise) return statusPromise;
   statusPromise = (async () => {
-    const t = getToken();
     const res = await fetch('/api/auth/status', {
-      headers: t ? { Authorization: `Bearer ${t}` } : {},
+      credentials: 'same-origin',
+      headers: authHeaders(),
     });
     if (!res.ok) {
       throw new Error(`인증 상태를 확인할 수 없습니다. (${res.status})`);
@@ -59,6 +73,7 @@ export async function fetchAuthStatus() {
     if (!data || typeof data.enabled !== 'boolean') {
       throw new Error('인증 상태 응답을 확인할 수 없습니다.');
     }
+    if (!data.authenticated) clearToken();
     cachedEnabled = data.enabled;
     return data;
   })().catch((err) => {
@@ -74,10 +89,11 @@ export function isAuthEnabled() {
 
 // 로그인. role: 'sales' | 'admin'. body: { password, actor? }
 export async function login(role, { password, actor }) {
-  const endpoint = role === 'admin' ? '/api/auth/admin' : '/api/auth/sales';
+  const endpoint = role === 'admin' ? '/api/auth/admin' : role === 'worker' ? '/api/auth/worker' : '/api/auth/sales';
   const res = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'production-status' },
     body: JSON.stringify({ password, actor }),
   });
   const data = await res.json().catch(() => ({}));
@@ -85,11 +101,6 @@ export async function login(role, { password, actor }) {
     const err = new Error(data?.error?.message || '로그인 실패');
     err.status = res.status;
     throw err;
-  }
-  if (data.enabled === false) {
-    // 서버에 인증 미설정 — 토큰 발급 안 함. 클라이언트는 그대로 진입 가능.
-    cachedEnabled = false;
-    return { enabled: false };
   }
   if (data.token) {
     // payload에서 exp 추출 (base64url 디코드)
@@ -102,10 +113,19 @@ export async function login(role, { password, actor }) {
     } catch { /* ignore */ }
     setToken({ token: data.token, role: data.role, actor: data.actor, exp });
     cachedEnabled = true;
+    statusPromise = null;
   }
   return data;
 }
 
-export function logout() {
-  clearToken();
+export async function logout() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: authHeaders({ write: true }),
+    });
+  } finally {
+    clearToken();
+  }
 }

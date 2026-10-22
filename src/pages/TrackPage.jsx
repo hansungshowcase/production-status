@@ -83,7 +83,7 @@ function deriveProgress(data) {
 
 /** 10개 공정 → 고객친화적 4단계 (접수/제작중/포장완료/출고완료) */
 function customerStage(data, completed, total) {
-  if (data.status === 'shipped' || (total > 0 && completed >= total)) return 3;
+  if (data.status === 'shipped') return 3;
   if (total > 0 && completed >= total - 1) return 2;
   if (completed >= 1) return 1;
   return 0;

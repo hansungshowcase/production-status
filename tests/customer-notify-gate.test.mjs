@@ -29,6 +29,44 @@ function makeDb() {
   };
 }
 
+function makeStatefulDb(initialState = null) {
+  const calls = [];
+  let state = initialState;
+  return {
+    calls,
+    get state() { return state; },
+    async execute(query) {
+      const sql = String(query?.sql || '').replace(/\s+/g, ' ').trim();
+      const args = query?.args || [];
+      calls.push({ sql, args });
+
+      if (/^UPDATE orders SET notify_state/i.test(sql) && sql.includes('NOT EXISTS')) {
+        const terminalStatuses = [...(sql.match(/NOT IN \(([^)]+)\)/)?.[1].matchAll(/'([^']+)'/g) || [])]
+          .map(match => match[1]);
+        const currentStatus = state?.status || '';
+        if (terminalStatuses.includes(currentStatus)) return { rows: [] };
+        if (currentStatus === 'sending') {
+          const staleBefore = args.find(value => /^\d{4}-\d{2}-\d{2}T/.test(String(value || '')));
+          const correlatedHold = sql.includes("attempt_token', '') <> ''") && state?.attempt_token;
+          const fresh = String(state?.at || '') > String(staleBefore || '');
+          if (correlatedHold || fresh) return { rows: [] };
+        }
+        state = JSON.parse(args[1]);
+        return { rows: [{ id: 901 }] };
+      }
+      if (/^UPDATE orders SET notify_state/i.test(sql)) {
+        if (state?.attempt_token !== args.at(-1)) return { rows: [] };
+        state = JSON.parse(args[1]);
+        return { rows: [{ id: 901 }] };
+      }
+      if (/^SELECT COUNT\(\*\)::int AS n FROM notification_log/i.test(sql)) {
+        return { rows: [{ n: 0 }] };
+      }
+      return { rows: [] };
+    },
+  };
+}
+
 async function withEnv(overrides, fn) {
   const saved = {};
   for (const [k, v] of Object.entries(overrides)) {
@@ -133,6 +171,161 @@ test('솔라피 미설정이면 실발송 없이 dry-run 으로 남는다', asyn
       }, 'ordered');
     });
     assert.equal(sent.filter((u) => u === SOLAPI_URL).length, 0, '솔라피 미설정이면 발송 요청이 없어야 한다');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('provider 5xx is held as uncertain and a second direct hook does not send again', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-22T03:00:00Z') });
+  const originalFetch = globalThis.fetch;
+  const requestBodies = [];
+  globalThis.fetch = async (_url, init) => {
+    requestBodies.push(JSON.parse(init.body));
+    return { ok: false, status: 503, async json() { return { errorCode: 'temporary' }; } };
+  };
+  try {
+    await withEnv({
+      SOLAPI_API_KEY: 'test-key',
+      SOLAPI_API_SECRET: 'test-secret',
+      SMS_SENDER: '025550000',
+      KAKAO_PF_ID: undefined,
+    }, async () => {
+      const { maybeNotify } = await import(`../api/_lib/notify.js?uncertain=${Math.random()}`);
+      const db = makeStatefulDb();
+      const order = {
+        id: 901,
+        client_name: 'fixture',
+        phone: '010-1234-5678',
+        status: 'in_production',
+        quantity: 1,
+        track_token: 'fixture-token',
+      };
+      const first = await maybeNotify(db, order, 'ordered');
+      const second = await maybeNotify(db, order, 'ordered');
+      const stateWrites = db.calls.filter(call => /^UPDATE orders SET notify_state/i.test(call.sql));
+      const claimed = JSON.parse(stateWrites[0].args[1]);
+
+      assert.equal(first.ok, false);
+      assert.deepEqual(second, { skipped: true, reason: 'already_sent_or_claimed' });
+      assert.equal(db.state.status, 'uncertain');
+      assert.equal(db.state.attempt_token, claimed.attempt_token);
+      assert.equal(requestBodies.length, 1);
+      assert.equal(requestBodies[0].message.customFields.notificationAttemptToken, claimed.attempt_token);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a correlated stale sending state waits for receipt reconciliation instead of resending', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-22T03:00:00Z') });
+  const originalFetch = globalThis.fetch;
+  let sends = 0;
+  globalThis.fetch = async () => {
+    sends += 1;
+    return { ok: true, status: 200, async json() { return { messageId: 'unexpected' }; } };
+  };
+  try {
+    await withEnv({
+      SOLAPI_API_KEY: 'test-key',
+      SOLAPI_API_SECRET: 'test-secret',
+      SMS_SENDER: '025550000',
+      KAKAO_PF_ID: undefined,
+    }, async () => {
+      const { maybeNotify } = await import(`../api/_lib/notify.js?stale=${Math.random()}`);
+      const db = makeStatefulDb({
+        status: 'sending',
+        at: '2026-10-21T00:00:00.000Z',
+        attempt_token: 'provider-correlation-token',
+      });
+      const result = await maybeNotify(db, {
+        id: 901,
+        client_name: 'fixture',
+        phone: '010-1234-5678',
+        status: 'in_production',
+        quantity: 1,
+        track_token: 'fixture-token',
+      }, 'ordered');
+
+      assert.deepEqual(result, { skipped: true, reason: 'already_sent_or_claimed' });
+      assert.equal(sends, 0);
+      assert.equal(db.state.attempt_token, 'provider-correlation-token');
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('an uncorrelated stale sending state waits for receipt review instead of resending', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-22T03:00:00Z') });
+  const originalFetch = globalThis.fetch;
+  let sends = 0;
+  globalThis.fetch = async () => {
+    sends += 1;
+    return { ok: true, status: 200, async json() { return { messageId: 'unexpected' }; } };
+  };
+  try {
+    await withEnv({
+      SOLAPI_API_KEY: 'test-key',
+      SOLAPI_API_SECRET: 'test-secret',
+      SMS_SENDER: '025550000',
+      KAKAO_PF_ID: undefined,
+    }, async () => {
+      const { maybeNotify } = await import(`../api/_lib/notify.js?legacy-stale=${Math.random()}`);
+      const db = makeStatefulDb({ status: 'sending', at: '2026-10-21T00:00:00.000Z' });
+      const result = await maybeNotify(db, {
+        id: 901,
+        client_name: 'fixture',
+        phone: '010-1234-5678',
+        status: 'in_production',
+        quantity: 1,
+        track_token: 'fixture-token',
+      }, 'ordered');
+
+      assert.deepEqual(result, { skipped: true, reason: 'already_sent_or_claimed' });
+      assert.equal(sends, 0);
+      assert.equal(db.state.status, 'sending');
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('failed and queued states remain retryable', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-22T03:00:00Z') });
+  const originalFetch = globalThis.fetch;
+  let sends = 0;
+  globalThis.fetch = async () => {
+    sends += 1;
+    return { ok: false, status: 400, async json() { return { errorCode: 'explicit' }; } };
+  };
+  try {
+    await withEnv({
+      SOLAPI_API_KEY: 'test-key',
+      SOLAPI_API_SECRET: 'test-secret',
+      SMS_SENDER: '025550000',
+      KAKAO_PF_ID: undefined,
+    }, async () => {
+      const { maybeNotify } = await import(`../api/_lib/notify.js?retry=${Math.random()}`);
+      for (const state of [
+        { status: 'failed', at: '2026-10-22T02:59:00.000Z' },
+        { status: 'queued', at: '2026-10-22T02:59:00.000Z' },
+      ]) {
+        const db = makeStatefulDb(state);
+        const result = await maybeNotify(db, {
+          id: 901,
+          client_name: 'fixture',
+          phone: '010-1234-5678',
+          status: 'in_production',
+          quantity: 1,
+          track_token: 'fixture-token',
+        }, 'ordered');
+        assert.equal(result.ok, false);
+        assert.equal(db.state.status, 'failed');
+      }
+      assert.equal(sends, 2);
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

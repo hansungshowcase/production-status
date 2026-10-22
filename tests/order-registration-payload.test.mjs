@@ -422,8 +422,8 @@ test('due-date and image writes use optimistic invariant guards and clean up con
   assert.match(patchSource, /mutationTouchesImageDueInvariant\(mutation\)/);
   assert.match(patchSource, /due_date IS NOT DISTINCT FROM \?/);
   assert.match(patchSource, /work_order_image_url IS NOT DISTINCT FROM \?/);
-  assert.match(patchSource, /RETURNING \*/);
-  assert.match(patchSource, /mutationResult\.rows\.length === 0[\s\S]*res\.status\(409\)/);
+  assert.match(patchSource, /RETURNING o\.\*/);
+  assert.match(patchSource, /!mutationResult\.rows \|\| mutationResult\.rows\.length === 0[\s\S]*res\.status\(409\)/);
 
   assert.match(imageSource, /SELECT id, client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url FROM orders/);
   assert.match(imageSource, /client_name IS NOT DISTINCT FROM \?/);
@@ -448,7 +448,7 @@ test('order update routes validate final image-backed state before upload or UPD
   const patchValidation = patchSource.indexOf(
     'assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation })',
   );
-  const patchUpdate = patchSource.search(/UPDATE orders\s+SET/);
+  const patchUpdate = patchSource.search(/UPDATE orders(?:\s+\w+)?\s+SET/);
   assert.ok(patchValidation >= 0, 'PATCH should validate the combined current and requested state');
   assert.ok(patchValidation < patchUpdate);
   const patchSalesPersonValidation = patchSource.indexOf(
@@ -490,13 +490,13 @@ test('order update routes validate final image-backed state before upload or UPD
 
 test('order creation insert keeps column and value counts aligned', async () => {
   const source = await readFile(new URL('../api/orders/index.js', import.meta.url), 'utf8');
-  const match = source.match(/INSERT INTO orders \(([\s\S]*?)\) VALUES \(([\s\S]*?)\) RETURNING id/);
+  const match = source.match(/INSERT INTO orders \(([\s\S]*?)\) VALUES \(([\s\S]*?)\)\s*RETURNING \*/);
 
   assert.ok(match, 'orders insert statement should be present');
 
   const columns = match[1].split(',').map((part) => part.trim()).filter(Boolean);
   const values = match[2].split(',').map((part) => part.trim()).filter(Boolean);
-  const placeholders = values.filter((value) => value === '?');
+  const placeholders = values.filter((value) => value === '?' || value === '?::jsonb');
 
   assert.equal(columns.length, values.length);
   assert.equal(columns.at(-1), 'status');
@@ -509,7 +509,7 @@ test('order POST returns a structured due-date 400 before database access', asyn
   delete process.env.POSTGRES_URL;
 
   try {
-    const { default: ordersHandler } = await import('../api/orders/index.js');
+    const { handlePost } = await import('../api/orders/index.js');
     const req = {
       method: 'POST',
       url: '/api/orders',
@@ -525,7 +525,11 @@ test('order POST returns a structured due-date 400 before database access', asyn
     };
     const res = mockResponse();
 
-    await ordersHandler(req, res);
+    await handlePost(req, res, {
+      async execute() { throw new Error('database access should not occur'); },
+    }, {
+      requireAuth: async () => ({ role: 'sales', actor: '?? ???' }),
+    });
 
     assert.equal(res.statusCode, 400);
     assert.deepEqual(res.body, {

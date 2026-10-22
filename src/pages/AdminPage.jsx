@@ -6,7 +6,7 @@ import DataOverview from '../components/admin/DataOverview';
 import WorkersSection from '../components/admin/WorkersSection';
 import DiagnosticsSection from '../components/admin/DiagnosticsSection';
 import request from '../api/client';
-import { fetchAuthStatus, login, getRole, getToken } from '../utils/authClient';
+import { fetchAuthStatus, login } from '../utils/authClient';
 import './AdminPage.css';
 
 const ADMIN_ORDER_PAGE_SIZE = 200;
@@ -42,14 +42,7 @@ export default function AdminPage() {
     setAuthState({ checking: true, needLogin: false, error: null });
     try {
       const s = await fetchAuthStatus();
-      if (!s.enabled) {
-        // 인증 비활성 — 기존 동작
-        setAuthState({ checking: false, needLogin: false, error: null });
-        return;
-      }
-      // 활성 — admin 토큰 있어야 통과
-      const t = getToken();
-      if (t && getRole() === 'admin') {
+      if (s.authenticated && s.role === 'admin') {
         setAuthState({ checking: false, needLogin: false, error: null });
       } else {
         setAuthState({ checking: false, needLogin: true, error: null });

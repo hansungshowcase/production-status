@@ -133,7 +133,9 @@ test('CREATE rejects malformed numeric input with 400 before database access', a
       quantity: 1,
       balance: 'abc12xyz',
     },
-  }, res, db);
+  }, res, db, {
+    requireAuth: async () => ({ role: 'sales', actor: '신은철' }),
+  });
 
   assert.equal(res.statusCode, 400);
   assert.match(res.body.error.message, /잔금.*숫자/);

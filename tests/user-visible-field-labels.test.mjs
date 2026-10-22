@@ -193,7 +193,10 @@ test('필수값 누락 400 응답은 상태코드를 유지한 채 한국어 라
     const { default: ordersHandler } = await import('../api/orders/index.js');
     const ordersRes = mockResponse();
     await ordersHandler(
-      { method: 'POST', url: '/api/orders', headers: {}, socket: { remoteAddress: 'label-orders' }, body: {} },
+      {
+        method: 'POST', url: '/api/orders', headers: {}, socket: { remoteAddress: 'label-orders' }, body: {},
+        auth: { role: 'sales', actor: '신은철' }, authSource: 'bearer',
+      },
       ordersRes,
     );
     assert.equal(ordersRes.statusCode, 400);
@@ -204,7 +207,10 @@ test('필수값 누락 400 응답은 상태코드를 유지한 채 한국어 라
     const { default: workersHandler } = await import('../api/workers/index.js');
     const workerNameRes = mockResponse();
     await workersHandler(
-      { method: 'POST', url: '/api/workers', headers: {}, socket: { remoteAddress: 'label-worker-1' }, body: {} },
+      {
+        method: 'POST', url: '/api/workers', headers: {}, socket: { remoteAddress: 'label-worker-1' }, body: {},
+        auth: { role: 'admin', actor: '관리자' }, authSource: 'bearer',
+      },
       workerNameRes,
     );
     assert.equal(workerNameRes.statusCode, 400);
@@ -213,7 +219,11 @@ test('필수값 누락 400 응답은 상태코드를 유지한 채 한국어 라
 
     const workerDeptRes = mockResponse();
     await workersHandler(
-      { method: 'POST', url: '/api/workers', headers: {}, socket: { remoteAddress: 'label-worker-2' }, body: { name: '홍길동', department: '없는부서' } },
+      {
+        method: 'POST', url: '/api/workers', headers: {}, socket: { remoteAddress: 'label-worker-2' },
+        body: { name: '홍길동', department: '없는부서' },
+        auth: { role: 'admin', actor: '관리자' }, authSource: 'bearer',
+      },
       workerDeptRes,
     );
     assert.equal(workerDeptRes.statusCode, 400);
@@ -230,7 +240,10 @@ test('필수값 누락 400 응답은 상태코드를 유지한 채 한국어 라
     for (const [index, [body, expected, column]] of issueCases.entries()) {
       const res = mockResponse();
       await issuesHandler(
-        { method: 'POST', url: '/api/issues', headers: {}, socket: { remoteAddress: `label-issue-${index}` }, body },
+        {
+          method: 'POST', url: '/api/issues', headers: {}, socket: { remoteAddress: `label-issue-${index}` }, body,
+          auth: { role: 'sales', actor: '신은철' }, authSource: 'bearer',
+        },
         res,
       );
       assert.equal(res.statusCode, 400);
@@ -263,6 +276,8 @@ test('공정 시작 400 안내는 영문 식별자 대신 한국어를 쓴다', 
           query: { id: '1' },
           socket: { remoteAddress: `label-start-${index}` },
           body,
+          auth: { role: 'admin', actor: '관리자' },
+          authSource: 'bearer',
         },
         res,
       );

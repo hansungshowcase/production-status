@@ -7,6 +7,7 @@ import { kstTodayStr } from '../../_lib/notify.js';
 import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
 import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
+import { canWorkerAccessDepartment } from '../../../shared/workerAccess.js';
 
 async function defaultNotify(db, order, milestone) {
   const { maybeNotify } = await import('../../_lib/notify.js');
@@ -24,9 +25,8 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   }
   const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
   if (!checkRateLimit(req, res)) return;
-  const workerAction = dependencies.requireWorkerAction
-    ? dependencies.requireWorkerAction(req, res)
-    : requireWorkerAction(req, res);
+  const checkWorkerAction = dependencies.requireWorkerAction || requireWorkerAction;
+  const workerAction = await checkWorkerAction(req, res);
   if (!workerAction) return;
 
   const id = parsePositiveInt4Id(req.query.id);
@@ -40,7 +40,7 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   const ensureShippingIndex = dependencies.ensureShippingProcessUniqueIndex || ensureShippingProcessUniqueIndex;
   const ensureShippingSchema = dependencies.ensureShippingSheetSyncSchema || ensureShippingSheetSyncSchema;
   const requestBody = req.body || {};
-  const { completed_date, actor, start_next_step, assigned_worker } = requestBody;
+  const { completed_date, start_next_step, assigned_worker } = requestBody;
 
   // Find process
   const { rows: processRows } = await db.execute({
@@ -51,6 +51,13 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
     return res.status(404).json({ error: { message: '공정을 찾을 수 없습니다.', status: 404 } });
   }
   const process = processRows[0];
+
+  if (workerAction.role === 'worker'
+    && !canWorkerAccessDepartment(workerAction.actor, process.step_name)) {
+    return res.status(403).json({
+      error: { message: '담당 공정에 대한 권한이 없습니다.', status: 403 },
+    });
+  }
 
   if (process.step_name === '도면설계'
     && Object.prototype.hasOwnProperty.call(requestBody, 'start_next_step')) {
@@ -107,7 +114,7 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   }
 
   const now = new Date().toISOString();
-  const completeWorker = actor || assigned_worker || workerAction.actor;
+  const completeWorker = workerAction.actor;
   const nextWorker = assigned_worker || completeWorker;
   const intermediateSteps = start_next_step ? STEPS.slice(currentStepIndex + 1, targetStepIndex) : [];
   const mutationArgs = [now, completed_date || null, completeWorker, id];

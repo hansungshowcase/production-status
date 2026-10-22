@@ -7,7 +7,7 @@ export default cors(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-  const auth = requireAuth(req, res, { roles: ['admin'] });
+  const auth = await requireAuth(req, res, { roles: ['admin'] });
   if (!auth) return;
 
   const db = getDb();

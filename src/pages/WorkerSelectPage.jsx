@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
 import { getOrders } from '../api/orders';
+import { getActor, getRole, login } from '../utils/authClient';
 import './WorkerSelectPage.css';
 
 function parseProcessSummary(value) {
@@ -24,10 +25,14 @@ export default function WorkerSelectPage() {
 
   // 부서변경으로 왔으면 작업자는 이미 선택된 상태 → 바로 부서 선택
   const existingWorker = sessionStorage.getItem(WORKER_STORAGE_KEY);
-  const deptChangeOnly = location.state?.deptChangeOnly && existingWorker;
+  const deptChangeOnly = location.state?.deptChangeOnly && existingWorker && getRole() === 'worker' && getActor() === existingWorker;
 
   const [step, setStep] = useState(deptChangeOnly ? 'department' : 'worker');
   const [selectedWorker, setSelectedWorker] = useState(deptChangeOnly ? existingWorker : null);
+  const [workerPassword, setWorkerPassword] = useState('');
+  const [workerLoginError, setWorkerLoginError] = useState('');
+  const [workerLoggingIn, setWorkerLoggingIn] = useState(false);
+  const [sessionRole, setSessionRole] = useState(getRole());
   const [factoryStats, setFactoryStats] = useState(null);
   const [statsError, setStatsError] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -70,13 +75,19 @@ export default function WorkerSelectPage() {
 
   useEffect(() => {
     statsMountedRef.current = true;
-    loadStats();
+    if (sessionRole) loadStats();
+    else setStatsLoading(false);
     return () => {
       statsMountedRef.current = false;
     };
-  }, [loadStats]);
+  }, [loadStats, sessionRole]);
 
   useEffect(() => {
+    if (!sessionRole) {
+      setWorkOrderResults([]);
+      setWorkOrderLoading(false);
+      return undefined;
+    }
     const query = workOrderSearch.trim();
     if (!query) {
       setWorkOrderResults([]);
@@ -109,7 +120,7 @@ export default function WorkerSelectPage() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [workOrderSearch]);
+  }, [sessionRole, workOrderSearch]);
 
   useLayoutEffect(() => {
     if (step !== 'worker' || !showWorkOrderResults) return undefined;
@@ -291,7 +302,30 @@ export default function WorkerSelectPage() {
 
   function handleSelectWorker(name) {
     setSelectedWorker(name);
-    setStep('department');
+    if (getRole() === 'worker' && getActor() === name) {
+      setStep('department');
+      return;
+    }
+    setWorkerPassword('');
+    setWorkerLoginError('');
+    setStep('password');
+  }
+
+  async function handleWorkerLogin(event) {
+    event.preventDefault();
+    if (!selectedWorker || !workerPassword || workerLoggingIn) return;
+    setWorkerLoggingIn(true);
+    setWorkerLoginError('');
+    try {
+      await login('worker', { actor: selectedWorker, password: workerPassword });
+      setSessionRole('worker');
+      setWorkerPassword('');
+      setStep('department');
+    } catch (error) {
+      setWorkerLoginError(error.message || '로그인에 실패했습니다.');
+    } finally {
+      setWorkerLoggingIn(false);
+    }
   }
 
   function handleSelectDepartment(dept) {
@@ -317,6 +351,8 @@ export default function WorkerSelectPage() {
   function handleBack() {
     setStep('worker');
     setSelectedWorker(null);
+    setWorkerPassword('');
+    setWorkerLoginError('');
   }
 
   function getCurrentStep(order) {
@@ -338,6 +374,37 @@ export default function WorkerSelectPage() {
     navigate(`/worker/station/${encodeURIComponent(stepName)}`, {
       state: { focusOrderId: order.order_id || order.id },
     });
+  }
+
+  if (step === 'password') {
+    return (
+      <div className="worker-select-page">
+        <div className="worker-select-page__header">
+          <button className="worker-select-page__back-btn" onClick={handleBack}>← 다시 선택</button>
+          <button className="worker-select-page__home-btn" onClick={() => navigate('/')}>🏠 홈</button>
+        </div>
+        <div className="worker-select-page__hero">
+          <div className="worker-select-page__avatar worker-select-page__avatar--selected"><span>👤</span></div>
+          <h1 className="worker-select-page__name">{selectedWorker}</h1>
+          <p className="worker-select-page__subtitle">본인 확인을 위해 비밀번호를 입력해주세요</p>
+        </div>
+        <form className="worker-select-page__password-form" onSubmit={handleWorkerLogin}>
+          <label htmlFor="worker-password">비밀번호</label>
+          <input
+            id="worker-password"
+            type="password"
+            value={workerPassword}
+            onChange={(event) => setWorkerPassword(event.target.value)}
+            autoComplete="current-password"
+            autoFocus
+          />
+          {workerLoginError && <div className="worker-select-page__password-error" role="alert">{workerLoginError}</div>}
+          <button type="submit" className="worker-select-page__password-submit" disabled={!workerPassword || workerLoggingIn}>
+            {workerLoggingIn ? '확인 중...' : '확인'}
+          </button>
+        </form>
+      </div>
+    );
   }
 
   // 부서 선택 단계

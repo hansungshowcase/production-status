@@ -1,3 +1,5 @@
+import { enforceAccessPolicy } from './accessPolicy.js';
+
 // 허용 origin — 환경 변수로 추가 가능 (`ALLOWED_ORIGINS=https://a.com,https://b.com`)
 const DEFAULT_ALLOWED = [
   'https://production-status.vercel.app',
@@ -71,7 +73,7 @@ export function cors(handler) {
       res.setHeader('Vary', 'Origin');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Worker-Name');
 
     // GET 응답에 경로별 캐시 헤더를 적용한다.
     if (req.method === 'GET') {
@@ -89,6 +91,8 @@ export function cors(handler) {
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
     }
+
+    if (!await enforceAccessPolicy(req, res)) return;
 
     // Ensure req.body is always an object (defend against null/undefined body)
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {

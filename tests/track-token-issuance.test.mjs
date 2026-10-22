@@ -17,6 +17,7 @@ function mockResponse() {
   return {
     statusCode: 200,
     body: null,
+    setHeader() {},
     status(code) {
       this.statusCode = code;
       return this;
@@ -28,23 +29,24 @@ function mockResponse() {
   };
 }
 
+function authorizedHandlePost(req, res, db, dependencies = {}) {
+  return handlePost(req, res, db, {
+    requireAuth: async () => ({ role: 'sales', actor: '영업 담당자' }),
+    ...dependencies,
+  });
+}
+
 // api/orders/index.js handlePost 의 SQL 만 알아듣는 최소 가짜 DB.
 // 모르는 SQL 은 던져서 예상 못한 경로가 드러나게 한다.
 class FakeOrderDb {
-  constructor({ failAfterCommit = false } = {}) {
+  constructor({ failAfterCommit = false, failFinalizer = false, initialNotifyState = null } = {}) {
     this.orders = new Map();
     this.statements = [];
     this.nextId = 901;
     this.failAfterCommit = failAfterCommit;
+    this.failFinalizer = failFinalizer;
+    this.initialNotifyState = initialNotifyState;
     this.orderInsertColumns = null;
-  }
-
-  async transaction() {
-    return {
-      execute: (query) => this.execute(query),
-      commit: async () => {},
-      rollback: async () => {},
-    };
   }
 
   async execute(query) {
@@ -57,9 +59,28 @@ class FakeOrderDb {
     }
     if (/information_schema\.columns/i.test(sql)) return { rows: [] };
 
+
+    if (/^WITH inserted_order AS\b/i.test(sql)) {
+      if (this.failFinalizer) throw new Error('simulated finalizer audit failure');
+      const columns = sql.match(/INSERT INTO orders \(([^)]*)\)/i)[1]
+        .split(',').map(part => part.trim()).filter(Boolean);
+      this.orderInsertColumns = columns;
+      const row = { id: this.nextId++, status: 'in_production' };
+      columns.filter(column => column !== 'status').forEach((column, index) => {
+        row[column] = column === 'notify_state' ? JSON.parse(args[index]) : args[index];
+      });
+      if (this.initialNotifyState) row.notify_state = structuredClone(this.initialNotifyState);
+      this.orders.set(row.id, row);
+      return { rows: [{
+        order_row: { ...row },
+        process_rows: [],
+        pre_production_row: { order_id: row.id },
+      }] };
+    }
+
     // 커밋 직후 재조회 단계에서 터지는 상황(구 코드에서 토큰 미발급 주문이 남던 지점)
     if (this.failAfterCommit && /^SELECT \* FROM processes WHERE order_id = /i.test(sql)) {
-      throw new Error('simulated post-commit read failure');
+      throw new Error('simulated post-commit sheet failure');
     }
 
     if (/INSERT INTO orders\b/i.test(sql)) {
@@ -72,12 +93,24 @@ class FakeOrderDb {
         if (column === 'status') continue; // 리터럴 'in_production'
         row[column] = args[argIndex++];
       }
+      if (this.initialNotifyState) row.notify_state = structuredClone(this.initialNotifyState);
       this.orders.set(row.id, row);
       return { rows: [{ id: row.id }] };
     }
 
     if (/^INSERT INTO processes\b/i.test(sql)) return { rows: [] };
     if (/^INSERT INTO pre_production\b/i.test(sql)) return { rows: [] };
+    if (/^WITH queued_order AS\b/i.test(sql)) {
+      if (this.failFinalizer) throw new Error('simulated finalizer audit failure');
+      const orderId = Number(args[1]);
+      const row = this.orders.get(orderId);
+      if (!row) return { rows: [] };
+      row.notify_state ||= {};
+      if (!Object.hasOwn(row.notify_state, 'ordered')) {
+        row.notify_state.ordered = JSON.parse(args[0]);
+      }
+      return { rows: [{ id: orderId }] };
+    }
     if (/^INSERT INTO activity_feed\b/i.test(sql)) return { rows: [] };
     if (/^INSERT INTO sheet_sync_jobs\b/i.test(sql)) return { rows: [] };
 
@@ -91,10 +124,17 @@ class FakeOrderDb {
     }
     if (/^SELECT \* FROM processes WHERE order_id = /i.test(sql)) return { rows: [] };
     if (/^SELECT \* FROM pre_production WHERE order_id = /i.test(sql)) return { rows: [] };
-    if (/^UPDATE sheet_sync_jobs\b/i.test(sql)) return { rows: [] };
+    if (/^UPDATE sheet_sync_jobs\b/i.test(sql)) {
+      if (this.failAfterCommit) throw new Error('simulated post-commit sheet failure');
+      return { rows: [{ order_id: Number(args.at(-1)) }] };
+    }
     if (/^SELECT .* FROM sheet_sync_jobs\b/i.test(sql)) return { rows: [] };
     // 알림 멱등키 선점 실패 = 발송 안 함. 이 테스트의 관심사가 아니므로 조용히 통과시킨다.
     if (/^UPDATE orders SET notify_state\b/i.test(sql)) return { rows: [] };
+    if (/^DELETE FROM orders WHERE id = /i.test(sql)) {
+      this.orders.delete(Number(args[0]));
+      return { rows: [] };
+    }
 
     throw new Error(`Unexpected fake order SQL: ${sql}`);
   }
@@ -106,7 +146,7 @@ test('주문을 만들면 고객 조회 토큰이 반드시 함께 발급된다'
   const db = new FakeOrderDb();
   const res = mockResponse();
 
-  await handlePost({ body: { client_name: '토큰거래처', quantity: 1 } }, res, db, { append: noopAppend });
+  await authorizedHandlePost({ body: { client_name: '토큰거래처', quantity: 1 } }, res, db, { append: noopAppend });
 
   assert.equal(res.statusCode, 201);
   const created = [...db.orders.values()][0];
@@ -133,7 +173,7 @@ test('주문을 만들면 고객 조회 토큰이 반드시 함께 발급된다'
 
 test('토큰은 사후 훅이 아니라 주문 INSERT 안에서 채워진다', async () => {
   const db = new FakeOrderDb();
-  await handlePost({ body: { client_name: '원자성거래처', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
+  await authorizedHandlePost({ body: { client_name: '원자성거래처', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
 
   assert.ok(db.orderInsertColumns.includes('track_token'), 'INSERT 컬럼에 track_token 이 있어야 한다');
 
@@ -147,26 +187,102 @@ test('커밋 후 단계가 실패해도 남은 주문에는 토큰이 이미 들
   // 구 코드에서는 이 지점이 터지면 track_token 발급 훅(415-421행)에 도달하지 못해
   // 토큰 없는 주문이 그대로 남았다.
   const db = new FakeOrderDb({ failAfterCommit: true });
+  const res = mockResponse();
 
-  await assert.rejects(
-    () => handlePost({ body: { client_name: '커밋후실패거래처', quantity: 1 } }, mockResponse(), db, { append: noopAppend }),
-    /simulated post-commit read failure/,
+  await authorizedHandlePost(
+    { body: { client_name: 'postcommit-sheet-failure', quantity: 1 } },
+    res,
+    db,
+    { append: noopAppend },
   );
 
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.sheet_sync.status, 'pending');
   const created = [...db.orders.values()][0];
-  assert.ok(created, '커밋된 주문은 살아 있다');
+  assert.ok(created);
   assert.equal(typeof created.track_token, 'string');
-  assert.ok(created.track_token.length >= 20, '커밋 후 경로가 죽어도 토큰 없는 주문이 남으면 안 된다');
+  assert.ok(created.track_token.length >= 20);
 });
 
 test('주문마다 서로 다른 토큰이 발급된다', async () => {
   const db = new FakeOrderDb();
-  await handlePost({ body: { client_name: '거래처1', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
-  await handlePost({ body: { client_name: '거래처2', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
+  await authorizedHandlePost({ body: { client_name: '거래처1', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
+  await authorizedHandlePost({ body: { client_name: '거래처2', quantity: 1 } }, mockResponse(), db, { append: noopAppend });
 
   const tokens = [...db.orders.values()].map(order => order.track_token);
   assert.equal(tokens.length, 2);
   assert.equal(new Set(tokens).size, 2, '토큰이 중복되면 다른 고객의 주문이 보인다');
+});
+
+test('주문등록 최종 CTE가 ordered intent와 감사를 함께 저장하고 이후 알림 실패는 201을 보존한다', async () => {
+  const db = new FakeOrderDb();
+  const res = mockResponse();
+  let notifyCalls = 0;
+
+  await authorizedHandlePost(
+    { body: { client_name: '알림의도거래처', quantity: 1 } },
+    res,
+    db,
+    {
+      append: noopAppend,
+      ensureTrackToken: async (_db, order) => order.track_token,
+      notify: async () => { notifyCalls += 1; throw new Error('simulated notify schema failure'); },
+    },
+  );
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(notifyCalls, 1);
+  const created = [...db.orders.values()][0];
+  assert.equal(created.notify_state.ordered.status, 'queued');
+  assert.match(created.notify_state.ordered.at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(created.notify_state.ordered.queued_at, undefined);
+  const creation = db.statements.find(({ sql }) => /^WITH inserted_order AS\b/i.test(sql));
+  assert.ok(creation);
+  assert.match(creation.sql, /notify_state/i);
+  assert.match(creation.sql, /INSERT INTO activity_feed/i);
+});
+
+test('ordered intent finalizer는 기존 ordered key와 다른 notify_state key를 덮어쓰지 않는다', async () => {
+  const existing = {
+    ordered: { status: 'success', sent_at: '2026-10-20T00:00:00.000Z' },
+    shipped: { status: 'queued', at: '2026-10-21T00:00:00.000Z' },
+  };
+  const db = new FakeOrderDb({ initialNotifyState: existing });
+
+  await authorizedHandlePost(
+    { body: { client_name: '기존키거래처', quantity: 1 } },
+    mockResponse(),
+    db,
+    {
+      append: noopAppend,
+      ensureTrackToken: async (_db, order) => order.track_token,
+      notify: async () => {},
+    },
+  );
+
+  assert.deepEqual([...db.orders.values()][0].notify_state, existing);
+});
+
+test('ordered 최종 감사 실패는 intent를 남기지 않고 기존 생성 실패 cleanup으로 끝난다', async () => {
+  const db = new FakeOrderDb({ failFinalizer: true });
+  let notifyCalls = 0;
+
+  await assert.rejects(
+    authorizedHandlePost(
+      { body: { client_name: '최종감사실패거래처', quantity: 1 } },
+      mockResponse(),
+      db,
+      {
+        append: noopAppend,
+        ensureTrackToken: async (_db, order) => order.track_token,
+        notify: async () => { notifyCalls += 1; },
+      },
+    ),
+    /simulated finalizer audit failure/,
+  );
+
+  assert.equal(db.orders.size, 0);
+  assert.equal(notifyCalls, 0);
 });
 
 // ---- CSV 임포트 경로 ----

@@ -7,6 +7,7 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { storeImageFile } from '../../_lib/storeImage.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 import { validateImageFile } from '../../_lib/imageFileValidation.js';
+import { requireAuth } from '../../_lib/auth.js';
 import {
   assertImageBackedOrderHasCanonicalOrderDate,
   assertImageBackedOrderHasCanonicalDueDate,
@@ -24,12 +25,15 @@ export const config = {
 };
 
 export default cors(async function handler(req, res) {
-  if (req.method === 'GET') {
-    return handleGet(req, res);
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: { message: 'Method not allowed' } });
+  const auth = await requireAuth(req, res, { roles: ['sales', 'admin', 'worker'] });
+  if (!auth) return;
+
+  if (req.method === 'GET') {
+    return handleGet(req, res);
   }
   if (!rateLimitCheck(req, res)) return;
 
@@ -167,7 +171,7 @@ export default cors(async function handler(req, res) {
 
   await db.execute({
     sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-    args: [id, '작업지시서첨부', `${order.client_name || ''} 작업지시서 이미지가 첨부되었습니다.`, '현장작업자'],
+    args: [id, '작업지시서첨부', `${order.client_name || ''} 작업지시서 이미지가 첨부되었습니다.`, auth.actor],
   }).catch((err) => console.warn('[work-order-image] activity log failed:', err?.message || err));
 
   // 알림 훅: 작업지시서 등록 시점에도 접수 알림 보장 (주문 생성 때 이미 나갔으면 멱등 처리로 중복 없음)

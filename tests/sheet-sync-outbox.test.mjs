@@ -30,6 +30,15 @@ function mockResponse() {
   };
 }
 
+function orderDeps(overrides = {}) {
+  return {
+    requireAuth: async () => ({ role: 'sales', actor: 'manager' }),
+    ensureTrackToken: async (_db, order) => order.track_token,
+    notify: async () => {},
+    ...overrides,
+  };
+}
+
 async function loadSheetSync() {
   return import('../api/_lib/sheetSync.js');
 }
@@ -154,9 +163,13 @@ class FakeOrderDb extends FakeOutboxDb {
     this.orders.clear();
     this.jobs.clear();
     this.failProcessInsert = options.failProcessInsert === true;
+    this.failActivityInsert = options.failActivityInsert === true;
     this.createdJob = false;
     this.cleanupDeletes = 0;
     this.commits = 0;
+    this.processes = [];
+    this.preProduction = [];
+    this.activities = [];
   }
 
   async transaction() {
@@ -231,6 +244,56 @@ class FakeOrderDb extends FakeOutboxDb {
   async execute(query) {
     const sql = compactSql(querySql(query));
     const args = query.args || [];
+
+    if (/^WITH inserted_order AS \( INSERT INTO orders\b/i.test(sql)) {
+      this.statements.push({ sql, args });
+      if (this.failProcessInsert) throw new Error('simulated process insert failure');
+      if (this.failActivityInsert) throw new Error('simulated activity feed insert failure');
+      const order = {
+        id: 801,
+        order_date: '2026-08-03',
+        due_date: '2026-08-10',
+        sales_person: 'manager',
+        client_name: 'atomic order',
+        phone: '',
+        product_type: 'door',
+        width: 100,
+        depth: 200,
+        height: 300,
+        quantity: 1,
+        color: 'white',
+        status: 'in_production',
+        track_token: 'existing-token',
+      };
+      const processes = Array.from({ length: 10 }, (_, index) => ({
+        id: index + 1,
+        order_id: order.id,
+        step_name: `step-${index + 1}`,
+        status: 'waiting',
+      }));
+      const preProduction = { id: 1, order_id: order.id };
+      this.orders.set(order.id, order);
+      this.jobs.set(order.id, {
+        order_id: order.id,
+        status: 'pending',
+        attempts: 0,
+        last_error: null,
+        last_attempt_at: null,
+        synced_at: null,
+        sheet_row: null,
+      });
+      this.processes.push(...processes);
+      this.preProduction.push(preProduction);
+      this.activities.push({ order_id: order.id, action_type: '주문등록' });
+      this.createdJob = true;
+      return {
+        rows: [{
+          order_row: { ...order },
+          process_rows: processes,
+          pre_production_row: preProduction,
+        }],
+      };
+    }
 
     if (/^ALTER TABLE orders ADD COLUMN IF NOT EXISTS\b/i.test(sql)
       || /^CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_track_token\b/i.test(sql)
@@ -442,27 +505,23 @@ test('append retry picks the least-attempted job first and never abandons a job'
 });
 
 test('order creation executes the order insert and pending job insert in one data-modifying CTE', async () => {
-  const stopAfterAtomicInsert = new Error('stop after atomic insert');
   const db = new FakeOrderDb();
-  const originalExecuteTransaction = db.executeTransaction.bind(db);
-  db.executeTransaction = async (query) => {
-    const sql = compactSql(querySql(query));
-    if (/INSERT INTO orders\b/i.test(sql)) {
-      db.statements.push({ sql, args: query.args || [], transaction: true });
-      throw stopAfterAtomicInsert;
-    }
-    return originalExecuteTransaction(query);
-  };
-
-  await assert.rejects(
-    () => handlePost({ body: { client_name: 'atomic order', quantity: 1 } }, mockResponse(), db),
-    (error) => error === stopAfterAtomicInsert,
+  const res = mockResponse();
+  await handlePost(
+    { body: { client_name: 'atomic order', quantity: 1 } },
+    res,
+    db,
+    orderDeps({ append: async () => ({ row: 1, deduplicated: false }) }),
   );
 
   const statement = db.statements.find(({ sql }) => /INSERT INTO orders\b/i.test(sql)).sql;
+  assert.equal(res.statusCode, 201);
   assert.match(statement, /^WITH inserted_order AS \( INSERT INTO orders\b/i);
   assert.match(statement, /\), inserted_sheet_sync_job AS \( INSERT INTO sheet_sync_jobs \(order_id, status\)/i);
   assert.match(statement, /SELECT id, 'pending' FROM inserted_order/i);
+  assert.match(statement, /inserted_processes AS \( INSERT INTO processes/i);
+  assert.match(statement, /inserted_pre_production AS \( INSERT INTO pre_production/i);
+  assert.match(statement, /inserted_activity AS \( INSERT INTO activity_feed/i);
 });
 
 test('failed immediate append returns 201 with pending sync and keeps the committed order/job', async () => {
@@ -475,7 +534,7 @@ test('failed immediate append returns 201 with pending sync and keeps the commit
       { body: { client_name: 'atomic order', quantity: 1 } },
       res,
       db,
-      { append: async () => { throw new Error('sheet unavailable'); } },
+      orderDeps({ append: async () => { throw new Error('sheet unavailable'); } }),
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -485,6 +544,8 @@ test('failed immediate append returns 201 with pending sync and keeps the commit
   assert.equal(res.body.id, 801);
   assert.equal(res.body.sheet_sync.status, 'pending');
   assert.match(res.body.sheet_sync.error, /sheet unavailable/);
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.processes.length, 10);
   assert.equal(db.orders.has(801), true);
   assert.equal(db.jobs.get(801).status, 'pending');
   assert.equal(db.cleanupDeletes, 0);
@@ -659,84 +720,107 @@ test('retry does not claim another job without a full append-and-persist deadlin
   }
 });
 
-test('order cleanup deletes its CTE-created job through the cascade lifecycle', async () => {
+test('a required process insert failure leaves no partial order or related records', async () => {
   const db = new FakeOrderDb({ failProcessInsert: true });
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'cleanup order', quantity: 1 } }, mockResponse(), db),
+    () => handlePost(
+      { body: { client_name: 'cleanup order', quantity: 1 } },
+      mockResponse(),
+      db,
+      orderDeps(),
+    ),
     /simulated process insert failure/,
   );
 
-  assert.equal(db.createdJob, true, 'the outbox job must exist before the later write fails');
-  assert.equal(db.cleanupDeletes, 1);
+  assert.equal(db.createdJob, false);
+  assert.equal(db.cleanupDeletes, 0);
   assert.equal(db.orders.has(801), false);
   assert.equal(db.jobs.has(801), false);
+  assert.equal(db.processes.length, 0);
+  assert.equal(db.preProduction.length, 0);
+  assert.equal(db.activities.length, 0);
 });
 
 // 필수 INSERT 가 아직 끝나지 않았다면 보상 삭제는 그대로 살아 있어야 한다 (마지막 필수 INSERT 기준).
-test('a failure on the last required insert still cleans up the order it created', async () => {
-  const db = new FakeOrderDb();
-  const originalExecuteTransaction = db.executeTransaction.bind(db);
-  db.executeTransaction = async (query) => {
-    const sql = compactSql(querySql(query));
-    if (/^INSERT INTO activity_feed\b/i.test(sql)) {
-      throw new Error('simulated activity feed insert failure');
-    }
-    return originalExecuteTransaction(query);
-  };
+test('a failure on the last required insert leaves the atomic creation empty', async () => {
+  const db = new FakeOrderDb({ failActivityInsert: true });
 
   await assert.rejects(
-    () => handlePost({ body: { client_name: 'cleanup order', quantity: 1 } }, mockResponse(), db),
+    () => handlePost(
+      { body: { client_name: 'cleanup order', quantity: 1 } },
+      mockResponse(),
+      db,
+      orderDeps(),
+    ),
     /simulated activity feed insert failure/,
   );
 
-  assert.equal(db.cleanupDeletes, 1);
+  assert.equal(db.cleanupDeletes, 0);
   assert.equal(db.orders.has(801), false);
   assert.equal(db.jobs.has(801), false);
+  assert.equal(db.processes.length, 0);
+  assert.equal(db.preProduction.length, 0);
+  assert.equal(db.activities.length, 0);
 });
 
 // 2026-08 데이터 손실: 모든 필수 INSERT 가 끝난 뒤 순수 조회 SELECT 가 Neon 한도 오류를 내면
 // catch 의 보상 삭제가 멀쩡한 주문을 CASCADE 로 통째 지웠다.
-test('a read-back failure after the required inserts keeps the order alive', async () => {
+test('atomic creation returns its payload without a post-commit SELECT read-back', async () => {
   const db = new FakeOrderDb();
-  const readFailure = new Error('Your account or project has exceeded the data transfer quota');
-  readFailure.status = 503;
   const originalExecute = db.execute.bind(db);
   db.execute = async (query) => {
     const sql = compactSql(querySql(query));
-    if (/^SELECT \* FROM orders WHERE id = \?/i.test(sql)) throw readFailure;
+    if (/^SELECT \* FROM (orders|processes|pre_production)\b/i.test(sql)) {
+      throw new Error('post-commit read-back must not run');
+    }
     return originalExecute(query);
   };
 
-  await assert.rejects(
-    () => handlePost({ body: { client_name: 'atomic order', quantity: 1 } }, mockResponse(), db),
-    (error) => error === readFailure,
+  const res = mockResponse();
+  await handlePost(
+    { body: { client_name: 'atomic order', quantity: 1 } },
+    res,
+    db,
+    orderDeps({ append: async () => ({ row: 91, deduplicated: false }) }),
   );
 
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.processes.length, 10);
   assert.equal(db.cleanupDeletes, 0, '조회 실패로는 절대 주문을 지우면 안 된다');
   assert.equal(db.orders.has(801), true);
   assert.equal(db.jobs.has(801), true);
 });
 
 // 필수 INSERT 이후 단계(토큰/알림/시트)는 각자 삼키지만, 그 경계 자체도 삭제 대상 밖이어야 한다.
-test('a failure after the required inserts never deletes the created order', async () => {
+test('post-commit hook failures preserve the valid order and 201 response', async () => {
   const db = new FakeOrderDb();
-  const originalExecute = db.execute.bind(db);
-  db.execute = async (query) => {
-    const sql = compactSql(querySql(query));
-    if (/^SELECT \* FROM pre_production WHERE order_id = \?/i.test(sql)) {
-      throw new Error('simulated read outage');
-    }
-    return originalExecute(query);
-  };
+  const res = mockResponse();
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await handlePost(
+      { body: { client_name: 'atomic order', quantity: 1 } },
+      res,
+      db,
+      orderDeps({
+        append: async () => { throw new Error('simulated append outage'); },
+        ensureTrackToken: async () => { throw new Error('simulated token outage'); },
+        notify: async () => { throw new Error('simulated notify outage'); },
+      }),
+    );
+  } finally {
+    console.error = originalError;
+  }
 
-  await assert.rejects(
-    () => handlePost({ body: { client_name: 'atomic order', quantity: 1 } }, mockResponse(), db),
-    /simulated read outage/,
-  );
-
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.body.id, 801);
+  assert.equal(res.body.sheet_sync.status, 'pending');
   assert.equal(db.cleanupDeletes, 0);
   assert.equal(db.orders.has(801), true);
+  assert.equal(db.processes.length, 10);
+  assert.equal(db.preProduction.length, 1);
+  assert.equal(db.activities.length, 1);
 });
 
 test('dedicated sheet-sync cron is CRON_SECRET protected and leaves notification sweep unchanged', async () => {
@@ -758,12 +842,15 @@ test('dedicated sheet-sync cron is CRON_SECRET protected and leaves notification
       method: 'GET',
       headers: { authorization: 'Bearer sheet-sync-secret' },
     }, authorized, db, {
+      now: () => fixedNow,
       retry: async (_db, options) => {
         retryCalls += 1;
-        // 한 번에 최대 25건을 훑되, 등록 큐는 10초까지만 쓴다.
-        // 남은 예산은 출고 큐 몫이다 — 등록이 25초를 다 쓰면 출고 기입이 굶는다.
-        assert.deepEqual(options, { limit: 25, deadlineMs: 10_000 });
+        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
         return { attempted: 1, synced: 1, failed: 0, skipped: 0, errors: [] };
+      },
+      retryShipping: async (_db, options) => {
+        assert.deepEqual(options, { limit: 25, deadlineMs: 25_000 });
+        return { attempted: 0, synced: 0, failed: 0, skipped: 0, errors: [] };
       },
     });
     assert.equal(authorized.statusCode, 200);

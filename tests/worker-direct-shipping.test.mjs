@@ -515,12 +515,16 @@ test('the exact worker-station action area has separate worker shipping and norm
     unauthorizedRes,
     {
       rateLimitCheck: () => true,
+      requireWorkerAction: async (_req, res) => {
+        res.status(401).json({ error: { message: 'authentication required', status: 401 } });
+        return null;
+      },
       completeOrderShipping: async () => { shippingCalls += 1; throw new Error('must not ship'); },
       db: new Proxy({}, { get() { throw new Error('must not access DB'); } }),
     },
   );
-  assert.equal(unauthorizedRes.statusCode, 400);
-  assert.equal(unauthorizedRes.body.error.status, 400);
+  assert.equal(unauthorizedRes.statusCode, 401);
+  assert.equal(unauthorizedRes.body.error.status, 401);
   assert.equal(shippingCalls, 0);
 
   assert.match(client, /export function shipOrderFromWorker\(id, actor\)/);

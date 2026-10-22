@@ -5,6 +5,7 @@ import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 import { hasValidWorkInstructionReceipt } from '../../../shared/workInstructionReceipt.js';
+import { canWorkerAccessDepartment } from '../../../shared/workerAccess.js';
 
 // 핸들러 안에서 지역변수 process(공정 row)가 Node 전역 process를 가리므로 환경변수는 모듈 레벨에서 읽는다
 const NOTIFY_STARTED_ENABLED = process.env.NOTIFY_STARTED === '1';
@@ -20,9 +21,8 @@ export async function handleStartProcess(req, res, dependencies = {}) {
   }
   const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
   if (!checkRateLimit(req, res)) return;
-  const workerAction = dependencies.requireWorkerAction
-    ? dependencies.requireWorkerAction(req, res)
-    : requireWorkerAction(req, res);
+  const checkWorkerAction = dependencies.requireWorkerAction || requireWorkerAction;
+  const workerAction = await checkWorkerAction(req, res, { allowInitialDesignStart: true });
   if (!workerAction) return;
 
   const id = parsePositiveInt4Id(req.query.id);
@@ -32,7 +32,7 @@ export async function handleStartProcess(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const notifyInternalStart = dependencies.notifyInternalStart || defaultInternalStartNotify;
-  const { work_date, actor, assigned_worker, assigned_team } = req.body || {};
+  const { work_date, assigned_worker, assigned_team } = req.body || {};
 
   // Validate required fields
   if (assigned_worker !== undefined && typeof assigned_worker !== 'string') {
@@ -52,8 +52,19 @@ export async function handleStartProcess(req, res, dependencies = {}) {
   }
   const process = processRows[0];
 
+  if (workerAction.role === 'worker'
+    && !canWorkerAccessDepartment(workerAction.actor, process.step_name)) {
+    return res.status(403).json({
+      error: { message: '담당 공정에 대한 권한이 없습니다.', status: 403 },
+    });
+  }
+
   const now = new Date().toISOString();
-  const requestedWorker = actor || assigned_worker || workerAction.actor;
+  if (workerAction.role && workerAction.role !== 'worker' && process.step_name !== '도면설계') {
+    return res.status(403).json({ error: { message: '현장 작업자만 공정을 시작할 수 있습니다.', status: 403 } });
+  }
+
+  const requestedWorker = assigned_worker || workerAction.actor;
   const workerName = process.step_name === '도면설계' ? '김보수 팀장' : requestedWorker;
 
   if (process.step_name === '레이저작업') {
@@ -120,14 +131,14 @@ export async function handleStartProcess(req, res, dependencies = {}) {
                   SELECT u.order_id,
                          '공정시작',
                          o.client_name || ' - 레이저작업 공정이 시작되었습니다. (담당: ' || u.started_by || ')',
-                         u.started_by
+                         ?
                     FROM updated u
                     JOIN orders o ON o.id = u.order_id
                   RETURNING id
                 )
                 SELECT u.*, EXISTS (SELECT 1 FROM logged) AS activity_logged
                   FROM updated u`,
-          args: [id, work_date || now, workerName],
+          args: [id, work_date || now, workerName, workerAction.actor],
         },
       ]);
     } catch (error) {
@@ -215,6 +226,21 @@ export async function handleStartProcess(req, res, dependencies = {}) {
               FROM processes p
               JOIN orders o ON o.id = p.order_id
              WHERE p.id = ? AND p.status = 'waiting'
+               AND (
+                 NOT ?::BOOLEAN
+                 OR (
+                   p.step_name = '도면설계'
+                   AND o.status = 'in_production'
+                   AND p.started_at IS NULL
+                   AND EXISTS (
+                     SELECT 1
+                       FROM activity_feed created
+                      WHERE created.order_id = p.order_id
+                        AND created.action_type = '주문등록'
+                        AND created.actor = ?
+                   )
+                 )
+               )
           ),
           claimed_process AS (
             UPDATE processes p
@@ -228,7 +254,7 @@ export async function handleStartProcess(req, res, dependencies = {}) {
             SELECT cp.order_id,
                    '공정시작',
                    o.client_name || ' - ' || cp.step_name || ' 공정이 시작되었습니다. (담당: ' || cp.started_by || ')',
-                   cp.started_by
+                   ?
               FROM claimed_process cp
               JOIN orders o ON o.id = cp.order_id
             RETURNING id
@@ -238,7 +264,14 @@ export async function handleStartProcess(req, res, dependencies = {}) {
             FROM claimed_process cp
             JOIN orders o ON o.id = cp.order_id
            WHERE EXISTS (SELECT 1 FROM process_activity)`,
-    args: [id, work_date || now, workerName],
+    args: [
+      id,
+      Boolean(workerAction.role && workerAction.role !== 'worker'),
+      workerAction.actor,
+      work_date || now,
+      workerName,
+      workerAction.actor,
+    ],
   }]);
   const committed = mutationResult.rows?.[0];
   if (!committed) {

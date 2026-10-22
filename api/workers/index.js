@@ -10,7 +10,7 @@ export default cors(async function handler(req, res) {
     return handleGet(req, res);
   } else if (req.method === 'POST') {
     if (!rateLimitCheck(req, res)) return;
-    const auth = requireAuth(req, res, { roles: ['admin'] });
+    const auth = await requireAuth(req, res, { roles: ['admin'] });
     if (!auth) return;
     return handlePost(req, res);
   } else {

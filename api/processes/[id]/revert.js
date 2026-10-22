@@ -4,7 +4,7 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { clearShippedOnSheet } from '../../_lib/googleSheets.js';
-import { PROCESS_UNDO_MANAGER, isProcessUndoManager } from '../../../shared/processUndoPermission.js';
+import { isProcessUndoManager } from '../../../shared/processUndoPermission.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
@@ -26,16 +26,15 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
   }
   const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
   if (!checkRateLimit(req, res)) return;
-  const workerAction = dependencies.requireWorkerAction
-    ? dependencies.requireWorkerAction(req, res)
-    : requireWorkerAction(req, res);
+  const checkWorkerAction = dependencies.requireWorkerAction || requireWorkerAction;
+  const workerAction = await checkWorkerAction(req, res);
   if (!workerAction) return;
   if (!isProcessUndoManager(workerAction.actor)) {
     return res.status(403).json({
       error: { message: '김보수 팀장만 공정을 되돌릴 수 있습니다.', status: 403 },
     });
   }
-  const auditActor = PROCESS_UNDO_MANAGER;
+  const auditActor = workerAction.actor;
 
   const id = parsePositiveInt4Id(req.query.id);
   if (id === null) {

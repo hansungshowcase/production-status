@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
 const sourcePath = new URL('../.apps-script-sheet/Code.js', import.meta.url);
 const spreadsheetId = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
+const idColumnIndex = 43;
 
 function makeRange(sheet, row, column, rowCount, columnCount) {
   return {
@@ -32,7 +34,7 @@ function makeRange(sheet, row, column, rowCount, columnCount) {
     },
     setValues(values) {
       sheet.setValuesCalls.push({ row, column, rowCount, columnCount, values });
-      if (sheet.failNextSetValues) {
+      if (sheet.failNextSetValues || sheet.failSetValuesAt === sheet.setValuesCalls.length) {
         sheet.failNextSetValues = false;
         throw new Error('simulated sheet write failure');
       }
@@ -64,6 +66,7 @@ function makeSheet(headers) {
     deleteCalls: [],
     hiddenColumns: [],
     failNextSetValues: false,
+    failSetValuesAt: null,
     getSheetId: () => 0,
     getName: () => 'Orders',
     getLastColumn() {
@@ -87,6 +90,10 @@ function makeSheet(headers) {
 
 async function createAppsScriptHarness() {
   const source = await readFile(sourcePath, 'utf8');
+  const properties = new Map([
+    ['PRODUCTION_STATUS_WEBHOOK_SECRET', 'hansung-production-status'],
+  ]);
+  const propertyWrites = [];
   const lockState = {
     available: true,
     held: false,
@@ -121,7 +128,25 @@ async function createAppsScriptHarness() {
       },
     },
     Session: { getScriptTimeZone: () => 'Asia/Seoul' },
-    Utilities: { formatDate: (value) => value.toISOString().slice(0, 10) },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) { return properties.get(key) ?? null; },
+          setProperties(values) {
+            propertyWrites.push({ ...values });
+            Object.entries(values).forEach(([key, value]) => properties.set(key, value));
+          },
+        };
+      },
+    },
+    Utilities: {
+      DigestAlgorithm: { SHA_256: 'sha256' },
+      Charset: { UTF_8: 'utf8' },
+      computeDigest(_algorithm, value) {
+        return Array.from(createHash('sha256').update(String(value)).digest());
+      },
+      formatDate: (value) => value.toISOString().slice(0, 10),
+    },
   });
   vm.runInContext(source, context, { filename: sourcePath.pathname });
   const headers = vm.runInContext('REQUIRED_HEADERS', context);
@@ -137,6 +162,8 @@ async function createAppsScriptHarness() {
   return {
     context,
     lockState,
+    properties,
+    propertyWrites,
     sheet,
     post(payload) {
       const output = context.doPost({ postData: { contents: JSON.stringify({
@@ -157,14 +184,21 @@ function visibleValues(orderDate) {
 }
 
 function blankRow() {
-  return Array(20).fill('');
+  return Array(44).fill('');
 }
 
 function occupiedRow(orderId) {
-  return [...visibleValues('2026-08-01'), orderId];
+  return rowWithId(visibleValues('2026-08-01'), orderId);
 }
 
-test('append uses the hidden order ID for replay safety and preserves append order', async () => {
+function rowWithId(values, orderId) {
+  const row = blankRow();
+  values.forEach((value, index) => { row[index] = value; });
+  row[idColumnIndex] = orderId;
+  return row;
+}
+
+test('append reserves AR before A:S and preserves replay-safe append order', async () => {
   const harness = await createAppsScriptHarness();
   const firstValues = visibleValues('2026-09-02');
   const secondValues = visibleValues('2026-08-01');
@@ -176,13 +210,15 @@ test('append uses the hidden order ID for replay safety and preserves append ord
   assert.deepEqual(first, { ok: true, row: 2, deduplicated: false, spreadsheetId });
   assert.deepEqual(second, { ok: true, row: 3, deduplicated: false, spreadsheetId });
   assert.deepEqual(replay, { ok: true, row: 2, deduplicated: true, spreadsheetId });
-  assert.equal(harness.sheet.setValuesCalls.length, 2);
-  assert.equal(harness.sheet.setValuesCalls[0].columnCount, 20);
-  assert.deepEqual(Array.from(harness.sheet.setValuesCalls[0].values[0]), [...firstValues, 101]);
-  assert.deepEqual(Array.from(harness.sheet.setValuesCalls[1].values[0]), [...secondValues, 102]);
-  assert.equal(typeof harness.sheet.rows[1][19], 'number');
-  assert.ok(harness.sheet.hiddenColumns.includes(20));
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => [row[0], row[19]]), [
+  assert.equal(harness.sheet.setValuesCalls.length, 6);
+  assert.equal(harness.sheet.setValuesCalls[0].column, 44);
+  assert.match(harness.sheet.setValuesCalls[0].values[0][0], /^pending:101:/);
+  assert.equal(harness.sheet.setValuesCalls[1].columnCount, 19);
+  assert.deepEqual(Array.from(harness.sheet.setValuesCalls[1].values[0]), firstValues);
+  assert.deepEqual(Array.from(harness.sheet.setValuesCalls[4].values[0]), secondValues);
+  assert.equal(typeof harness.sheet.rows[1][idColumnIndex], 'number');
+  assert.deepEqual(harness.sheet.hiddenColumns, []);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => [row[0], row[idColumnIndex]]), [
     ['2026-09-02', 101],
     ['2026-08-01', 102],
   ]);
@@ -198,8 +234,8 @@ test('identical visible values with distinct IDs append as distinct rows', async
   harness.post({ orderId: 201, values });
   harness.post({ orderId: 202, values });
 
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), [201, 202]);
-  assert.equal(harness.sheet.setValuesCalls.length, 2);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[idColumnIndex]), [201, 202]);
+  assert.equal(harness.sheet.setValuesCalls.length, 6);
 });
 
 test('append chooses the earliest interior run of three blank rows before later history', async () => {
@@ -218,12 +254,12 @@ test('append chooses the earliest interior run of three blank rows before later 
 
   assert.equal(first.row, 2953);
   assert.equal(second.row, 2954);
-  assert.equal(harness.sheet.rows[2952][19], 3430);
-  assert.equal(harness.sheet.rows[2953][19], 3431);
-  assert.equal(harness.sheet.rows[1620][19], '');
+  assert.equal(harness.sheet.rows[2952][idColumnIndex], 3430);
+  assert.equal(harness.sheet.rows[2953][idColumnIndex], 3431);
+  assert.equal(harness.sheet.rows[1620][idColumnIndex], '');
 });
 
-test('occupancy trims whitespace and counts 0, false, and hidden T-only IDs', async () => {
+test('occupancy trims whitespace and counts 0, false, and AR-only IDs', async () => {
   const harness = await createAppsScriptHarness();
   const whitespace = blankRow();
   whitespace[0] = '   ';
@@ -232,7 +268,7 @@ test('occupancy trims whitespace and counts 0, false, and hidden T-only IDs', as
   const falseValue = blankRow();
   falseValue[0] = false;
   const hiddenId = blankRow();
-  hiddenId[19] = 3440;
+  hiddenId[idColumnIndex] = 3440;
   harness.sheet.rows.push(
     whitespace,
     blankRow(),
@@ -252,7 +288,7 @@ test('occupancy trims whitespace and counts 0, false, and hidden T-only IDs', as
   assert.equal(second.row, 7);
   assert.equal(harness.sheet.rows[4][0], 0);
   assert.equal(harness.sheet.rows[5][0], false);
-  assert.equal(harness.sheet.rows[9][19], 3440);
+  assert.equal(harness.sheet.rows[9][idColumnIndex], 3440);
 });
 
 test('formula returning an empty display value still makes the row occupied', async () => {
@@ -265,7 +301,7 @@ test('formula returning an empty display value still makes the row occupied', as
 
   assert.equal(result.row, 4);
   assert.equal(harness.sheet.rows[1][0], '');
-  assert.equal(harness.sheet.rows[2][19], 3450);
+  assert.equal(harness.sheet.rows[2][idColumnIndex], 3450);
 });
 
 test('without a qualifying interior run, append follows the last occupied row', async () => {
@@ -284,7 +320,7 @@ test('without a qualifying interior run, append follows the last occupied row', 
   const result = harness.post({ orderId: 3463, values: visibleValues('2026-08-03') });
 
   assert.equal(result.row, 8);
-  assert.equal(harness.sheet.rows[7][19], 3463);
+  assert.equal(harness.sheet.rows[7][idColumnIndex], 3463);
 });
 
 test('all mutating actions use one bounded script lock and contention performs no mutation', async () => {
@@ -297,7 +333,7 @@ test('all mutating actions use one bounded script lock and contention performs n
 
   for (const payload of actions) {
     const harness = await createAppsScriptHarness();
-    harness.sheet.rows.push([...visibleValues('2026-08-03'), 301]);
+    harness.sheet.rows.push(rowWithId(visibleValues('2026-08-03'), 301));
     const before = structuredClone(harness.sheet.rows);
     harness.lockState.available = false;
 
@@ -354,15 +390,15 @@ test('deleteOrder prefers the hidden ID and only falls back to visible fields fo
 
   const byId = harness.post({ action: 'deleteOrder', orderId: 602, values });
   assert.equal(byId.deletedRow, 3);
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), [601, '']);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[idColumnIndex] ?? ''), [601, '']);
 
   const legacyFallback = harness.post({ action: 'deleteOrder', orderId: 999, values });
   assert.equal(legacyFallback.deletedRow, 3);
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), [601]);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[idColumnIndex] ?? ''), [601]);
 
   const noModernFallback = harness.post({ action: 'deleteOrder', orderId: 999, values });
   assert.equal(noModernFallback.deletedRow, null);
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), [601]);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[idColumnIndex] ?? ''), [601]);
 });
 
 test('a single unambiguous legacy candidate is still deleted', async () => {
@@ -397,13 +433,13 @@ test('deleteOrder deletes nothing when several legacy rows match the same visibl
 test('a hidden order ID still wins even when the legacy candidates are ambiguous', async () => {
   const harness = await createAppsScriptHarness();
   const values = visibleValues('2026-08-03');
-  harness.sheet.rows.push([...values, ''], [...values, 703], [...values, '']);
+  harness.sheet.rows.push([...values, ''], rowWithId(values, 703), [...values, '']);
 
   const result = harness.post({ action: 'deleteOrder', orderId: 703, values });
 
   assert.deepEqual(result, { ok: true, deletedRow: 3 });
   assert.deepEqual(harness.sheet.deleteCalls, [3]);
-  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[19]), ['', '']);
+  assert.deepEqual(harness.sheet.rows.slice(1).map((row) => row[idColumnIndex] ?? ''), ['', '']);
 });
 
 test('deleteOrder reports no deletion when no row matches at all', async () => {
@@ -416,4 +452,97 @@ test('deleteOrder reports no deletion when no row matches at all', async () => {
   assert.deepEqual(result, { ok: true, deletedRow: null });
   assert.deepEqual(harness.sheet.deleteCalls, []);
   assert.equal(harness.sheet.rows.length, 2);
+});
+
+test('AR reservation recovers each append crash boundary without touching T:AQ', async () => {
+  for (const failSetValuesAt of [2, 3]) {
+    const harness = await createAppsScriptHarness();
+    const protectedRow = blankRow();
+    protectedRow[19] = '제조상태';
+    protectedRow[20] = '=T2';
+    protectedRow[42] = '자재';
+    harness.sheet.rows.push(protectedRow);
+    const beforeProtected = harness.sheet.rows[1].slice(19, 43);
+    harness.sheet.failSetValuesAt = failSetValuesAt;
+
+    assert.throws(
+      () => harness.post({ orderId: 801, values: visibleValues('2026-10-22') }),
+      /simulated sheet write failure/,
+    );
+    harness.sheet.failSetValuesAt = null;
+    const result = harness.post({ orderId: 801, values: visibleValues('2026-10-22') });
+
+    assert.equal(result.ok, true);
+    assert.equal(harness.sheet.rows.filter((row) => row[idColumnIndex] === 801).length, 1);
+    assert.deepEqual(harness.sheet.rows[1].slice(19, 43), beforeProtected);
+    assert.deepEqual(harness.sheet.hiddenColumns, []);
+  }
+});
+
+test('numeric T collision and mismatched pending payload are held without writes', async () => {
+  const harness = await createAppsScriptHarness();
+  const numericT = blankRow();
+  numericT[19] = 802;
+  harness.sheet.rows.push(numericT);
+  const before = structuredClone(harness.sheet.rows);
+
+  assert.deepEqual(
+    harness.post({ orderId: 802, values: visibleValues('2026-10-22') }),
+    { ok: false, error: 'unresolved legacy order id' },
+  );
+  assert.deepEqual(
+    harness.post({ action: 'deleteOrder', orderId: 802, strictOrderId: true, values: visibleValues('2026-10-22') }),
+    { ok: false, error: 'unresolved legacy order id' },
+  );
+  assert.deepEqual(harness.sheet.rows, before);
+
+  harness.sheet.failSetValuesAt = 2;
+  assert.throws(() => harness.post({ orderId: 803, values: visibleValues('2026-10-22') }));
+  harness.sheet.failSetValuesAt = null;
+  assert.deepEqual(
+    harness.post({ orderId: 803, values: visibleValues('2026-10-23') }),
+    { ok: false, error: 'conflicting pending order' },
+  );
+});
+
+test('auth probe reports the strict AR identity capability without sheet access', async () => {
+  const harness = await createAppsScriptHarness();
+  const result = harness.post({ action: 'authProbe' });
+  assert.deepEqual(result, {
+    ok: true,
+    version: '24-transition',
+    strictOrderId: true,
+    idColumn: 44,
+    idSchema: 'ar-v1',
+  });
+  assert.equal(harness.lockState.attempts.length, 0);
+});
+
+test('duplicate numeric AR identities block append and strict delete without mutation', async () => {
+  const harness = await createAppsScriptHarness();
+  const values = visibleValues('2026-10-22');
+  harness.sheet.rows.push(rowWithId(values, 901), rowWithId(values, 901));
+
+  const append = harness.post({ action: 'append', orderId: 901, values });
+  const remove = harness.post({ action: 'deleteOrder', orderId: 901, values, strictOrderId: true });
+
+  assert.deepEqual(append, { ok: false, error: 'duplicate order id' });
+  assert.deepEqual(remove, { ok: false, error: 'duplicate order id' });
+  assert.equal(harness.sheet.deleteCalls.length, 0);
+  assert.equal(harness.sheet.setValuesCalls.length, 0);
+});
+
+test('final source removes rotation and rejects the legacy secret without sheet mutation', async () => {
+  const source = await readFile(sourcePath, 'utf8');
+  assert.doesNotMatch(source, /ROTATION_|rotateWebhookSecret|LEGACY_SECRET_PROPERTY|legacySecret/);
+
+  const harness = await createAppsScriptHarness();
+  harness.properties.set('PRODUCTION_STATUS_WEBHOOK_LEGACY_SECRET', 'retired-legacy-secret');
+  harness.properties.delete('PRODUCTION_STATUS_WEBHOOK_SECRET');
+  const legacy = harness.post({ action: 'authProbe', secret: 'retired-legacy-secret' });
+
+  assert.deepEqual(legacy, { ok: false, error: 'unauthorized' });
+  assert.equal(harness.sheet.setValuesCalls.length, 0);
+  assert.equal(harness.sheet.deleteCalls.length, 0);
+  assert.equal(harness.propertyWrites.length, 0);
 });

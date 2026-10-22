@@ -131,10 +131,10 @@ class MonitorDb {
       return { rows: alert ? [{ alert_key: alertKey }] : [] };
     }
 
-    if (/^UPDATE notification_delivery_alerts SET status = 'failed'/i.test(sql)) {
-      const [error, alertKey] = args;
+    if (/^UPDATE notification_delivery_alerts SET status = \?/i.test(sql)) {
+      const [status, error, alertKey] = args;
       const alert = this.alerts.get(alertKey);
-      if (alert) Object.assign(alert, { status: 'failed', error, updated_order: ++this.clock });
+      if (alert) Object.assign(alert, { status, error, updated_order: ++this.clock });
       return { rows: alert ? [{ alert_key: alertKey }] : [] };
     }
 
@@ -267,6 +267,36 @@ test('blocking reports notify 010-7731-4237 once per recipient, code, and KST da
   assert.equal([...db.alerts.values()][0].status, 'sent');
 });
 
+test('3040 is an allowlisted internal final-failure alert without changing block classification', async () => {
+  const monitor = await loadMonitor();
+  assert.deepEqual([...monitor.FINAL_FAILURE_ALERT_CODES], ['3040']);
+  assert.equal(monitor.BLOCK_STATUS_CODES.has('3040'), false);
+  const failed = logRow(3040, { created_at: '2026-01-01T00:00:00.000Z' });
+  const db = new MonitorDb([failed]);
+  const sent = [];
+
+  const result = await monitor.runSmsDeliveryMonitor(db, {
+    nowMs: Date.parse('2026-10-22T01:00:00.000Z'),
+    ensureSchema: async () => {},
+    repairPolicy: {
+      activationAt: '2026-10-22T00:00:00.000Z',
+      deliveryProviderIds: [],
+      deliverySourceLogIds: [3040],
+    },
+    fetchReports: async () => [reportFor(failed, '3040', 'provider final failure')],
+    sendAdmin: async (_db, message) => {
+      sent.push(message);
+      return { ok: true, msgId: 'admin-final-failure-1' };
+    },
+  });
+
+  assert.equal(result.blocked, 0);
+  assert.equal(result.alerted, 1);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /최종 전달 실패/);
+  assert.doesNotMatch(sent[0].text, /차단/);
+});
+
 test('a sent block alert is excluded so unresolved messages cannot be starved by the row limit', async () => {
   const monitor = await loadMonitor();
   const blocked = logRow(21, { recipient_name: '백승정', to_phone: '010****4464' });
@@ -304,7 +334,7 @@ test('a sent block alert is excluded so unresolved messages cannot be starved by
   assert.doesNotMatch(select.sql, /delivery_status_code IN \('2000', '3000', '1061'/);
   assert.match(
     select.sql,
-    /COALESCE\(\s*delivery_alert.updated_at, notification_log.delivery_checked_at, notification_log.created_at\s*\) ASC/,
+    /ORDER BY notification_log\.delivery_checked_at NULLS FIRST, notification_log\.delivery_checked_at ASC, notification_log\.id ASC/,
   );
 });
 
@@ -406,6 +436,26 @@ test('a failed administrator alert is retried on the next monitor run', async ()
   assert.equal(attempts, 2);
   assert.equal([...db.alerts.values()][0].status, 'sent');
   assert.equal([...db.alerts.values()][0].attempts, 2);
+});
+
+test('an uncertain administrator delivery is held instead of being resent', async () => {
+  const monitor = await loadMonitor();
+  const row = logRow(404, { recipient_name: 'fixture', to_phone: '010****0404' });
+  const db = new MonitorDb([row]);
+  let attempts = 0;
+  const options = {
+    nowMs: Date.parse('2026-10-22T02:00:00.000Z'),
+    ensureSchema: async () => {},
+    fetchReports: async ids => ids.map(() => reportFor(row, '3047', 'blocked')),
+    sendAdmin: async () => {
+      attempts += 1;
+      return { ok: false, uncertain: true, error: 'timeout' };
+    },
+  };
+  await monitor.runSmsDeliveryMonitor(db, options);
+  await monitor.runSmsDeliveryMonitor(db, options);
+  assert.equal(attempts, 1);
+  assert.equal([...db.alerts.values()][0].status, 'uncertain');
 });
 
 test('customer and administrator messages are excluded from delivery monitoring', async () => {
@@ -565,6 +615,46 @@ test('administrator alert lookup searches only the administrator number and retu
     assert.equal(match.messageId, 'admin-message-accepted');
     assert.equal('text' in match, false);
     assert.equal('to' in match, false);
+  } finally {
+    if (originalKey === undefined) delete process.env.SOLAPI_API_KEY;
+    else process.env.SOLAPI_API_KEY = originalKey;
+    if (originalSecret === undefined) delete process.env.SOLAPI_API_SECRET;
+    else process.env.SOLAPI_API_SECRET = originalSecret;
+  }
+});
+
+test('attempt receipt lookup matches only the stable provider custom field', async () => {
+  const monitor = await loadMonitor();
+  const originalKey = process.env.SOLAPI_API_KEY;
+  const originalSecret = process.env.SOLAPI_API_SECRET;
+  process.env.SOLAPI_API_KEY = 'test-key';
+  process.env.SOLAPI_API_SECRET = 'test-secret';
+  let requestedUrl;
+  try {
+    const receipt = await monitor.findSolapiAttemptReceipt('010-0000-0001', 'attempt-1', {
+      at: '2026-10-22T01:00:00.000Z',
+      nowMs: Date.parse('2026-10-22T02:00:00.000Z'),
+      fetchImpl: async url => {
+        requestedUrl = new URL(url);
+        return {
+          ok: true,
+          async json() {
+            return { messageList: {
+              receipt: {
+                messageId: 'provider-receipt-1',
+                status: 'SENDING',
+                statusCode: '2000',
+                customFields: { notificationAttemptToken: 'attempt-1' },
+                text: 'private body',
+              },
+            } };
+          },
+        };
+      },
+    });
+    assert.equal(requestedUrl.searchParams.get('to'), '01000000001');
+    assert.equal(receipt.messageId, 'provider-receipt-1');
+    assert.equal('text' in receipt, false);
   } finally {
     if (originalKey === undefined) delete process.env.SOLAPI_API_KEY;
     else process.env.SOLAPI_API_KEY = originalKey;

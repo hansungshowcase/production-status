@@ -1,7 +1,4 @@
 const WEBHOOK_SECRET_PROPERTY = 'PRODUCTION_STATUS_WEBHOOK_SECRET';
-const LEGACY_SECRET_PROPERTY = 'PRODUCTION_STATUS_WEBHOOK_LEGACY_SECRET';
-const ROTATION_CONSUMED_PROPERTY = 'PRODUCTION_STATUS_ROTATION_CONSUMED_HASH';
-const ROTATION_TOKEN_SHA256 = 'dd8c3bf935d59090674118fc560faac38bb5bb43dbf3ed42ca175929c231e0f9';
 const SCRIPT_VERSION = '6-transition';
 const SPREADSHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
 const TARGET_SHEET_ID = 0;
@@ -349,34 +346,7 @@ function constantTimeEquals(left, right) {
 function isAuthorizedSecret(value) {
   const properties = PropertiesService.getScriptProperties();
   const current = properties.getProperty(WEBHOOK_SECRET_PROPERTY);
-  const legacy = properties.getProperty(LEGACY_SECRET_PROPERTY);
-  return (current && constantTimeEquals(value, current))
-    || (legacy && constantTimeEquals(value, legacy));
-}
-
-function rotateWebhookSecret(data) {
-  return withMaintenanceLock(function () {
-    const tokenHash = sha256Hex(data.rotationToken || '');
-    const properties = PropertiesService.getScriptProperties();
-    if (!constantTimeEquals(tokenHash, ROTATION_TOKEN_SHA256)) {
-      return jsonOutput({ ok: false, error: 'unauthorized' });
-    }
-    if (properties.getProperty(ROTATION_CONSUMED_PROPERTY) === ROTATION_TOKEN_SHA256) {
-      return jsonOutput({ ok: false, error: 'rotation already consumed' });
-    }
-    const nextSecret = String(data.newSecret || '');
-    if (nextSecret.length < 32) {
-      return jsonOutput({ ok: false, error: 'invalid new secret' });
-    }
-    const values = {
-      [WEBHOOK_SECRET_PROPERTY]: nextSecret,
-      [ROTATION_CONSUMED_PROPERTY]: ROTATION_TOKEN_SHA256,
-    };
-    const legacySecret = String(data.legacySecret || '');
-    if (legacySecret) values[LEGACY_SECRET_PROPERTY] = legacySecret;
-    properties.setProperties(values, false);
-    return jsonOutput({ ok: true, action: 'rotateWebhookSecret', version: SCRIPT_VERSION });
-  });
+  return current && constantTimeEquals(value, current);
 }
 
 function doPost(event) {
@@ -385,9 +355,6 @@ function doPost(event) {
     return jsonOutput({ ok: false, error: 'invalid JSON' });
   }
 
-  if (data.action === 'rotateWebhookSecret') {
-    return rotateWebhookSecret(data);
-  }
 
   if (!isAuthorizedSecret(data.secret)) {
     return jsonOutput({ ok: false, error: 'unauthorized' });

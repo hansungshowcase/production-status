@@ -7,7 +7,7 @@ export default cors(async function handler(req, res) {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   if (!rateLimitCheck(req, res)) return;
-  const auth = requireAuth(req, res, { roles: ['admin'] });
+  const auth = await requireAuth(req, res, { roles: ['admin'] });
   if (!auth) return;
 
   return res.status(503).json({

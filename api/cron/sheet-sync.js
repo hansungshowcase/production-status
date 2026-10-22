@@ -9,7 +9,12 @@ import { ensureShippingSheetSyncSchema } from '../_lib/shippingSheetSyncSchema.j
 
 // Vercel 함수 한도 30초. 상태 기록 여유를 두고 25초까지 쓴다.
 const SYNC_DEADLINE_MS = 25_000;
-const APPEND_DEADLINE_CAP_MS = 10_000;
+const APPEND_MINIMUM_BUDGET_MS = 16_000;
+const SHIPPING_MINIMUM_BUDGET_MS = 11_000;
+
+function emptySyncSummary() {
+  return { attempted: 0, synced: 0, failed: 0, skipped: 0, errors: [] };
+}
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -25,6 +30,7 @@ export async function handleSheetSyncCron(
   {
     retry = retryPendingSheetSync,
     retryShipping = retryPendingShippingSheetSync,
+    now = Date.now,
   } = {},
 ) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -40,16 +46,32 @@ export async function handleSheetSyncCron(
   await ensureSheetSyncSchema(db);
   await ensureShippingSheetSyncSchema(db);
 
-  const startedAt = Date.now();
-  // 등록 큐가 예산을 다 쓰면 출고 큐가 굶는다. 등록에 상한을 두고 나머지를 출고에 넘긴다.
-  // 등록 큐는 보통 비어 있어 실제로는 출고가 대부분의 예산을 받는다.
-  const appendDeadlineMs = Math.min(APPEND_DEADLINE_CAP_MS, SYNC_DEADLINE_MS);
-  const appendSummary = await retry(db, { limit: 25, deadlineMs: appendDeadlineMs });
-  const remainingDeadlineMs = Math.max(0, SYNC_DEADLINE_MS - (Date.now() - startedAt));
-  const shippingSummary = await retryShipping(db, {
-    limit: 25,
-    deadlineMs: remainingDeadlineMs,
-  });
+  const startedAt = now();
+  const remainingBudget = () => Math.max(
+    0,
+    Math.min(SYNC_DEADLINE_MS, SYNC_DEADLINE_MS - (now() - startedAt)),
+  );
+  let appendSummary = emptySyncSummary();
+  let shippingSummary = emptySyncSummary();
+
+  const runAppend = async () => {
+    const deadlineMs = remainingBudget();
+    if (deadlineMs < APPEND_MINIMUM_BUDGET_MS) return;
+    appendSummary = await retry(db, { limit: 25, deadlineMs });
+  };
+  const runShipping = async () => {
+    const deadlineMs = remainingBudget();
+    if (deadlineMs < SHIPPING_MINIMUM_BUDGET_MS) return;
+    shippingSummary = await retryShipping(db, { limit: 25, deadlineMs });
+  };
+
+  if (new Date(startedAt).getUTCMinutes() % 2 === 0) {
+    await runAppend();
+    await runShipping();
+  } else {
+    await runShipping();
+    await runAppend();
+  }
   return res.json({
     ok: true,
     ...appendSummary,

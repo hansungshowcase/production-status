@@ -99,7 +99,7 @@ test('orders POST returns a field-specific 400 for every invalid image-backed es
   delete process.env.POSTGRES_URL;
 
   try {
-    const { default: ordersHandler } = await import('../api/orders/index.js');
+    const { handlePost } = await import('../api/orders/index.js');
     const invalidCases = [
       ['client_name', ' ', /거래처/],
       ['order_date', '2026-02-29', /발주일/],
@@ -122,7 +122,11 @@ test('orders POST returns a field-specific 400 for every invalid image-backed es
       };
       const res = mockResponse();
 
-      await ordersHandler(req, res);
+      await handlePost(req, res, {
+        async execute() { throw new Error('database access should not occur'); },
+      }, {
+        requireAuth: async () => ({ role: 'sales', actor: '?? ???' }),
+      });
 
       assert.equal(res.statusCode, 400, `${field} should fail before database access`);
       assert.match(res.body?.error?.message || '', expectedMessage);
@@ -135,7 +139,7 @@ test('orders POST returns a field-specific 400 for every invalid image-backed es
 
 test('PATCH validates and optimistically guards the complete resulting image-backed state', async () => {
   const source = await readFile(new URL('../api/orders/[id]/index.js', import.meta.url), 'utf8');
-  const updateIndex = source.search(/UPDATE orders\s+SET/);
+  const updateIndex = source.search(/UPDATE orders(?:\s+\w+)?\s+SET/);
 
   assert.equal(
     typeof orderCreateInput.mutationChangesImageOrderInvariant,

@@ -1,8 +1,9 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
-import { requireAuth, resolveActor } from '../_lib/auth.js';
-import { del } from '@vercel/blob';
+import { requireAuth } from '../_lib/auth.js';
 import { parsePositiveInt4Id } from '../_lib/positiveInt4Id.js';
+import { ensureExternalCleanupSchema } from '../_lib/externalCleanupSchema.js';
+import { blobCleanupTargetKey, processExternalCleanupJob } from '../_lib/externalCleanup.js';
 
 export default cors(async function handler(req, res) {
   if (req.method === 'GET') {
@@ -59,7 +60,7 @@ export async function handleGet(req, res, dependencies = {}) {
 
 export async function handleDelete(req, res, dependencies = {}) {
   const checkAuth = dependencies.requireAuth || requireAuth;
-  const auth = checkAuth(req, res, { roles: ['sales', 'admin'] });
+  const auth = await checkAuth(req, res, { roles: ['sales', 'admin'] });
   if (!auth) return;
 
   const id = parsePositiveInt4Id(req.query.id);
@@ -67,7 +68,8 @@ export async function handleDelete(req, res, dependencies = {}) {
     return res.status(400).json({ error: { message: '유효한 사진 ID가 필요합니다.', status: 400 } });
   }
   const db = dependencies.db || getDb();
-  const deleteBlob = dependencies.deleteBlob || del;
+  const processCleanup = dependencies.processExternalCleanupJob || processExternalCleanupJob;
+  await (dependencies.ensureExternalCleanupSchema || ensureExternalCleanupSchema)(db);
   const [photoResult] = await db.atomicBatch([{
     sql: `WITH selected_photo AS (
             SELECT * FROM photos WHERE id = ? FOR UPDATE
@@ -77,10 +79,45 @@ export async function handleDelete(req, res, dependencies = {}) {
               FROM orders o
               JOIN selected_photo sp ON sp.order_id = o.id
           ),
+          cleanup_job AS (
+            INSERT INTO external_cleanup_jobs (
+              kind, target_key, source_order_id, source_photo_id, payload
+            )
+            SELECT 'blob_delete',
+                   'blob:' || sp.file_path,
+                   sp.order_id,
+                   sp.id,
+                   jsonb_build_object('url', sp.file_path)
+              FROM selected_photo sp
+             WHERE sp.file_path IS NOT NULL AND sp.file_path <> ''
+            ON CONFLICT (target_key) DO UPDATE SET
+              status = CASE
+                WHEN external_cleanup_jobs.status = 'held_shared' THEN 'pending'
+                ELSE external_cleanup_jobs.status
+              END,
+              next_attempt_at = CASE
+                WHEN external_cleanup_jobs.status = 'held_shared' THEN NOW()
+                ELSE external_cleanup_jobs.next_attempt_at
+              END,
+              last_error = CASE
+                WHEN external_cleanup_jobs.status = 'held_shared' THEN NULL
+                ELSE external_cleanup_jobs.last_error
+              END,
+              attempts = CASE
+                WHEN external_cleanup_jobs.status = 'held_shared' THEN 0
+                ELSE external_cleanup_jobs.attempts
+              END
+            RETURNING target_key
+          ),
           deleted_photo AS (
             DELETE FROM photos p
              USING selected_photo sp
              WHERE p.id = sp.id
+               AND (
+                 sp.file_path IS NULL
+                 OR sp.file_path = ''
+                 OR EXISTS (SELECT 1 FROM cleanup_job)
+               )
             RETURNING p.*
           ),
           photo_activity AS (
@@ -96,19 +133,18 @@ export async function handleDelete(req, res, dependencies = {}) {
           SELECT dp.*, so.client_name
             FROM deleted_photo dp
             LEFT JOIN selected_order so ON TRUE`,
-    args: [id, resolveActor(req)],
+    args: [id, auth.actor],
   }]);
   const photo = photoResult.rows[0];
   if (!photo) {
     return res.status(404).json({ error: { message: '사진을 찾을 수 없습니다.', status: 404 } });
   }
 
-  // DB 삭제와 활동 기록이 함께 커밋된 뒤 Blob 을 정리한다.
   if (photo.file_path) {
     try {
-      await deleteBlob(photo.file_path);
+      await processCleanup(db, blobCleanupTargetKey(photo.file_path), dependencies);
     } catch (err) {
-      console.warn('[photos DELETE] blob 삭제 실패, DB 삭제는 완료:', err?.message || err);
+      console.warn('[photos DELETE] external cleanup deferred:', err?.message || err);
     }
   }
 

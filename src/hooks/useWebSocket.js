@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toRealtimeMessage } from './realtimeEvents';
+import { authHeaders, clearToken } from '../utils/authClient';
 
 export default function useWebSocket() {
   const [lastMessage, setLastMessage] = useState(null);
@@ -11,7 +12,11 @@ export default function useWebSocket() {
 
     const poll = async () => {
       try {
-        const res = await fetch(`/api/events?since=${encodeURIComponent(lastTimestampRef.current)}`);
+        const res = await fetch(`/api/events?since=${encodeURIComponent(lastTimestampRef.current)}`, {
+          credentials: 'same-origin',
+          headers: authHeaders(),
+        });
+        if (res.status === 401) clearToken();
         if (!res.ok) throw new Error('Poll failed');
         const data = await res.json();
         if (!active) return;

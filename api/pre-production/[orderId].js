@@ -19,8 +19,6 @@ export default cors(async function handler(req, res) {
     return handleGet(req, res);
   } else if (req.method === 'PATCH') {
     if (!rateLimitCheck(req, res)) return;
-    const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
-    if (!auth) return;
     return handlePatch(req, res);
   } else {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -50,6 +48,9 @@ export async function handleGet(req, res, dependencies = {}) {
 }
 
 export async function handlePatch(req, res, dependencies = {}) {
+  const checkAuth = dependencies.requireAuth || requireAuth;
+  const auth = await checkAuth(req, res, { roles: ['sales', 'admin', 'worker'] });
+  if (!auth) return;
   const orderId = parsePositiveInt4Id(req.query.orderId);
   if (orderId === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
@@ -107,7 +108,7 @@ export async function handlePatch(req, res, dependencies = {}) {
       orderId,
       ...touchedFields.map(field => changes[field]),
       describeFieldChanges(`${order.client_name} 사전생산 체크리스트가 수정되었습니다.`, changedFields),
-      body.actor || '시스템',
+      auth.actor,
     ],
   }]);
   const updated = mutationResult.rows?.[0]?.pre_production_row;

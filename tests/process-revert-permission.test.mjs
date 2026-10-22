@@ -80,14 +80,19 @@ test('권한 판정은 requireWorkerAction 반환 actor를 사용한다', async 
   assert.equal(state.sheetCalls, 0);
 });
 
-test('작업자 정보 누락은 400으로 거부한다', async () => {
-  const { state, dependencies } = untouchedDependencies();
+test('인증되지 않은 되돌리기는 DB 전에 401로 거부한다', async () => {
+  const { state, dependencies } = untouchedDependencies({
+    requireWorkerAction: (_req, res) => {
+      res.status(401).json({ error: { message: '인증이 필요합니다.', status: 401 } });
+      return null;
+    },
+  });
   const res = response();
 
   await handleRevertProcess(request(), res, dependencies);
 
-  assert.equal(res.statusCode, 400);
-  assert.equal(res.body.error.message, '작업자 정보가 필요합니다.');
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.body.error.message, '인증이 필요합니다.');
   assert.equal(state.executeCalls, 0);
   assert.equal(state.atomicCalls, 0);
 });

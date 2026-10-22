@@ -210,6 +210,8 @@ test('OCR rejects fake image bytes before API configuration or provider calls', 
     url: '/api/ocr/work-order',
     headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
     body,
+    auth: { role: 'sales', actor: '신은철' },
+    authSource: 'bearer',
   };
   const res = {
     headers: {},

@@ -54,7 +54,9 @@ test('create handler returns 400 and performs zero writes for every invalid quan
   for (const quantity of invalidValues) {
     const db = zeroWriteDb();
     const res = mockResponse();
-    await handlePost({ body: { client_name: '검증거래처', quantity } }, res, db);
+    await handlePost({ body: { client_name: '검증거래처', quantity } }, res, db, {
+      requireAuth: async () => ({ role: 'sales', actor: '신은철' }),
+    });
     assert.equal(res.statusCode, 400, `create status for ${String(quantity)}`);
     assert.equal(res.body?.error?.status, 400);
     assert.equal(db.state.calls, 0, `create DB calls for ${String(quantity)}`);
@@ -105,6 +107,7 @@ test('actual CORS-wrapped delivery handler emits current no-store headers and ca
     method: 'GET',
     url: '/api/delivery-adherence',
     headers: { origin: 'https://production-status.vercel.app' },
+    auth: { role: 'sales', actor: '신은철' },
   }, res);
 
   assert.equal(res.statusCode, 200);

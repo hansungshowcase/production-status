@@ -9,7 +9,7 @@ export default cors(async function handler(req, res) {
   }
   if (!rateLimitCheck(req, res)) return;
 
-  const auth = requireAuth(req, res, { roles: ['admin'] });
+  const auth = await requireAuth(req, res, { roles: ['admin'] });
   if (!auth) return;
 
   const { id } = req.query;

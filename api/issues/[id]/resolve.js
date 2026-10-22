@@ -8,7 +8,8 @@ export default cors(async function handler(req, res) {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   if (!rateLimitCheck(req, res)) return;
-  if (!authorizeIssueResolve(req, res)) return;
+  const auth = await authorizeIssueResolve(req, res);
+  if (!auth) return;
 
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
@@ -47,7 +48,7 @@ export default cors(async function handler(req, res) {
       issue.order_id,
       '이슈해결',
       `${order ? order.client_name : ''} - [${issue.issue_type}] ${issue.description || ''} 해결`.trim(),
-      req.body?.actor || '시스템',
+      auth.actor,
     ],
   });
 
@@ -57,14 +58,9 @@ export default cors(async function handler(req, res) {
   return res.json({ ...updated, client_name: order ? order.client_name : null });
 });
 
-function authorizeIssueResolve(req, res) {
-  const header = req.headers?.authorization || '';
-  const actor = req.body?.actor;
-  if (!header && actor) {
-    const workerAuth = requireWorkerAction(req, res);
-    return Boolean(workerAuth);
-  }
-
-  const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
-  return Boolean(auth);
+async function authorizeIssueResolve(req, res) {
+  const auth = await requireAuth(req, res, { roles: ['sales', 'admin', 'worker'] });
+  if (!auth) return null;
+  if (auth.role === 'worker') return requireWorkerAction(req, res);
+  return auth;
 }

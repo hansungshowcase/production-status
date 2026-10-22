@@ -3,12 +3,26 @@ import { generateKeyPairSync } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import {
+const sourcePath = new URL('../api/_lib/googleSheets.js', import.meta.url);
+
+
+async function importWithPrivateConfig(sourceTransform = (source) => source) {
+  const source = await readFile(sourcePath, 'utf8');
+  const isolatedSource = sourceTransform(source).replace(
+    "import { readPrivateConfig } from './privateConfig.js';",
+    "const readPrivateConfig = async () => 'synthetic-webhook-secret';",
+  );
+  assert.notEqual(isolatedSource, source, 'test seam must replace the private config import');
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(isolatedSource).toString('base64')}`;
+  return import(`${dataUrl}#append-safety-${Date.now()}-${Math.random()}`);
+}
+
+const {
   appendOrderToSheet,
   clearShippedOnSheet,
   deleteOrderFromSheet,
   markOrderShippedOnSheet,
-} from '../api/_lib/googleSheets.js';
+} = await importWithPrivateConfig();
 
 const riskyOrder = {
   id: 806,
@@ -64,14 +78,10 @@ async function withEnvironment(changes, fetchImpl, run) {
 }
 
 async function importWithWebhookFallbackDisabled() {
-  const source = await readFile(new URL('../api/_lib/googleSheets.js', import.meta.url), 'utf8');
-  const isolatedSource = source.replace(
+  return importWithPrivateConfig((source) => source.replace(
     /const DEFAULT_WEBHOOK_URL = '[^']+';/,
     "const DEFAULT_WEBHOOK_URL = '';",
-  );
-  assert.notEqual(isolatedSource, source, 'test seam must disable only the default webhook URL');
-  const dataUrl = `data:text/javascript;base64,${Buffer.from(isolatedSource).toString('base64')}`;
-  return import(`${dataUrl}#append-safety-${Date.now()}-${Math.random()}`);
+  ));
 }
 
 test('Apps Script append neutralizes formula-shaped strings without changing numeric cells or the row shape', async () => {

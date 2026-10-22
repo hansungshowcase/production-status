@@ -5,7 +5,7 @@ import Toast from '../components/common/Toast';
 import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
-import { clearToken, getToken } from '../utils/authClient';
+import { authHeaders, clearToken } from '../utils/authClient';
 import { extractDueDateFromText, getKstToday } from '../utils/dateUtils';
 import { extractBrowserOcrEssentialFields, extractBrowserOcrQuantity } from './browserOcrEssentialFields';
 import {
@@ -368,12 +368,12 @@ export default function OrderEntryPage() {
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
-      const token = getToken();
       let res;
       try {
         res = await fetch('/api/ocr/work-order', {
           method: 'POST',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'same-origin',
+          headers: authHeaders({ write: true }),
           body: formData,
           signal: controller.signal,
         });

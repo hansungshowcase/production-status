@@ -40,7 +40,8 @@ function makeOrderDeleteDb({ fail = false } = {}) {
       assert.equal(queries.length, 3);
       assert.match(queries[0].sql, /SELECT \* FROM orders WHERE id = \? FOR UPDATE/i);
       assert.match(queries[1].sql, /SELECT file_path FROM photos WHERE order_id = \?/i);
-      assert.match(queries[2].sql, /WITH delete_audit AS/i);
+      assert.match(queries[2].sql, /WITH cleanup_candidates AS/i);
+      assert.match(queries[2].sql, /INSERT INTO external_cleanup_jobs/i);
       assert.match(queries[2].sql, /INSERT INTO activity_feed/i);
       assert.match(queries[2].sql, /DELETE FROM orders/i);
       assert.match(queries[2].sql, /FROM delete_audit/i);
@@ -101,9 +102,9 @@ test('order delete commits its surviving audit before Blob and Sheets cleanup', 
 
   await orderRoute.handleDelete('71', deleteRequest(71), res, {
     db,
-    requireAuth: () => ({ role: 'sales' }),
-    deleteBlob: async (url) => external.push(['blob', url, db.state.order]),
-    deleteOrderFromSheet: async (order) => external.push(['sheet', order.id, db.state.order]),
+    requireAuth: () => ({ role: 'sales', actor: '삭제 담당자' }),
+    ensureExternalCleanupSchema: async () => {},
+    processExternalCleanupJob: async (_db, targetKey) => external.push([targetKey, db.state.order]),
   });
 
   assert.equal(res.statusCode, 200);
@@ -116,8 +117,8 @@ test('order delete commits its surviving audit before Blob and Sheets cleanup', 
     actor: '삭제 담당자',
   }]);
   assert.deepEqual(external, [
-    ['blob', 'https://blob.example/a.jpg', null],
-    ['sheet', 71, null],
+    ['sheet:order:71', null],
+    ['blob:https://blob.example/a.jpg', null],
   ]);
 });
 
@@ -130,9 +131,9 @@ test('order delete database failure leaves every row and invokes zero external c
   await assert.rejects(
     orderRoute.handleDelete('71', deleteRequest(71), response(), {
       db,
-      requireAuth: () => ({ role: 'sales' }),
-      deleteBlob: async () => { externalCalls += 1; },
-      deleteOrderFromSheet: async () => { externalCalls += 1; },
+      requireAuth: () => ({ role: 'sales', actor: '삭제 담당자' }),
+      ensureExternalCleanupSchema: async () => {},
+      processExternalCleanupJob: async () => { externalCalls += 1; },
     }),
     /simulated atomic order delete failure/,
   );
@@ -151,9 +152,9 @@ test('order delete keeps committed success when Blob or Sheets cleanup fails', a
   try {
     await orderRoute.handleDelete('71', deleteRequest(71), res, {
       db,
-      requireAuth: () => ({ role: 'sales' }),
-      deleteBlob: async () => { throw new Error('blob unavailable'); },
-      deleteOrderFromSheet: async () => { throw new Error('sheet unavailable'); },
+      requireAuth: () => ({ role: 'sales', actor: '삭제 담당자' }),
+      ensureExternalCleanupSchema: async () => {},
+      processExternalCleanupJob: async (_db, targetKey) => { throw new Error(`${targetKey} unavailable`); },
     });
   } finally {
     console.warn = oldWarn;
@@ -161,8 +162,8 @@ test('order delete keeps committed success when Blob or Sheets cleanup fails', a
 
   assert.equal(res.statusCode, 200);
   assert.equal(db.state.order, null);
-  assert.match(warnings.join('\n'), /blob unavailable/);
-  assert.match(warnings.join('\n'), /sheet unavailable/);
+  assert.match(warnings.join('\n'), /blob:https:\/\/blob\.example\/a\.jpg unavailable/);
+  assert.match(warnings.join('\n'), /sheet:order:71 unavailable/);
 });
 
 test('photo delete commits its audit before Blob cleanup', async () => {
@@ -173,8 +174,9 @@ test('photo delete commits its audit before Blob cleanup', async () => {
 
   await photoRoute.handleDelete(deleteRequest(8), res, {
     db,
-    requireAuth: () => ({ role: 'sales' }),
-    deleteBlob: async (url) => external.push([url, db.state.photo]),
+    requireAuth: () => ({ role: 'sales', actor: '삭제 담당자' }),
+    ensureExternalCleanupSchema: async () => {},
+    processExternalCleanupJob: async (_db, targetKey) => external.push([targetKey, db.state.photo]),
   });
 
   assert.equal(res.statusCode, 200);
@@ -185,7 +187,7 @@ test('photo delete commits its audit before Blob cleanup', async () => {
     description: '사진 거래처 - 사진이 삭제되었습니다.',
     actor: '삭제 담당자',
   }]);
-  assert.deepEqual(external, [['https://blob.example/photo.jpg', null]]);
+  assert.deepEqual(external, [['blob:https://blob.example/photo.jpg', null]]);
 });
 
 test('photo delete database failure leaves the row and invokes zero Blob cleanup', async () => {
@@ -197,8 +199,9 @@ test('photo delete database failure leaves the row and invokes zero Blob cleanup
   await assert.rejects(
     photoRoute.handleDelete(deleteRequest(8), response(), {
       db,
-      requireAuth: () => ({ role: 'sales' }),
-      deleteBlob: async () => { blobCalls += 1; },
+      requireAuth: () => ({ role: 'sales', actor: '삭제 담당자' }),
+      ensureExternalCleanupSchema: async () => {},
+      processExternalCleanupJob: async () => { blobCalls += 1; },
     }),
     /simulated atomic photo delete failure/,
   );

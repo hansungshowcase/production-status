@@ -4,9 +4,10 @@ import { del } from '@vercel/blob';
 import { parseMultipart, getFilePart, getFieldValue } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { storeImageFile } from '../_lib/storeImage.js';
-import { requireAuth, requireWorkerAction } from '../_lib/auth.js';
+import { requireAuth } from '../_lib/auth.js';
 import { parsePositiveInt4Id } from '../_lib/positiveInt4Id.js';
 import { validateImageFile } from '../_lib/imageFileValidation.js';
+import { canWorkerAccessDepartment } from '../../shared/workerAccess.js';
 
 export const config = {
   api: {
@@ -50,6 +51,14 @@ export async function handleGet(req, res, dependencies = {}) {
 }
 
 export async function handlePost(req, res, dependencies = {}) {
+  const injectedAuthorize = dependencies.authorizePhotoUpload;
+  let auth = null;
+  if (!injectedAuthorize) {
+    const checkAuth = dependencies.requireAuth || requireAuth;
+    auth = await checkAuth(req, res, { roles: ['sales', 'admin', 'worker'] });
+    if (!auth) return;
+  }
+
   const contentLength = Number(req.headers['content-length'] || 0);
   if (contentLength > 10 * 1024 * 1024) {
     return res.status(413).json({ error: { message: '파일 크기는 10MB 이하여야 합니다.', status: 413 } });
@@ -69,8 +78,18 @@ export async function handlePost(req, res, dependencies = {}) {
   const process_id = getFieldValue(parts, 'process_id');
   const uploaded_by = getFieldValue(parts, 'uploaded_by');
 
-  const authorizeUpload = dependencies.authorizePhotoUpload || authorizePhotoUpload;
-  if (!authorizeUpload(req, res, { process_id, uploaded_by })) return;
+  if (injectedAuthorize) {
+    const authorized = await injectedAuthorize(req, res, { process_id, uploaded_by });
+    if (!authorized) return;
+    auth = typeof authorized === 'object' ? authorized : { actor: uploaded_by || '시스템' };
+  } else if (auth.role === 'worker') {
+    if (!process_id) {
+      return res.status(403).json({ error: { message: '현장 작업자는 공정 사진만 업로드할 수 있습니다.', status: 403 } });
+    }
+    if (uploaded_by && uploaded_by !== auth.actor) {
+      return res.status(403).json({ error: { message: '다른 작업자의 이름으로 사진을 업로드할 수 없습니다.', status: 403 } });
+    }
+  }
 
   const orderId = parsePositiveInt4Id(order_id);
   if (orderId === null) {
@@ -115,11 +134,17 @@ export async function handlePost(req, res, dependencies = {}) {
 
   if (processId !== null) {
     const processResult = await db.execute({
-      sql: 'SELECT id FROM processes WHERE id = ? AND order_id = ?',
+      sql: 'SELECT id, step_name FROM processes WHERE id = ? AND order_id = ?',
       args: [processId, orderId],
     });
     if (processResult.rows.length === 0) {
       return res.status(400).json({ error: { message: '해당 주문에 속하지 않은 공정입니다.', status: 400 } });
+    }
+    if (auth.role === 'worker'
+      && !canWorkerAccessDepartment(auth.actor, processResult.rows[0].step_name)) {
+      return res.status(403).json({
+        error: { message: '담당 공정에 대한 권한이 없습니다.', status: 403 },
+      });
     }
   }
 
@@ -142,7 +167,7 @@ export async function handlePost(req, res, dependencies = {}) {
     result = await db.execute({
       sql: `INSERT INTO photos (order_id, process_id, file_path, uploaded_by)
             VALUES (?, ?, ?, ?) RETURNING id`,
-      args: [orderId, processId, storedImage.url, uploaded_by || null],
+      args: [orderId, processId, storedImage.url, auth.actor],
     });
   } catch (err) {
     if (storedImage.rollbackUrl) {
@@ -158,7 +183,7 @@ export async function handlePost(req, res, dependencies = {}) {
       orderId,
       '사진등록',
       `${order.client_name} - 사진이 업로드되었습니다.`,
-      uploaded_by || '시스템',
+      auth.actor,
     ],
   }).catch((err) => console.warn('[photos] activity log failed:', err?.message || err));
 
@@ -168,14 +193,4 @@ export async function handlePost(req, res, dependencies = {}) {
   });
 
   return res.status(201).json(photoResult.rows[0]);
-}
-
-function authorizePhotoUpload(req, res, { process_id, uploaded_by }) {
-  if (process_id && uploaded_by) {
-    const workerAuth = requireWorkerAction({ ...req, body: { actor: uploaded_by } }, res);
-    return Boolean(workerAuth);
-  }
-
-  const auth = requireAuth(req, res, { roles: ['sales', 'admin'] });
-  return Boolean(auth);
 }

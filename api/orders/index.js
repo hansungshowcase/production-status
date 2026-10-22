@@ -3,7 +3,7 @@ import { cors } from '../_lib/cors.js';
 import { sanitizeInput } from '../_lib/sanitize.js';
 import { STEPS } from '../_lib/steps.js';
 import { daysUntilDue } from '../_lib/daysUntilDue.js';
-import { resolveActor } from '../_lib/auth.js';
+import { requireAuth } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { appendOrderToSheet } from '../_lib/googleSheets.js';
@@ -15,6 +15,16 @@ import {
   normalizeOrderCreateInput,
   OrderCreateInputValidationError,
 } from '../_lib/orderCreateInput.js';
+
+async function ensureCreatedOrderTrackToken(db, order) {
+  const { ensureTrackToken } = await import('../_lib/trackToken.js');
+  return ensureTrackToken(db, order);
+}
+
+async function notifyCreatedOrder(db, order) {
+  const { maybeNotify } = await import('../_lib/notify.js');
+  return maybeNotify(db, order, 'ordered');
+}
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
 function likeEscape(s) {
@@ -325,7 +335,14 @@ export async function handleGet(req, res, db = getDb()) {
   return res.json({ orders, total });
 }
 
-export async function handlePost(req, res, db, { append = appendOrderToSheet } = {}) {
+export async function handlePost(req, res, db, {
+  append = appendOrderToSheet,
+  ensureTrackToken = ensureCreatedOrderTrackToken,
+  notify = notifyCreatedOrder,
+  requireAuth: checkAuth = requireAuth,
+} = {}) {
+  const auth = await checkAuth(req, res, { roles: ['sales', 'admin', 'worker'] });
+  if (!auth) return;
   const sanitizedBody = sanitizeInput(req.body);
   if (!sanitizedBody.client_name) {
     return res.status(400).json({ error: { message: '거래처는 필수 항목입니다.', status: 400 } });
@@ -357,33 +374,62 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
 
   db ??= getDb();
   await ensureOrderImageColumn(db);
-  // 고객 조회 링크는 주문의 필수 데이터다. INSERT 에서 직접 넣기 위해
-  // track_token 컬럼/유니크 인덱스를 먼저 보장한다(모듈 캐시라 인스턴스당 1회).
   await ensureNotifySchema(db);
-  const tx = await db.transaction('write');
-  let createdOrderId = null; // 부분 실패 시 cleanup용
+  await ensureSheetSyncSchema(db);
 
   try {
-    await ensureSheetSyncSchema(tx);
-    const orderResult = await tx.execute({
+    const orderedIntent = JSON.stringify({ ordered: { status: 'queued', at: new Date().toISOString() } });
+    const stepValues = STEPS.map((_, index) => `(?, ${index})`).join(', ');
+    const orderResult = await db.execute({
       sql: `WITH inserted_order AS (
         INSERT INTO orders (
           order_date, due_date, sales_person, client_name,
           product_type, door_type, design, width, depth, height,
           quantity, color, phone, delivery_address, freight_payment, notes, remarks, etc_notes,
           sale_amount, lead_source, balance,
-          ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, track_token, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_production') RETURNING id
-      ), inserted_sheet_sync_job AS (
+          ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url, track_token, notify_state, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'in_production')
+        RETURNING *
+      ),
+      inserted_sheet_sync_job AS (
         INSERT INTO sheet_sync_jobs (order_id, status)
         SELECT id, 'pending' FROM inserted_order
         RETURNING order_id
+      ),
+      step_values (step_name, step_order) AS (
+        VALUES ${stepValues}
+      ),
+      inserted_processes AS (
+        INSERT INTO processes (order_id, step_name, status)
+        SELECT io.id, sv.step_name, 'waiting'
+          FROM inserted_order io
+          CROSS JOIN step_values sv
+         ORDER BY sv.step_order
+        RETURNING *
+      ),
+      inserted_pre_production AS (
+        INSERT INTO pre_production (order_id)
+        SELECT id FROM inserted_order
+        RETURNING *
+      ),
+      inserted_activity AS (
+        INSERT INTO activity_feed (order_id, action_type, description, actor)
+        SELECT id, '주문등록', ?, ?
+          FROM inserted_order
+        RETURNING id
       )
-      SELECT inserted_order.id
-      FROM inserted_order
-      JOIN inserted_sheet_sync_job ON inserted_sheet_sync_job.order_id = inserted_order.id`,
+      SELECT to_jsonb(io) AS order_row,
+             COALESCE((
+               SELECT jsonb_agg(to_jsonb(ip) ORDER BY ${stepOrderCase('ip')}, ip.id)
+                 FROM inserted_processes ip
+             ), '[]'::jsonb) AS process_rows,
+             (SELECT to_jsonb(pp) FROM inserted_pre_production pp) AS pre_production_row
+        FROM inserted_order io
+        JOIN inserted_sheet_sync_job sj ON sj.order_id = io.id
+       WHERE (SELECT COUNT(*) FROM inserted_processes) = ?
+         AND EXISTS (SELECT 1 FROM inserted_pre_production)
+         AND EXISTS (SELECT 1 FROM inserted_activity)`,
       args: [
-        // 숫자 컬럼은 0 보존 (`||` 사용 시 0이 falsy로 변조됨 → `??` 또는 undefined 체크)
         order_date || null, due_date || null, sales_person || null, client_name,
         product_type || null, door_type || null, design || null,
         width ?? null, depth ?? null, height ?? null,
@@ -391,79 +437,39 @@ export async function handlePost(req, res, db, { append = appendOrderToSheet } =
         notes || null, remarks || null, etc_notes || null,
         sale_amount ?? null, lead_source || null, balance ?? null,
         ship_scheduled_date || null, sms_sent ?? null, safe_delivery ?? 0, work_order_image_url || null,
-        // 고객 조회 링크 토큰 — 사후 훅(실패 시 무시)이 아니라 INSERT 값으로 넣어야
-        // 미발급 주문이 생기지 않는다.
         generateTrackToken(),
+        orderedIntent,
+        ...STEPS,
+        `${client_name} 주문이 등록되었습니다.`,
+        auth.actor,
+        STEPS.length,
       ],
     });
     if (!orderResult.rows || orderResult.rows.length === 0) {
-      throw new Error('주문 생성 실패: ID가 반환되지 않았습니다.');
+      throw new Error('주문 생성 필수 레코드가 단일 원자 작업 안에서 완료되지 않았습니다.');
     }
-    const orderId = Number(orderResult.rows[0].id);
-    createdOrderId = orderId; // cleanup용 추적
-
-    // STEPS 9개를 1회 호출로 multi-row INSERT (N+1 제거, round-trip 9→1)
-    const stepPlaceholders = STEPS.map(() => `(?, ?, 'waiting')`).join(', ');
-    const stepArgs = STEPS.flatMap(step => [orderId, step]);
-    await tx.execute({
-      sql: `INSERT INTO processes (order_id, step_name, status) VALUES ${stepPlaceholders}`,
-      args: stepArgs,
-    });
-
-    await tx.execute({
-      sql: `INSERT INTO pre_production (order_id) VALUES (?)`,
-      args: [orderId],
-    });
-
-    await tx.execute({
-      sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-      args: [orderId, '주문등록', `${client_name} 주문이 등록되었습니다.`, sales_person || '시스템'],
-    });
-
-    await tx.commit();
-    // 필수 레코드(processes/pre_production/activity_feed)가 모두 들어간 시점부터는
-    // 보상 삭제 대상에서 제외한다. 이후 단계(조회/토큰/알림/시트)의 실패로 멀쩡한 주문을 지우면 안 된다.
-    createdOrderId = null;
-
-    // 관련 데이터 병렬 SELECT (3개 직렬 → Promise.all)
-    const [orderRow, processRows, preProdRow] = await Promise.all([
-      db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] }),
-      db.execute({ sql: 'SELECT * FROM processes WHERE order_id = ?', args: [orderId] }),
-      db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] }),
-    ]);
-
+    const committed = orderResult.rows[0];
     const created = {
-      ...orderRow.rows[0],
-      processes: processRows.rows,
-      pre_production: preProdRow.rows[0] || null,
+      ...committed.order_row,
+      processes: committed.process_rows,
+      pre_production: committed.pre_production_row || null,
     };
     created.sheet_sync = await syncOrderToSheet(db, created, { append });
 
     // 알림 훅: 주문 생성 → track_token 발급 + 접수 알림 (실패해도 본 응답에 영향 없음)
     try {
-      const { ensureTrackToken } = await import('../_lib/trackToken.js');
       created.track_token = await ensureTrackToken(db, created);
     } catch (tokenErr) {
       console.error('[orders POST] track_token 발급 실패(무시):', tokenErr?.message || tokenErr);
     }
     try {
-      const { maybeNotify } = await import('../_lib/notify.js');
-      await maybeNotify(db, created, 'ordered');
+      await notify(db, created);
     } catch (notifyErr) {
       console.error('[orders POST] ordered 알림 발송 실패(무시):', notifyErr?.message || notifyErr);
     }
 
     return res.status(201).json(created);
   } catch (err) {
-    // Neon HTTP는 진짜 트랜잭션 미지원 — 부분 실패 시 cleanup으로 정합성 보호
-    if (createdOrderId) {
-      try {
-        await db.execute({ sql: 'DELETE FROM orders WHERE id = ?', args: [createdOrderId] });
-        // ON DELETE CASCADE로 processes/pre_production/activity_feed 자동 정리
-      } catch (cleanupErr) {
-        console.error('주문 생성 부분 실패 후 cleanup도 실패:', cleanupErr);
-      }
-    }
     if (err.message && (err.message.includes('UNIQUE constraint') || err.message.includes('duplicate key'))) {
       return res.status(409).json({ error: { message: '이미 존재하는 주문입니다.', status: 409 } });
     }

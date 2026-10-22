@@ -10,6 +10,7 @@ import ChunkErrorBoundary, {
   isChunkLoadError,
   recoverFromChunkLoadError,
 } from './components/common/ChunkErrorBoundary';
+import { fetchAuthStatus } from './utils/authClient';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
 const WorkerPage = lazy(() => import('./pages/WorkerPage'));
@@ -107,6 +108,29 @@ function AppRoutes() {
   );
 }
 
+function AuthBootstrap({ children }) {
+  const location = useLocation();
+  const publicCustomerRoute = location.pathname.startsWith('/track/');
+  const [state, setState] = useState({ ready: publicCustomerRoute, error: null });
+
+  useEffect(() => {
+    if (publicCustomerRoute) {
+      setState({ ready: true, error: null });
+      return;
+    }
+    let active = true;
+    setState({ ready: false, error: null });
+    fetchAuthStatus().then(
+      () => { if (active) setState({ ready: true, error: null }); },
+      (error) => { if (active) setState({ ready: false, error: error.message || '인증 상태를 확인할 수 없습니다.' }); },
+    );
+    return () => { active = false; };
+  }, [publicCustomerRoute]);
+
+  if (state.error) return <div role="alert" className="page-error">{state.error}</div>;
+  return state.ready ? children : <PageLoader />;
+}
+
 export default function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [appReady, setAppReady] = useState(false);
@@ -148,7 +172,7 @@ export default function App() {
       <InstallPrompt />
       <ChunkErrorBoundary>
         <Suspense fallback={<PageLoader />}>
-          <AppRoutes />
+          <AuthBootstrap><AppRoutes /></AuthBootstrap>
         </Suspense>
       </ChunkErrorBoundary>
       <footer className="app-footer-brand">잘 만든 제품은 고객의 삶을 바꿉니다.</footer>

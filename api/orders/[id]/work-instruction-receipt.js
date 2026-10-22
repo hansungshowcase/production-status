@@ -41,9 +41,8 @@ export async function handleWorkInstructionReceipt(req, res, dependencies = {}) 
   }
   const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
   if (!checkRateLimit(req, res)) return;
-  const workerAction = dependencies.requireWorkerAction
-    ? dependencies.requireWorkerAction(req, res)
-    : requireWorkerAction(req, res);
+  const checkWorkerAction = dependencies.requireWorkerAction || requireWorkerAction;
+  const workerAction = await checkWorkerAction(req, res);
   if (!workerAction) return;
 
   const id = parsePositiveInt4Id(req.query.id);

@@ -35,7 +35,13 @@ const noStoreHeaders = {
 };
 
 test('GET /api/export/csv uses no-store in every cache-control layer', async () => {
-  const req = { method: 'GET', url: '/api/export/csv?status=all', headers: {}, body: null };
+  const req = {
+    method: 'GET',
+    url: '/api/export/csv?status=all',
+    headers: {},
+    body: null,
+    auth: { role: 'admin', actor: '관리자' },
+  };
   const res = createResponse();
   const handler = cors(async (_req, response) => response.status(200).json({ ok: true }));
 
@@ -50,7 +56,13 @@ test('GET /api/export/csv uses no-store in every cache-control layer', async () 
 });
 
 test('caught errors replace every cache-control layer with no-store', async () => {
-  const req = { method: 'GET', url: '/api/feed?private=value', headers: {}, body: {} };
+  const req = {
+    method: 'GET',
+    url: '/api/feed?private=value',
+    headers: {},
+    body: {},
+    auth: { role: 'sales', actor: '신은철' },
+  };
   const res = createResponse();
   const error = Object.assign(new Error('synthetic missing'), {
     status: 404,
@@ -85,7 +97,13 @@ test('caught-error logs omit query and hash values and mask track tokens', async
   try {
     for (const [url, expectedRoute] of cases) {
       const calls = [];
-      const req = { method: 'GET', url, headers: {}, body: {} };
+      const req = {
+        method: 'GET',
+        url,
+        headers: {},
+        body: {},
+        auth: { role: 'sales', actor: '신은철' },
+      };
       const res = createResponse();
       const error = new Error('synthetic failure');
       console.error = (...args) => calls.push(args);
@@ -105,14 +123,20 @@ test('caught-error logs omit query and hash values and mask track tokens', async
   }
 });
 
-test('successful public feed and health responses retain their existing TTLs', async () => {
+test('successful protected feed uses no-store while public health retains its TTL', async () => {
   const expected = new Map([
-    ['/api/feed?limit=20', 'public, s-maxage=30, stale-while-revalidate=120'],
+    ['/api/feed?limit=20', 'no-store'],
     ['/api/health', 'public, s-maxage=60'],
   ]);
 
   for (const [url, policy] of expected) {
-    const req = { method: 'GET', url, headers: {}, body: undefined };
+    const req = {
+      method: 'GET',
+      url,
+      headers: {},
+      body: undefined,
+      auth: { role: 'sales', actor: '신은철' },
+    };
     const res = createResponse();
     await cors(async (_request, response) => response.status(200).json({ ok: true }))(req, res);
 
