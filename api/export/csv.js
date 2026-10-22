@@ -23,10 +23,13 @@ function statusLabel(orderStatus) {
   return orderStatus || '';
 }
 
-function escapeCSV(value) {
+export function escapeCSV(value) {
   if (value == null) return '';
-  const str = String(value);
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+  let str = String(value);
+  if (typeof value === 'string' && /^[ \t\r\n]*[=+\-@]/.test(str)) {
+    str = `'${str}`;
+  }
+  if (str.includes(',') || str.includes('"') || str.includes('\r') || str.includes('\n')) {
     return '"' + str.replace(/"/g, '""') + '"';
   }
   return str;
