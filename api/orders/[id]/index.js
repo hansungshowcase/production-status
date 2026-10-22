@@ -20,6 +20,12 @@ import {
   OrderCreateInputValidationError,
 } from '../../_lib/orderCreateInput.js';
 import { changedFieldKeys, describeFieldChanges } from '../../../src/utils/fieldLabels.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
+
+async function notifyOrder(db, order, milestone, extra) {
+  const { maybeNotify } = await import('../../_lib/notify.js');
+  return maybeNotify(db, order, milestone, extra);
+}
 
 // status/ship_date는 비즈니스 로직(ship.js, processes/start/complete) 통해서만 변경
 // 직접 PATCH 차단 (공정 미완료에도 'shipped' 변경되는 우회 방지)
@@ -57,12 +63,13 @@ export default cors(async function handler(req, res) {
 });
 
 export async function handleGet(id, req, res, dependencies = {}) {
-  if (!id || isNaN(Number(id))) {
+  const orderId = parsePositiveInt4Id(id);
+  if (orderId === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
   const db = dependencies.db || getDb();
 
-  const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
+  const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
   const order = orderResult.rows[0];
 
   if (!order) {
@@ -89,7 +96,8 @@ export async function handleUpdate(id, req, res, dependencies = {}) {
   const checkAuth = dependencies.requireAuth || requireAuth;
   const auth = checkAuth(req, res, { roles: ['sales'] });
   if (!auth) return;
-  if (!id || isNaN(Number(id))) {
+  const orderId = parsePositiveInt4Id(id);
+  if (orderId === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
   let mutation;
@@ -107,7 +115,7 @@ export async function handleUpdate(id, req, res, dependencies = {}) {
   const ensureImageColumn = dependencies.ensureOrderImageColumn || ensureOrderImageColumn;
   await ensureImageColumn(db);
 
-  const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
+  const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
   const order = orderResult.rows[0];
 
   if (!order) {
@@ -155,41 +163,48 @@ export async function handleUpdate(id, req, res, dependencies = {}) {
         AND quantity IS NOT DISTINCT FROM ?
         AND work_order_image_url IS NOT DISTINCT FROM ?`
     : '';
-  const updateResult = await db.execute({
-    sql: `UPDATE orders SET ${updates.join(', ')} WHERE id = ?${invariantWhere} RETURNING *`,
-    args: guardInvariantState
-      ? [
-        ...values,
-        id,
-        order.client_name ?? null,
-        order.order_date ?? null,
-        order.due_date ?? null,
-        order.sales_person ?? null,
-        order.product_type ?? null,
-        order.quantity ?? null,
-        order.work_order_image_url ?? null,
-      ]
-      : [...values, id],
-  });
-  if (!updateResult.rows || updateResult.rows.length === 0) {
+  const changedFields = changedFieldKeys(order, { ...order, ...mutation }, Object.keys(mutation));
+  const activityDescription = describeFieldChanges(
+    `${order.client_name} 주문이 수정되었습니다.`,
+    changedFields,
+  );
+  const mutationArgs = guardInvariantState
+    ? [
+      ...values,
+      orderId,
+      order.client_name ?? null,
+      order.order_date ?? null,
+      order.due_date ?? null,
+      order.sales_person ?? null,
+      order.product_type ?? null,
+      order.quantity ?? null,
+      order.work_order_image_url ?? null,
+    ]
+    : [...values, orderId];
+  const [mutationResult] = await db.atomicBatch([{
+    sql: `WITH updated_order AS (
+            UPDATE orders
+               SET ${updates.join(', ')}
+             WHERE id = ?${invariantWhere}
+            RETURNING *
+          ),
+          order_activity AS (
+            INSERT INTO activity_feed (order_id, action_type, description, actor)
+            SELECT u.id, '주문수정', ?, ?
+              FROM updated_order u
+            RETURNING id
+          )
+          SELECT to_jsonb(u) AS order_row
+            FROM updated_order u
+           WHERE EXISTS (SELECT 1 FROM order_activity)`,
+    args: [...mutationArgs, activityDescription, resolveActor(req)],
+  }]);
+  if (!mutationResult.rows || mutationResult.rows.length === 0) {
     return res.status(409).json({
       error: { message: '주문 정보가 변경되어 수정하지 못했습니다. 다시 시도해주세요.', status: 409 },
     });
   }
-  const updated = updateResult.rows[0];
-
-  // Log activity — 수정 모달이 전 필드를 보내므로, 저장 전/후를 비교해 실제로 바뀐 필드만 남긴다.
-  // 화면(영업 실시간 활동로그)에 노출되는 문구라 DB 컬럼명 대신 한국어 라벨을 쓴다.
-  const changedFields = changedFieldKeys(order, updated, Object.keys(mutation));
-  await db.execute({
-    sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-    args: [
-      order.id,
-      '주문수정',
-      describeFieldChanges(`${order.client_name} 주문이 수정되었습니다.`, changedFields),
-      resolveActor(req),
-    ],
-  });
+  const updated = mutationResult.rows[0].order_row;
 
   // 알림 훅: 출고예정일(ship_scheduled_date)이 실제 변경 + 미출고면 → rescheduled
   // 멱등키가 'rescheduled:날짜'라 같은 날짜 재저장은 중복 발송되지 않음 (실패해도 본 응답에 영향 없음)
@@ -202,8 +217,8 @@ export async function handleUpdate(id, req, res, dependencies = {}) {
       String(newSched) !== String(prevSched || '') &&
       updated.status !== 'shipped'
     ) {
-      const { maybeNotify } = await import('../../_lib/notify.js');
-      await maybeNotify(db, updated, 'rescheduled', { date: newSched });
+      const notify = dependencies.notify || notifyOrder;
+      await notify(db, updated, 'rescheduled', { date: newSched });
     }
   } catch (e) {
     console.error('[orders PATCH] rescheduled 알림 발송 실패(무시):', e?.message || e);
@@ -216,7 +231,8 @@ export async function handleDelete(id, req, res, dependencies = {}) {
   const checkAuth = dependencies.requireAuth || requireAuth;
   const auth = checkAuth(req, res, { roles: ['sales'] });
   if (!auth) return;
-  if (!id || isNaN(Number(id))) {
+  const orderId = parsePositiveInt4Id(id);
+  if (orderId === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
   const db = dependencies.db || getDb();
@@ -236,11 +252,11 @@ export async function handleDelete(id, req, res, dependencies = {}) {
   const [orderResult, photosResult, deleteResult] = await db.atomicBatch([
     {
       sql: 'SELECT * FROM orders WHERE id = ? FOR UPDATE',
-      args: [id],
+      args: [orderId],
     },
     {
       sql: 'SELECT file_path FROM photos WHERE order_id = ?',
-      args: [id],
+      args: [orderId],
     },
     {
       sql: `WITH delete_audit AS (
@@ -260,7 +276,7 @@ export async function handleDelete(id, req, res, dependencies = {}) {
               RETURNING id
             )
             SELECT id FROM deleted_order`,
-      args: [actor, id, id],
+      args: [actor, orderId, orderId],
     },
   ]);
   const order = orderResult.rows[0];

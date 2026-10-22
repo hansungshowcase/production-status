@@ -6,6 +6,7 @@ import { STEPS } from '../../_lib/steps.js';
 import { kstTodayStr } from '../../_lib/notify.js';
 import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
 import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 
 async function defaultNotify(db, order, milestone) {
   const { maybeNotify } = await import('../../_lib/notify.js');
@@ -28,8 +29,8 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
     : requireWorkerAction(req, res);
   if (!workerAction) return;
 
-  const id = req.query.id;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
   }
 

@@ -3,6 +3,7 @@ import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 import { hasValidWorkInstructionReceipt } from '../../../shared/workInstructionReceipt.js';
 
 // 핸들러 안에서 지역변수 process(공정 row)가 Node 전역 process를 가리므로 환경변수는 모듈 레벨에서 읽는다
@@ -24,8 +25,8 @@ export async function handleStartProcess(req, res, dependencies = {}) {
     : requireWorkerAction(req, res);
   if (!workerAction) return;
 
-  const id = req.query.id;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
   }
 
@@ -208,46 +209,50 @@ export async function handleStartProcess(req, res, dependencies = {}) {
     });
   }
 
-  // Atomic update: only update if still 'waiting' (prevents double-click race condition)
-  const { rows: updateResult } = await db.execute({
-    sql: `UPDATE processes SET status = 'in_progress', started_at = ?, started_by = ? WHERE id = ? AND status = 'waiting' RETURNING id`,
-    args: [work_date || now, workerName, id]
-  });
-  if (updateResult.length === 0) {
+  const [mutationResult] = await db.atomicBatch([{
+    sql: `WITH eligible_process AS (
+            SELECT p.id
+              FROM processes p
+              JOIN orders o ON o.id = p.order_id
+             WHERE p.id = ? AND p.status = 'waiting'
+          ),
+          claimed_process AS (
+            UPDATE processes p
+               SET status = 'in_progress', started_at = ?, started_by = ?
+              FROM eligible_process e
+             WHERE p.id = e.id
+            RETURNING p.*
+          ),
+          process_activity AS (
+            INSERT INTO activity_feed (order_id, action_type, description, actor)
+            SELECT cp.order_id,
+                   '공정시작',
+                   o.client_name || ' - ' || cp.step_name || ' 공정이 시작되었습니다. (담당: ' || cp.started_by || ')',
+                   cp.started_by
+              FROM claimed_process cp
+              JOIN orders o ON o.id = cp.order_id
+            RETURNING id
+          )
+          SELECT to_jsonb(cp) AS process_row,
+                 to_jsonb(o) AS order_row
+            FROM claimed_process cp
+            JOIN orders o ON o.id = cp.order_id
+           WHERE EXISTS (SELECT 1 FROM process_activity)`,
+    args: [id, work_date || now, workerName],
+  }]);
+  const committed = mutationResult.rows?.[0];
+  if (!committed) {
     return res.status(409).json({ error: { message: '이미 다른 작업자가 시작한 공정입니다.', status: 409 } });
   }
-
-  // Get order for activity feed
-  const { rows: orderRows } = await db.execute({
-    sql: 'SELECT * FROM orders WHERE id = ?',
-    args: [process.order_id]
-  });
-  const order = orderRows[0];
-  if (order) {
-    try {
-      await db.execute({
-        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-        args: [
-          process.order_id,
-          '공정시작',
-          `${order.client_name} - ${process.step_name} 공정이 시작되었습니다. (담당: ${workerName})`,
-          workerName
-        ]
-      });
-    } catch (e) {
-      console.error('활동 로그 기록 실패:', e);
-    }
-  }
+  const updatedProcess = committed.process_row;
+  const order = committed.order_row;
 
   if (order) {
     try {
       await notifyInternalStart(db, {
         order,
         process: {
-          ...process,
-          status: 'in_progress',
-          started_at: work_date || now,
-          started_by: workerName,
+          ...updatedProcess,
         },
         workerName,
       });
@@ -267,12 +272,7 @@ export async function handleStartProcess(req, res, dependencies = {}) {
     }
   }
 
-  const { rows: updatedRows } = await db.execute({
-    sql: 'SELECT * FROM processes WHERE id = ?',
-    args: [id]
-  });
-
-  res.json(updatedRows[0]);
+  res.json(updatedProcess);
 }
 
 export default cors(handleStartProcess);

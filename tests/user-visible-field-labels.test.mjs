@@ -144,15 +144,15 @@ test('주문 수정·사전생산 수정 핸들러가 변경 필드 비교 결�
   const orderSource = await readFile(new URL('../api/orders/[id]/index.js', import.meta.url), 'utf8');
   assert.match(
     orderSource,
-    /const changedFields = changedFieldKeys\(order, updated, Object\.keys\(mutation\)\);/,
-    '저장 전(order)/후(updated)를 비교해 실제 변경 필드만 골라야 한다',
+    /const changedFields = changedFieldKeys\(order, \{ \.\.\.order, \.\.\.mutation \}, Object\.keys\(mutation\)\);/,
+    '저장 전 값과 정규화된 저장 예정 값을 비교해 실제 변경 필드만 골라야 한다',
   );
-  assert.match(orderSource, /describeFieldChanges\(`\$\{order\.client_name\} 주문이 수정되었습니다\.`, changedFields\)/);
+  assert.match(orderSource, /describeFieldChanges\([\s\S]*`\$\{order\.client_name\} 주문이 수정되었습니다\.`,[\s\S]*changedFields/);
   assert.doesNotMatch(orderSource, /changedFields = Object\.keys\(mutation\)/);
   assert.doesNotMatch(orderSource, /changedFields\.join/);
 
   const preProdSource = await readFile(new URL('../api/pre-production/[orderId].js', import.meta.url), 'utf8');
-  assert.match(preProdSource, /changedFieldKeys\(beforeRow, updatedResult\.rows\[0\], touchedFields\)/);
+  assert.match(preProdSource, /changedFieldKeys\(beforeRow, \{ \.\.\.beforeRow, \.\.\.changes \}, touchedFields\)/);
   assert.match(preProdSource, /describeFieldChanges\(`\$\{order\.client_name\} 사전생산 체크리스트가 수정되었습니다\.`, changedFields\)/);
   assert.doesNotMatch(preProdSource, /changedFields\.join/);
 });

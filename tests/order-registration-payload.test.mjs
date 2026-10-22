@@ -423,7 +423,7 @@ test('due-date and image writes use optimistic invariant guards and clean up con
   assert.match(patchSource, /due_date IS NOT DISTINCT FROM \?/);
   assert.match(patchSource, /work_order_image_url IS NOT DISTINCT FROM \?/);
   assert.match(patchSource, /RETURNING \*/);
-  assert.match(patchSource, /updateResult\.rows\.length === 0[\s\S]*res\.status\(409\)/);
+  assert.match(patchSource, /mutationResult\.rows\.length === 0[\s\S]*res\.status\(409\)/);
 
   assert.match(imageSource, /SELECT id, client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url FROM orders/);
   assert.match(imageSource, /client_name IS NOT DISTINCT FROM \?/);
@@ -448,8 +448,9 @@ test('order update routes validate final image-backed state before upload or UPD
   const patchValidation = patchSource.indexOf(
     'assertImageBackedOrderHasCanonicalDueDate({ ...order, ...mutation })',
   );
+  const patchUpdate = patchSource.search(/UPDATE orders\s+SET/);
   assert.ok(patchValidation >= 0, 'PATCH should validate the combined current and requested state');
-  assert.ok(patchValidation < patchSource.indexOf('UPDATE orders SET'));
+  assert.ok(patchValidation < patchUpdate);
   const patchSalesPersonValidation = patchSource.indexOf(
     'assertImageBackedOrderHasSalesPerson({ ...order, ...mutation })',
   );
@@ -457,7 +458,7 @@ test('order update routes validate final image-backed state before upload or UPD
     patchSalesPersonValidation >= 0,
     'PATCH should retain an assignee for an image-backed order',
   );
-  assert.ok(patchSalesPersonValidation < patchSource.indexOf('UPDATE orders SET'));
+  assert.ok(patchSalesPersonValidation < patchUpdate);
   const patchQuantityValidation = patchSource.indexOf(
     'assertImageBackedOrderHasPositiveQuantity({ ...order, ...mutation })',
   );
@@ -465,7 +466,7 @@ test('order update routes validate final image-backed state before upload or UPD
     patchQuantityValidation >= 0,
     'PATCH should retain a positive quantity for an image-backed order',
   );
-  assert.ok(patchQuantityValidation < patchSource.indexOf('UPDATE orders SET'));
+  assert.ok(patchQuantityValidation < patchUpdate);
   assert.match(patchSource, /OrderCreateInputValidationError[\s\S]*res\.status\(400\)/);
 
   assert.match(imageSource, /SELECT id, client_name, order_date, due_date, sales_person, product_type, quantity, work_order_image_url FROM orders/);

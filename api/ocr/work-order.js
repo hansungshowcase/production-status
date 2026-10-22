@@ -5,6 +5,7 @@ import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
 import { isCanonicalCalendarDate } from '../../src/utils/dateUtils.js';
 import { parseWorkOrderJson } from '../_lib/ocrParse.js';
 import { extractIndividualQuantity, parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
+import { validateImageFile } from '../_lib/imageFileValidation.js';
 
 export const config = {
   api: {
@@ -16,7 +17,6 @@ const CURRENT_YEAR = new Date().getFullYear();
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
-const OPENAI_SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const CANONICAL_SALES_PERSONS = new Set(['신은철', '이준형', '황보민수']);
 const SALES_PERSON_ALIASES = [
   ['신은철', '신은철'],
@@ -119,14 +119,12 @@ const ESSENTIAL_FIELD_PROMPT = `
 - due_date는 납기/납기일/납기일자 라벨 바로 뒤의 날짜를 우선 읽고 반드시 실제 YYYY-MM-DD 날짜로 반환한다. 연도가 없으면 ${CURRENT_YEAR}년을 사용하며, 읽지 못하면 null로 둔다.
 - quantity는 수량 칸의 개별 제작 대수만 반환한다. "1대(급) 총6대"이면 1을 반환하고, 총수량만 보이거나 확실하지 않으면 null로 둔다.`;
 
-function getImageMimeType(filePart) {
-  let mimeType = filePart.contentType || 'image/jpeg';
-  if (mimeType === 'application/octet-stream' || !mimeType.startsWith('image/')) {
-    const ext = (filePart.filename || '').split('.').pop()?.toLowerCase();
-    const extMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif' };
-    mimeType = extMap[ext] || 'image/jpeg';
-  }
-  return mimeType;
+export function validateOcrImageFile(filePart) {
+  return validateImageFile(filePart, {
+    allowedFormats: ['jpeg', 'png', 'gif', 'webp'],
+    unsupportedStatus: 415,
+    unsupportedMessage: '이미지 인식은 JPG, PNG, WEBP, GIF 파일만 지원합니다.',
+  });
 }
 
 function extractResponseText(data) {
@@ -318,6 +316,14 @@ export default cors(async function handler(req, res) {
     return res.status(400).json({ error: { message: '이미지를 업로드해주세요.', status: 400 } });
   }
 
+  let mimeType;
+  try {
+    ({ mimeType } = validateOcrImageFile(filePart));
+  } catch (err) {
+    const status = err.status || 400;
+    return res.status(status).json({ error: { message: err.message, status } });
+  }
+
   const openAiKey = process.env.OPENAI_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   if ((!openAiKey || openAiKey.includes('your-key-here')) && !geminiKey) {
@@ -325,11 +331,6 @@ export default cors(async function handler(req, res) {
   }
 
   try {
-    const mimeType = getImageMimeType(filePart);
-    if (!OPENAI_SUPPORTED_IMAGE_TYPES.has(mimeType)) {
-      return res.status(415).json({ error: { message: '이미지 인식은 JPG, PNG, WEBP, GIF 파일만 지원합니다.', status: 415 } });
-    }
-
     if (openAiKey && !openAiKey.includes('your-key-here')) {
       try {
         const parsed = await callOpenAiOcr({ apiKey: openAiKey, mimeType, filePart });

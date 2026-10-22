@@ -135,7 +135,7 @@ test('orders POST returns a field-specific 400 for every invalid image-backed es
 
 test('PATCH validates and optimistically guards the complete resulting image-backed state', async () => {
   const source = await readFile(new URL('../api/orders/[id]/index.js', import.meta.url), 'utf8');
-  const updateIndex = source.indexOf('UPDATE orders SET');
+  const updateIndex = source.search(/UPDATE orders\s+SET/);
 
   assert.equal(
     typeof orderCreateInput.mutationChangesImageOrderInvariant,

@@ -109,6 +109,19 @@ function makeStartDb({ claimSucceeds = true } = {}) {
       if (statement.startsWith('INSERT INTO activity_feed')) return { rows: [] };
       throw new Error(`Unexpected start SQL: ${statement}`);
     },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      assert.match(queries[0].sql, /^WITH eligible_process AS/i);
+      assert.match(queries[0].sql, /INSERT INTO activity_feed/i);
+      if (!claimSucceeds) return [{ rows: [] }];
+      state.process.status = 'in_progress';
+      state.process.started_at = queries[0].args[1];
+      state.process.started_by = queries[0].args[2];
+      return [{ rows: [{
+        process_row: { ...state.process },
+        order_row: { ...state.order },
+      }] }];
+    },
   };
 }
 

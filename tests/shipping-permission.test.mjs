@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { canShipFromSales } from '../api/_lib/shippingPermission.js';
+import { handleShip } from '../api/orders/[id]/ship.js';
 
 const SHIN_EUNCHEOL = '신은철';
 const LEE_JUNHYEONG = '이준형';
@@ -28,15 +29,40 @@ test('sales management exposes shipping to both approved sales managers', () => 
   assert.doesNotMatch(source, /shipOrder\(order\.id, activePerson \|\| mySalesPerson\)/);
 });
 
-test('sales shipping API keeps Sales authorization before its shared shipment mutation', () => {
+test('sales shipping API keeps Sales authorization before its shared shipment mutation', async () => {
   const source = readFileSync(new URL('../api/orders/[id]/ship.js', import.meta.url), 'utf8');
 
   assert.match(source, /import \{ canShipFromSales \}/);
   assert.match(source, /import \{ completeOrderShipping \}/);
-  assert.match(source, /requireAuth\(req, res, \{ roles: \['sales'\] \}\)/);
-  assert.match(source, /const actor = resolveActor\(req\)/);
-  assert.match(source, /if \(!canShipFromSales\(actor\)\)/);
-  assert.match(source, /status\(403\)/);
-  assert.match(source, /await completeOrderShipping\(\{ db: getDb\(\), orderId: id, actor \}\)/);
   assert.doesNotMatch(source, /incompleteStep/);
+
+  let authCalls = 0;
+  let actorCalls = 0;
+  let shippingCalls = 0;
+  const res = {
+    statusCode: 200,
+    status(value) { this.statusCode = value; return this; },
+    json(value) { this.body = value; return value; },
+  };
+  await handleShip(
+    { method: 'PATCH', query: { id: '17' } },
+    res,
+    {
+      rateLimitCheck: () => true,
+      requireAuth: (_req, response, options) => {
+        authCalls += 1;
+        assert.deepEqual(options, { roles: ['sales'] });
+        response.status(401).json({ error: { status: 401 } });
+        return null;
+      },
+      resolveActor: () => { actorCalls += 1; return SHIN_EUNCHEOL; },
+      completeOrderShipping: async () => { shippingCalls += 1; throw new Error('must not ship'); },
+      db: new Proxy({}, { get() { throw new Error('must not access DB'); } }),
+    },
+  );
+
+  assert.equal(res.statusCode, 401);
+  assert.equal(authCalls, 1);
+  assert.equal(actorCalls, 0);
+  assert.equal(shippingCalls, 0);
 });

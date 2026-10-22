@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { handleWorkerShip } from '../api/orders/[id]/worker-ship.js';
+
 const directShippingUrl = new URL('../api/_lib/directShipping.js', import.meta.url);
 const workerShipRouteUrl = new URL('../api/orders/[id]/worker-ship.js', import.meta.url);
 
@@ -496,16 +498,31 @@ test('direct shipping rolls back the order claim when its atomic shipment mutati
   assert.equal(syncCount, 0);
 });
 
-test('the exact worker-station action area has separate worker shipping and normal completion controls', () => {
+test('the exact worker-station action area has separate worker shipping and normal completion controls', async () => {
   assert.equal(existsSync(workerShipRouteUrl), true, 'worker shipping route must exist');
   if (!existsSync(workerShipRouteUrl)) return;
-  const workerRoute = readFileSync(workerShipRouteUrl, 'utf8');
   const workerPage = readFileSync(new URL('../src/pages/WorkerStationViewPage.jsx', import.meta.url), 'utf8');
   const client = readFileSync(new URL('../src/api/orders.js', import.meta.url), 'utf8');
-  const salesRoute = readFileSync(new URL('../api/orders/[id]/ship.js', import.meta.url), 'utf8');
 
-  assert.match(workerRoute, /requireWorkerAction\s*\(/);
-  assert.doesNotMatch(workerRoute, /requireAuth\s*\(/);
+  let shippingCalls = 0;
+  const unauthorizedRes = {
+    statusCode: 200,
+    status(value) { this.statusCode = value; return this; },
+    json(value) { this.body = value; return value; },
+  };
+  await handleWorkerShip(
+    { method: 'PATCH', query: { id: '17' }, body: {}, headers: {} },
+    unauthorizedRes,
+    {
+      rateLimitCheck: () => true,
+      completeOrderShipping: async () => { shippingCalls += 1; throw new Error('must not ship'); },
+      db: new Proxy({}, { get() { throw new Error('must not access DB'); } }),
+    },
+  );
+  assert.equal(unauthorizedRes.statusCode, 400);
+  assert.equal(unauthorizedRes.body.error.status, 400);
+  assert.equal(shippingCalls, 0);
+
   assert.match(client, /export function shipOrderFromWorker\(id, actor\)/);
   assert.match(workerPage, /onClick=\{\(\) => requestDirectShip\(item\)\}/);
   assert.match(workerPage, /shipOrderFromWorker\(directShipTarget\.orderId, workerName\)/);
@@ -521,6 +538,4 @@ test('the exact worker-station action area has separate worker shipping and norm
     actionAreaStart >= 0 && workOrderIndex < directShipIndex && directShipIndex < completeIndex && completeIndex < undoIndex,
     'worker action controls must be ordered as view/attach, direct ship, normal completion, then optional undo'
   );
-  assert.match(salesRoute, /requireAuth\(req, res, \{ roles: \['sales'\] \}\)/);
-  assert.match(salesRoute, /canShipFromSales\(actor\)/);
 });

@@ -6,27 +6,33 @@ import { cors } from '../../_lib/cors.js';
 import { requireAuth } from '../../_lib/auth.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { ensureTrackToken } from '../../_lib/trackToken.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 
-export default cors(async function handler(req, res) {
+export async function handleTrackLink(req, res, dependencies = {}) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
-  if (!rateLimitCheck(req, res)) return;
+  const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
+  if (!checkRateLimit(req, res)) return;
 
-  const auth = requireAuth(req, res, { roles: ['sales'] });
+  const checkAuth = dependencies.requireAuth || requireAuth;
+  const auth = checkAuth(req, res, { roles: ['sales'] });
   if (!auth) return;
 
-  const { id } = req.query;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 
-  const db = getDb();
-  const token = await ensureTrackToken(db, Number(id));
+  const db = dependencies.db || getDb();
+  const ensureToken = dependencies.ensureTrackToken || ensureTrackToken;
+  const token = await ensureToken(db, id);
   if (!token) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
   }
 
   const base = (process.env.BASE_URL || 'https://production-status.vercel.app').replace(/\/+$/, '');
   return res.json({ token, url: `${base}/track/${token}` });
-});
+}
+
+export default cors(handleTrackLink);

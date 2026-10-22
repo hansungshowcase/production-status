@@ -5,6 +5,8 @@ import { parseMultipart, getFilePart } from '../../_lib/parseBody.js';
 import { ensureOrderImageColumn } from '../../_lib/ensureSchema.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { storeImageFile } from '../../_lib/storeImage.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
+import { validateImageFile } from '../../_lib/imageFileValidation.js';
 import {
   assertImageBackedOrderHasCanonicalOrderDate,
   assertImageBackedOrderHasCanonicalDueDate,
@@ -31,8 +33,8 @@ export default cors(async function handler(req, res) {
   }
   if (!rateLimitCheck(req, res)) return;
 
-  const { id } = req.query;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 
@@ -61,6 +63,13 @@ export default cors(async function handler(req, res) {
 
   if (filePart.data.length > 10 * 1024 * 1024) {
     return res.status(400).json({ error: { message: '파일 크기는 10MB 이하여야 합니다.', status: 400 } });
+  }
+
+  try {
+    validateImageFile(filePart);
+  } catch (err) {
+    const status = err.status || 400;
+    return res.status(status).json({ error: { message: err.message, status } });
   }
 
   const db = getDb();
@@ -174,8 +183,8 @@ export default cors(async function handler(req, res) {
 });
 
 export async function handleGet(req, res, dependencies = {}) {
-  const { id } = req.query;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 

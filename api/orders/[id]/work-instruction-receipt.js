@@ -6,6 +6,7 @@ import {
   hasValidWorkInstructionReceipt,
   isWorkInstructionReceiver,
 } from '../../../shared/workInstructionReceipt.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 
 const DOWNSTREAM_STEPS = [
   'V-커팅작업',
@@ -45,8 +46,8 @@ export async function handleWorkInstructionReceipt(req, res, dependencies = {}) 
     : requireWorkerAction(req, res);
   if (!workerAction) return;
 
-  const id = Number(req.query.id);
-  if (!Number.isInteger(id) || id <= 0) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return errorResponse(res, 400, '유효한 주문 ID가 필요합니다.');
   }
   const expectedRevisionInput = req.body?.expected_revision;

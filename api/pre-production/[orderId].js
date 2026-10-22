@@ -3,6 +3,7 @@ import { cors } from '../_lib/cors.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { requireAuth } from '../_lib/auth.js';
 import { changedFieldKeys, describeFieldChanges } from '../../src/utils/fieldLabels.js';
+import { parsePositiveInt4Id } from '../_lib/positiveInt4Id.js';
 
 const PRE_PROD_FIELDS = [
   'instruction_check',
@@ -26,9 +27,12 @@ export default cors(async function handler(req, res) {
   }
 });
 
-async function handleGet(req, res) {
-  const db = getDb();
-  const { orderId } = req.query;
+export async function handleGet(req, res, dependencies = {}) {
+  const orderId = parsePositiveInt4Id(req.query.orderId);
+  if (orderId === null) {
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
+  }
+  const db = dependencies.db || getDb();
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
   if (orderResult.rows.length === 0) {
@@ -39,15 +43,36 @@ async function handleGet(req, res) {
   let preProdResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
   if (preProdResult.rows.length === 0) {
     const emptyPreProduction = PRE_PROD_FIELDS.reduce((acc, field) => ({ ...acc, [field]: 0 }), {});
-    return res.json({ ...emptyPreProduction, order_id: Number(orderId), client_name: order.client_name });
+    return res.json({ ...emptyPreProduction, order_id: orderId, client_name: order.client_name });
   }
 
   return res.json({ ...preProdResult.rows[0], client_name: order.client_name });
 }
 
-async function handlePatch(req, res) {
-  const db = getDb();
-  const { orderId } = req.query;
+export async function handlePatch(req, res, dependencies = {}) {
+  const orderId = parsePositiveInt4Id(req.query.orderId);
+  if (orderId === null) {
+    return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
+  }
+  const body = req.body || {};
+  const changes = {};
+  for (const field of PRE_PROD_FIELDS) {
+    if (!Object.hasOwn(body, field) || body[field] === undefined) continue;
+    if (body[field] === true || body[field] === 1) {
+      changes[field] = 1;
+    } else if (body[field] === false || body[field] === 0) {
+      changes[field] = 0;
+    } else {
+      return res.status(400).json({
+        error: { message: '사전생산 체크 값은 true/false 또는 1/0이어야 합니다.', status: 400 },
+      });
+    }
+  }
+  const touchedFields = Object.keys(changes);
+  if (touchedFields.length === 0) {
+    return res.status(400).json({ error: { message: '수정할 필드가 없습니다.', status: 400 } });
+  }
+  const db = dependencies.db || getDb();
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [orderId] });
   if (orderResult.rows.length === 0) {
@@ -55,51 +80,40 @@ async function handlePatch(req, res) {
   }
   const order = orderResult.rows[0];
 
-  let preProdResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
-  if (preProdResult.rows.length === 0) {
-    await db.execute({ sql: 'INSERT INTO pre_production (order_id) VALUES (?)', args: [orderId] });
-  }
-  // 행이 없어 방금 INSERT 한 경우의 기준값은 전 항목 미체크(0)다.
+  const preProdResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
   const beforeRow = preProdResult.rows[0]
     || PRE_PROD_FIELDS.reduce((acc, field) => ({ ...acc, [field]: 0 }), {});
-
-  const updates = [];
-  const values = [];
-
-  for (const field of PRE_PROD_FIELDS) {
-    if (req.body[field] !== undefined) {
-      updates.push(`${field} = ?`);
-      // DB 컬럼이 INTEGER — boolean/문자열 모두 0/1로 정규화 (Postgres 타입 에러 방지)
-      values.push(req.body[field] ? 1 : 0);
-    }
-  }
-
-  if (updates.length === 0) {
-    return res.status(400).json({ error: { message: '수정할 필드가 없습니다.', status: 400 } });
-  }
-
-  values.push(orderId);
-  await db.execute({
-    sql: `UPDATE pre_production SET ${updates.join(', ')} WHERE order_id = ?`,
-    args: values,
-  });
-
-  const updatedResult = await db.execute({ sql: 'SELECT * FROM pre_production WHERE order_id = ?', args: [orderId] });
-
-  // Log activity — 요청에 담겨온 필드 전부가 아니라 저장 전/후로 실제 바뀐 항목만,
-  // DB 컬럼명이 아닌 한국어 라벨로 남긴다.
-  const touchedFields = Object.keys(req.body).filter(k => PRE_PROD_FIELDS.includes(k));
-  const changedFields = changedFieldKeys(beforeRow, updatedResult.rows[0], touchedFields);
-  await db.execute({
-    sql: `INSERT INTO activity_feed (order_id, action_type, description, actor)
-          VALUES (?, ?, ?, ?)`,
+  const changedFields = changedFieldKeys(beforeRow, { ...beforeRow, ...changes }, touchedFields);
+  const columns = touchedFields.join(', ');
+  const placeholders = touchedFields.map(() => '?').join(', ');
+  const assignments = touchedFields.map(field => `${field} = EXCLUDED.${field}`).join(', ');
+  const [mutationResult] = await db.atomicBatch([{
+    sql: `WITH upserted_pre_production AS (
+            INSERT INTO pre_production (order_id, ${columns})
+            VALUES (?, ${placeholders})
+            ON CONFLICT (order_id) DO UPDATE SET ${assignments}
+            RETURNING *
+          ),
+          pre_production_activity AS (
+            INSERT INTO activity_feed (order_id, action_type, description, actor)
+            SELECT u.order_id, '사전생산수정', ?, ?
+              FROM upserted_pre_production u
+            RETURNING id
+          )
+          SELECT to_jsonb(u) AS pre_production_row
+            FROM upserted_pre_production u
+           WHERE EXISTS (SELECT 1 FROM pre_production_activity)`,
     args: [
-      order.id,
-      '사전생산수정',
+      orderId,
+      ...touchedFields.map(field => changes[field]),
       describeFieldChanges(`${order.client_name} 사전생산 체크리스트가 수정되었습니다.`, changedFields),
-      req.body.actor || '시스템',
+      body.actor || '시스템',
     ],
-  });
+  }]);
+  const updated = mutationResult.rows?.[0]?.pre_production_row;
+  if (!updated) {
+    throw new Error('사전생산 체크리스트가 원자 배치 안에서 완료되지 않았습니다.');
+  }
 
-  return res.json({ ...updatedResult.rows[0], client_name: order.client_name });
+  return res.json({ ...updated, client_name: order.client_name });
 }

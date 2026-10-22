@@ -5,6 +5,7 @@ import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { clearShippedOnSheet } from '../../_lib/googleSheets.js';
 import { PROCESS_UNDO_MANAGER, isProcessUndoManager } from '../../../shared/processUndoPermission.js';
+import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 
 const PROCESS_UNDO_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -36,8 +37,8 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
   }
   const auditActor = PROCESS_UNDO_MANAGER;
 
-  const id = req.query.id;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 공정 ID가 필요합니다.', status: 400 } });
   }
 

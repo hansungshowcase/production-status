@@ -2,6 +2,7 @@ import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { requireAuth, resolveActor } from '../_lib/auth.js';
 import { del } from '@vercel/blob';
+import { parsePositiveInt4Id } from '../_lib/positiveInt4Id.js';
 
 export default cors(async function handler(req, res) {
   if (req.method === 'GET') {
@@ -13,9 +14,12 @@ export default cors(async function handler(req, res) {
   }
 });
 
-async function handleGet(req, res) {
-  const { id } = req.query;
-  const db = getDb();
+export async function handleGet(req, res, dependencies = {}) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
+    return res.status(400).json({ error: { message: '유효한 사진 ID가 필요합니다.', status: 400 } });
+  }
+  const db = dependencies.db || getDb();
 
   const { rows } = await db.execute({ sql: 'SELECT * FROM photos WHERE id = ?', args: [id] });
   if (rows.length === 0) {
@@ -58,8 +62,8 @@ export async function handleDelete(req, res, dependencies = {}) {
   const auth = checkAuth(req, res, { roles: ['sales', 'admin'] });
   if (!auth) return;
 
-  const { id } = req.query;
-  if (!id || isNaN(Number(id))) {
+  const id = parsePositiveInt4Id(req.query.id);
+  if (id === null) {
     return res.status(400).json({ error: { message: '유효한 사진 ID가 필요합니다.', status: 400 } });
   }
   const db = dependencies.db || getDb();
