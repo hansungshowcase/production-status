@@ -25,7 +25,7 @@ test('작업 등록 전에 실제 납기보다 2일 빠른 날짜인지 확인�
   assert.ok(confirmationIndex < createOrderIndex, '확인 전에는 주문 생성 요청을 보내면 안 된다');
   assert.match(
     handlerSource,
-    /if \(!window\.confirm\(DUE_DATE_BUFFER_CONFIRM_MESSAGE\)\) \{\s*return;\s*\}/,
+    /if \(!window\.confirm\(DUE_DATE_BUFFER_CONFIRM_MESSAGE\)\) \{\s*submitInFlightRef\.current = false;\s*return;\s*\}/,
     '취소하면 등록을 중단해야 한다',
   );
 });

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { SALES_PERSONS as SP_DATA } from '../../constants';
+import { getKstToday } from '../../utils/dateUtils';
 import { MAX_QUANTITY } from '../../utils/quantity';
 import './OrderForm.css';
 
@@ -12,7 +13,7 @@ const DOOR_TYPES = ['앞문', '뒷문', '양문', '여닫이', '오픈', '라운
 const COLORS = ['화이트', '올백색', '올스텐', '올검정', '블랙', '골드스텐', '골드미러'];
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return getKstToday();
 }
 
 export default function OrderForm({ form, errors, onChange }) {

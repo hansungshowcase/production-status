@@ -6,6 +6,10 @@
 /**
  * 다양한 형식의 날짜 문자열을 Date 객체로 파싱
  */
+export function getKstToday(date = new Date()) {
+  return new Date(date.getTime() + (9 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+}
+
 export function isCanonicalCalendarDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   if (value.startsWith('0000-')) return false;

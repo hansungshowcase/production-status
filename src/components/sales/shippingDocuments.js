@@ -1,6 +1,7 @@
 import { getVisibleOrderMemo } from '../../utils/orderText.js';
 import { formatMoney, balanceState } from '../../utils/money.js';
 import { parsePositiveIntegerQuantity } from '../../utils/quantity.js';
+import { getKstToday } from '../../utils/dateUtils.js';
 
 const COMPANY = {
   businessNumber: '634-81-02042',
@@ -33,7 +34,7 @@ function formatDateCompact(value) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return getKstToday();
 }
 
 function buildSpec(order) {

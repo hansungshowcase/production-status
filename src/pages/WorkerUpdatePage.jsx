@@ -11,11 +11,9 @@ import { startProcess, completeProcess } from '../api/processes';
 import { reportIssue as reportIssueApi } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { formatDueStatus } from '../utils/dateUtils';
-import { PROCESS_STEPS } from '../constants';
+import { PROCESS_STEPS, WORKER_STORAGE_KEY } from '../constants';
 import useApi from '../hooks/useApi';
 import './WorkerUpdatePage.css';
-
-const WORKER_NAME = '작업자';
 
 function buildProcessByStep(processes) {
   const priority = { in_progress: 3, waiting: 2, completed: 1 };
@@ -49,6 +47,7 @@ const ISSUE_TYPES = [
 export default function WorkerUpdatePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const workerName = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(WORKER_STORAGE_KEY)) || '작업자';
 
   const { data: order, loading, error, execute: fetchOrder } = useApi(
     () => getOrder(id)
@@ -118,9 +117,9 @@ export default function WorkerUpdatePage() {
     setActionLoading(true);
     try {
       await startProcess(waitingProcess.id, {
-        assigned_worker: WORKER_NAME,
-        assigned_team: sessionStorage.getItem('selected_department') || WORKER_NAME,
-        actor: WORKER_NAME,
+        assigned_worker: workerName,
+        assigned_team: sessionStorage.getItem('selected_department') || '작업자',
+        actor: workerName,
       });
       closeModal();
       showToast('공정이 시작되었습니다');
@@ -141,7 +140,7 @@ export default function WorkerUpdatePage() {
     }
     setActionLoading(true);
     try {
-      await completeProcess(inProgressProcess.id, { actor: WORKER_NAME || '작업자' });
+      await completeProcess(inProgressProcess.id, { actor: workerName });
       closeModal();
       showToast('공정 완료! 다음 공정팀에 알림 전송됨');
       setTimeout(() => navigate('/worker/search'), 1200);
@@ -178,7 +177,7 @@ export default function WorkerUpdatePage() {
         process_id: activeProc?.id,
         issue_type: issueType,
         description: issueType,
-        reported_by: WORKER_NAME,
+        reported_by: workerName,
       });
       closeModal();
       showToast(`"${issueType}" 이슈가 보고되었습니다`);

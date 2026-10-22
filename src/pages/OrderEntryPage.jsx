@@ -6,7 +6,7 @@ import { createOrder } from '../api/orders';
 import { startProcess } from '../api/processes';
 import { uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
-import { extractDueDateFromText } from '../utils/dateUtils';
+import { extractDueDateFromText, getKstToday } from '../utils/dateUtils';
 import { extractBrowserOcrEssentialFields, extractBrowserOcrQuantity } from './browserOcrEssentialFields';
 import {
   buildOrderPayload,
@@ -24,8 +24,7 @@ import {
 import './OrderEntryPage.css';
 
 function todayStr() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  return getKstToday();
 }
 
 const DUE_DATE_BUFFER_CONFIRM_MESSAGE = [
@@ -198,11 +197,43 @@ export default function OrderEntryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const [showSuccess, setShowSuccess] = useState(false);
+  const [createdOrder, setCreatedOrder] = useState(null);
+  const [startResultUncertain, setStartResultUncertain] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState(null); // { data, imageUrl }
   const [workOrderImageUrl, setWorkOrderImageUrl] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const submitInFlightRef = useRef(false);
+  const ocrGenerationRef = useRef(0);
+  const ocrResultRef = useRef(null);
+  const ocrObjectUrlsRef = useRef(new Set());
+  const mountedRef = useRef(true);
+
+  const releaseOcrObjectUrl = useCallback((url) => {
+    if (url && ocrObjectUrlsRef.current.delete(url)) {
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
+  const replaceOcrResult = useCallback((nextResult) => {
+    const previous = ocrResultRef.current;
+    if (previous?.imageUrl && previous.imageUrl !== nextResult?.imageUrl) {
+      releaseOcrObjectUrl(previous.imageUrl);
+    }
+    ocrResultRef.current = nextResult;
+    setOcrResult(nextResult);
+  }, [releaseOcrObjectUrl]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      ocrGenerationRef.current += 1;
+      ocrObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      ocrObjectUrlsRef.current.clear();
+    };
+  }, []);
 
   const validate = useCallback(() => {
     const newErrors = validateOrderEntryForm(form, Boolean(workOrderImageUrl));
@@ -213,55 +244,72 @@ export default function OrderEntryPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
+
     const validationErrors = validate();
     const missingMessages = Object.values(validationErrors).filter(Boolean);
     if (missingMessages.length > 0) {
       setToast({ visible: true, message: `등록할 수 없습니다 — ${missingMessages.join('  ·  ')}` });
+      submitInFlightRef.current = false;
       return;
     }
 
     if (!window.confirm(DUE_DATE_BUFFER_CONFIRM_MESSAGE)) {
+      submitInFlightRef.current = false;
       return;
     }
 
     setSubmitting(true);
-    let success = false;
     try {
       const payload = buildOrderPayload(form, workOrderImageUrl, todayStr());
 
       const created = await createOrder(payload);
-      success = true;
 
       // 도면설계는 김보수 팀장 담당으로 시작한다. 발주 담당자는 작업자로 기록하지 않는다.
       const processes = created.processes || [];
       const firstProcess = processes.find(p => p.step_name === '도면설계');
       if (firstProcess) {
-        startProcess(firstProcess.id, {
-          assigned_worker: '김보수 팀장',
-          assigned_team: '도면설계',
-          actor: '김보수 팀장',
-        }).catch(() => {});
+        try {
+          await startProcess(firstProcess.id, {
+            assigned_worker: '김보수 팀장',
+            assigned_team: '도면설계',
+            actor: '김보수 팀장',
+          });
+        } catch {
+          setCreatedOrder(created);
+          setStartResultUncertain(true);
+          setShowSuccess(true);
+          return;
+        }
       }
+
+      navigate('/worker/station/' + encodeURIComponent('도면설계'));
     } catch (err) {
       setToast({ visible: true, message: err.message || '작업 등록에 실패했습니다' });
+    } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
-    }
-
-    // 주문 생성 성공하면 무조건 도면설계로 이동
-    if (success) {
-      navigate('/worker/station/' + encodeURIComponent('도면설계'));
     }
   };
 
   const handleContinue = () => {
+    ocrGenerationRef.current += 1;
+    replaceOcrResult(null);
+    setOcrLoading(false);
     setForm(createInitialOrderForm(todayStr()));
     setErrors({});
     setWorkOrderImageUrl(null);
+    setCreatedOrder(null);
+    setStartResultUncertain(false);
     setShowSuccess(false);
   };
 
-  const handleGoList = () => {
-    navigate('/sales');
+  const handleConfirmCreatedOrder = () => {
+    if (!createdOrder?.id) return;
+    navigate('/worker/station/' + encodeURIComponent('도면설계'), {
+      state: { focusOrderId: createdOrder.id },
+    });
   };
 
   // ── 이미지 리사이즈 (모바일 고해상도 대응, Vercel 4.5MB 제한) ──
@@ -294,17 +342,24 @@ export default function OrderEntryPage() {
   // ── OCR 사진 인식 ──
   const processOcrFile = async (file) => {
     if (!file) return;
+    const generation = ++ocrGenerationRef.current;
     const imageUrl = URL.createObjectURL(file);
+    ocrObjectUrlsRef.current.add(imageUrl);
     let uploadedUrl = null;
     let resizedFile = null;
+    let previewCommitted = false;
+    const isCurrent = () => mountedRef.current && ocrGenerationRef.current === generation;
+    replaceOcrResult(null);
     setOcrLoading(true);
     setWorkOrderImageUrl(null);
     setToast({ visible: true, message: '작업지시서를 인식하는 중...' });
 
     try {
       const resized = await resizeImage(file);
+      if (!isCurrent()) return;
       resizedFile = resized;
       const uploaded = await uploadWorkOrderImage(resized);
+      if (!isCurrent()) return;
       uploadedUrl = uploaded.url;
       setWorkOrderImageUrl(uploaded.url);
 
@@ -314,13 +369,18 @@ export default function OrderEntryPage() {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
       const token = getToken();
-      const res = await fetch('/api/ocr/work-order', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
+      let res;
+      try {
+        res = await fetch('/api/ocr/work-order', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!isCurrent()) return;
 
       if (!res.ok) {
         if (res.status === 401) clearToken();
@@ -329,64 +389,76 @@ export default function OrderEntryPage() {
       }
 
       const { data, success, warning } = await res.json();
+      if (!isCurrent()) return;
       if (success === false) {
         setToast({ visible: true, message: 'AI 인식이 막혀 브라우저 OCR로 다시 인식 중...' });
         const browserData = await runBrowserOcr(resized, (progress) => {
-          setToast({ visible: true, message: `브라우저 OCR 인식 중... ${progress}%` });
+          if (isCurrent()) {
+            setToast({ visible: true, message: `브라우저 OCR 인식 중... ${progress}%` });
+          }
         });
-        setOcrResult({
+        if (!isCurrent()) return;
+        const nextResult = {
           data: { ...EMPTY_OCR_DATA, ...stripInternalOcrFields(browserData) },
           imageUrl,
           workOrderImageUrl: uploaded.url,
           rawText: browserData.raw_text || '',
-        });
+        };
+        replaceOcrResult(nextResult);
+        previewCommitted = true;
         setToast({ visible: true, message: '브라우저 OCR 인식 완료! 결과를 확인해주세요.' });
         return;
       }
 
-      setOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
+      replaceOcrResult({ data, imageUrl, workOrderImageUrl: uploaded.url });
+      previewCommitted = true;
       setToast({
         visible: true,
-        message: success === false
-          ? (warning || '자동 인식이 지연되어 수동 입력으로 전환했습니다.')
-          : '인식 완료! 결과를 확인해주세요.',
+        message: warning || '인식 완료! 결과를 확인해주세요.',
       });
     } catch (err) {
+      if (!isCurrent()) return;
       if (uploadedUrl) {
         try {
           setToast({ visible: true, message: '서버 OCR이 막혀 브라우저 OCR로 다시 인식 중...' });
           const browserData = await runBrowserOcr(resizedFile || file, (progress) => {
-            setToast({ visible: true, message: `브라우저 OCR 인식 중... ${progress}%` });
+            if (isCurrent()) {
+              setToast({ visible: true, message: `브라우저 OCR 인식 중... ${progress}%` });
+            }
           });
-          setOcrResult({
+          if (!isCurrent()) return;
+          const nextResult = {
             data: { ...EMPTY_OCR_DATA, ...stripInternalOcrFields(browserData) },
             imageUrl,
             workOrderImageUrl: uploadedUrl,
             rawText: browserData.raw_text || '',
-          });
+          };
+          replaceOcrResult(nextResult);
+          previewCommitted = true;
           setToast({ visible: true, message: '브라우저 OCR 인식 완료! 결과를 확인해주세요.' });
         } catch (browserErr) {
-          setOcrResult({ data: { ...EMPTY_OCR_DATA }, imageUrl, workOrderImageUrl: uploadedUrl });
+          if (!isCurrent()) return;
+          replaceOcrResult({ data: { ...EMPTY_OCR_DATA }, imageUrl, workOrderImageUrl: uploadedUrl });
+          previewCommitted = true;
           setToast({
             visible: true,
             message: '작업지시서 이미지는 첨부되었습니다. 인식값을 확인해서 입력해주세요.',
           });
         }
       } else {
-        URL.revokeObjectURL(imageUrl);
+        releaseOcrObjectUrl(imageUrl);
         setToast({
           visible: true,
           message: err.message || '이미지 인식에 실패했습니다',
         });
       }
-      if (!uploadedUrl) setToast({
-        visible: true,
-        message: uploadedUrl
-          ? '작업지시서 이미지는 첨부되었습니다. 수동 입력으로 전환했습니다.'
-          : (err.message || '이미지 인식에 실패했습니다'),
-      });
     } finally {
-      setOcrLoading(false);
+      if (!previewCommitted && !isCurrent()) {
+        releaseOcrObjectUrl(imageUrl);
+      }
+      if (isCurrent()) {
+        setOcrLoading(false);
+      }
     }
   };
 
@@ -447,6 +519,7 @@ export default function OrderEntryPage() {
       return;
     }
     const d = ocrResult.data;
+    ocrGenerationRef.current += 1;
     setForm((prev) => ({
       ...prev,
       client_name: d.client_name || prev.client_name,
@@ -467,24 +540,27 @@ export default function OrderEntryPage() {
       notes: d.notes || prev.notes,
     }));
     setWorkOrderImageUrl(ocrResult.workOrderImageUrl || null);
-    if (ocrResult.imageUrl) URL.revokeObjectURL(ocrResult.imageUrl);
-    setOcrResult(null);
+    replaceOcrResult(null);
+    setOcrLoading(false);
     setToast({ visible: true, message: '인식 결과가 입력되었습니다' });
   };
 
   const handleOcrEdit = (field, value) => {
-    setOcrResult((prev) => ({
-      ...prev,
-      data: { ...prev.data, [field]: value },
-    }));
+    setOcrResult((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, data: { ...prev.data, [field]: value } };
+      ocrResultRef.current = next;
+      return next;
+    });
   };
 
   const handleOcrCancel = () => {
-    if (ocrResult?.imageUrl) URL.revokeObjectURL(ocrResult.imageUrl);
+    ocrGenerationRef.current += 1;
     if (ocrResult?.workOrderImageUrl && workOrderImageUrl === ocrResult.workOrderImageUrl) {
       setWorkOrderImageUrl(null);
     }
-    setOcrResult(null);
+    replaceOcrResult(null);
+    setOcrLoading(false);
   };
 
   const handleFormChange = (newForm) => {
@@ -548,7 +624,7 @@ export default function OrderEntryPage() {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            onClick={() => !ocrLoading && fileInputRef.current?.click()}
+            onClick={() => fileInputRef.current?.click()}
           >
             {ocrLoading ? (
               <>
@@ -578,6 +654,11 @@ export default function OrderEntryPage() {
             <p className="order-entry__success-desc">
               {form.client_name} &mdash; {form.product_type}
             </p>
+            {startResultUncertain && (
+              <p className="order-entry__success-desc" role="alert">
+                주문은 등록되었으나 도면설계 시작 결과를 확인하지 못했습니다.
+              </p>
+            )}
             <div className="order-entry__success-actions">
               <button
                 className="order-entry__btn order-entry__btn--outline"
@@ -587,9 +668,9 @@ export default function OrderEntryPage() {
               </button>
               <button
                 className="order-entry__btn order-entry__btn--primary"
-                onClick={handleGoList}
+                onClick={handleConfirmCreatedOrder}
               >
-                목록으로
+                등록 주문 확인
               </button>
             </div>
           </div>

@@ -167,6 +167,7 @@ export default function WorkerStationViewPage() {
   const identityInitialFocusRef = useRef(null);
   const overdueDialogRef = useRef(null);
   const overdueInitialFocusRef = useRef(null);
+  const issueSubmitRef = useRef(false);
 
   const dismissOverdueDialog = useCallback(() => {
     setOverdueAlertDismissed(true);
@@ -604,7 +605,7 @@ export default function WorkerStationViewPage() {
 
   function openIssueModal(item) {
     closeAllModals();
-    setIssueModal({ item, step: 'select', issueType: null });
+    setIssueModal({ item, step: 'select', issueType: null, issueCreated: false, failedPhotos: [] });
     setIssueDesc('');
     setIssuePhotos([]);
   }
@@ -614,31 +615,54 @@ export default function WorkerStationViewPage() {
   }
 
   async function submitIssue() {
-    if (!issueModal) return;
-    const { item, issueType } = issueModal;
+    if (!issueModal || issueSubmitRef.current) return;
+    const { item, issueType, issueCreated, failedPhotos } = issueModal;
+    issueSubmitRef.current = true;
     setIssueLoading(true);
     try {
-      await reportIssue({
-        order_id: item.order_id,
-        process_id: item.process_id,
-        issue_type: issueType,
-        description: issueDesc || `${decodedStep} - ${issueType}`,
-        reported_by: workerName,
-      });
-      // Upload attached photos
-      for (const file of issuePhotos) {
+      if (!issueCreated) {
+        await reportIssue({
+          order_id: item.order_id,
+          process_id: item.process_id,
+          issue_type: issueType,
+          description: issueDesc || `${decodedStep} - ${issueType}`,
+          reported_by: workerName,
+        });
+        setIssueModal(prev => prev ? { ...prev, issueCreated: true } : prev);
+      }
+
+      const photosToUpload = issueCreated ? failedPhotos : issuePhotos;
+      const uploadFailures = [];
+      for (const file of photosToUpload) {
         const formData = new FormData();
         formData.append('photo', file);
         formData.append('order_id', item.order_id);
         formData.append('process_id', item.process_id);
         formData.append('uploaded_by', workerName);
-        try { await uploadPhoto(formData); } catch (err) { console.warn('사진 업로드 실패:', err); }
+        try {
+          await uploadPhoto(formData);
+        } catch (err) {
+          console.warn('사진 업로드 실패:', err);
+          uploadFailures.push(file);
+        }
       }
+
+      if (uploadFailures.length > 0) {
+        setIssueModal(prev => prev ? {
+          ...prev,
+          issueCreated: true,
+          failedPhotos: uploadFailures,
+          step: 'partial',
+        } : prev);
+        return;
+      }
+
       await fetchData();
-      setIssueModal(prev => ({ ...prev, step: 'sms' }));
+      setIssueModal(prev => prev ? { ...prev, failedPhotos: [], step: 'sms' } : prev);
     } catch {
       alert('이슈 보고에 실패했습니다.');
     } finally {
+      issueSubmitRef.current = false;
       setIssueLoading(false);
     }
   }
@@ -1874,6 +1898,21 @@ export default function WorkerStationViewPage() {
                 </div>
                 <div className="sv-card-popup__actions">
                   <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(null)}>닫기</button>
+                </div>
+              </>
+            )}
+            {issueModal.step === 'partial' && (
+              <>
+                <div className="sv-card-popup__icon">⚠️</div>
+                <div className="sv-card-popup__title">이슈는 등록되었습니다</div>
+                <div className="sv-card-popup__desc" role="alert">
+                  사진 일부를 저장하지 못했습니다. 실패한 사진만 다시 시도해 주세요.
+                </div>
+                <div className="sv-card-popup__actions">
+                  <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setIssueModal(null)} disabled={issueLoading}>닫기</button>
+                  <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={submitIssue} disabled={issueLoading}>
+                    {issueLoading ? '재시도 중...' : `사진 재시도 (${issueModal.failedPhotos.length})`}
+                  </button>
                 </div>
               </>
             )}

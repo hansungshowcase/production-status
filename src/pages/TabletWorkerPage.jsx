@@ -38,6 +38,33 @@ async function fetchAllActiveOrders() {
   }
 }
 
+const PRE_PRODUCTION_FIELDS = [
+  'instruction_check',
+  'material_drawing',
+  'laser_drawing',
+  'material_order_received',
+  'material_order_completed',
+  'material_received',
+];
+
+function applyPreProductionOverride(order, requestRevision, overrides) {
+  const override = overrides.get(String(order.id));
+  if (!override) return order;
+
+  if (override.revision > requestRevision) {
+    return {
+      ...order,
+      pre_production: { ...(order.pre_production || {}), ...override.value },
+    };
+  }
+
+  const matchesSavedValue = Object.entries(override.value).every(
+    ([key, value]) => Number(order.pre_production?.[key]) === Number(value)
+  );
+  if (matchesSavedValue) overrides.delete(String(order.id));
+  return order;
+}
+
 export default function TabletWorkerPage() {
   const [orders, setOrders] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -56,6 +83,8 @@ export default function TabletWorkerPage() {
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
   const orderRequestSeqRef = useRef(0);
+  const preProductionRevisionRef = useRef(0);
+  const preProductionOverridesRef = useRef(new Map());
   const mountedRef = useRef(false);
 
   const workerName = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(WORKER_STORAGE_KEY)) || '현장작업자';
@@ -72,6 +101,7 @@ export default function TabletWorkerPage() {
 
   const fetchOrderList = useCallback(async () => {
     const requestSeq = ++orderRequestSeqRef.current;
+    const requestRevision = preProductionRevisionRef.current;
     setRefreshing(true);
     try {
       const list = await fetchAllActiveOrders();
@@ -80,7 +110,9 @@ export default function TabletWorkerPage() {
       const active = list.filter(
         (o) => o.status !== '출고완료'
       );
-      setOrders(active.filter((o) => o.status !== 'shipped' && o.status !== '출고완료'));
+      setOrders(active
+        .filter((o) => o.status !== 'shipped' && o.status !== '출고완료')
+        .map((order) => applyPreProductionOverride(order, requestRevision, preProductionOverridesRef.current)));
       setLastRefresh(new Date());
       setOrderError(null);
     } catch (err) {
@@ -98,9 +130,17 @@ export default function TabletWorkerPage() {
 
   const hydrateSelectedOrder = useCallback(async (orderId) => {
     if (!orderId) return;
+    const requestRevision = preProductionRevisionRef.current;
     try {
       const detail = await getOrder(orderId);
-      setOrders(prev => prev.map(order => order.id === orderId ? { ...order, ...detail } : order));
+      setOrders(prev => prev.map((order) => {
+        if (String(order.id) !== String(orderId)) return order;
+        return applyPreProductionOverride(
+          { ...order, ...detail },
+          requestRevision,
+          preProductionOverridesRef.current
+        );
+      }));
     } catch (err) {
       console.error('Failed to fetch selected order detail:', err);
     }
@@ -123,9 +163,24 @@ export default function TabletWorkerPage() {
 
   const selectedOrder = orders.find((o) => o.id === selectedId) || null;
 
+  const handlePreProductionSaved = useCallback((orderId, confirmed) => {
+    const savedChecklist = Object.fromEntries(
+      PRE_PRODUCTION_FIELDS
+        .filter((key) => Object.prototype.hasOwnProperty.call(confirmed, key))
+        .map((key) => [key, confirmed[key]])
+    );
+    const revision = ++preProductionRevisionRef.current;
+    preProductionOverridesRef.current.set(String(orderId), { revision, value: savedChecklist });
+    setOrders(prev => prev.map(order => (
+      String(order.id) === String(orderId)
+        ? { ...order, pre_production: { ...(order.pre_production || {}), ...savedChecklist } }
+        : order
+    )));
+  }, []);
+
   async function handleStartProcess(processId) {
     try {
-      await startProcess(processId, { assigned_worker: '현장작업자', actor: '현장작업자' });
+      await startProcess(processId, { assigned_worker: workerName, actor: workerName });
       await fetchOrderList();
       await hydrateSelectedOrder(selectedId);
     } catch (err) {
@@ -136,7 +191,7 @@ export default function TabletWorkerPage() {
 
   async function handleCompleteProcess(processId) {
     try {
-      await completeProcess(processId, { actor: '현장작업자' });
+      await completeProcess(processId, { actor: workerName });
       await fetchOrderList();
       await hydrateSelectedOrder(selectedId);
     } catch (err) {
@@ -337,6 +392,7 @@ export default function TabletWorkerPage() {
           onCompleteProcess={handleCompleteProcess}
           onPhotoAttach={handlePhotoAttach}
           onIssueReport={handleIssueReport}
+          onPreProductionSaved={handlePreProductionSaved}
         />
       </div>
     </div>

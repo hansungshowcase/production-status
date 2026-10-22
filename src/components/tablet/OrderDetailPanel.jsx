@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PROCESS_STEPS } from '../../constants';
 import { updatePreProduction } from '../../api/preProduction';
 import './OrderDetailPanel.css';
@@ -71,15 +71,45 @@ const PRE_PRODUCTION_ITEMS = [
   { key: 'material_received', label: '자재 입고' },
 ];
 
-export default function OrderDetailPanel({ order, onStartProcess, onCompleteProcess, onPhotoAttach, onIssueReport }) {
+export default function OrderDetailPanel({
+  order,
+  onStartProcess,
+  onCompleteProcess,
+  onPhotoAttach,
+  onIssueReport,
+  onPreProductionSaved,
+}) {
   const [confirm, setConfirm] = useState(null);
   const [preChecklist, setPreChecklist] = useState(() => order?.pre_production || {});
   const [preSaving, setPreSaving] = useState(false);
+  const [preSaveError, setPreSaveError] = useState('');
+  const activeOrderIdRef = useRef(order?.id ?? null);
+  const preSavingRef = useRef(false);
+  const preRequestRef = useRef(0);
 
   // order 변경 시 서버의 pre_production 값으로 초기화 (새로고침 후 체크 보존)
   useEffect(() => {
-    setPreChecklist(order?.pre_production || {});
+    const nextOrderId = order?.id ?? null;
+    if (activeOrderIdRef.current !== nextOrderId) {
+      activeOrderIdRef.current = nextOrderId;
+      preRequestRef.current += 1;
+      preSavingRef.current = false;
+      setPreSaving(false);
+      setPreSaveError('');
+      setPreChecklist(order?.pre_production || {});
+      return;
+    }
+
+    if (!preSavingRef.current) {
+      setPreChecklist(order?.pre_production || {});
+    }
   }, [order?.id, order?.pre_production]);
+
+  useEffect(() => () => {
+    activeOrderIdRef.current = null;
+    preRequestRef.current += 1;
+    preSavingRef.current = false;
+  }, []);
 
   if (!order) {
     return (
@@ -119,15 +149,39 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
   }
 
   async function handlePreChecklistToggle(key) {
-    const updated = { ...preChecklist, [key]: !preChecklist[key] };
-    setPreChecklist(updated);
+    if (preSavingRef.current) return;
+
+    const orderId = order.id;
+    const previous = preChecklist;
+    const optimistic = { ...previous, [key]: !previous[key] };
+    const requestId = ++preRequestRef.current;
+    preSavingRef.current = true;
+    setPreSaveError('');
+    setPreChecklist(optimistic);
     setPreSaving(true);
     try {
-      await updatePreProduction(order.id, updated);
+      const saved = await updatePreProduction(orderId, { [key]: optimistic[key] });
+      if (activeOrderIdRef.current !== orderId || preRequestRef.current !== requestId) return;
+
+      const confirmed = { ...optimistic };
+      PRE_PRODUCTION_ITEMS.forEach((item) => {
+        if (Object.prototype.hasOwnProperty.call(saved || {}, item.key)) {
+          confirmed[item.key] = saved[item.key];
+        }
+      });
+      setPreChecklist(confirmed);
+      onPreProductionSaved?.(orderId, confirmed);
     } catch (err) {
       console.error('사전생산 체크리스트 업데이트 실패:', err);
+      if (activeOrderIdRef.current === orderId && preRequestRef.current === requestId) {
+        setPreChecklist(previous);
+        setPreSaveError('저장하지 못했습니다. 다시 시도해 주세요.');
+      }
     } finally {
-      setPreSaving(false);
+      if (activeOrderIdRef.current === orderId && preRequestRef.current === requestId) {
+        preSavingRef.current = false;
+        setPreSaving(false);
+      }
     }
   }
 
@@ -207,6 +261,11 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
       {/* Pre-production checklist */}
       <div className="order-detail-prechecklist">
         <h3>사전생산 체크리스트 {preSaving && <span style={{ fontSize: '0.8em', color: 'var(--text-dim)' }}>(저장중...)</span>}</h3>
+        {preSaveError && (
+          <p role="alert" style={{ margin: '0 0 10px', color: 'var(--red)', fontSize: '0.86rem', fontWeight: 600 }}>
+            {preSaveError}
+          </p>
+        )}
         <div className="prechecklist-items">
           {PRE_PRODUCTION_ITEMS.map((item) => (
             <label key={item.key} className="prechecklist-item">
@@ -214,6 +273,7 @@ export default function OrderDetailPanel({ order, onStartProcess, onCompleteProc
                 type="checkbox"
                 checked={!!preChecklist[item.key]}
                 onChange={() => handlePreChecklistToggle(item.key)}
+                disabled={preSaving}
               />
               <span>{item.label}</span>
             </label>
