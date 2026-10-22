@@ -45,6 +45,14 @@ function orderValues(order) {
   ];
 }
 
+function neutralizeAppendFormulaStrings(values) {
+  return values.map((value) => (
+    typeof value === 'string' && /^[ \t\r\n]*[=+\-@]/.test(value)
+      ? `'${value}`
+      : value
+  ));
+}
+
 async function appendViaWebhook(order) {
   const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
   if (!webhookUrl) {
@@ -62,7 +70,7 @@ async function appendViaWebhook(order) {
         secret: process.env.GOOGLE_SHEETS_WEBHOOK_SECRET || DEFAULT_WEBHOOK_SECRET,
         sheetId: 0,
         orderId: Number(order.id),
-        values: orderValues(order),
+        values: neutralizeAppendFormulaStrings(orderValues(order)),
       }),
       signal: controller.signal,
     });
@@ -374,7 +382,7 @@ export async function appendOrderToSheet(order) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        values: [orderValues(order)],
+        values: [neutralizeAppendFormulaStrings(orderValues(order))],
       }),
       signal: controller.signal,
     });
