@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { WORKERS, WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY, DEPARTMENTS, DEPARTMENT_STEP_MAP, DEPT_ICONS, LAST_STATION_KEY, PROCESS_STEPS, STEP_ICONS, WORKER_DEPARTMENT_FILTER } from '../constants';
 import { getStats } from '../api/stats';
@@ -36,8 +36,11 @@ export default function WorkerSelectPage() {
   const [workOrderResults, setWorkOrderResults] = useState([]);
   const [workOrderLoading, setWorkOrderLoading] = useState(false);
   const workOrderSearchSeqRef = useRef(0);
+  const workOrderSearchRegionRef = useRef(null);
+  const workOrderResultsRef = useRef(null);
   const statsRequestSeqRef = useRef(0);
   const statsMountedRef = useRef(false);
+  const showWorkOrderResults = Boolean(workOrderSearch.trim());
   const selectableDepartments = WORKER_DEPARTMENT_FILTER[selectedWorker] || DEPARTMENTS;
   const delayedOrders = factoryStats?.delayed_orders || [];
   const delayedSteps = factoryStats?.delayed_by_step || [];
@@ -107,6 +110,184 @@ export default function WorkerSelectPage() {
 
     return () => clearTimeout(timer);
   }, [workOrderSearch]);
+
+  useLayoutEffect(() => {
+    if (step !== 'worker' || !showWorkOrderResults) return undefined;
+
+    const searchRegion = workOrderSearchRegionRef.current;
+    const resultsList = workOrderResultsRef.current;
+    const appRoot = document.getElementById('root');
+    if (!searchRegion || !resultsList || !appRoot) return undefined;
+
+    const visualViewport = window.visualViewport;
+    let animationFrameId = null;
+    let banner = null;
+    let mobileHeader = null;
+
+    const measureAvailableHeight = () => {
+      animationFrameId = null;
+      const anchorRect = searchRegion.getBoundingClientRect();
+      const viewportTop = visualViewport?.offsetTop ?? 0;
+      const viewportBottom = viewportTop + (visualViewport?.height ?? window.innerHeight);
+      const belowStart = anchorRect.bottom + 8;
+      const aboveEnd = anchorRect.top - 8;
+      let belowEnd = viewportBottom;
+      let aboveStart = viewportTop + 8;
+
+      const cardRows = [...resultsList.querySelectorAll('.worker-select-page__work-order-item')];
+      const renderedRows = cardRows.length > 0
+        ? cardRows
+        : [...resultsList.querySelectorAll('.worker-select-page__work-order-empty')];
+      const rowHeights = renderedRows.map(row => row.getBoundingClientRect().height);
+      if (rowHeights.length === 0) return;
+
+      const listStyle = window.getComputedStyle(resultsList);
+      const listChromeHeight = [
+        listStyle.paddingTop,
+        listStyle.paddingBottom,
+        listStyle.borderTopWidth,
+        listStyle.borderBottomWidth,
+      ].reduce((sum, value) => sum + (Number.parseFloat(value) || 0), 0);
+      const minimumListHeight = Math.max(...rowHeights) + listChromeHeight;
+
+      if (banner) {
+        const bannerRect = banner.getBoundingClientRect();
+        const bannerStyle = window.getComputedStyle(banner);
+        const horizontallyOverlaps = bannerRect.right > anchorRect.left && bannerRect.left < anchorRect.right;
+        const visiblyIntersectsViewport = bannerRect.width > 0
+          && bannerRect.height > 0
+          && bannerRect.bottom > viewportTop
+          && bannerRect.top < viewportBottom
+          && bannerStyle.display !== 'none'
+          && bannerStyle.visibility !== 'hidden';
+
+        if (horizontallyOverlaps && visiblyIntersectsViewport) {
+          const intersectsBelow = bannerRect.bottom > belowStart && bannerRect.top < viewportBottom;
+          const intersectsAbove = bannerRect.top < aboveEnd && bannerRect.bottom > aboveStart;
+          if (intersectsBelow) belowEnd = Math.min(viewportBottom, bannerRect.top - 8);
+          if (intersectsAbove) aboveStart = Math.max(viewportTop + 8, bannerRect.bottom + 8);
+        }
+      }
+
+      if (mobileHeader) {
+        const headerRect = mobileHeader.getBoundingClientRect();
+        const headerStyle = window.getComputedStyle(mobileHeader);
+        const horizontallyOverlaps = headerRect.right > anchorRect.left && headerRect.left < anchorRect.right;
+        const visiblyIntersectsViewport = headerRect.width > 0
+          && headerRect.height > 0
+          && headerRect.bottom > viewportTop
+          && headerRect.top < viewportBottom
+          && headerStyle.display !== 'none'
+          && headerStyle.visibility !== 'hidden'
+          && Number.parseFloat(headerStyle.opacity) > 0
+          && !mobileHeader.hidden;
+        const intersectsAbove = headerRect.top < aboveEnd && headerRect.bottom > viewportTop;
+
+        if (horizontallyOverlaps && visiblyIntersectsViewport && intersectsAbove) {
+          aboveStart = Math.max(aboveStart, headerRect.bottom + 8);
+        }
+      }
+
+      const belowAvailableHeight = Math.max(0, Math.floor(belowEnd - belowStart));
+      const aboveAvailableHeight = Math.max(0, Math.floor(aboveEnd - aboveStart));
+      let opensUpward = false;
+      if (belowAvailableHeight >= minimumListHeight) {
+        opensUpward = false;
+      } else if (aboveAvailableHeight >= minimumListHeight) {
+        opensUpward = true;
+      } else {
+        opensUpward = aboveAvailableHeight > belowAvailableHeight;
+      }
+
+      const availableHeight = opensUpward ? aboveAvailableHeight : belowAvailableHeight;
+      const nextHeight = `${availableHeight}px`;
+      resultsList.classList.toggle('worker-select-page__work-order-results--up', opensUpward);
+      if (resultsList.style.getPropertyValue('--work-order-results-available-height') !== nextHeight) {
+        resultsList.style.setProperty('--work-order-results-available-height', nextHeight);
+      }
+    };
+
+    const scheduleMeasurement = () => {
+      if (animationFrameId !== null) return;
+      animationFrameId = window.requestAnimationFrame(measureAvailableHeight);
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleMeasurement);
+    resizeObserver.observe(searchRegion);
+    resizeObserver.observe(resultsList);
+
+    const headerAttributeObserver = new MutationObserver(scheduleMeasurement);
+
+    const reconnectOverlays = () => {
+      let changed = false;
+      const nextBanner = appRoot.querySelector('.install-prompt');
+      if (nextBanner !== banner) {
+        if (banner) {
+          resizeObserver.unobserve(banner);
+          banner.removeEventListener('animationend', scheduleMeasurement);
+        }
+        banner = nextBanner;
+        if (banner) {
+          resizeObserver.observe(banner);
+          banner.addEventListener('animationend', scheduleMeasurement);
+        }
+        changed = true;
+      }
+
+      const nextHeader = appRoot.querySelector('.mobile-header-bar');
+      if (nextHeader !== mobileHeader) {
+        headerAttributeObserver.disconnect();
+        if (mobileHeader) {
+          resizeObserver.unobserve(mobileHeader);
+          mobileHeader.removeEventListener('transitionend', scheduleMeasurement);
+          mobileHeader.removeEventListener('animationend', scheduleMeasurement);
+        }
+        mobileHeader = nextHeader;
+        if (mobileHeader) {
+          resizeObserver.observe(mobileHeader);
+          mobileHeader.addEventListener('transitionend', scheduleMeasurement);
+          mobileHeader.addEventListener('animationend', scheduleMeasurement);
+          headerAttributeObserver.observe(mobileHeader, {
+            attributes: true,
+            attributeFilter: ['class', 'style', 'hidden'],
+          });
+        }
+        changed = true;
+      }
+
+      if (changed) scheduleMeasurement();
+    };
+
+    reconnectOverlays();
+    const mutationObserver = new MutationObserver(reconnectOverlays);
+    mutationObserver.observe(appRoot, { childList: true, subtree: true });
+
+    window.addEventListener('resize', scheduleMeasurement);
+    window.addEventListener('scroll', scheduleMeasurement, { passive: true });
+    visualViewport?.addEventListener('resize', scheduleMeasurement);
+    visualViewport?.addEventListener('scroll', scheduleMeasurement);
+    document.addEventListener('scroll', scheduleMeasurement, true);
+    scheduleMeasurement();
+
+    return () => {
+      if (animationFrameId !== null) window.cancelAnimationFrame(animationFrameId);
+      mutationObserver.disconnect();
+      headerAttributeObserver.disconnect();
+      resizeObserver.disconnect();
+      if (banner) banner.removeEventListener('animationend', scheduleMeasurement);
+      if (mobileHeader) {
+        mobileHeader.removeEventListener('transitionend', scheduleMeasurement);
+        mobileHeader.removeEventListener('animationend', scheduleMeasurement);
+      }
+      window.removeEventListener('resize', scheduleMeasurement);
+      window.removeEventListener('scroll', scheduleMeasurement);
+      visualViewport?.removeEventListener('resize', scheduleMeasurement);
+      visualViewport?.removeEventListener('scroll', scheduleMeasurement);
+      document.removeEventListener('scroll', scheduleMeasurement, true);
+      resultsList.classList.remove('worker-select-page__work-order-results--up');
+      resultsList.style.removeProperty('--work-order-results-available-height');
+    };
+  }, [showWorkOrderResults, step]);
 
   function handleSelectWorker(name) {
     setSelectedWorker(name);
@@ -206,7 +387,7 @@ export default function WorkerSelectPage() {
         <p className="worker-select-page__subtitle">작업자를 선택해주세요</p>
       </div>
 
-      <div className="worker-select-page__work-order-search">
+      <div className="worker-select-page__work-order-search" ref={workOrderSearchRegionRef}>
         <input
           className="worker-select-page__work-order-input"
           type="search"
@@ -225,8 +406,8 @@ export default function WorkerSelectPage() {
             지우기
           </button>
         )}
-        {workOrderSearch.trim() && (
-          <div className="worker-select-page__work-order-results">
+        {showWorkOrderResults && (
+          <div className="worker-select-page__work-order-results" ref={workOrderResultsRef}>
             {workOrderLoading && (
               <div className="worker-select-page__work-order-empty">검색 중...</div>
             )}

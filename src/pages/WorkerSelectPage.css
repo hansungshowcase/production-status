@@ -172,6 +172,7 @@
 }
 
 .worker-select-page__work-order-results {
+  box-sizing: border-box;
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -180,13 +181,18 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 340px;
+  max-height: min(340px, var(--work-order-results-available-height, 340px));
   overflow-y: auto;
   padding: 8px;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   background: #ffffff;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.worker-select-page__work-order-results--up {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .worker-select-page__work-order-item {
@@ -739,7 +745,7 @@
   }
 
   .worker-select-page__work-order-results {
-    max-height: 300px;
+    max-height: min(300px, var(--work-order-results-available-height, 300px));
   }
 
   .worker-select-page__btn {

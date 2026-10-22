@@ -32,6 +32,68 @@ function compactSearchText(s) {
     .replace(/[^0-9a-z가-힣]/g, '');
 }
 
+const GENERAL_SEARCH_WHITESPACE_SQL = "E' \\t\\n\\r\\f\\u000B\\u00A0\\u3000'";
+
+function normalizeGeneralSearch(s) {
+  return String(s ?? '')
+    .normalize('NFC')
+    .replace(/[ \t\n\r\f\v\u00A0\u3000]/g, '');
+}
+
+function buildSearchFilter(search, isWorkOrderSearch) {
+  const searchText = isWorkOrderSearch ? normalizeWorkOrderSearch(search) : search;
+  const originalPattern = `%${likeEscape(searchText)}%`;
+  const columns = isWorkOrderSearch ? [
+    'CAST(o.id AS TEXT)',
+    'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
+    'o.notes', 'o.remarks', 'o.etc_notes',
+    'o.phone', 'o.color', 'o.design', 'o.lead_source',
+    'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
+    'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
+    'CAST(o.quantity AS TEXT)',
+  ] : [
+    'CAST(o.id AS TEXT)',
+    'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
+    'o.phone', 'o.color', 'o.design', 'o.notes', 'o.remarks', 'o.etc_notes',
+    'o.lead_source', 'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
+    'o.work_order_image_url',
+    'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
+    'CAST(o.quantity AS TEXT)',
+  ];
+  const originalPredicates = columns.map(column => `${column} LIKE ? ESCAPE '\\'`).join(' OR ');
+
+  if (isWorkOrderSearch) {
+    const compact = compactSearchText(searchText);
+    if (compact) {
+      const haystack = `regexp_replace(lower(concat_ws(' ', ${columns.map(column => `COALESCE(${column}, '')`).join(', ')})), '[^0-9a-z가-힣]', '', 'g')`;
+      return {
+        sql: ` AND ((${originalPredicates}) OR ${haystack} LIKE ?)`,
+        args: [...columns.map(() => originalPattern), `%${compact}%`],
+      };
+    }
+  } else {
+    const normalizedText = normalizeGeneralSearch(searchText);
+    if (normalizedText) {
+      const normalizedPattern = `%${likeEscape(normalizedText)}%`;
+      const normalizedPredicates = columns.map(column => (
+        `translate(normalize(COALESCE(${column}, ''), NFC), ${GENERAL_SEARCH_WHITESPACE_SQL}, '') LIKE ? ESCAPE '\\'`
+      )).join(' OR ');
+      return {
+        sql: ` AND ((${originalPredicates}) OR (${normalizedPredicates}))`,
+        args: [
+          ...columns.map(() => originalPattern),
+          ...columns.map(() => normalizedPattern),
+        ],
+      };
+    }
+  }
+
+  return {
+    sql: ` AND (${originalPredicates})`,
+    args: columns.map(() => originalPattern),
+  };
+}
+
 const ORDER_FIELDS = [
   'order_date', 'due_date', 'sales_person', 'client_name',
   'ship_date', 'sale_amount', 'lead_source', 'balance',
@@ -82,6 +144,7 @@ export async function handleGet(req, res, db = getDb()) {
     overdue, due_soon, search_mode,
   } = req.query;
   const isWorkOrderSearch = search_mode === 'work_order';
+  const searchFilter = search ? buildSearchFilter(search, isWorkOrderSearch) : null;
 
   let limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 200));
   let offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
@@ -180,35 +243,9 @@ export async function handleGet(req, res, db = getDb()) {
     params.push(`%${likeEscape(product_type)}%`);
   }
 
-  if (search) {
-    const searchText = isWorkOrderSearch ? normalizeWorkOrderSearch(search) : search;
-    const s = `%${likeEscape(searchText)}%`;
-    const cols = isWorkOrderSearch ? [
-      'CAST(o.id AS TEXT)',
-      'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
-      'o.notes', 'o.remarks', 'o.etc_notes',
-      'o.phone', 'o.color', 'o.design', 'o.lead_source',
-      'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
-      'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
-      'CAST(o.quantity AS TEXT)',
-    ] : [
-      'CAST(o.id AS TEXT)',
-      'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
-      'o.phone', 'o.color', 'o.design', 'o.notes', 'o.remarks', 'o.etc_notes',
-      'o.lead_source', 'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
-      'o.work_order_image_url',
-      'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
-      'CAST(o.quantity AS TEXT)',
-    ];
-    const compact = compactSearchText(searchText);
-    if (isWorkOrderSearch && compact) {
-      const haystack = `regexp_replace(lower(concat_ws(' ', ${cols.map(col => `COALESCE(${col}, '')`).join(', ')})), '[^0-9a-z가-힣]', '', 'g')`;
-      sql += ` AND ((${cols.map(col => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')}) OR ${haystack} LIKE ?)`;
-      params.push(...cols.map(() => s), `%${compact}%`);
-    } else {
-      sql += ` AND (${cols.map(col => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
-      params.push(...cols.map(() => s));
-    }
+  if (searchFilter) {
+    sql += searchFilter.sql;
+    params.push(...searchFilter.args);
   }
 
   if (status === 'shipped') {
@@ -254,35 +291,9 @@ export async function handleGet(req, res, db = getDb()) {
   if (sales_person) { countSql += ' AND o.sales_person = ?'; countParams.push(sales_person); }
   if (client_name) { countSql += " AND o.client_name LIKE ? ESCAPE '\\'"; countParams.push(`%${likeEscape(client_name)}%`); }
   if (product_type) { countSql += " AND o.product_type LIKE ? ESCAPE '\\'"; countParams.push(`%${likeEscape(product_type)}%`); }
-  if (search) {
-    const searchText = isWorkOrderSearch ? normalizeWorkOrderSearch(search) : search;
-    const s = `%${likeEscape(searchText)}%`;
-    const cols = isWorkOrderSearch ? [
-      'CAST(o.id AS TEXT)',
-      'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
-      'o.notes', 'o.remarks', 'o.etc_notes',
-      'o.phone', 'o.color', 'o.design', 'o.lead_source',
-      'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
-      'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
-      'CAST(o.quantity AS TEXT)',
-    ] : [
-      'CAST(o.id AS TEXT)',
-      'o.client_name', 'o.product_type', 'o.door_type', 'o.sales_person',
-      'o.phone', 'o.color', 'o.design', 'o.notes', 'o.remarks', 'o.etc_notes',
-      'o.lead_source', 'o.order_date', 'o.due_date', 'o.ship_scheduled_date',
-      'o.work_order_image_url',
-      'CAST(o.width AS TEXT)', 'CAST(o.depth AS TEXT)', 'CAST(o.height AS TEXT)',
-      'CAST(o.quantity AS TEXT)',
-    ];
-    const compact = compactSearchText(searchText);
-    if (isWorkOrderSearch && compact) {
-      const haystack = `regexp_replace(lower(concat_ws(' ', ${cols.map(col => `COALESCE(${col}, '')`).join(', ')})), '[^0-9a-z가-힣]', '', 'g')`;
-      countSql += ` AND ((${cols.map(col => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')}) OR ${haystack} LIKE ?)`;
-      countParams.push(...cols.map(() => s), `%${compact}%`);
-    } else {
-      countSql += ` AND (${cols.map(col => `${col} LIKE ? ESCAPE '\\'`).join(' OR ')})`;
-      countParams.push(...cols.map(() => s));
-    }
+  if (searchFilter) {
+    countSql += searchFilter.sql;
+    countParams.push(...searchFilter.args);
   }
   if (status === 'shipped') {
     countSql += " AND o.status = 'shipped'";
