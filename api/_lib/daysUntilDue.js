@@ -1,8 +1,16 @@
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function kstCalendarEpoch(value) {
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return NaN;
+  const kst = new Date(timestamp + KST_OFFSET_MS);
+  return Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+}
+
 export function daysUntilDue(dueDate) {
   if (!dueDate) return null;
-  const due = new Date(dueDate);
-  const now = new Date();
-  due.setHours(0, 0, 0, 0);
-  now.setHours(0, 0, 0, 0);
-  return Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+  const due = kstCalendarEpoch(dueDate);
+  const today = kstCalendarEpoch(Date.now());
+  return Math.ceil((due - today) / DAY_MS);
 }

@@ -264,12 +264,12 @@ export async function handleGet(req, res, db = getDb()) {
 
   // overdue/due_soon 필터를 SQL 단계로 (200건 LIMIT 후 JS filter 시 누락 방지)
   if (overdue === 'true') {
-    sql += ` AND o.due_date IS NOT NULL AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD') AND o.status != 'shipped'`;
+    sql += ` AND o.due_date IS NOT NULL AND o.due_date < to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AND o.status != 'shipped'`;
   }
   if (due_soon === 'true') {
     sql += ` AND o.due_date IS NOT NULL
-             AND o.due_date >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
-             AND o.due_date <= to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
+             AND o.due_date >= to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')
+             AND o.due_date <= to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date + INTERVAL '3 days', 'YYYY-MM-DD')
              AND o.status != 'shipped'`;
   }
 
@@ -310,12 +310,12 @@ export async function handleGet(req, res, db = getDb()) {
   }
   // overdue/due_soon — 메인 쿼리와 동일 조건 (total 정확성)
   if (overdue === 'true') {
-    countSql += ` AND o.due_date IS NOT NULL AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD') AND o.status != 'shipped'`;
+    countSql += ` AND o.due_date IS NOT NULL AND o.due_date < to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AND o.status != 'shipped'`;
   }
   if (due_soon === 'true') {
     countSql += ` AND o.due_date IS NOT NULL
-             AND o.due_date >= to_char(CURRENT_DATE, 'YYYY-MM-DD')
-             AND o.due_date <= to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
+             AND o.due_date >= to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')
+             AND o.due_date <= to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date + INTERVAL '3 days', 'YYYY-MM-DD')
              AND o.status != 'shipped'`;
   }
 

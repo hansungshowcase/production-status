@@ -154,15 +154,15 @@ export default cors(async function handler(req, res) {
       args: [],
     }),
     db.execute({
-      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')",
+      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date < to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')",
       args: [],
     }),
     db.execute({
-      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date = to_char(CURRENT_DATE, 'YYYY-MM-DD')",
+      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date = to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')",
       args: [],
     }),
     db.execute({
-      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date >= to_char(CURRENT_DATE, 'YYYY-MM-DD') AND due_date <= to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')",
+      sql: "SELECT COUNT(*) AS count FROM orders WHERE status != 'shipped' AND due_date IS NOT NULL AND due_date >= to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD') AND due_date <= to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date + INTERVAL '3 days', 'YYYY-MM-DD')",
       args: [],
     }),
     db.execute({
@@ -174,7 +174,7 @@ export default cors(async function handler(req, res) {
       JOIN orders o ON o.id = p.order_id
       WHERE o.status != 'shipped'
         AND o.due_date IS NOT NULL
-        AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')
+        AND o.due_date < to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')
         AND p.status != 'completed'
         AND NOT EXISTS (
           SELECT 1
@@ -247,7 +247,7 @@ export default cors(async function handler(req, res) {
         JOIN ${canonicalProcesses} p ON p.order_id = o.id
         WHERE o.status != 'shipped'
           AND o.due_date IS NOT NULL
-          AND o.due_date < to_char(CURRENT_DATE, 'YYYY-MM-DD')
+          AND o.due_date < to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')
           AND p.status != 'completed'
       )
       SELECT *
@@ -279,7 +279,7 @@ export default cors(async function handler(req, res) {
         JOIN ${canonicalProcesses} p ON p.order_id = o.id
         WHERE o.status != 'shipped'
           AND o.due_date IS NOT NULL
-          AND o.due_date = to_char(CURRENT_DATE, 'YYYY-MM-DD')
+          AND o.due_date = to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date, 'YYYY-MM-DD')
           AND p.status != 'completed'
       )
       SELECT *
