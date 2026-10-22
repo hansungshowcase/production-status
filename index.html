@@ -119,13 +119,6 @@
   <script>
     // Service Worker registration
     if ('serviceWorker' in navigator) {
-      let swRefreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (swRefreshing) return;
-        swRefreshing = true;
-        window.location.reload();
-      });
-
       window.addEventListener('load', async () => {
         try {
           const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
@@ -136,17 +129,6 @@
           };
           // Force update check immediately
           requestUpdate();
-          // Auto-reload when new SW activates
-          reg.addEventListener('updatefound', () => {
-            const newSW = reg.installing;
-            if (newSW) {
-              newSW.addEventListener('statechange', () => {
-                if (newSW.state === 'activated' && navigator.serviceWorker.controller) {
-                  window.location.reload();
-                }
-              });
-            }
-          });
           // Check for updates every 2 minutes
           setInterval(requestUpdate, 2 * 60 * 1000);
           document.addEventListener('visibilitychange', () => {

@@ -89,7 +89,7 @@ function createFallbackContext({ cachedResponse, networkResponse, networkError =
 }
 
 test('white-screen cache fix uses the release service worker cache version', () => {
-  assert.match(serviceWorkerSource, /const CACHE_VERSION = 53;/);
+  assert.match(serviceWorkerSource, /const CACHE_VERSION = 54;/);
 });
 
 test('SPA fallback does not rewrite missing Vite assets to index.html', () => {
