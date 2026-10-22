@@ -207,7 +207,7 @@ function buildAlertToken(alertKey) {
   return crypto.createHash('sha256').update(alertKey).digest('hex').slice(0, 48);
 }
 
-function buildAdminAlert(row, report, nowMs, alertToken) {
+export function buildAdminAlert(row, report, nowMs, alertToken) {
   const recipient = String(row.recipient_name || '').trim() || '수신자 미확인';
   const phone = String(row.to_phone || '').trim() || '번호 미확인';
   const label = ALERT_LABELS[row.milestone] || row.milestone;

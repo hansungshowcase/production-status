@@ -62,9 +62,35 @@ test('규칙 기본 행은 전체 대상을 보이고 조건과 최근 결과는
   assert.match(componentSource, /자세히 보기/);
   assert.match(componentSource, /<dt>언제 보내나<\/dt>/);
   assert.match(componentSource, /<dt>최근 결과<\/dt>/);
+  assert.match(componentSource, /<dt>발송 시간<\/dt>/);
+  assert.match(componentSource, /<dt>보내는 방법<\/dt>/);
+  assert.match(componentSource, /<dt>확인 시각<\/dt>/);
+  assert.match(componentSource, /<dt>마지막 기록<\/dt>/);
+  assert.doesNotMatch(componentSource, /이 상태로 표시한 이유|notificationReasonPresentation/);
   assert.match(componentCss, /@media \(max-width: 480px\)/);
   assert.match(componentCss, /overflow-wrap:\s*anywhere/);
   assert.match(componentCss, /min-width:\s*0/);
+});
+
+test('상세 패널은 유효한 예시 문구만 원문 줄바꿈으로 표시한다', () => {
+  assert.match(componentSource, /item\.example_message/);
+  assert.match(componentSource, /exampleMessage\?\.text/);
+  assert.match(componentSource, /예시 발송 문구/);
+  assert.match(componentSource, /exampleMessage\.label/);
+  assert.match(componentSource, /exampleMessage\.subject/);
+  assert.match(componentSource, /data-notification-example-message/);
+  assert.match(componentCss, /notification-overview-example-message__text[\s\S]*white-space:\s*pre-wrap/);
+  assert.match(componentCss, /notification-overview-example-message__text[\s\S]*overflow-wrap:\s*anywhere/);
+  assert.match(componentCss, /notification-overview-example-message\s*\{[\s\S]*max-width:\s*100%/);
+});
+
+test('자동 알림 종류 조회 문제가 있을 때만 기존 경고 표면을 재사용한다', () => {
+  assert.match(componentSource, /function notificationCatalogWarning/);
+  assert.match(componentSource, /state === 'partial'/);
+  assert.match(componentSource, /state === 'unavailable'/);
+  assert.match(componentSource, /catalog_status/);
+  assert.match(componentSource, /className="notification-overview__log-warning"/);
+  assert.match(componentSource, /return ''/);
 });
 
 test('데스크톱은 44대56 패널과 독립 스크롤, 좁은 화면은 상태 보존 탭을 사용한다', () => {

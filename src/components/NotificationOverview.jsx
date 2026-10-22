@@ -3,7 +3,6 @@ import { fetchNotificationOverview } from '../api/notificationOverview';
 import {
   notificationChannelPresentation,
   notificationLogMessagePresentation,
-  notificationReasonPresentation,
   notificationRecentLabelPresentation,
   notificationStatusPresentation,
   notificationTextPresentation,
@@ -39,6 +38,33 @@ function recentSummary(recent, days) {
   if (counts.dry_run) parts.push(`시험 ${counts.dry_run}건`);
   if (counts.other) parts.push(`상태 확인 필요 ${counts.other}건`);
   return `최근 ${days}일 · ${parts.join(' · ')}`;
+}
+
+function notificationCatalogWarning(catalogStatus) {
+  const state = catalogStatus?.state;
+  if (state === 'partial') return '일부 자동 알림 종류를 불러오지 못했습니다.';
+  if (state === 'unavailable') return '자동 알림 종류를 확인하지 못했습니다.';
+  return '';
+}
+
+function ExampleMessage({ exampleMessage }) {
+  const text = exampleMessage?.text;
+  if (typeof text !== 'string' || !text.trim()) return null;
+
+  const label = typeof exampleMessage.label === 'string' && exampleMessage.label.trim()
+    ? exampleMessage.label
+    : '예시 발송 문구';
+  const subject = typeof exampleMessage.subject === 'string' ? exampleMessage.subject : '';
+
+  return (
+    <div className="notification-overview-example-message" data-notification-example-message>
+      <p className="notification-overview-example-message__label">{label}</p>
+      {subject.trim() && (
+        <p className="notification-overview-example-message__subject">{subject}</p>
+      )}
+      <p className="notification-overview-example-message__text">{text}</p>
+    </div>
+  );
 }
 
 function OverviewItem({ item, days, expanded, onToggle }) {
@@ -87,7 +113,6 @@ function OverviewItem({ item, days, expanded, onToggle }) {
             <div><dt>최근 결과</dt><dd>{recentSummary(item.recent, days)}</dd></div>
             <div><dt>발송 시간</dt><dd>{notificationTextPresentation(item.timing)}</dd></div>
             <div><dt>보내는 방법</dt><dd>{notificationChannelPresentation(item.configuration.channel)}</dd></div>
-            <div><dt>이 상태로 표시한 이유</dt><dd>{notificationReasonPresentation(item.configuration.reason)}</dd></div>
             <div><dt>확인 시각</dt><dd>{formatDateTime(item.checked_at)}</dd></div>
             {item.recent?.latest && (
               <div>
@@ -98,6 +123,7 @@ function OverviewItem({ item, days, expanded, onToggle }) {
               </div>
             )}
           </dl>
+          <ExampleMessage exampleMessage={item.example_message} />
         </div>
       )}
     </article>
@@ -138,6 +164,7 @@ export default function NotificationOverview() {
     (count, group) => count + (group.items || []).filter(item => item.policy?.status === 'paused').length,
     0,
   );
+  const catalogWarning = notificationCatalogWarning(overview?.catalog_status);
 
   return (
     <section
@@ -182,6 +209,11 @@ export default function NotificationOverview() {
             <div><dt>직원 알림</dt><dd>{internalCount}</dd></div>
             <div><dt>보내지 않음</dt><dd>{pausedCount}</dd></div>
           </dl>
+          {catalogWarning && (
+            <p className="notification-overview__log-warning" role="status">
+              {catalogWarning}
+            </p>
+          )}
           {overview?.log_status?.state === 'unavailable' && (
             <p className="notification-overview__log-warning" role="status">
               {notificationLogMessagePresentation(overview.log_status.message)}

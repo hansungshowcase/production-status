@@ -324,6 +324,9 @@
 .notification-overview-disclosure[aria-expanded='true'] svg { transform: rotate(180deg); }
 
 .notification-overview-details {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   margin-top: var(--space-2);
   padding: var(--space-3);
   border-left: 3px solid var(--sms-selected);
@@ -336,6 +339,48 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2) var(--space-4);
+}
+
+.notification-overview-example-message {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--sms-white);
+}
+
+.notification-overview-example-message__label,
+.notification-overview-example-message__subject,
+.notification-overview-example-message__text {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.notification-overview-example-message__label {
+  margin: 0;
+  color: var(--sms-selected);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.notification-overview-example-message__subject {
+  margin: var(--space-1) 0 0;
+  color: var(--sms-ink);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: pre-wrap;
+}
+
+.notification-overview-example-message__text {
+  margin: var(--space-2) 0 0;
+  color: var(--text-mid);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .notification-overview-disclosure:focus-visible,

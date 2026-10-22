@@ -4,9 +4,13 @@ import {
   assemblyWorkerPhone,
 } from './internalProductionAlerts.js';
 import { INTERNAL_MEMBER_NAMES } from './internalNotificationHistory.js';
+import { buildNotificationExample } from './notificationExamples.js';
+import { OVERDUE_REMINDER_DEFINITIONS } from './overdueReminders.js';
 import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
 
 export const NOTIFICATION_OVERVIEW_DAYS = 7;
+const PUBLIC_INTERNAL_HISTORY_START_MS = Date.parse('2026-09-01T00:00:00+09:00');
+const UNKNOWN_HISTORY_TEXT = '발송 기록만으로 확인할 수 없음';
 
 const STATUS_LABELS = Object.freeze({
   ready: '발송 가능 설정',
@@ -19,6 +23,7 @@ const STATUS_LABELS = Object.freeze({
 const POLICY_LABELS = Object.freeze({
   active: '정책 사용',
   paused: '정책 중단',
+  unknown: '확인 불가',
 });
 
 const RECENT_STATUS_LABELS = Object.freeze({
@@ -79,7 +84,7 @@ function customerConfiguration(env, milestone) {
   return configuration('ready', '이벤트 발송과 08:30 대기·재시도 실행 조건이 충족되었습니다.', channel);
 }
 
-function internalConfiguration(env, { scheduled = false, mixed = false } = {}) {
+function internalConfiguration(env, { scheduled = false, mixed = false, daily = false } = {}) {
   if (!configured(env.POSTGRES_URL)) {
     return configuration('incomplete', '기록 DB 설정이 없어 발송 진입점을 실행할 수 없습니다.', 'LMS');
   }
@@ -97,7 +102,7 @@ function internalConfiguration(env, { scheduled = false, mixed = false } = {}) {
     return configuration('conditional', '이벤트 발송은 가능하지만 평일 08:40 일일 실행 설정이 없습니다.', 'LMS');
   }
   return configuration('ready', scheduled
-    ? '평일 예약 실행과 LMS 발송 조건이 충족되었습니다.'
+    ? `${daily ? '매일' : '평일'} 예약 실행과 LMS 발송 조건이 충족되었습니다.`
     : '이벤트 발생 시 LMS 발송 조건이 충족되었습니다.', 'LMS');
 }
 
@@ -138,7 +143,7 @@ function contactTarget(contact) {
   return `${contact.name} (${maskPhone(contact.phone)})`;
 }
 
-function internalRule({ id, name, milestone, trigger, target, timing, scheduled = false, mixed = false }, env) {
+function internalRule({ id, name, milestone, trigger, target, timing, scheduled = false, mixed = false, daily = false }, env) {
   return {
     id,
     name,
@@ -147,7 +152,7 @@ function internalRule({ id, name, milestone, trigger, target, timing, scheduled 
     target,
     timing,
     policy: policy('active'),
-    configuration: internalConfiguration(env, { scheduled, mixed }),
+    configuration: internalConfiguration(env, { scheduled, mixed, daily }),
   };
 }
 
@@ -174,6 +179,14 @@ function salesTargets(env) {
 
 function withCheckedAt(item, checkedAt) {
   return { ...item, checked_at: checkedAt };
+}
+
+function withExample(item, now) {
+  try {
+    return { ...item, example_message: buildNotificationExample(item, now) };
+  } catch {
+    return { ...item, example_message: null };
+  }
 }
 
 export function buildNotificationCatalog(env = process.env, now = new Date()) {
@@ -219,7 +232,7 @@ export function buildNotificationCatalog(env = process.env, now = new Date()) {
       policy: policy('paused'),
       configuration: configuration('unknown', '출고 완료 고객 알림은 정책으로 중단되어 실행 설정을 사용하지 않습니다.', '발송 안 함'),
     },
-  ].map(item => withCheckedAt(item, checkedAt));
+  ].map(item => withExample(withCheckedAt(item, checkedAt), now));
 
   const internal = [
     internalRule({
@@ -269,15 +282,23 @@ export function buildNotificationCatalog(env = process.env, now = new Date()) {
     },
     {
       id: 'sms_delivery_block_admin_alert',
-      name: '수신거부·차단 감시 알림',
+      name: '문자 전달 이상 감시 알림',
       milestone: 'sms_delivery_block_admin_alert',
-      trigger: '사내 internal_* 및 chonbe_alert의 수신거부·차단 결과 감지',
+      milestones: ['sms_delivery_block_admin_alert', 'sms_delivery_final_failure_admin_alert'],
+      trigger: '직원 알림의 수신거부·차단 또는 최종 전달 실패가 확인될 때',
       target: `관리자 지정 번호 (${maskPhone(DELIVERY_ALERT_ADMIN_PHONE)})`,
       timing: '월~금 5분 주기',
       policy: policy('active'),
       configuration: monitorConfiguration(env),
     },
-  ].map(item => withCheckedAt(item, checkedAt));
+    ...Object.values(OVERDUE_REMINDER_DEFINITIONS).map(definition => internalRule({
+      id: definition.kind,
+      milestone: definition.kind,
+      ...definition.overview,
+      scheduled: true,
+      daily: true,
+    }, env)),
+  ].map(item => withExample(withCheckedAt(item, checkedAt), now));
 
   return [
     { id: 'customer', label: '고객 알림', items: customer },
@@ -297,9 +318,9 @@ function classifyRecent(row) {
   return 'other';
 }
 
-function matchesMilestone(ruleMilestone, logMilestone) {
-  if (ruleMilestone === 'rescheduled') return String(logMilestone || '').startsWith('rescheduled:');
-  return ruleMilestone === logMilestone;
+function matchesMilestone(item, logMilestone) {
+  if (item.milestone === 'rescheduled') return String(logMilestone || '').startsWith('rescheduled:');
+  return (item.milestones || [item.milestone]).includes(logMilestone);
 }
 
 function emptyCounts() {
@@ -316,7 +337,7 @@ export function attachRecentResults(groups, rows, { available = true } = {}) {
           recent: { state: 'unavailable', counts: emptyCounts(), latest: null },
         };
       }
-      const matching = (rows || []).filter(row => matchesMilestone(item.milestone, row.milestone));
+      const matching = (rows || []).filter(row => matchesMilestone(item, row.milestone));
       const counts = emptyCounts();
       for (const row of matching) {
         const result = classifyRecent(row);
@@ -342,40 +363,111 @@ export function attachRecentResults(groups, rows, { available = true } = {}) {
   }));
 }
 
+function safeHistoryName(value, fallback) {
+  const name = String(value || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return name ? name.slice(0, 120) : fallback;
+}
+
+function unknownHistoryRule(row, checkedAt) {
+  const milestone = String(row?.milestone || '');
+  const createdAtMs = Date.parse(String(row?.created_at || ''));
+  const publicHistory = Number.isFinite(createdAtMs) && createdAtMs >= PUBLIC_INTERNAL_HISTORY_START_MS;
+  const messageText = publicHistory ? String(row?.message_text || '').trim() : '';
+  const messageSubject = publicHistory ? String(row?.message_subject || '').trim() : '';
+  return {
+    id: milestone,
+    name: safeHistoryName(messageSubject, milestone),
+    milestone,
+    trigger: UNKNOWN_HISTORY_TEXT,
+    target: UNKNOWN_HISTORY_TEXT,
+    timing: UNKNOWN_HISTORY_TEXT,
+    policy: policy('unknown'),
+    configuration: configuration('unknown', UNKNOWN_HISTORY_TEXT, row?.channel || '확인 불가'),
+    checked_at: checkedAt,
+    example_message: messageText ? {
+      subject: messageSubject,
+      text: messageText,
+      label: '최근 실제 발송 문구',
+      source: 'history',
+    } : null,
+  };
+}
+
 export async function loadNotificationOverview(db, env = process.env, now = new Date()) {
   const checkedAt = new Date(now).toISOString();
-  const groups = buildNotificationCatalog(env, now);
+  const baseGroups = buildNotificationCatalog(env, now);
   const periodStart = new Date(new Date(now).getTime() - NOTIFICATION_OVERVIEW_DAYS * 86400000).toISOString();
+  const knownMilestones = [...new Set(baseGroups.flatMap(group => group.items.flatMap(item => (
+    item.milestones || [item.milestone]
+  ))))];
+  const recentExactMilestones = knownMilestones.filter(milestone => milestone !== 'rescheduled' && !milestone.startsWith('internal_'));
+  const recentPlaceholders = recentExactMilestones.map(() => '?').join(', ');
+  const discoveryPlaceholders = knownMilestones.map(() => '?').join(', ');
 
-  try {
-    const { rows } = await db.execute({
-      sql: `SELECT milestone, status, channel, delivery_status_code, created_at
+  const [recentResult, discoveryResult] = await Promise.allSettled([
+    db.execute({
+      sql: `SELECT milestone, channel, created_at, status, delivery_status_code, message_subject, message_text
               FROM notification_log
              WHERE created_at >= ?
                AND (
-                 milestone IN (
-                   'ordered', 'started', 'packed', 'shipped',
-                   'internal_vcut_completed', 'internal_design_due', 'internal_laser_due',
-                   'internal_welding_due', 'internal_assembly_due', 'internal_packing_due',
-                   'internal_assembly_daily', 'chonbe_alert', 'sms_delivery_block_admin_alert'
-                 )
+                 milestone IN (${recentPlaceholders})
                  OR milestone LIKE 'rescheduled:%'
+                 OR LEFT(milestone, 9) = 'internal_'
                )
              ORDER BY created_at DESC, id DESC`,
-      args: [periodStart],
-    });
-    return {
-      checked_at: checkedAt,
-      recent_period: { days: NOTIFICATION_OVERVIEW_DAYS, from: periodStart, to: checkedAt },
-      log_status: { state: 'available', message: '최근 처리 기록을 조회했습니다.' },
-      groups: attachRecentResults(groups, rows),
-    };
-  } catch {
-    return {
-      checked_at: checkedAt,
-      recent_period: { days: NOTIFICATION_OVERVIEW_DAYS, from: periodStart, to: checkedAt },
-      log_status: { state: 'unavailable', message: '정책과 설정은 확인했지만 최근 처리 기록은 조회할 수 없습니다.' },
-      groups: attachRecentResults(groups, [], { available: false }),
-    };
+      args: [periodStart, ...recentExactMilestones],
+    }),
+    db.execute({
+      sql: `SELECT milestone, channel, created_at, status, delivery_status_code, message_subject, message_text
+              FROM (
+                SELECT DISTINCT ON (milestone)
+                       milestone, channel, created_at, status, delivery_status_code, message_subject, message_text
+                  FROM notification_log
+                 WHERE LEFT(milestone, 9) = 'internal_'
+                   AND milestone NOT IN (${discoveryPlaceholders})
+                 ORDER BY milestone, created_at DESC, id DESC
+              ) latest
+             ORDER BY created_at DESC, milestone
+             LIMIT 201`,
+      args: knownMilestones,
+    }),
+  ]);
+
+  const recentAvailable = recentResult.status === 'fulfilled';
+  const recentRows = recentAvailable ? recentResult.value.rows || [] : [];
+  let groups = baseGroups;
+  let catalogStatus = { state: 'unavailable', message: '추가 사내 알림 발송 기록을 조회할 수 없습니다.' };
+  if (discoveryResult.status === 'fulfilled') {
+    const known = new Set(knownMilestones);
+    const discovered = [];
+    const seen = new Set();
+    for (const row of discoveryResult.value.rows || []) {
+      const milestone = String(row?.milestone || '');
+      if (!milestone.startsWith('internal_') || known.has(milestone) || seen.has(milestone)) continue;
+      seen.add(milestone);
+      discovered.push(row);
+      if (discovered.length === 200) break;
+    }
+    const internalIndex = groups.findIndex(group => group.id === 'internal');
+    if (internalIndex >= 0 && discovered.length) {
+      groups = groups.map((group, index) => index === internalIndex ? {
+        ...group,
+        items: [...group.items, ...discovered.map(row => unknownHistoryRule(row, checkedAt))],
+      } : group);
+    }
+    const partial = (discoveryResult.value.rows || []).length > 200;
+    catalogStatus = partial
+      ? { state: 'partial', message: '추가 사내 알림이 200개를 넘어 최신 200개만 표시합니다.' }
+      : { state: 'available' };
   }
+
+  return {
+    checked_at: checkedAt,
+    recent_period: { days: NOTIFICATION_OVERVIEW_DAYS, from: periodStart, to: checkedAt },
+    log_status: recentAvailable
+      ? { state: 'available', message: '최근 처리 기록을 조회했습니다.' }
+      : { state: 'unavailable', message: '정책과 설정은 확인했지만 최근 처리 기록은 조회할 수 없습니다.' },
+    catalog_status: catalogStatus,
+    groups: attachRecentResults(groups, recentRows, { available: recentAvailable }),
+  };
 }

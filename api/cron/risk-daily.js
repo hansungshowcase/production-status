@@ -64,6 +64,19 @@ export async function finishDailyNotification(db, claim, result) {
   return rows.length > 0;
 }
 
+export function buildChonbeAlertMessage({ today, persons, items = [] }) {
+  const MAX = 20;
+  const subject = `[한성쇼케이스 분체 미착수 경보 ${today}]`;
+  const listed = items.slice(0, MAX).map(a => `- ${a.client_name} D-${a.days_left} | 현재 ${a.current_step}`);
+  const lines = [
+    `${persons}님 담당 — 출고 5일 이내인데 분체작업 미착수 ${items.length}건 (현장 확인 요망)`,
+    '',
+    ...listed,
+  ];
+  if (items.length > MAX) lines.push(`외 ${items.length - MAX}건 — 관리자 화면에서 전체 확인`);
+  return { subject, text: [subject, '', ...lines].join('\n') };
+}
+
 export async function handleRiskDaily(req, res, dependencies = {}) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
@@ -135,21 +148,11 @@ export async function handleRiskDaily(req, res, dependencies = {}) {
 
   // 담당자(sales_person)별 라우팅 — 각 담당자 번호로 본인 담당 건만 발송
   const { byPhone, unrouted } = routeAlerts(alerts);
-  const MAX = 20;
-  const subject = `[한성쇼케이스 분체 미착수 경보 ${today}]`;
-
   const results = [];
   for (const [phone, group] of byPhone) {
     const items = group.items.slice().sort((x, y) => (x.days_left ?? 0) - (y.days_left ?? 0)); // 임박한 순
     const persons = [...group.persons].join(', ');
-    const listed = items.slice(0, MAX).map(a => `- ${a.client_name} D-${a.days_left} | 현재 ${a.current_step}`);
-    const lines = [
-      `${persons}님 담당 — 출고 5일 이내인데 분체작업 미착수 ${items.length}건 (현장 확인 요망)`,
-      '',
-      ...listed,
-    ];
-    if (items.length > MAX) lines.push(`외 ${items.length - MAX}건 — 관리자 화면에서 전체 확인`);
-    const text = [subject, '', ...lines].join('\n');
+    const { subject, text } = buildChonbeAlertMessage({ today, persons, items });
     const masked = phone.slice(0, 3) + '****' + phone.slice(-4);
     const normalizedPhone = String(phone || '').replace(/\D/g, '');
     const attemptToken = crypto.randomUUID();

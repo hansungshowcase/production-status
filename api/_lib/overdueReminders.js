@@ -5,30 +5,84 @@ import {
   canonicalAssemblyWorkerName,
 } from './internalProductionAlerts.js';
 
-export const OVERDUE_REMINDER_KINDS = Object.freeze({
-  UNSHIPPED: 'internal_overdue_unshipped',
-  EQUIPMENT: 'internal_overdue_equipment',
-  PACKING: 'internal_overdue_packing',
-});
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const SITE_URL = 'https://production-status.vercel.app';
 
-const MESSAGE_COPY = Object.freeze({
-  [OVERDUE_REMINDER_KINDS.UNSHIPPED]: {
+function maskedPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length < 8) return `${digits.slice(0, 2)}****`;
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+function namedTarget(name, phone) {
+  return `${name} (${maskedPhone(phone)})`;
+}
+
+function salesTarget() {
+  const seen = new Set();
+  return Object.entries(ALERT_ROUTES).flatMap(([routeName, phone]) => {
+    const name = canonicalAlertRecipientName(routeName);
+    if (!name || seen.has(name)) return [];
+    seen.add(name);
+    return [namedTarget(name, phone)];
+  }).join(', ');
+}
+
+const SALES_TARGET = salesTarget();
+const PROCESS_TARGET = [
+  INTERNAL_ALERT_CONTACTS.packing,
+  INTERNAL_ALERT_CONTACTS.welding,
+  INTERNAL_ALERT_CONTACTS.assembly,
+].map(contact => namedTarget(contact.name, contact.phone)).join(', ');
+
+export const OVERDUE_REMINDER_DEFINITIONS = Object.freeze({
+  UNSHIPPED: Object.freeze({
+    kind: 'internal_overdue_unshipped',
     title: '납기 지연 출고 미완료',
     action: '출고 여부 확인 후 출고완료 처리해 주세요.',
-  },
-  [OVERDUE_REMINDER_KINDS.EQUIPMENT]: {
+    overview: Object.freeze({
+      name: '납기 지연 출고 미완료 알림',
+      trigger: '생산중 · 납기일 기준 10일 이상 경과 · 미출고',
+      target: `해당 주문의 영업담당자 (등록 라우팅: ${SALES_TARGET})`,
+      timing: '매일 08:40 KST',
+    }),
+  }),
+  EQUIPMENT: Object.freeze({
+    kind: 'internal_overdue_equipment',
     title: '납기 지연 설비작업 미완료',
     action: '설비작업 확인 후 완료 처리해 주세요.',
-  },
-  [OVERDUE_REMINDER_KINDS.PACKING]: {
+    overview: Object.freeze({
+      name: '납기 지연 설비작업 미완료 알림',
+      trigger: '생산중 · 납기일 경과 · 설비작업 미완료',
+      target: `해당 주문의 영업담당자 (등록 라우팅: ${SALES_TARGET}) · 해당 주문 실제 조립 착수자 · 고정 수신: ${PROCESS_TARGET}`,
+      timing: '매일 08:40 KST',
+    }),
+  }),
+  PACKING: Object.freeze({
+    kind: 'internal_overdue_packing',
     title: '납기 지연 포장 미완료',
     action: '포장 작업 확인 후 완료 처리해 주세요.',
-  },
+    overview: Object.freeze({
+      name: '납기 지연 포장 미완료 알림',
+      trigger: '생산중 · 납기일 경과 · 포장 미완료',
+      target: `해당 주문의 영업담당자 (등록 라우팅: ${SALES_TARGET}) · 해당 주문 실제 조립 착수자 · 고정 수신: ${PROCESS_TARGET}`,
+      timing: '매일 08:40 KST',
+    }),
+  }),
 });
+
+export const OVERDUE_REMINDER_KINDS = Object.freeze(Object.fromEntries(
+  Object.entries(OVERDUE_REMINDER_DEFINITIONS).map(([key, definition]) => [key, definition.kind]),
+));
+
+const MESSAGE_COPY = Object.freeze(Object.fromEntries(
+  Object.values(OVERDUE_REMINDER_DEFINITIONS).map(({ kind, title, action }) => [
+    kind,
+    Object.freeze({ title, action }),
+  ]),
+));
 
 function isValidCalendarDate(year, month, day) {
   const date = new Date(Date.UTC(year, month - 1, day));
