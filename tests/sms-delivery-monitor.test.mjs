@@ -743,24 +743,36 @@ test('sendAdminLms forwards the delivery alert token as a Solapi custom field', 
   }
 });
 
-test('Solapi report lookup batches message IDs and never returns message bodies', async () => {
+test('Solapi report lookup repeats messageIds and deduplicates 50-item batches', async () => {
   const monitor = await loadMonitor();
   const originalKey = process.env.SOLAPI_API_KEY;
   const originalSecret = process.env.SOLAPI_API_SECRET;
   process.env.SOLAPI_API_KEY = 'test-key';
   process.env.SOLAPI_API_SECRET = 'test-secret';
   const batches = [];
+  const messageIds = Array.from({ length: 51 }, (_, index) => `m${index + 1}`);
 
   try {
-    const reports = await monitor.fetchSolapiDeliveryReports(['m1', 'm2', 'm3'], {
-      batchSize: 2,
+    const singleReport = await monitor.fetchSolapiDeliveryReports(['single'], {
       fetchImpl: async (url, options) => {
         const parsed = new URL(url);
-        const ids = [...parsed.searchParams.entries()]
-          .filter(([key]) => /^messageIds\[\d+\]$/.test(key))
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([, value]) => value);
-        assert.equal(parsed.searchParams.get('messageIds'), null);
+        const ids = parsed.searchParams.getAll('messageIds');
+        assert.equal([...parsed.searchParams.keys()].some(key => key.startsWith('messageIds[')), false);
+        batches.push(ids);
+        assert.match(options.headers.Authorization, /^HMAC-SHA256 apiKey=test-key,/);
+        return {
+          ok: true,
+          async json() {
+            return { messageList: { single: { messageId: 'single', status: 'COMPLETE' } } };
+          },
+        };
+      },
+    });
+    const reports = await monitor.fetchSolapiDeliveryReports([...messageIds, 'm1'], {
+      fetchImpl: async (url, options) => {
+        const parsed = new URL(url);
+        const ids = parsed.searchParams.getAll('messageIds');
+        assert.equal([...parsed.searchParams.keys()].some(key => key.startsWith('messageIds[')), false);
         batches.push(ids);
         assert.match(options.headers.Authorization, /^HMAC-SHA256 apiKey=test-key,/);
         return {
@@ -781,8 +793,9 @@ test('Solapi report lookup batches message IDs and never returns message bodies'
       },
     });
 
-    assert.deepEqual(batches, [['m1', 'm2'], ['m3']]);
-    assert.equal(reports.length, 3);
+    assert.deepEqual(batches, [['single'], messageIds.slice(0, 50), messageIds.slice(50)]);
+    assert.equal(singleReport.length, 1);
+    assert.equal(reports.length, 51);
     assert.equal('text' in reports[0], false);
     assert.equal('to' in reports[0], false);
   } finally {

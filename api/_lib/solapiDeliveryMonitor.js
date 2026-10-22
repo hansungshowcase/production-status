@@ -94,8 +94,8 @@ export async function fetchSolapiDeliveryReports(messageIds, options = {}) {
   for (let index = 0; index < uniqueIds.length; index += batchSize) {
     const batch = uniqueIds.slice(index, index + batchSize);
     const url = new URL(SOLAPI_LIST_ENDPOINT);
-    batch.forEach((messageId, messageIndex) => {
-      url.searchParams.append(`messageIds[${messageIndex}]`, messageId);
+    batch.forEach((messageId) => {
+      url.searchParams.append('messageIds', messageId);
     });
     url.searchParams.set('limit', String(batch.length));
     const response = await fetchImpl(url, {
