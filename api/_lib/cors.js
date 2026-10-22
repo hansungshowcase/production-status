@@ -22,7 +22,7 @@ const CACHE_POLICIES = {
   '/api/processes/by-step': 'no-store',
   '/api/workers': 'public, s-maxage=30, stale-while-revalidate=300',
   '/api/health': 'public, s-maxage=60',
-  '/api/export/csv': 'public, s-maxage=10, stale-while-revalidate=60',
+  '/api/export/csv': 'no-store',
   // 폴링 (real-time) — 캐시 금지
   '/api/events': 'no-store',
   // 상세는 디폴트(짧게)
@@ -44,6 +44,11 @@ function pickCachePolicy(url) {
   if (path.startsWith('/api/issues')) return 'public, s-maxage=3, stale-while-revalidate=15';
   if (path.startsWith('/api/photos')) return 'no-store';
   return null;
+}
+
+function routeForErrorLog(url) {
+  const path = String(url || '').split(/[?#]/, 1)[0];
+  return path.replace(/^\/api\/track\/[^/]+\/?$/, '/api/track/[token]');
 }
 
 export function cors(handler) {
@@ -93,12 +98,14 @@ export function cors(handler) {
     try {
       return await handler(req, res);
     } catch (err) {
-      console.error(`[API Error] ${req.method} ${req.url}:`, err);
+      console.error(`[API Error] ${req.method} ${routeForErrorLog(req.url)}:`, err);
       const status = err.status || 500;
       const message = err.publicMessage || (status === 500 ? '서버 내부 오류가 발생했습니다.' : (err.message || '요청 처리 중 오류가 발생했습니다.'));
       if (!res.headersSent) {
         // 에러는 캐시 안 함
         res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('CDN-Cache-Control', 'no-store');
+        res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
         return res.status(status).json({ error: { message, status } });
       }
     }
