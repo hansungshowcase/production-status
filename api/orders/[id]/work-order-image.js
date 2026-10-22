@@ -173,14 +173,13 @@ export default cors(async function handler(req, res) {
   return res.status(201).json({ url: storedImage.url });
 });
 
-async function handleGet(req, res) {
+export async function handleGet(req, res, dependencies = {}) {
   const { id } = req.query;
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
 
-  const db = getDb();
-  await ensureOrderImageColumn(db);
+  const db = dependencies.db || getDb();
   const orderResult = await db.execute({
     sql: 'SELECT work_order_image_url FROM orders WHERE id = ?',
     args: [id],

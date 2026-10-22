@@ -8,7 +8,6 @@ import {
   recipientFilterForName,
   serializeInternalNotification,
 } from './_lib/internalNotificationHistory.js';
-import { ensureInternalNotificationHistorySchema } from './_lib/notifySchema.js';
 import { rateLimitCheck } from './_lib/rateLimit.js';
 
 const AUDIENCES = new Set(['all', 'executive', 'member', 'sales']);
@@ -71,7 +70,6 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
   const requestedPage = Number.parseInt(queryValue(req.query?.page), 10);
   const page = Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1);
   const db = dependencies.db || getDb();
-  await (dependencies.ensureSchema || ensureInternalNotificationHistorySchema)(db);
 
   const salesNames = PUBLIC_CHONBE_RECIPIENTS.map(({ name }) => name);
   const salesPhones = PUBLIC_CHONBE_RECIPIENTS.map(({ maskedPhone }) => maskedPhone);

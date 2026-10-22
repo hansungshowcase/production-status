@@ -5,7 +5,6 @@
 import { getDb } from '../_lib/db.js';
 import { cors } from '../_lib/cors.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
-import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { kstToday } from '../_lib/risk.js';
 import {
   customerDeliveryStatus,
@@ -21,14 +20,15 @@ function clientName(name) {
   return s || '고객';
 }
 
-export default cors(async function handler(req, res) {
+export async function handleTrack(req, res, dependencies = {}) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });
   }
   // 토큰 열거 방어: rate limit 키를 토큰별이 아닌 경로 고정으로 (IP당 분당 30회)
   const limitReq = { headers: req.headers, socket: req.socket, url: '/api/track' };
-  if (!rateLimitCheck(limitReq, res, { windowMs: 60000, max: 30 })) return;
+  const checkRateLimit = dependencies.rateLimitCheck || rateLimitCheck;
+  if (!checkRateLimit(limitReq, res, { windowMs: 60000, max: 30 })) return;
 
   const notFound = () => res.status(404).json({ error: { message: '주문을 찾을 수 없습니다', status: 404 } });
 
@@ -36,8 +36,7 @@ export default cors(async function handler(req, res) {
   // base64url 18바이트 = 24자. 형식 밖 토큰은 조회 없이 404 (존재 여부 비노출 통일)
   if (!/^[A-Za-z0-9_-]{10,64}$/.test(token)) return notFound();
 
-  const db = getDb();
-  await ensureNotifySchema(db);
+  const db = dependencies.db || getDb();
 
   const { rows: orderRows } = await db.execute({
     sql: 'SELECT * FROM orders WHERE track_token = ?',
@@ -112,4 +111,6 @@ export default cors(async function handler(req, res) {
     steps: processes.map(p => ({ name: p.step_name, status: p.status })), // 작업자명 제외
     packing_photo_url,
   });
-});
+}
+
+export default cors(handleTrack);

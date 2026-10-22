@@ -56,12 +56,11 @@ export default cors(async function handler(req, res) {
   }
 });
 
-async function handleGet(id, req, res) {
+export async function handleGet(id, req, res, dependencies = {}) {
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
-  const db = getDb();
-  await ensureOrderImageColumn(db);
+  const db = dependencies.db || getDb();
 
   const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
   const order = orderResult.rows[0];
