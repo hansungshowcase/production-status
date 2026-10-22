@@ -6,7 +6,7 @@ import DataOverview from '../components/admin/DataOverview';
 import WorkersSection from '../components/admin/WorkersSection';
 import DiagnosticsSection from '../components/admin/DiagnosticsSection';
 import request from '../api/client';
-import { fetchAuthStatus, login } from '../utils/authClient';
+import { fetchAuthStatus, login, getRole, getToken } from '../utils/authClient';
 import './AdminPage.css';
 
 const ADMIN_ORDER_PAGE_SIZE = 200;
@@ -42,7 +42,12 @@ export default function AdminPage() {
     setAuthState({ checking: true, needLogin: false, error: null });
     try {
       const s = await fetchAuthStatus();
-      if (s.authenticated && s.role === 'admin') {
+      if (!s.enabled) {
+        setAuthState({ checking: false, needLogin: false, error: null });
+        return;
+      }
+      const t = getToken();
+      if (t && getRole() === 'admin') {
         setAuthState({ checking: false, needLogin: false, error: null });
       } else {
         setAuthState({ checking: false, needLogin: true, error: null });

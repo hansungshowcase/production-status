@@ -1,9 +1,10 @@
 import { cors } from '../_lib/cors.js';
-import { checkPassword, ensureSigningSecret, issueToken, setAuthCookie, verifyDatabaseLogin } from '../_lib/auth.js';
+import { authEnabled, checkPassword, ensureSigningSecret, issueToken, setAuthCookie, verifyDatabaseLogin } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 
 export default cors(async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: { message: 'Method not allowed', status: 405 } });
+  if (!authEnabled()) return res.json({ enabled: false });
   if (!rateLimitCheck(req, res, { windowMs: 60000, max: 5, keySuffix: '관리자' })) return;
   await ensureSigningSecret();
   let credential = null;

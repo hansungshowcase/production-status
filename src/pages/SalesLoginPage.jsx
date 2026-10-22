@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { SALES_PERSONS } from '../constants';
 import { safeGet, safeSet } from '../utils/safeStorage';
 import { fetchAuthStatus, login, getToken } from '../utils/authClient';
@@ -9,8 +9,6 @@ const LS_KEY = 'sales_last_person';
 
 export default function SalesLoginPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const redirectTo = location.state?.redirectTo || '/sales/my';
   const lastPerson = safeGet(LS_KEY);
   const [authEnabled, setAuthEnabled] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
@@ -42,14 +40,14 @@ export default function SalesLoginPage() {
     if (!authEnabled) {
       // opt-in 비활성 — 기존 동작
       safeSet(LS_KEY, name);
-      navigate(redirectTo, { replace: true });
+      navigate('/sales/my');
       return;
     }
     // 인증 활성 — 기존 토큰이 유효하고 actor가 일치하면 바로 진입
     const t = getToken();
     if (t && safeGet('auth_actor') === name) {
       safeSet(LS_KEY, name);
-      navigate(redirectTo, { replace: true });
+      navigate('/sales/my');
       return;
     }
     setPwd('');
@@ -66,7 +64,7 @@ export default function SalesLoginPage() {
       await login('sales', { password: pwd, actor: pwdModal.name });
       safeSet(LS_KEY, pwdModal.name);
       setPwdModal(null);
-      navigate(redirectTo, { replace: true });
+      navigate('/sales/my');
     } catch (err) {
       setLoginErr(err.message || '로그인 실패');
     } finally {

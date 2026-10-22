@@ -11,8 +11,8 @@ let signingKey = null;
 let signingSource = null;
 let signingPromise = null;
 
-export function authEnabled() { return true; }
-export function authRequired() { return true; }
+export function authEnabled() { return false; }
+export function authRequired() { return false; }
 
 function setNoStore(res) {
   for (const name of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) res.setHeader(name, 'no-store');
@@ -164,6 +164,7 @@ function authError(res, status, message) {
 }
 
 export async function requireAuth(req, res, { roles = ['sales', 'admin', 'worker'] } = {}) {
+  if (!authEnabled()) return { role: null, actor: resolveActor(req), _bypass: true };
   let payload;
   try { payload = await authenticateRequest(req); } catch { return authConfigurationError(res); }
   if (!payload) return authError(res, 401, '인증이 필요합니다.');
@@ -172,6 +173,14 @@ export async function requireAuth(req, res, { roles = ['sales', 'admin', 'worker
 }
 
 export async function requireWorkerAction(req, res, { allowInitialDesignStart = false } = {}) {
+  if (!authEnabled()) {
+    const rawActor = req.body?.actor || req.body?.assigned_worker || req.headers?.['x-worker-name'];
+    const actor = typeof rawActor === 'string' ? rawActor.trim() : '';
+    if (!actor) return authError(res, 400, '작업자 정보가 필요합니다.');
+    const payload = { role: 'worker', actor, _bypass: true };
+    req.auth = payload;
+    return payload;
+  }
   const auth = await requireAuth(req, res, { roles: allowInitialDesignStart ? ['worker', 'sales', 'admin'] : ['worker'] });
   if (!auth || auth.role !== 'worker') return auth;
   const claims = [req.body?.actor, req.body?.uploaded_by, req.body?.reported_by, req.headers?.['x-worker-name']]
@@ -180,7 +189,7 @@ export async function requireWorkerAction(req, res, { allowInitialDesignStart = 
   return auth;
 }
 
-export function resolveActor(req) { return req.auth?.actor || '시스템'; }
+export function resolveActor(req) { return req.auth?.actor || req.body?.actor || req.body?.reported_by || req.body?.uploaded_by || req.body?.sales_person || '시스템'; }
 export function withAuth(handler, options) {
   return async (req, res) => (await requireAuth(req, res, options)) ? handler(req, res) : undefined;
 }

@@ -1,4 +1,4 @@
-import { requireAuth } from './auth.js';
+import { authEnabled, requireAuth } from './auth.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const AUTH_PATHS = new Set(['/api/auth/status', '/api/auth/sales', '/api/auth/admin', '/api/auth/worker', '/api/auth/logout']);
@@ -49,6 +49,10 @@ export async function enforceAccessPolicy(req, res) {
   if (path === '/api/cron/test-send' || path === '/api/cron/demo-notify') return reject(res, 404, '찾을 수 없습니다.');
   if (path.startsWith('/api/cron/')) return true;
   if ((path === '/api/health' && ['GET', 'HEAD'].includes(req.method)) || (path.startsWith('/api/track/') && req.method === 'GET')) return true;
+  if (!authEnabled()) {
+    for (const name of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) res.setHeader(name, 'no-store');
+    return true;
+  }
   if (AUTH_PATHS.has(path)) {
     for (const name of ['Cache-Control', 'CDN-Cache-Control', 'Vercel-CDN-Cache-Control']) res.setHeader(name, 'no-store');
     return SAFE_METHODS.has(req.method) || enforceSameOriginWrite(req, res);

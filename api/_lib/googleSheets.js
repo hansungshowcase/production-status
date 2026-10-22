@@ -4,7 +4,6 @@ import { readPrivateConfig } from './privateConfig.js';
 const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DEFAULT_SHEET_ID = '1Lk7uF_rAh43UL5jpum7udQqKAMrHrC7qExkr3BgbQbM';
-const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwIcl2eMEutqooqlERMOiLZAjo3SkuZDuKkaRpYN_75FjDl6ke2hlugkqJlmf2QutRv/exec';
 const WEBHOOK_TIMEOUT_MS = 15_000;
 // 출고 전용: Apps Script 스크립트 락 대기(25초)를 백엔드가 먼저 끊지 않도록 더 길게 잡는다.
 const SHIPPING_WEBHOOK_TIMEOUT_MS = 30_000;
@@ -19,6 +18,14 @@ let cachedToken = null;
 
 async function webhookSecret() {
   return readPrivateConfig('sheets.webhook_secret');
+}
+
+async function sheetWebhookUrl() {
+  return readPrivateConfig('sheets.webhook_url');
+}
+
+async function shippingWebhookUrl() {
+  return readPrivateConfig('shipping_webhook_url');
 }
 
 function orderValues(order) {
@@ -58,10 +65,7 @@ function neutralizeAppendFormulaStrings(values) {
 }
 
 async function appendViaWebhook(order) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
-  if (!webhookUrl) {
-    return { skipped: true };
-  }
+  const webhookUrl = await sheetWebhookUrl();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
@@ -106,10 +110,7 @@ async function appendViaWebhook(order) {
 }
 
 async function deleteViaWebhook(order, { strictOrderId = false, timeoutMs = WEBHOOK_TIMEOUT_MS } = {}) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
-  if (!webhookUrl) {
-    return { skipped: true };
-  }
+  const webhookUrl = await sheetWebhookUrl();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -168,10 +169,7 @@ async function deleteViaWebhook(order, { strictOrderId = false, timeoutMs = WEBH
 }
 
 export async function markOrderShippedOnSheet(order, shipDate, { timeoutMs = SHIPPING_WEBHOOK_TIMEOUT_MS } = {}) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
-  if (!webhookUrl) {
-    throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
-  }
+  const webhookUrl = await shippingWebhookUrl();
 
   const orderId = Number(order?.id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -237,10 +235,7 @@ export async function markOrderShippedOnSheet(order, shipDate, { timeoutMs = SHI
 // 되돌리기 전용: 시트 E열에서 해당 출고완료 값 1개만 걷어낸다(메모 보존).
 // markOrderShippedOnSheet 와 동일 구조·동일 타임아웃 — 실패는 호출부에서 fail-open 처리한다.
 export async function clearShippedOnSheet(order, shipDate, { timeoutMs = SHIPPING_WEBHOOK_TIMEOUT_MS } = {}) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
-  if (!webhookUrl) {
-    throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
-  }
+  const webhookUrl = await shippingWebhookUrl();
 
   const orderId = Number(order?.id);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -418,7 +413,7 @@ export async function appendOrderToSheet(order) {
 }
 
 export async function probeSheetWebhook({ timeoutMs = 5000 } = {}) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+  const webhookUrl = await sheetWebhookUrl();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -439,8 +434,7 @@ export async function probeSheetWebhook({ timeoutMs = 5000 } = {}) {
 }
 
 export async function probeShippingWebhook({ timeoutMs = 5000 } = {}) {
-  const webhookUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
-  if (!webhookUrl) throw new Error('GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL is not configured');
+  const webhookUrl = await shippingWebhookUrl();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {

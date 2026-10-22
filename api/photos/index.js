@@ -77,6 +77,7 @@ export async function handlePost(req, res, dependencies = {}) {
   const order_id = getFieldValue(parts, 'order_id');
   const process_id = getFieldValue(parts, 'process_id');
   const uploaded_by = getFieldValue(parts, 'uploaded_by');
+  if (auth?._bypass) auth = { ...auth, role: process_id ? 'worker' : null, actor: uploaded_by || '시스템' };
 
   if (injectedAuthorize) {
     const authorized = await injectedAuthorize(req, res, { process_id, uploaded_by });

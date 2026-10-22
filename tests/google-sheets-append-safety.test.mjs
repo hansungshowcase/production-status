@@ -10,7 +10,11 @@ async function importWithPrivateConfig(sourceTransform = (source) => source) {
   const source = await readFile(sourcePath, 'utf8');
   const isolatedSource = sourceTransform(source).replace(
     "import { readPrivateConfig } from './privateConfig.js';",
-    "const readPrivateConfig = async () => 'synthetic-webhook-secret';",
+    `const readPrivateConfig = async (key) => ({
+      'sheets.webhook_secret': 'synthetic-webhook-secret',
+      'sheets.webhook_url': 'https://private-config.test/append-delete',
+      shipping_webhook_url: 'https://private-config.test/shipping',
+    })[key];`,
   );
   assert.notEqual(isolatedSource, source, 'test seam must replace the private config import');
   const dataUrl = `data:text/javascript;base64,${Buffer.from(isolatedSource).toString('base64')}`;
@@ -79,8 +83,8 @@ async function withEnvironment(changes, fetchImpl, run) {
 
 async function importWithWebhookFallbackDisabled() {
   return importWithPrivateConfig((source) => source.replace(
-    /const DEFAULT_WEBHOOK_URL = '[^']+';/,
-    "const DEFAULT_WEBHOOK_URL = '';",
+    '  const webhookUrl = await sheetWebhookUrl();',
+    "  return { skipped: true };\n  const webhookUrl = await sheetWebhookUrl();",
   ));
 }
 

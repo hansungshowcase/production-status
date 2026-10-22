@@ -146,29 +146,10 @@ test('worker photo upload checks the persisted process step before storage or wr
   assert.equal(writes, 0);
 });
 
-test('worker actor spoofing is rejected before direct shipping lookup or mutation', async () => {
-  let dbCalls = 0;
+test('passwordless selected worker remains subject to the persisted shipping department', async () => {
   let shippingCalls = 0;
   const res = response();
-  await handleWorkerShip(
-    {
-      method: 'PATCH',
-      query: { id: '9' },
-      body: { actor: '이먼' },
-      headers: {},
-      auth: restrictedWorker,
-    },
-    res,
-    {
-      db: { async execute() { dbCalls += 1; return { rows: [] }; } },
-      rateLimitCheck: () => true,
-      completeOrderShipping: async () => {
-        shippingCalls += 1;
-        return { status: 200, body: {} };
-      },
-    },
-  );
-  assert.equal(res.statusCode, 403);
-  assert.equal(dbCalls, 0);
-  assert.equal(shippingCalls, 0);
+  await handleWorkerShip({method:'PATCH',query:{id:'9'},body:{actor:restrictedWorker.actor},headers:{}},res,{db:{async execute(){return {rows:[{id:9}]};}},rateLimitCheck:()=>true,completeOrderShipping:async()=>{shippingCalls++;return {status:200,body:{}};}});
+  assert.equal(res.statusCode,403);
+  assert.equal(shippingCalls,0);
 });

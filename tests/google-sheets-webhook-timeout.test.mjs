@@ -6,7 +6,11 @@ const sourcePath = new URL('../api/_lib/googleSheets.js', import.meta.url);
 const googleSheetsSource = await readFile(sourcePath, 'utf8');
 const isolatedGoogleSheetsSource = googleSheetsSource.replace(
   "import { readPrivateConfig } from './privateConfig.js';",
-  "const readPrivateConfig = async () => 'synthetic-webhook-secret';",
+  `const readPrivateConfig = async (key) => {
+    const values = globalThis.__SHEET_PRIVATE_CONFIG__ || {};
+    if (!(key in values)) throw new Error('missing private config: ' + key);
+    return values[key];
+  };`,
 );
 assert.notEqual(isolatedGoogleSheetsSource, googleSheetsSource, 'test seam must replace the private config import');
 const googleSheetsDataUrl = `data:text/javascript;base64,${Buffer.from(isolatedGoogleSheetsSource).toString('base64')}`;
@@ -15,6 +19,8 @@ const {
   clearShippedOnSheet,
   deleteOrderFromSheet,
   markOrderShippedOnSheet,
+  probeSheetWebhook,
+  probeShippingWebhook,
 } = await import(`${googleSheetsDataUrl}#webhook-timeout-${Date.now()}-${Math.random()}`);
 
 const order = {
@@ -37,21 +43,27 @@ async function withWebhookFetch(fetchImpl, run, {
   shippingWebhookUrl = 'https://example.test/shipping-webhook',
 } = {}) {
   const originalFetch = globalThis.fetch;
-  const originalUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-  const originalShippingUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
-  if (webhookUrl === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-  else process.env.GOOGLE_SHEETS_WEBHOOK_URL = webhookUrl;
-  if (shippingWebhookUrl === null) delete process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
-  else process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL = shippingWebhookUrl;
+  const originalPrivateConfig = globalThis.__SHEET_PRIVATE_CONFIG__;
+  const originalSheetEnvUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+  const originalShippingEnvUrl = process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+  globalThis.__SHEET_PRIVATE_CONFIG__ = {
+    'sheets.webhook_secret': 'synthetic-webhook-secret',
+    ...(webhookUrl === null ? {} : { 'sheets.webhook_url': webhookUrl }),
+    ...(shippingWebhookUrl === null ? {} : { shipping_webhook_url: shippingWebhookUrl }),
+  };
+  process.env.GOOGLE_SHEETS_WEBHOOK_URL = 'https://stale-env.test/sheet';
+  process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL = 'https://stale-env.test/shipping';
   globalThis.fetch = fetchImpl;
   try {
     return await run();
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalUrl === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-    else process.env.GOOGLE_SHEETS_WEBHOOK_URL = originalUrl;
-    if (originalShippingUrl === undefined) delete process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
-    else process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL = originalShippingUrl;
+    if (originalPrivateConfig === undefined) delete globalThis.__SHEET_PRIVATE_CONFIG__;
+    else globalThis.__SHEET_PRIVATE_CONFIG__ = originalPrivateConfig;
+    if (originalSheetEnvUrl === undefined) delete process.env.GOOGLE_SHEETS_WEBHOOK_URL;
+    else process.env.GOOGLE_SHEETS_WEBHOOK_URL = originalSheetEnvUrl;
+    if (originalShippingEnvUrl === undefined) delete process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL;
+    else process.env.GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL = originalShippingEnvUrl;
   }
 }
 
@@ -217,20 +229,48 @@ test('append and delete never send to the shipment-only URL', async () => {
   ]);
 });
 
-test('shipping rejects a missing URL without attempting a fallback request', async () => {
+test('both probes ignore stale environment URLs and use their private config URL', async () => {
+  const urls = [];
+  await withWebhookFetch(async (url) => {
+    urls.push(String(url));
+    return jsonResponse({ ok: true });
+  }, async () => {
+    await probeSheetWebhook();
+    await probeShippingWebhook();
+  }, {
+    webhookUrl: 'https://private-config.test/sheet',
+    shippingWebhookUrl: 'https://private-config.test/shipping',
+  });
+
+  assert.deepEqual(urls, [
+    'https://private-config.test/sheet',
+    'https://private-config.test/shipping',
+  ]);
+});
+
+test('missing private webhook URLs fail closed before fetch', async () => {
   let fetchCalls = 0;
   await withWebhookFetch(async () => {
     fetchCalls += 1;
     throw new Error('fetch must not run');
   }, async () => {
     await assert.rejects(
-      markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'),
-      /GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL/,
+      appendOrderToSheet(order),
+      /sheets\.webhook_url/,
     );
   }, {
-    webhookUrl: 'https://example.test/append-only',
-    shippingWebhookUrl: null,
+    webhookUrl: null,
   });
+
+  await withWebhookFetch(async () => {
+    fetchCalls += 1;
+    throw new Error('fetch must not run');
+  }, async () => {
+    await assert.rejects(
+      markOrderShippedOnSheet({ ...order, id: 73 }, '2026-08-04'),
+      /shipping_webhook_url/,
+    );
+  }, { shippingWebhookUrl: null });
   assert.equal(fetchCalls, 0);
 });
 
@@ -357,7 +397,7 @@ test('the clear rejects a missing URL, invalid IDs, and invalid dates before sen
   }, async () => {
     await assert.rejects(
       clearShippedOnSheet(order, '2026-08-05'),
-      /GOOGLE_SHEETS_SHIPPING_WEBHOOK_URL/,
+      /shipping_webhook_url/,
     );
   }, { shippingWebhookUrl: null });
   assert.equal(fetchCalls, 0);
