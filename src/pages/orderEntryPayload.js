@@ -1,5 +1,10 @@
 import { normalizeOrderMemoForStorage } from '../utils/orderText.js';
 import { isCanonicalCalendarDate } from '../utils/dateUtils.js';
+import {
+  OrderNumericInputError,
+  normalizeOptionalDimension,
+  normalizeOptionalMoney,
+} from '../utils/orderNumericInput.js';
 import { parsePositiveIntegerQuantity } from '../utils/quantity.js';
 
 export function createInitialOrderForm(orderDate, salesPerson = '') {
@@ -25,16 +30,40 @@ export function createInitialOrderForm(orderDate, salesPerson = '') {
   };
 }
 
+export function mergeOcrFormValue(currentValue, recognizedValue) {
+  return recognizedValue === undefined || recognizedValue === null || recognizedValue === ''
+    ? currentValue
+    : recognizedValue;
+}
+
 export function normalizeOptionalPositiveNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
+  return normalizeOptionalDimension(value);
+}
 
-  const compact = String(value).replace(/,/g, '');
-  const match = compact.match(/\d+(?:\.\d+)?/);
-  if (!match) return null;
+function numericErrorMessage(label, example, allowZero = false) {
+  return `${label}은 ${allowZero ? '0 이상의' : '0보다 큰'} 숫자만 입력해주세요 (예: ${example}).`;
+}
 
-  const number = Number(match[0]);
-  return Number.isFinite(number) && number > 0 ? number : null;
+export function normalizeDimensionField(value, label) {
+  try {
+    return normalizeOptionalDimension(value);
+  } catch (error) {
+    if (error instanceof OrderNumericInputError) {
+      throw new Error(numericErrorMessage(label, '1,200mm'));
+    }
+    throw error;
+  }
+}
+
+export function normalizeMoneyField(value, label, { allowZero = false } = {}) {
+  try {
+    return normalizeOptionalMoney(value, { allowZero });
+  } catch (error) {
+    if (error instanceof OrderNumericInputError) {
+      throw new Error(numericErrorMessage(label, '320,000원', allowZero));
+    }
+    throw error;
+  }
 }
 
 export function normalizeQuantity(value) {
@@ -76,6 +105,23 @@ export function validateOrderEntryForm(form, hasWorkOrderImage = false) {
   if (parsePositiveIntegerQuantity(form.quantity) === null) {
     errors.quantity = '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)';
   }
+  for (const [field, label] of [['width', '가로'], ['depth', '세로'], ['height', '높이']]) {
+    try {
+      normalizeDimensionField(form[field], label);
+    } catch (error) {
+      errors[field] = error.message;
+    }
+  }
+  for (const [field, label, allowZero] of [
+    ['sale_amount', '판매금액', false],
+    ['balance', '잔금', true],
+  ]) {
+    try {
+      normalizeMoneyField(form[field], label, { allowZero });
+    } catch (error) {
+      errors[field] = error.message;
+    }
+  }
   return errors;
 }
 
@@ -88,13 +134,13 @@ export function buildOrderPayload(form, workOrderImageUrl, fallbackOrderDate) {
     phone: form.phone || null,
     product_type: form.product_type.trim(),
     door_type: form.door_type || null,
-    width: normalizeOptionalPositiveNumber(form.width),
-    depth: normalizeOptionalPositiveNumber(form.depth),
-    height: normalizeOptionalPositiveNumber(form.height),
+    width: normalizeDimensionField(form.width, '가로'),
+    depth: normalizeDimensionField(form.depth, '세로'),
+    height: normalizeDimensionField(form.height, '높이'),
     quantity: normalizeQuantity(form.quantity),
     color: form.color || null,
-    sale_amount: normalizeOptionalPositiveNumber(form.sale_amount),
-    balance: normalizeOptionalPositiveNumber(form.balance),
+    sale_amount: normalizeMoneyField(form.sale_amount, '판매금액'),
+    balance: normalizeMoneyField(form.balance, '잔금', { allowZero: true }),
     delivery_address: form.delivery_address?.trim() || null,
     freight_payment: form.freight_payment?.trim() || null,
     lead_source: form.lead_source || null,

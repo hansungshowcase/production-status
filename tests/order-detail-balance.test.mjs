@@ -75,12 +75,16 @@ test('OCR 값이 등록 폼의 잔금 칸까지 이어진다', async () => {
   const page = await readFile(new URL('../src/pages/OrderEntryPage.jsx', import.meta.url), 'utf8');
 
   assert.match(page, /balance: extractLabeledValue\(normalized, \['잔금여부'/, '브라우저 OCR 폴백도 잔금을 읽어야 한다');
-  assert.match(page, /balance: d\.balance \|\| prev\.balance/, 'OCR 결과를 폼에 채워야 한다');
+  assert.match(
+    page,
+    /balance: mergeOcrFormValue\(prev\.balance, d\.balance\)/,
+    'OCR 결과의 명시적 0도 폼에 채워야 한다',
+  );
 });
 
 test('등록 시 잔금이 서버로 전송된다', async () => {
   const payload = await readFile(new URL('../src/pages/orderEntryPayload.js', import.meta.url), 'utf8');
-  assert.match(payload, /balance: normalizeOptionalPositiveNumber\(form\.balance\)/);
+  assert.match(payload, /balance: normalizeMoneyField\(form\.balance, '잔금', \{ allowZero: true \}\)/);
 });
 
 // 배송 서류에 잔금 줄이 아예 없으면 기사님이 '받을 돈 없음' 인지 '안 적음' 인지 구분할 수 없다.

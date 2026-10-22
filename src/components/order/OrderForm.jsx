@@ -181,7 +181,7 @@ export default function OrderForm({ form, errors, onChange }) {
           </label>
           <label className="of__field">
             <span className="of__label">남은 잔금</span>
-            <input type="text" className="of__input" value={form.balance || ''} onChange={inp('balance')} placeholder="예: 320,000" inputMode="numeric" />
+            <input type="text" className="of__input" value={form.balance ?? ''} onChange={inp('balance')} placeholder="예: 320,000" inputMode="numeric" />
           </label>
         </div>
       </div>

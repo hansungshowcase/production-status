@@ -1,17 +1,38 @@
 import { normalizeOrderMemoForStorage } from '../../src/utils/orderText.js';
 import { isCanonicalCalendarDate } from '../../src/utils/dateUtils.js';
+import {
+  OrderNumericInputError,
+  normalizeOptionalDimension,
+  normalizeOptionalMoney,
+} from '../../src/utils/orderNumericInput.js';
 import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
-function normalizeOptionalPositiveNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
+function numericErrorMessage(label, example, allowZero = false) {
+  return `${label}은 ${allowZero ? '0 이상의' : '0보다 큰'} 숫자만 입력해야 합니다 (예: ${example}).`;
+}
 
-  const compact = String(value).replace(/,/g, '');
-  const match = compact.match(/\d+(?:\.\d+)?/);
-  if (!match) return null;
+function normalizeDimensionField(value, label) {
+  try {
+    return normalizeOptionalDimension(value);
+  } catch (error) {
+    if (error instanceof OrderNumericInputError) {
+      throw new OrderCreateInputValidationError(numericErrorMessage(label, '1,200mm'));
+    }
+    throw error;
+  }
+}
 
-  const number = Number(match[0]);
-  return Number.isFinite(number) && number > 0 ? number : null;
+function normalizeMoneyField(value, label, { allowZero = false } = {}) {
+  try {
+    return normalizeOptionalMoney(value, { allowZero });
+  } catch (error) {
+    if (error instanceof OrderNumericInputError) {
+      throw new OrderCreateInputValidationError(
+        numericErrorMessage(label, '320,000원', allowZero),
+      );
+    }
+    throw error;
+  }
 }
 
 function normalizeQuantity(value) {
@@ -147,12 +168,12 @@ export function normalizeOrderCreateInput(input) {
   assertImageBackedOrderHasProductType(body);
   assertImageBackedOrderHasPositiveQuantity(body);
 
-  body.width = normalizeOptionalPositiveNumber(body.width);
-  body.depth = normalizeOptionalPositiveNumber(body.depth);
-  body.height = normalizeOptionalPositiveNumber(body.height);
+  body.width = body.width ?? null;
+  body.depth = body.depth ?? null;
+  body.height = body.height ?? null;
   body.quantity = normalizeQuantity(body.quantity);
-  body.sale_amount = normalizeOptionalPositiveNumber(body.sale_amount);
-  body.balance = normalizeOptionalPositiveNumber(body.balance);
+  body.sale_amount = body.sale_amount ?? null;
+  body.balance = body.balance ?? null;
   body.delivery_address = normalizeOptionalText(body.delivery_address);
   body.freight_payment = normalizeOptionalText(body.freight_payment);
 
@@ -161,6 +182,20 @@ export function normalizeOrderCreateInput(input) {
 
 export function normalizeOrderMutationInput(input, { normalizeQuantityField = true } = {}) {
   const body = { ...(input || {}) };
+
+  for (const [field, label] of [['width', '가로'], ['depth', '세로'], ['height', '높이']]) {
+    if (Object.hasOwn(body, field)) {
+      body[field] = normalizeDimensionField(body[field], label);
+    }
+  }
+
+  if (Object.hasOwn(body, 'sale_amount')) {
+    body.sale_amount = normalizeMoneyField(body.sale_amount, '판매금액');
+  }
+
+  if (Object.hasOwn(body, 'balance')) {
+    body.balance = normalizeMoneyField(body.balance, '잔금', { allowZero: true });
+  }
 
   if (normalizeQuantityField && Object.hasOwn(body, 'quantity')) {
     body.quantity = normalizeQuantity(body.quantity);

@@ -8,7 +8,12 @@ import { uploadWorkOrderImage } from '../api/workOrderImages';
 import { clearToken, getToken } from '../utils/authClient';
 import { extractDueDateFromText } from '../utils/dateUtils';
 import { extractBrowserOcrEssentialFields, extractBrowserOcrQuantity } from './browserOcrEssentialFields';
-import { buildOrderPayload, createInitialOrderForm, validateOrderEntryForm } from './orderEntryPayload';
+import {
+  buildOrderPayload,
+  createInitialOrderForm,
+  mergeOcrFormValue,
+  validateOrderEntryForm,
+} from './orderEntryPayload';
 import {
   COLOR_OPTIONS,
   DOOR_TYPE_OPTIONS,
@@ -450,7 +455,7 @@ export default function OrderEntryPage() {
       phone: d.phone || prev.phone,
       delivery_address: d.delivery_address || prev.delivery_address,
       freight_payment: d.freight_payment || prev.freight_payment,
-      balance: d.balance || prev.balance,
+      balance: mergeOcrFormValue(prev.balance, d.balance),
       sales_person: d.sales_person || prev.sales_person,
       product_type: d.product_type || prev.product_type,
       door_type: d.door_type || prev.door_type,

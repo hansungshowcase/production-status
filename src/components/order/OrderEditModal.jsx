@@ -2,17 +2,13 @@ import React, { useState, useEffect } from 'react';
 import OrderForm from './OrderForm';
 import { updateOrder, getTrackLink } from '../../api/orders';
 import { getVisibleOrderMemo } from '../../utils/orderText';
-import { normalizeQuantity } from '../../pages/orderEntryPayload';
+import {
+  normalizeDimensionField,
+  normalizeMoneyField,
+  normalizeQuantity,
+  validateOrderEntryForm,
+} from '../../pages/orderEntryPayload';
 import './OrderEditModal.css';
-
-function normalizeOptionalPositiveNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
-  const match = String(value).replace(/,/g, '').match(/\d+(?:\.\d+)?/);
-  if (!match) return null;
-  const number = Number(match[0]);
-  return Number.isFinite(number) && number > 0 ? number : null;
-}
 
 export default function OrderEditModal({ order, onClose, onSaved }) {
   const [form, setForm] = useState(() => ({
@@ -52,15 +48,14 @@ export default function OrderEditModal({ order, onClose, onSaved }) {
   }, [onClose, saving]);
 
   function validate() {
-    const e = {};
-    try {
-      normalizeQuantity(form.quantity);
-    } catch {
-      e.quantity = '수량은 1 이상의 정수로 입력해주세요(최대 2147483647)';
-    }
-    if (!form.client_name?.trim()) e.client_name = '거래처명은 필수입니다';
-    if (!form.product_type) e.product_type = '사양은 필수입니다';
+    const e = validateOrderEntryForm(form);
+    if (e.client_name) e.client_name = '거래처명은 필수입니다';
+    if (e.product_type) e.product_type = '사양은 필수입니다';
+    const numericError = ['width', 'depth', 'height', 'sale_amount', 'balance']
+      .map((field) => e[field])
+      .find(Boolean);
     setErrors(e);
+    setServerError(numericError || null);
     return Object.keys(e).length === 0;
   }
 
@@ -80,13 +75,13 @@ export default function OrderEditModal({ order, onClose, onSaved }) {
         product_type: form.product_type,
         door_type: form.door_type || null,
         design: form.design || null,
-        width: form.width === '' || form.width == null ? null : Number(form.width),
-        depth: form.depth === '' || form.depth == null ? null : Number(form.depth),
-        height: form.height === '' || form.height == null ? null : Number(form.height),
+        width: normalizeDimensionField(form.width, '가로'),
+        depth: normalizeDimensionField(form.depth, '세로'),
+        height: normalizeDimensionField(form.height, '높이'),
         quantity: normalizeQuantity(form.quantity),
         color: form.color || null,
-        sale_amount: normalizeOptionalPositiveNumber(form.sale_amount),
-        balance: normalizeOptionalPositiveNumber(form.balance),
+        sale_amount: normalizeMoneyField(form.sale_amount, '판매금액'),
+        balance: normalizeMoneyField(form.balance, '잔금', { allowZero: true }),
         notes: getVisibleOrderMemo(form.notes) || null,
         remarks: getVisibleOrderMemo(form.remarks) || null,
       };
