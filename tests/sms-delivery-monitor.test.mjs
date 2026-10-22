@@ -50,8 +50,21 @@ class MonitorDb {
     if (/^SELECT .* FROM notification_log /i.test(sql)) {
       let selected = this.logs;
       if (/LEFT JOIN notification_delivery_alerts/i.test(sql)) {
+        const allowlistArg = args.find((value) => String(value || '').startsWith('['));
+        const allowlistedSourceIds = sql.includes("delivery_status_code = '3040'")
+          ? JSON.parse(allowlistArg || '[]').map(Number)
+          : [];
         selected = selected.filter((row) => {
           if (row.delivery_status_code == null || ['2000', '3000'].includes(row.delivery_status_code)) {
+            return true;
+          }
+          const hasExistingAlert = [...this.alerts.values()].some((alert) => (
+            Number(alert.source_log_id) === Number(row.id)
+            || alert.provider_msgid === row.provider_msgid
+          ));
+          if (row.delivery_status_code === '3040'
+            && allowlistedSourceIds.includes(Number(row.id))
+            && !hasExistingAlert) {
             return true;
           }
           return [...this.alerts.values()].some((alert) => (
@@ -72,6 +85,11 @@ class MonitorDb {
           const rightOrder = rightAlert?.updated_order ?? right.delivery_checked_order ?? right.created_order ?? 0;
           return leftOrder - rightOrder || Number(left.id) - Number(right.id);
         });
+      } else if (sql.includes("milestone IN ('ordered', 'packed')")) {
+        selected = selected.filter((row) => (
+          ['ordered', 'packed'].includes(row.milestone)
+          || String(row.milestone || '').startsWith('rescheduled:')
+        ));
       }
       const limit = Number(args.at(-1)) || selected.length;
       return {
@@ -271,11 +289,15 @@ test('3040 is an allowlisted internal final-failure alert without changing block
   const monitor = await loadMonitor();
   assert.deepEqual([...monitor.FINAL_FAILURE_ALERT_CODES], ['3040']);
   assert.equal(monitor.BLOCK_STATUS_CODES.has('3040'), false);
-  const failed = logRow(3040, { created_at: '2026-01-01T00:00:00.000Z' });
+  const failed = logRow(3040, {
+    created_at: '2026-10-01T00:00:00.000Z',
+    delivery_status_code: '3040',
+  });
   const db = new MonitorDb([failed]);
   const sent = [];
+  const queried = [];
 
-  const result = await monitor.runSmsDeliveryMonitor(db, {
+  const options = {
     nowMs: Date.parse('2026-10-22T01:00:00.000Z'),
     ensureSchema: async () => {},
     repairPolicy: {
@@ -283,18 +305,35 @@ test('3040 is an allowlisted internal final-failure alert without changing block
       deliveryProviderIds: [],
       deliverySourceLogIds: [3040],
     },
-    fetchReports: async () => [reportFor(failed, '3040', 'provider final failure')],
+    fetchReports: async (ids) => {
+      queried.push(ids);
+      return ids.includes(failed.provider_msgid)
+        ? [reportFor(failed, '3040', 'provider final failure')]
+        : [];
+    },
     sendAdmin: async (_db, message) => {
       sent.push(message);
       return { ok: true, msgId: 'admin-final-failure-1' };
     },
-  });
+  };
+  const result = await monitor.runSmsDeliveryMonitor(db, options);
 
   assert.equal(result.blocked, 0);
   assert.equal(result.alerted, 1);
   assert.equal(sent.length, 1);
   assert.match(sent[0].text, /최종 전달 실패/);
   assert.doesNotMatch(sent[0].text, /차단/);
+  assert.deepEqual(queried[0], [failed.provider_msgid]);
+  const select = db.calls.find((call) => /^SELECT .* FROM notification_log /i.test(call.sql));
+  assert.match(select.sql, /delivery_status_code = '3040'/);
+  assert.match(select.sql, /notification_log\.id IN \( SELECT jsonb_array_elements_text\(\?::jsonb\)::bigint \)/);
+  assert.match(select.sql, /NOT EXISTS \( SELECT 1 FROM notification_delivery_alerts prior_final_alert/);
+  assert.deepEqual(JSON.parse(select.args[1]), [3040]);
+
+  const repeated = await monitor.runSmsDeliveryMonitor(db, options);
+  assert.equal(repeated.alerted, 0);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(queried[1], []);
 });
 
 test('a sent block alert is excluded so unresolved messages cannot be starved by the row limit', async () => {

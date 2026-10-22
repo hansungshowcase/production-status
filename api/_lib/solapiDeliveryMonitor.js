@@ -389,12 +389,27 @@ export async function runSmsDeliveryMonitor(db, options = {}) {
                  delivery_alert.status = 'sending'
                  AND delivery_alert.updated_at < NOW() - INTERVAL '10 minutes'
                )
+               OR (
+                 notification_log.delivery_status_code = '3040'
+                 AND notification_log.id IN (
+                   SELECT jsonb_array_elements_text(?::jsonb)::bigint
+                 )
+                 AND NOT EXISTS (
+                   SELECT 1 FROM notification_delivery_alerts prior_final_alert
+                    WHERE prior_final_alert.source_log_id = notification_log.id
+                       OR prior_final_alert.provider_msgid = notification_log.provider_msgid
+                 )
+               )
              )
            ORDER BY notification_log.delivery_checked_at NULLS FIRST,
                     notification_log.delivery_checked_at ASC,
                     notification_log.id ASC
            LIMIT ?`,
-    args: [MONITOR_START_DATE, MAX_LOGS_PER_RUN],
+    args: [
+      MONITOR_START_DATE,
+      JSON.stringify(repairPolicy?.deliverySourceLogIds || []),
+      MAX_LOGS_PER_RUN,
+    ],
   });
   let customerRows = [];
   if (repairPolicy) {
