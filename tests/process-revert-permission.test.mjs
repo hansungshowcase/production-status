@@ -124,6 +124,17 @@ test('허용된 김보수 팀장으로 실행한 되돌리기 감사 actor는 �
       }
       throw new Error(`예상하지 않은 SQL: ${statement}`);
     },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      assert.match(queries[0].sql, /^WITH claimed_process AS/i);
+      state.status = 'waiting';
+      state.activityActor = queries[0].args[5];
+      return [{ rows: [{
+        process_row: { ...process, status: state.status },
+        order_row: { ...order },
+        reverted_ship_date: null,
+      }] }];
+    },
   };
   const res = response();
 

@@ -122,11 +122,21 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
                     FROM mutated_process p
                    WHERE o.id = p.order_id
                    RETURNING o.id, o.work_instruction_revision
+                ),
+                revert_activity AS (
+                  INSERT INTO activity_feed (order_id, action_type, description, actor)
+                  SELECT p.order_id,
+                         '공정되돌리기',
+                         o.client_name || ' - 도면설계 공정이 되돌려졌습니다.',
+                         ?
+                    FROM mutated_process p
+                    JOIN orders o ON o.id = p.order_id
+                  RETURNING id
                 )
                 SELECT p.*, o.work_instruction_revision
                   FROM mutated_process p
                   JOIN invalidated_order o ON o.id = p.order_id`,
-          args: [id, now, ...laterSteps],
+          args: [id, now, ...laterSteps, auditActor],
         },
       ]);
     } catch (error) {
@@ -169,19 +179,6 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
       return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
     }
 
-    try {
-      await db.execute({
-        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-        args: [
-          lockedProcess.order_id,
-          '공정되돌리기',
-          `${lockedOrder.client_name} - 도면설계 공정이 되돌려졌습니다.`,
-          auditActor,
-        ],
-      });
-    } catch (e) {
-      console.error('활동 로그 기록 실패:', e);
-    }
     return res.json(revertedProcess);
   }
 
@@ -208,10 +205,7 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
     });
   }
 
-  // 실제로 shipped -> in_production 으로 되돌린 주문의 직전 출고일(KST). 되돌리지 못했으면 null.
-  let revertedShipDate = null;
-
-  // Atomic revert: only update if status still matches (prevents race condition)
+  let completedDate = null;
   if (process.status === 'completed') {
     const completedAt = process.completed_at ? new Date(process.completed_at).getTime() : NaN;
     if (!Number.isFinite(completedAt) || Date.now() - completedAt > PROCESS_UNDO_WINDOW_MS) {
@@ -219,92 +213,80 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
         error: { message: '공정 완료 후 3일이 지나 되돌릴 수 없습니다.', status: 400 },
       });
     }
-
-    const { rows: updateResult } = await db.execute({
-      sql: "UPDATE processes SET status = 'in_progress', completed_at = NULL, completed_by = NULL, completed_date = NULL WHERE id = ? AND status = 'completed' RETURNING id",
-      args: [id]
-    });
-    if (updateResult.length === 0) {
-      return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
-    }
-    if (process.step_name === '출고') {
-      // 활동로그 문구에 기대지 않는다. directShipping(영업 ship / 작업자 worker-ship)은
-      // '출고 공정 완료' 마커를 남기지 않아 그 경로로 출고한 건이 영영 되돌아가지 않았다.
-      // 출고 공정을 되돌리는데 주문이 shipped 라면 되돌리는 것이 맞다 — 주문 상태를 직접 조건으로 쓴다.
-      const completedDate = kstDateStr(process.completed_at);
-      const { rows: revertedOrders } = await db.execute({
-        sql: `UPDATE orders
-              SET status = 'in_production', ship_date = NULL, updated_at = CURRENT_TIMESTAMP
-              WHERE id = ? AND status = 'shipped' AND (? IS NULL OR ship_date = ?)
-              RETURNING id`,
-        args: [process.order_id, completedDate, completedDate],
-      });
-      if (revertedOrders.length > 0) {
-        // WHERE 절이 ship_date = completedDate 를 보장하므로 시트에 적힌 값도 이 날짜다.
-        revertedShipDate = completedDate;
-      }
-    }
-  } else if (process.status === 'in_progress') {
-    const { rows: updateResult } = await db.execute({
-      sql: "UPDATE processes SET status = 'waiting', started_at = NULL, started_by = NULL, completed_at = NULL WHERE id = ? AND status = 'in_progress' RETURNING id",
-      args: [id]
-    });
-    if (updateResult.length === 0) {
-      return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
-    }
+    completedDate = kstDateStr(process.completed_at);
   }
 
-  // Get order for activity feed (with null check)
-  const { rows: orderRows } = await db.execute({
-    sql: 'SELECT * FROM orders WHERE id = ?',
-    args: [process.order_id]
-  });
-  const order = orderRows[0];
+  const completedClaim = process.status === 'completed';
+  const mutation = {
+    sql: `WITH claimed_process AS (
+            UPDATE processes p
+               SET status = ${completedClaim ? "'in_progress'" : "'waiting'"},
+                   started_at = ${completedClaim ? 'p.started_at' : 'NULL'},
+                   started_by = ${completedClaim ? 'p.started_by' : 'NULL'},
+                   completed_at = NULL,
+                   completed_by = NULL,
+                   completed_date = NULL
+             WHERE p.id = ? AND p.status = ${completedClaim ? "'completed'" : "'in_progress'"}
+            RETURNING p.*
+          ),
+          reverted_order AS (
+            UPDATE orders o
+               SET status = 'in_production', ship_date = NULL, updated_at = CURRENT_TIMESTAMP
+              FROM claimed_process p
+             WHERE o.id = p.order_id
+               AND ?::BOOLEAN
+               AND o.status = 'shipped'
+               AND (?::TEXT IS NULL OR o.ship_date = ?::TEXT)
+            RETURNING o.*, ?::TEXT AS reverted_ship_date
+          ),
+          deleted_shipping_job AS (
+            DELETE FROM sheet_shipping_sync_jobs job
+             USING reverted_order o
+             WHERE job.order_id = o.id
+            RETURNING job.order_id
+          ),
+          revert_activity AS (
+            INSERT INTO activity_feed (order_id, action_type, description, actor)
+            SELECT p.order_id,
+                   '공정되돌리기',
+                   o.client_name || ' - ' || p.step_name || ' 공정이 되돌려졌습니다.',
+                   ?
+              FROM claimed_process p
+              JOIN orders o ON o.id = p.order_id
+            RETURNING id
+          )
+          SELECT row_to_json(p) AS process_row,
+                 COALESCE(
+                   (SELECT row_to_json(o) FROM reverted_order o LIMIT 1),
+                   row_to_json(current_order)
+                 ) AS order_row,
+                 (SELECT reverted_ship_date FROM reverted_order LIMIT 1) AS reverted_ship_date
+            FROM claimed_process p
+            LEFT JOIN orders current_order ON current_order.id = p.order_id`,
+    args: [
+      id,
+      completedClaim && process.step_name === '출고',
+      completedDate,
+      completedDate,
+      completedDate,
+      auditActor,
+    ],
+  };
+  const [mutationResult] = await db.atomicBatch([mutation]);
+  const committed = mutationResult.rows[0];
+  if (!committed) {
+    return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
+  }
 
-  if (order) {
+  if (committed.reverted_ship_date && committed.order_row) {
     try {
-      await db.execute({
-        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-        args: [
-          process.order_id,
-          '공정되돌리기',
-          `${order.client_name} - ${process.step_name} 공정이 되돌려졌습니다.`,
-          auditActor
-        ]
-      });
+      await clearShippedSheet(committed.order_row, committed.reverted_ship_date);
     } catch (e) {
-      console.error('활동 로그 기록 실패:', e);
+      console.warn('[revert] 시트 출고완료 표시 제거 실패(무시):', e?.message || e);
     }
   }
 
-  // 주문 상태를 실제로 되돌린 경우에만 출고 흔적을 정리한다. 정리는 전부 fail-open —
-  // 실패해도 되돌리기 자체는 성공으로 응답해야 한다.
-  if (revertedShipDate) {
-    // 대기 중인 잡을 지우지 않으면 크론이 나중에 미출고 주문에 '출고완료'를 기입한다.
-    try {
-      await db.execute({
-        sql: 'DELETE FROM sheet_shipping_sync_jobs WHERE order_id = ?',
-        args: [process.order_id],
-      });
-    } catch (e) {
-      console.warn('[revert] 출고 시트 동기화 잡 삭제 실패(무시):', e?.message || e);
-    }
-
-    if (order) {
-      try {
-        await clearShippedSheet(order, revertedShipDate);
-      } catch (e) {
-        console.warn('[revert] 시트 출고완료 표시 제거 실패(무시):', e?.message || e);
-      }
-    }
-  }
-
-  const { rows: updatedRows } = await db.execute({
-    sql: 'SELECT * FROM processes WHERE id = ?',
-    args: [id]
-  });
-
-  res.json(updatedRows[0]);
+  res.json(committed.process_row);
 }
 
 export default cors(handleRevertProcess);

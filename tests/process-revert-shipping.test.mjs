@@ -138,6 +138,55 @@ function makeDb({
       }
       throw new Error(`Unhandled SQL in revert fake DB: ${statement}`);
     },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      const { sql, args } = queries[0];
+      const statement = sql.replace(/\s+/g, ' ').trim();
+      state.statements.push(statement);
+      assert.match(statement, /^WITH claimed_process AS/i);
+      assert.match(statement, /deleted_shipping_job AS[\s\S]*FROM reverted_order/i);
+      if (!processClaimSucceeds) return [{ rows: [] }];
+
+      const shouldRevertOrder = Boolean(args[1])
+        && state.order.status === 'shipped'
+        && (args[2] == null || state.order.ship_date === args[2]);
+      if (shouldRevertOrder && deleteJobFails) {
+        state.jobDeletes += 1;
+        throw new Error('relation "sheet_shipping_sync_jobs" does not exist');
+      }
+
+      state.process.status = processStatus === 'completed' ? 'in_progress' : 'waiting';
+      if (processStatus === 'completed') {
+        state.process.completed_at = null;
+        state.process.completed_by = null;
+        state.process.completed_date = null;
+      } else {
+        state.process.started_at = null;
+        state.process.started_by = null;
+      }
+
+      let revertedShipDate = null;
+      if (shouldRevertOrder) {
+        revertedShipDate = args[4];
+        state.order.status = 'in_production';
+        state.order.ship_date = null;
+        state.jobDeletes += 1;
+        state.shippingJobs = state.shippingJobs.filter(
+          (job) => String(job.order_id) !== String(state.order.id),
+        );
+      }
+      state.activity.push({
+        order_id: state.order.id,
+        action_type: '공정되돌리기',
+        description: `${state.order.client_name} - ${state.process.step_name} 공정이 되돌려졌습니다.`,
+        actor: args[5],
+      });
+      return [{ rows: [{
+        process_row: { ...state.process },
+        order_row: { ...state.order },
+        reverted_ship_date: revertedShipDate,
+      }] }];
+    },
   };
 }
 
@@ -424,17 +473,19 @@ test('a synced sheet sync job is deleted too', async () => {
   assert.deepEqual(db.state.shippingJobs, []);
 });
 
-test('a job delete failure keeps the revert a 200 success', async () => {
+test('a job delete failure rolls the database revert back before any sheet clear', async () => {
   const db = makeDb({ deleteJobFails: true });
+  let clearCalls = 0;
 
-  const run = await runRevert(db);
-  if (!run) return;
+  await assert.rejects(
+    runRevert(db, { clearShippedSheet: async () => { clearCalls += 1; } }),
+    /sheet_shipping_sync_jobs/,
+  );
 
-  assert.equal(run.res.statusCode, 200);
-  assert.equal(run.res.body.id, PROCESS_ID);
-  assert.equal(db.state.process.status, 'in_progress');
-  assert.equal(db.state.order.status, 'in_production');
+  assert.equal(db.state.process.status, 'completed');
+  assert.equal(db.state.order.status, 'shipped');
   assert.equal(db.state.jobDeletes, 1);
+  assert.equal(clearCalls, 0);
 });
 
 test('a revert that changes no order status deletes no job at all', async () => {

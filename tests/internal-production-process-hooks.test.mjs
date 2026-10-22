@@ -59,6 +59,19 @@ function makeCompletionDb({ stepName = 'V-커팅작업', claimSucceeds = true } 
       if (statement.startsWith('INSERT INTO activity_feed')) return { rows: [] };
       throw new Error(`Unexpected completion SQL: ${statement}`);
     },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      assert.match(queries[0].sql, /^WITH claimed_process AS/i);
+      if (!claimSucceeds) return [{ rows: [] }];
+      state.process.status = 'completed';
+      return [{ rows: [{
+        process_row: { ...state.process },
+        order_row: { ...state.order },
+        completed_intermediate_processes: [],
+        started_next_process_id: null,
+        shipped_order: null,
+      }] }];
+    },
   };
 }
 
@@ -134,6 +147,24 @@ function makeForwardCompletionDb() {
       if (statement === 'SELECT * FROM orders WHERE id = ?') return { rows: [{ ...orderRow }] };
       if (statement.startsWith('INSERT INTO activity_feed')) return { rows: [] };
       throw new Error(`Unexpected forward completion SQL: ${statement}`);
+    },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      assert.match(queries[0].sql, /completed_intermediates AS/i);
+      current.status = 'completed';
+      forward[0].status = 'completed';
+      forward[1].status = 'in_progress';
+      return [{ rows: [{
+        process_row: { ...current },
+        order_row: { ...orderRow },
+        completed_intermediate_processes: [{
+          id: 74,
+          step_name: 'V-커팅작업',
+          was_waiting_before_complete: true,
+        }],
+        started_next_process_id: 75,
+        shipped_order: null,
+      }] }];
     },
   };
 }

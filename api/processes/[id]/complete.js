@@ -7,13 +7,6 @@ import { kstTodayStr } from '../../_lib/notify.js';
 import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchema.js';
 import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
 
-// 유니크 인덱스가 경쟁을 막아준 경우(다른 요청이 먼저 '출고' 행을 만든 경우)를 식별한다.
-function isUniqueViolation(error) {
-  if (!error) return false;
-  if (error.code === '23505') return true;
-  return /duplicate key value|unique constraint|unique violation/i.test(String(error.message || ''));
-}
-
 async function defaultNotify(db, order, milestone) {
   const { maybeNotify } = await import('../../_lib/notify.js');
   await maybeNotify(db, order, milestone);
@@ -43,6 +36,8 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   const db = dependencies.db || getDb();
   const notify = dependencies.notify || defaultNotify;
   const notifyInternalCompletion = dependencies.notifyInternalCompletion || defaultInternalCompletionNotify;
+  const ensureShippingIndex = dependencies.ensureShippingProcessUniqueIndex || ensureShippingProcessUniqueIndex;
+  const ensureShippingSchema = dependencies.ensureShippingSheetSyncSchema || ensureShippingSheetSyncSchema;
   const requestBody = req.body || {};
   const { completed_date, actor, start_next_step, assigned_worker } = requestBody;
 
@@ -72,38 +67,16 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
     return res.status(400).json({ error: { message: '선택한 다음 공정이 올바르지 않습니다.', status: 400 } });
   }
   const shouldEnsureShippingStep = process.step_name === '포장' || start_next_step === '출고';
-  if (shouldEnsureShippingStep) {
-    // NOT EXISTS 만으로는 동시 완료/더블클릭 경쟁을 막지 못한다(둘 다 통과 → '출고' 2행).
-    // INSERT 직전에 부분 유니크 인덱스를 보장해 DB 가 막아주게 한다.
-    // 인덱스 생성 실패는 내부에서 삼켜지므로 여기서 본 동작이 멈추지 않는다.
-    await ensureShippingProcessUniqueIndex(db);
-    try {
-      await db.execute({
-        sql: `INSERT INTO processes (order_id, step_name, status)
-              SELECT ?, '출고', 'waiting'
-              WHERE NOT EXISTS (
-                SELECT 1 FROM processes WHERE order_id = ? AND step_name = '출고'
-              )`,
-        args: [process.order_id, process.order_id],
-      });
-    } catch (error) {
-      // 유니크 위반 = 다른 요청이 방금 '출고' 행을 만들었다는 뜻.
-      // 이미 존재하므로 500 으로 터뜨리지 말고 정상 흐름으로 계속한다.
-      if (!isUniqueViolation(error)) throw error;
-    }
-  }
   const requiredForwardSteps = start_next_step ? STEPS.slice(currentStepIndex + 1, targetStepIndex + 1) : [];
-  let forwardProcessRows = [];
   if (requiredForwardSteps.length > 0) {
     const placeholders = requiredForwardSteps.map(() => '?').join(', ');
     const { rows } = await db.execute({
       sql: `SELECT id, step_name, status FROM processes WHERE order_id = ? AND step_name IN (${placeholders})`,
       args: [process.order_id, ...requiredForwardSteps],
     });
-    forwardProcessRows = rows;
     const existingSteps = new Set(rows.map((row) => row.step_name));
     const missingStep = requiredForwardSteps.find((step) => !existingSteps.has(step));
-    if (missingStep) {
+    if (missingStep && !(missingStep === '출고' && shouldEnsureShippingStep)) {
       return res.status(400).json({ error: { message: `${missingStep} 공정 전환 대상을 찾지 못했습니다.`, status: 400 } });
     }
   }
@@ -125,43 +98,210 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
     }
   }
 
+  if (shouldEnsureShippingStep) {
+    await ensureShippingIndex(db);
+  }
   if (process.step_name === '출고') {
-    await ensureShippingSheetSyncSchema(db);
+    await ensureShippingSchema(db);
   }
 
   const now = new Date().toISOString();
   const completeWorker = actor || assigned_worker || workerAction.actor;
+  const nextWorker = assigned_worker || completeWorker;
+  const intermediateSteps = start_next_step ? STEPS.slice(currentStepIndex + 1, targetStepIndex) : [];
+  const mutationArgs = [now, completed_date || null, completeWorker, id];
+  const mutationCtes = [
+    `claimed_process AS (
+       UPDATE processes
+          SET status = 'completed', completed_at = ?, completed_date = ?, completed_by = ?
+        WHERE id = ? AND status = 'in_progress'
+       RETURNING *
+     )`,
+  ];
 
-  // Atomic update: only complete if still 'in_progress' (prevents double-click race condition)
-  const { rows: updateResult } = await db.execute({
-    sql: `UPDATE processes SET status = 'completed', completed_at = ?, completed_date = ?, completed_by = ? WHERE id = ? AND status = 'in_progress' RETURNING id`,
-    args: [now, completed_date || null, completeWorker, id]
-  });
-  if (updateResult.length === 0) {
+  if (shouldEnsureShippingStep) {
+    if (start_next_step === '출고') {
+      mutationCtes.push(`ensured_shipping AS (
+        INSERT INTO processes (order_id, step_name, status, started_at, started_by)
+        SELECT cp.order_id, '출고', 'in_progress', ?, ?
+          FROM claimed_process cp
+         WHERE NOT EXISTS (
+           SELECT 1 FROM processes p WHERE p.order_id = cp.order_id AND p.step_name = '출고'
+         )
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      )`);
+      mutationArgs.push(now, nextWorker);
+    } else {
+      mutationCtes.push(`ensured_shipping AS (
+        INSERT INTO processes (order_id, step_name, status)
+        SELECT cp.order_id, '출고', 'waiting'
+          FROM claimed_process cp
+         WHERE NOT EXISTS (
+           SELECT 1 FROM processes p WHERE p.order_id = cp.order_id AND p.step_name = '출고'
+         )
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      )`);
+    }
+  } else {
+    mutationCtes.push('ensured_shipping AS (SELECT NULL::INTEGER AS id WHERE FALSE)');
+  }
+
+  const intermediateCondition = intermediateSteps.length > 0
+    ? `p.step_name IN (${intermediateSteps.map(() => '?').join(', ')})`
+    : 'FALSE';
+  mutationArgs.push(...intermediateSteps);
+  mutationCtes.push(
+    `intermediate_candidates AS (
+       SELECT p.id, p.step_name, p.status
+         FROM processes p
+         JOIN claimed_process cp ON cp.order_id = p.order_id
+        WHERE ${intermediateCondition}
+          AND p.status IN ('waiting', 'in_progress')
+     )`,
+    `completed_intermediates AS (
+       UPDATE processes p
+          SET status = 'completed',
+              started_at = COALESCE(p.started_at, ?),
+              started_by = COALESCE(p.started_by, ?),
+              completed_at = ?,
+              completed_date = ?,
+              completed_by = ?
+         FROM intermediate_candidates candidate
+        WHERE p.id = candidate.id
+       RETURNING p.id, p.step_name, candidate.status = 'waiting' AS was_waiting_before_complete
+     )`,
+  );
+  mutationArgs.push(now, nextWorker, now, completed_date || null, completeWorker);
+  mutationCtes.push(
+    `started_existing_next AS (
+       UPDATE processes p
+          SET status = 'in_progress', started_at = ?, started_by = ?
+         FROM claimed_process cp
+        WHERE p.order_id = cp.order_id
+          AND p.step_name = ?
+          AND p.status = 'waiting'
+       RETURNING p.id
+     )`,
+    `started_next AS (
+       SELECT id FROM started_existing_next
+       UNION ALL
+       SELECT id FROM ensured_shipping WHERE ? = '출고'
+     )`,
+  );
+  mutationArgs.push(now, nextWorker, start_next_step || null, start_next_step || null);
+
+  const isShippingCompletion = process.step_name === '출고';
+  if (isShippingCompletion) {
+    const today = kstTodayStr();
+    mutationCtes.push(
+      `shipped_order AS (
+         UPDATE orders o
+            SET status = 'shipped', ship_date = ?, updated_at = CURRENT_TIMESTAMP
+           FROM claimed_process cp
+          WHERE o.id = cp.order_id
+            AND cp.step_name = '출고'
+            AND o.status != 'shipped'
+         RETURNING o.*
+       )`,
+      `queued_sheet_sync AS (
+         INSERT INTO sheet_shipping_sync_jobs (order_id, ship_date, status)
+         SELECT id, ?, 'pending' FROM shipped_order
+         ON CONFLICT (order_id) DO UPDATE
+            SET ship_date = EXCLUDED.ship_date,
+                status = 'pending',
+                last_error = NULL,
+                last_attempt_at = NULL,
+                synced_at = NULL,
+                sheet_row = NULL,
+                updated_at = NOW()
+          WHERE sheet_shipping_sync_jobs.status != 'synced'
+             OR sheet_shipping_sync_jobs.ship_date IS DISTINCT FROM EXCLUDED.ship_date
+         RETURNING order_id
+       )`,
+    );
+    mutationArgs.push(today, today);
+  }
+
+  mutationCtes.push(`process_activity AS (
+    INSERT INTO activity_feed (order_id, action_type, description, actor)
+    SELECT cp.order_id,
+           '공정완료',
+           o.client_name || ' - ' || cp.step_name || ' 공정이 완료되었습니다. (담당: ' || ? || ')',
+           ?
+      FROM claimed_process cp
+      JOIN orders o ON o.id = cp.order_id
+    RETURNING id
+  )`);
+  mutationArgs.push(completeWorker, completeWorker);
+  mutationCtes.push(`start_activity AS (
+    INSERT INTO activity_feed (order_id, action_type, description, actor)
+    SELECT cp.order_id,
+           '공정시작',
+           o.client_name || ' - ' || ? || ' 공정이 시작되었습니다. (담당: ' || ? || ')',
+           ?
+      FROM started_next sn
+      CROSS JOIN claimed_process cp
+      JOIN orders o ON o.id = cp.order_id
+    RETURNING id
+  )`);
+  mutationArgs.push(start_next_step || null, nextWorker, nextWorker);
+
+  if (isShippingCompletion) {
+    mutationCtes.push(`shipping_activity AS (
+      INSERT INTO activity_feed (order_id, action_type, description, actor)
+      SELECT so.id,
+             '출고완료',
+             so.client_name || ' 주문이 출고 처리되었습니다. (출고 공정 완료)',
+             ?
+        FROM shipped_order so
+      RETURNING id
+    )`);
+    mutationArgs.push(completeWorker);
+  }
+
+  const shippedOrderSelect = isShippingCompletion
+    ? '(SELECT row_to_json(so) FROM shipped_order so LIMIT 1)'
+    : 'NULL::json';
+  const orderRowSelect = isShippingCompletion
+    ? `COALESCE(
+         (SELECT row_to_json(so) FROM shipped_order so LIMIT 1),
+         row_to_json(o)
+       )`
+    : 'row_to_json(o)';
+  const mutation = {
+    sql: `WITH ${mutationCtes.join(',\n')}
+          SELECT cp.id AS claimed_process_id,
+                 row_to_json(cp) AS process_row,
+                 ${orderRowSelect} AS order_row,
+                 COALESCE((
+                   SELECT json_agg(json_build_object(
+                     'id', ci.id,
+                     'step_name', ci.step_name,
+                     'was_waiting_before_complete', ci.was_waiting_before_complete
+                   ) ORDER BY ci.id)
+                     FROM completed_intermediates ci
+                 ), '[]'::json) AS completed_intermediate_processes,
+                 (SELECT id FROM started_next LIMIT 1) AS started_next_process_id,
+                 ${shippedOrderSelect} AS shipped_order
+            FROM claimed_process cp
+            LEFT JOIN orders o ON o.id = cp.order_id`,
+    args: mutationArgs,
+  };
+  const [mutationResult] = await db.atomicBatch([mutation]);
+  const committed = mutationResult.rows[0];
+  if (!committed) {
     return res.status(409).json({ error: { message: '이미 다른 작업자가 처리한 공정입니다.', status: 409 } });
   }
 
-  // Get order for activity feed
-  const { rows: orderRows } = await db.execute({
-    sql: 'SELECT * FROM orders WHERE id = ?',
-    args: [process.order_id]
-  });
-  const order = orderRows[0];
-  if (order) {
-    try {
-      await db.execute({
-        sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-        args: [
-          process.order_id,
-          '공정완료',
-          `${order.client_name} - ${process.step_name} 공정이 완료되었습니다. (담당: ${completeWorker})`,
-          completeWorker
-        ]
-      });
-    } catch (e) {
-      console.error('활동 로그 기록 실패:', e);
-    }
-  }
+  const order = committed.order_row;
+  const completedIntermediateRows = committed.completed_intermediate_processes || [];
+  const completedIntermediateProcesses = completedIntermediateRows.map((row) => ({
+    id: row.id,
+    was_waiting_before_complete: row.was_waiting_before_complete,
+  }));
+  const completedIntermediateStepNames = completedIntermediateRows.map((row) => row.step_name);
 
   if (order && process.step_name === 'V-커팅작업') {
     try {
@@ -174,8 +314,17 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
       console.error('[complete] V-커팅 자재 알림 발송 실패(무시):', e?.message || e);
     }
   }
-
-  // 알림 훅: 포장 완료 → packed (실패해도 본 응답에 영향 없음)
+  if (order && completedIntermediateStepNames.includes('V-커팅작업')) {
+    try {
+      await notifyInternalCompletion(db, {
+        order,
+        completedStepNames: ['V-커팅작업'],
+        completedBy: completeWorker,
+      });
+    } catch (e) {
+      console.error('[complete] V-커팅 자재 알림 발송 실패(무시):', e?.message || e);
+    }
+  }
   if (order && process.step_name === '포장') {
     try {
       await notify(db, order, 'packed');
@@ -183,139 +332,17 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
       console.error('[complete] packed 알림 발송 실패(무시):', e?.message || e);
     }
   }
-
-  let startedNextProcessId = null;
-  let completedIntermediateProcesses = [];
-  let completedIntermediateStepNames = [];
-
-  if (start_next_step) {
-    const nextWorker = assigned_worker || completeWorker;
-    const intermediateSteps = STEPS.slice(currentStepIndex + 1, targetStepIndex);
-    const processesToComplete = forwardProcessRows
-      .filter((row) => intermediateSteps.includes(row.step_name) && (row.status === 'waiting' || row.status === 'in_progress'));
-    completedIntermediateStepNames = processesToComplete.map(row => row.step_name);
-    completedIntermediateProcesses = processesToComplete
-      .map((row) => ({
-        id: row.id,
-        was_waiting_before_complete: row.status === 'waiting',
-      }));
-    if (intermediateSteps.length > 0) {
-      const placeholders = intermediateSteps.map(() => '?').join(', ');
-      await db.execute({
-        sql: `UPDATE processes
-              SET status = 'completed',
-                  started_at = COALESCE(started_at, ?),
-                  started_by = COALESCE(started_by, ?),
-                  completed_at = ?,
-                  completed_date = ?,
-                  completed_by = ?
-              WHERE order_id = ?
-                AND step_name IN (${placeholders})
-                AND status IN ('waiting', 'in_progress')`,
-        args: [now, nextWorker, now, completed_date || null, completeWorker, process.order_id, ...intermediateSteps],
-      });
-
-      const completedVcut = completedIntermediateStepNames.includes('V-커팅작업');
-      if (order && completedVcut) {
-        try {
-          await notifyInternalCompletion(db, {
-            order,
-            completedStepNames: ['V-커팅작업'],
-            completedBy: completeWorker,
-          });
-        } catch (e) {
-          console.error('[complete] V-커팅 자재 알림 발송 실패(무시):', e?.message || e);
-        }
-      }
-    }
-
-    const { rows: startNextRows } = await db.execute({
-      sql: `UPDATE processes
-            SET status = 'in_progress', started_at = ?, started_by = ?
-            WHERE order_id = ? AND step_name = ? AND status = 'waiting'
-            RETURNING id`,
-      args: [now, nextWorker, process.order_id, start_next_step],
-    });
-    if (startNextRows.length > 0) {
-      startedNextProcessId = startNextRows[0].id;
-      if (order) {
-        await db.execute({
-          sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-          args: [
-            process.order_id,
-            '공정시작',
-            `${order.client_name} - ${start_next_step} 공정이 시작되었습니다. (담당: ${nextWorker})`,
-            nextWorker,
-          ],
-        }).catch((e) => console.error('다음 공정 시작 로그 기록 실패:', e));
-      }
+  if (committed.shipped_order) {
+    try {
+      await notify(db, committed.shipped_order, 'shipped');
+    } catch (e) {
+      console.error('[complete] shipped 알림 발송 실패(무시):', e?.message || e);
     }
   }
-
-  if (process.step_name === '출고' && order) {
-    const today = kstTodayStr();
-    const { rows: shippedRows } = await db.execute({
-      sql: `WITH claimed_order AS (
-              UPDATE orders
-                 SET status = 'shipped', ship_date = ?, updated_at = CURRENT_TIMESTAMP
-               WHERE id = ? AND status != 'shipped'
-               RETURNING *
-            ),
-            queued_sheet_sync AS (
-              INSERT INTO sheet_shipping_sync_jobs (order_id, ship_date, status)
-              SELECT id, ?, 'pending'
-                FROM claimed_order
-              ON CONFLICT (order_id) DO UPDATE
-                 SET ship_date = EXCLUDED.ship_date,
-                     status = 'pending',
-                     last_error = NULL,
-                     last_attempt_at = NULL,
-                     synced_at = NULL,
-                     sheet_row = NULL,
-                     updated_at = NOW()
-               WHERE sheet_shipping_sync_jobs.status != 'synced'
-                  OR sheet_shipping_sync_jobs.ship_date IS DISTINCT FROM EXCLUDED.ship_date
-              RETURNING order_id
-            )
-            SELECT * FROM claimed_order`,
-      args: [today, process.order_id, today],
-    });
-    if (shippedRows.length > 0) {
-      const shippedOrder = shippedRows[0];
-      try {
-        await db.execute({
-          sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-          args: [
-            process.order_id,
-            '출고완료',
-            `${order.client_name} 주문이 출고 처리되었습니다. (출고 공정 완료)`,
-            completeWorker,
-          ],
-        });
-      } catch (e) {
-        console.error('출고 로그 기록 실패:', e);
-      }
-
-      // 알림 훅: 출고 공정 완료로 shipped 전환 → shipped (실패해도 본 응답에 영향 없음)
-      try {
-        await notify(db, shippedOrder, 'shipped');
-      } catch (e) {
-        console.error('[complete] shipped 알림 발송 실패(무시):', e?.message || e);
-      }
-
-      // 시트 기입은 이 요청 안에서 기다리지 않는다(directShipping 과 같은 이유).
-      // 잡은 위 CTE 에서 이미 큐에 들어갔으므로 sheet-sync 크론이 처리한다.
-    }
-  }
-
-  const { rows: updatedRows } = await db.execute({
-    sql: 'SELECT * FROM processes WHERE id = ?',
-    args: [id]
-  });
 
   res.json({
-    ...updatedRows[0],
-    started_next_process_id: startedNextProcessId,
+    ...committed.process_row,
+    started_next_process_id: committed.started_next_process_id,
     completed_intermediate_processes: completedIntermediateProcesses,
   });
 }

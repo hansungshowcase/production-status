@@ -440,7 +440,9 @@ test('출고 요청 경로는 시트를 아예 만지지 않고 잡만 적재한
     // 그 대신 잡 적재는 주문 UPDATE 와 같은 CTE 안에 그대로 남아 있어야 한다.
     assert.match(
       src,
-      /WITH claimed_order AS[\s\S]*?INSERT INTO sheet_shipping_sync_jobs \(order_id, ship_date, status\)/,
+      name === 'complete'
+        ? /shipped_order AS[\s\S]*?UPDATE orders[\s\S]*?FROM claimed_process[\s\S]*?INSERT INTO sheet_shipping_sync_jobs \(order_id, ship_date, status\)[\s\S]*?FROM shipped_order/
+        : /WITH claimed_order AS[\s\S]*?INSERT INTO sheet_shipping_sync_jobs \(order_id, ship_date, status\)/,
       `${name} 은 주문 UPDATE 와 같은 CTE 안에서 시트 잡을 적재해야 한다`,
     );
   }

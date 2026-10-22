@@ -93,6 +93,48 @@ function makeDb({
       }
       throw new Error(`Unhandled SQL in process fake DB: ${statement}`);
     },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      const { sql, args } = queries[0];
+      const statement = sql.replace(/\s+/g, ' ').trim();
+      state.statements.push(statement);
+      assert.match(statement, /^WITH claimed_process AS/i);
+      if (!processClaimSucceeds || state.process.status !== 'in_progress') return [{ rows: [] }];
+
+      state.process.status = 'completed';
+      state.process.completed_at = args[0];
+      state.process.completed_date = args[1];
+      state.process.completed_by = args[2];
+      state.activity.push({ action_type: '공정완료' });
+
+      let shippedOrder = null;
+      if (stepName === '출고') {
+        assert.equal(state.schemaInstalled, true);
+        assert.match(statement, /INSERT INTO sheet_shipping_sync_jobs/i);
+        assert.match(statement, /WHERE sheet_shipping_sync_jobs\.status != 'synced'/i);
+        assert.match(statement, /sheet_shipping_sync_jobs\.ship_date IS DISTINCT FROM EXCLUDED\.ship_date/i);
+        if (shippingClaimSucceeds && state.order.status !== 'shipped') {
+          const shipDate = args.find((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value)));
+          state.order.status = 'shipped';
+          state.order.ship_date = shipDate;
+          shippedOrder = { ...state.order };
+          state.shippingJobs.push({
+            order_id: state.order.id,
+            ship_date: shipDate,
+            status: 'pending',
+            attempts: 0,
+          });
+          state.activity.push({ action_type: '출고완료' });
+        }
+      }
+      return [{ rows: [{
+        process_row: { ...state.process },
+        order_row: { ...state.order },
+        completed_intermediate_processes: [],
+        started_next_process_id: null,
+        shipped_order: shippedOrder,
+      }] }];
+    },
   };
 }
 
@@ -186,9 +228,8 @@ test('final shipping completion atomically queues the KST date without any in-re
   assert.equal(notificationCount, 1);
   assert.deepEqual(db.state.activity.map(({ action_type }) => action_type), ['공정완료', '출고완료']);
   const schemaIndex = db.state.statements.findIndex((statement) => statement.startsWith('CREATE TABLE IF NOT EXISTS sheet_shipping_sync_jobs'));
-  const processClaimIndex = db.state.statements.findIndex((statement) => statement.startsWith("UPDATE processes SET status = 'completed'"));
-  const shippingCteIndex = db.state.statements.findIndex((statement) => statement.startsWith('WITH claimed_order AS'));
-  assert.ok(schemaIndex >= 0 && schemaIndex < processClaimIndex && processClaimIndex < shippingCteIndex);
+  const guardedCteIndex = db.state.statements.findIndex((statement) => statement.startsWith('WITH claimed_process AS'));
+  assert.ok(schemaIndex >= 0 && schemaIndex < guardedCteIndex);
 });
 
 test('a non-shipping process completion creates no shipping job and makes no sync attempt', async (t) => {

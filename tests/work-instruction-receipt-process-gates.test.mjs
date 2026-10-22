@@ -213,6 +213,7 @@ function makeDrawingRevertDb() {
       assert.match(queries[0].sql, /orders[\s\S]*FOR UPDATE/i);
       assert.match(queries[2].sql, /work_instruction_revision\s*=\s*work_instruction_revision\s*\+\s*1/i);
       assert.match(queries[2].sql, /work_instruction_received_at\s*=\s*NULL/i);
+      assert.match(queries[2].sql, /revert_activity AS[\s\S]*INSERT INTO activity_feed/i);
       const processSnapshot = state.processes.map(row => ({ ...row }));
       state.process.status = 'in_progress';
       state.process.completed_at = null;
@@ -221,6 +222,7 @@ function makeDrawingRevertDb() {
       state.order.work_instruction_received_revision = null;
       state.order.work_instruction_received_at = null;
       state.order.work_instruction_received_by = null;
+      state.feed.push({ order_id: ORDER_ID, action_type: '공정되돌리기', actor: '김보수 팀장' });
       return [
         { rows: [{ ...state.order, work_instruction_revision: 5 }] },
         { rows: processSnapshot },
@@ -283,6 +285,16 @@ test('레이저 시작만 되돌리면 유효 수령 정보와 개정은 그대�
       if (statement === 'SELECT * FROM orders WHERE id = ?') return { rows: [{ ...order }] };
       if (statement.startsWith('INSERT INTO activity_feed')) return { rows: [] };
       throw new Error(`Unexpected laser revert SQL: ${statement}`);
+    },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      assert.match(queries[0].sql, /^WITH claimed_process AS/i);
+      process.status = 'waiting';
+      return [{ rows: [{
+        process_row: { ...process },
+        order_row: { ...order },
+        reverted_ship_date: null,
+      }] }];
     },
   };
   const res = response();

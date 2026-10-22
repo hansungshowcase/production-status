@@ -11,7 +11,7 @@ import { handleCompleteProcess } from '../api/processes/[id]/complete.js';
 //   4) 유니크 위반 → 500 아님
 // node:test 는 한 파일의 top-level 테스트를 순차 실행하므로 순서가 보장된다.
 
-const SHIPPING_INSERT_PREFIX = "INSERT INTO processes (order_id, step_name, status) SELECT ?, '출고'";
+const SHIPPING_INSERT_PREFIX = 'WITH claimed_process AS';
 const INDEX_PREFIX = 'CREATE UNIQUE INDEX IF NOT EXISTS idx_processes_unique_shipping';
 
 function makeDb({ indexFails = false, shippingInsertError = null } = {}) {
@@ -71,6 +71,24 @@ function makeDb({ indexFails = false, shippingInsertError = null } = {}) {
       }
 
       throw new Error(`Unhandled SQL in shipping index fake DB: ${statement}`);
+    },
+    async atomicBatch(queries) {
+      assert.equal(queries.length, 1);
+      const statement = queries[0].sql.replace(/\s+/g, ' ').trim();
+      state.statements.push(statement);
+      assert.match(statement, /ensured_shipping AS[\s\S]*INSERT INTO processes/i);
+      if (shippingInsertError && shippingInsertError.code !== '23505') throw shippingInsertError;
+      if (state.process.status !== 'in_progress') return [{ rows: [] }];
+      state.process.status = 'completed';
+      if (shippingInsertError?.code !== '23505') state.shippingRowsCreated += 1;
+      state.activity.push({ order_id: state.order.id, action_type: '공정완료' });
+      return [{ rows: [{
+        process_row: { ...state.process },
+        order_row: { ...state.order },
+        completed_intermediate_processes: [],
+        started_next_process_id: null,
+        shipped_order: null,
+      }] }];
     },
   };
 }
