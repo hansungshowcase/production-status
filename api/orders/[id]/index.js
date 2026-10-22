@@ -212,13 +212,16 @@ export async function handleUpdate(id, req, res, dependencies = {}) {
   return res.json(updated);
 }
 
-async function handleDelete(id, req, res) {
-  const auth = requireAuth(req, res, { roles: ['sales'] });
+export async function handleDelete(id, req, res, dependencies = {}) {
+  const checkAuth = dependencies.requireAuth || requireAuth;
+  const auth = checkAuth(req, res, { roles: ['sales'] });
   if (!auth) return;
   if (!id || isNaN(Number(id))) {
     return res.status(400).json({ error: { message: '유효한 주문 ID가 필요합니다.', status: 400 } });
   }
-  const db = getDb();
+  const db = dependencies.db || getDb();
+  const deleteBlob = dependencies.deleteBlob || del;
+  const deleteSheetOrder = dependencies.deleteOrderFromSheet || deleteOrderFromSheet;
   const body = req.body || {};
 
   if (!body.actor) {
@@ -229,52 +232,60 @@ async function handleDelete(id, req, res) {
     return res.status(403).json({ error: { message: '영업관리 화면에서만 삭제할 수 있습니다.', status: 403 } });
   }
 
-  const orderResult = await db.execute({ sql: 'SELECT * FROM orders WHERE id = ?', args: [id] });
+  const actor = resolveActor(req);
+  const [orderResult, photosResult, deleteResult] = await db.atomicBatch([
+    {
+      sql: 'SELECT * FROM orders WHERE id = ? FOR UPDATE',
+      args: [id],
+    },
+    {
+      sql: 'SELECT file_path FROM photos WHERE order_id = ?',
+      args: [id],
+    },
+    {
+      sql: `WITH delete_audit AS (
+              INSERT INTO activity_feed (order_id, action_type, description, actor)
+              SELECT NULL,
+                     '주문삭제',
+                     o.client_name || ' 주문(ID: ' || o.id || ')이 삭제되었습니다.',
+                     ?
+                FROM orders o
+               WHERE o.id = ?
+              RETURNING id
+            ),
+            deleted_order AS (
+              DELETE FROM orders
+               WHERE id = ?
+                 AND EXISTS (SELECT 1 FROM delete_audit)
+              RETURNING id
+            )
+            SELECT id FROM deleted_order`,
+      args: [actor, id, id],
+    },
+  ]);
   const order = orderResult.rows[0];
 
   if (!order) {
     return res.status(404).json({ error: { message: '주문을 찾을 수 없습니다.', status: 404 } });
   }
 
-  // Log with order_id before deleting, then nullify to survive cascade
-  await db.execute({
-    sql: `INSERT INTO activity_feed (order_id, action_type, description, actor) VALUES (?, ?, ?, ?)`,
-    args: [
-      order.id,
-      '주문삭제',
-      `${order.client_name} 주문(ID: ${order.id})이 삭제되었습니다.`,
-      resolveActor(req),
-    ],
-  });
-
-  // Detach delete log from order so CASCADE doesn't remove it
-  await db.execute({
-    sql: `UPDATE activity_feed SET order_id = NULL WHERE order_id = ? AND action_type = '주문삭제'`,
-    args: [order.id],
-  });
-
-  // Blob orphan 정리: order 삭제 전 photos 의 file_path 들을 모아서 del. CASCADE는 DB row만 정리.
-  try {
-    const photosResult = await db.execute({
-      sql: 'SELECT file_path FROM photos WHERE order_id = ?',
-      args: [order.id],
-    });
-    for (const row of photosResult.rows) {
-      if (!row.file_path) continue;
-      try {
-        await del(row.file_path);
-      } catch (err) {
-        console.warn('[orders DELETE] blob 삭제 실패, 계속 진행:', err?.message || err);
-      }
-    }
-  } catch (err) {
-    console.warn('[orders DELETE] photos file_path 조회 실패, 계속 진행:', err?.message || err);
+  if (!deleteResult.rows[0]) {
+    throw new Error('주문 삭제가 원자 배치 안에서 완료되지 않았습니다.');
   }
 
-  await db.execute({ sql: 'DELETE FROM orders WHERE id = ?', args: [id] });
+  // DB 삭제가 커밋된 뒤에만 외부 저장소를 정리한다. 외부 실패는 orphan 을 남길 수 있지만
+  // 이미 성공한 DB 삭제와 감사 기록은 되돌릴 수 없으므로 기존처럼 경고 후 성공을 유지한다.
+  for (const row of photosResult.rows) {
+    if (!row.file_path) continue;
+    try {
+      await deleteBlob(row.file_path);
+    } catch (err) {
+      console.warn('[orders DELETE] blob 삭제 실패, 계속 진행:', err?.message || err);
+    }
+  }
 
   try {
-    await deleteOrderFromSheet(order);
+    await deleteSheetOrder(order);
   } catch (sheetErr) {
     console.warn('Google Sheets order delete skipped:', sheetErr?.message || sheetErr);
   }
