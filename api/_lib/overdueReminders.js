@@ -4,6 +4,7 @@ import {
   assemblyWorkerPhone,
   canonicalAssemblyWorkerName,
 } from './internalProductionAlerts.js';
+import { buildProductionAlertMessage } from './productionAlertMessage.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -62,12 +63,12 @@ export const OVERDUE_REMINDER_DEFINITIONS = Object.freeze({
   }),
   PACKING: Object.freeze({
     kind: 'internal_overdue_packing',
-    title: '납기 지연 포장 미완료',
-    action: '포장 작업 확인 후 완료 처리해 주세요.',
+    title: '포장 완료 요청',
+    action: '포장 완료 처리해 주세요.',
     overview: Object.freeze({
-      name: '납기 지연 포장 미완료 알림',
-      trigger: '생산중 · 납기일 경과 · 포장 미완료',
-      target: `해당 주문의 영업담당자 (등록 라우팅: ${SALES_TARGET}) · 해당 주문 실제 조립 착수자 · 고정 수신: ${PROCESS_TARGET}`,
+      name: '포장 완료 요청 알림',
+      trigger: '생산중 · 납기 3일 전부터 모든 납기 경과일 · 포장 미완료',
+      target: namedTarget(INTERNAL_ALERT_CONTACTS.packing.name, INTERNAL_ALERT_CONTACTS.packing.phone),
       timing: '매일 08:40 KST',
     }),
   }),
@@ -242,11 +243,11 @@ export function collectOverdueReminderGroups({
       continue;
     }
     const overdueDays = todayNumber - dayNumber(dueDay);
-    if (overdueDays < 1) continue;
     const orderInfo = {
       orderId,
       clientName: String(order.client_name || '').trim() || `주문 ${orderId}`,
       dueDay,
+      daysLeft: -overdueDays,
       overdueDays,
     };
     const orderProcesses = processesByOrder.get(orderId) || [];
@@ -259,27 +260,29 @@ export function collectOverdueReminderGroups({
       else addUnknown(kind, orderId, 'salesperson', order.sales_person);
     }
 
-    const fixedRecipients = [internalContacts.packing, internalContacts.welding, internalContacts.assembly]
-      .map(contact => contactByExactName(contact?.name, internalContacts))
-      .filter(Boolean);
-    const assemblyRows = orderProcesses.filter(process => process.step_name === '조립작업');
-    const actualAssembly = [];
-    for (const process of assemblyRows) {
-      const recipient = assemblyRecipient(process.started_by, internalContacts);
-      if (recipient) actualAssembly.push(recipient);
-    }
-
-    for (const [kind, stepName] of [
-      [OVERDUE_REMINDER_KINDS.EQUIPMENT, '설비작업'],
-      [OVERDUE_REMINDER_KINDS.PACKING, '포장'],
-    ]) {
-      if (completed(orderProcesses, stepName)) continue;
+    if (overdueDays >= 1 && !completed(orderProcesses, '설비작업')) {
+      const kind = OVERDUE_REMINDER_KINDS.EQUIPMENT;
       categoryCounts[kind].eligibleOrders += 1;
       if (sales) addRecipient(kind, sales, orderInfo);
       else addUnknown(kind, orderId, 'salesperson', order.sales_person);
+      const assemblyRows = orderProcesses.filter(process => process.step_name === '조립작업');
+      const actualAssembly = [];
+      for (const process of assemblyRows) {
+        const recipient = assemblyRecipient(process.started_by, internalContacts);
+        if (recipient) actualAssembly.push(recipient);
+      }
       if (actualAssembly.length === 0) addUnknown(kind, orderId, 'assembly', null);
       for (const recipient of actualAssembly) addRecipient(kind, recipient, orderInfo);
+      const fixedRecipients = [internalContacts.packing, internalContacts.welding, internalContacts.assembly]
+        .map(contact => contactByExactName(contact?.name, internalContacts))
+        .filter(Boolean);
       for (const recipient of fixedRecipients) addRecipient(kind, recipient, orderInfo);
+    }
+
+    if (overdueDays >= -3 && !completed(orderProcesses, '포장')) {
+      const kind = OVERDUE_REMINDER_KINDS.PACKING;
+      categoryCounts[kind].eligibleOrders += 1;
+      addRecipient(kind, contactByExactName(internalContacts.packing?.name, internalContacts), orderInfo);
     }
   }
 
@@ -301,48 +304,40 @@ export function collectOverdueReminderGroups({
   };
 }
 
-function truncateUtf8(value, maxBytes) {
-  let result = '';
-  for (const character of String(value || '')) {
-    if (Buffer.byteLength(result + character, 'utf8') > maxBytes) break;
-    result += character;
+function reminderAction(kind, daysLeft) {
+  if (kind === OVERDUE_REMINDER_KINDS.PACKING) {
+    return daysLeft >= 0
+      ? '포장이 완료되지 않았으니 납기에 맞춰 포장을 서둘러 주시기 바랍니다.'
+      : '빠른 출고를 위해 포장을 서둘러 주시기 바랍니다.';
   }
-  return result;
+  if (kind === OVERDUE_REMINDER_KINDS.EQUIPMENT) {
+    return '설비작업을 확인하시고 완료 처리해 주시기 바랍니다.';
+  }
+  return '실제 출고 여부를 확인하시고, 출고된 주문은 출고완료 처리해 주시기 바랍니다.';
 }
 
-function orderLine(order) {
-  const client = truncateUtf8(order.clientName, 72);
-  return `- 주문 #${order.orderId} | ${client} | 납기 ${order.dueDay} | ${order.overdueDays}일 지연`;
+function packingBucketSummary(orders) {
+  const before = orders.filter(order => order.daysLeft > 0).length;
+  const today = orders.filter(order => order.daysLeft === 0).length;
+  const overdue = orders.filter(order => order.daysLeft < 0).length;
+  return `납기 전 ${before}건 · 오늘 납기 ${today}건 · 납기 경과 ${overdue}건`;
 }
 
 export function buildOverdueReminderMessage(group) {
   const copy = MESSAGE_COPY[group?.kind];
   if (!copy) throw new TypeError('unknown overdue reminder kind');
   const orders = Array.isArray(group.orders) ? group.orders : [];
-  const totalCount = orders.length;
   const subject = `[생산현황 ${copy.title}]`;
-  const prefix = [
+  return buildProductionAlertMessage({
     subject,
-    `수신: ${group.recipientName}`,
-    `기준일: ${group.kstDate}`,
-    `대상: ${totalCount}건`,
-    '',
-  ];
-  const suffix = ['', `요청: ${copy.action}`, SITE_URL];
-  let listed = orders.slice(0, 10).map(orderLine);
-  let text;
-  while (true) {
-    const omittedCount = totalCount - listed.length;
-    const omitted = omittedCount > 0 ? [`외 ${omittedCount}건`] : [];
-    text = [...prefix, ...listed, ...omitted, ...suffix].join('\n');
-    if (Buffer.byteLength(text, 'utf8') <= 2000 || listed.length === 0) break;
-    listed = listed.slice(0, -1);
-  }
-  return {
-    subject,
-    text,
-    totalCount,
-    listedCount: listed.length,
-    omittedCount: totalCount - listed.length,
-  };
+    recipientName: group.recipientName,
+    date: group.kstDate,
+    summary: group.kind === OVERDUE_REMINDER_KINDS.PACKING ? packingBucketSummary(orders) : '',
+    items: orders.map(order => ({
+      ...order,
+      daysLeft: Number.isInteger(order.daysLeft) ? order.daysLeft : -order.overdueDays,
+      action: reminderAction(group.kind, Number.isInteger(order.daysLeft) ? order.daysLeft : -order.overdueDays),
+    })),
+    url: SITE_URL,
+  });
 }

@@ -31,8 +31,6 @@ const INTERNAL_TYPES = Object.freeze({
   internal_laser_due: 'laser_due',
   internal_welding_due: 'welding_due',
   internal_assembly_due: 'assembly_due',
-  internal_packing_due: 'packing_due',
-  internal_assembly_daily: 'assembly_daily',
 });
 
 function sample(message, label = SAMPLE_LABEL) {
@@ -56,6 +54,7 @@ function buildInternalExample(type) {
       type,
       order: SAMPLE_ORDER,
       daysLeft: 3,
+      referenceDate: '2026-10-27',
       currentStep: '가상 공정',
       stepStates: {
         'V-커팅작업': '완료',
@@ -71,14 +70,20 @@ function buildInternalExample(type) {
 
 function buildOverdueExample(kind) {
   const unshipped = kind === OVERDUE_REMINDER_DEFINITIONS.UNSHIPPED.kind;
+  const packing = kind === OVERDUE_REMINDER_DEFINITIONS.PACKING.kind;
   return buildOverdueReminderMessage({
     kind,
-    recipientName: '가상 담당자',
+    recipientName: packing ? '정영호 팀장' : '가상 담당자',
     kstDate: '2026-10-31',
-    orders: [{
+    orders: packing ? [
+      { orderId: 1001, clientName: '가상 거래처 A', dueDay: '2026-11-03', daysLeft: 3, overdueDays: -3 },
+      { orderId: 1002, clientName: '가상 거래처 B', dueDay: '2026-10-31', daysLeft: 0, overdueDays: 0 },
+      { orderId: 1003, clientName: '가상 거래처 C', dueDay: '2026-10-29', daysLeft: -2, overdueDays: 2 },
+    ] : [{
       orderId: 1001,
       clientName: '가상 거래처',
       dueDay: unshipped ? '2026-10-20' : SAMPLE_DATE,
+      daysLeft: unshipped ? -11 : -1,
       overdueDays: unshipped ? 11 : 1,
     }],
   });
@@ -100,7 +105,13 @@ export function buildNotificationExample(item, now = new Date()) {
     return sample(buildChonbeAlertMessage({
       today: '2026-10-30',
       persons: '가상 영업담당자',
-      items: [{ client_name: '가상 거래처', days_left: 3, current_step: '가상 공정' }],
+      items: [{
+        order_id: 1001,
+        client_name: '가상 거래처',
+        due_date: '2026-11-02',
+        days_left: 3,
+        current_step: '가상 공정',
+      }],
     }));
   }
   if (milestone === 'sms_delivery_block_admin_alert') {

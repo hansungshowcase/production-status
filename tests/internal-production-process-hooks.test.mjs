@@ -290,3 +290,18 @@ test('공정 시작 알림 실패는 시작 성공을 막지 않고, 원자적 �
     console.error = oldError;
   }
 });
+
+test('폐기된 공정 시작 알림은 승인 작업자를 포함한 모든 작업자에게 문자를 보내지 않는다', async () => {
+  const { notifyInternalProcessStart } = await import('../api/_lib/internalProductionAlerts.js');
+  let sends = 0;
+  for (const workerName of ['카우사르', '까우사르', '나타왓', '마카라', '백승정', '까지', '강종효']) {
+    const result = await notifyInternalProcessStart({}, {
+      order: { id: 173, status: 'in_production', due_date: '2026-09-10' },
+      process: { order_id: 173, step_name: '용접작업', status: 'in_progress', started_by: workerName },
+      workerName,
+      today: '2026-09-01',
+    }, { sendGroup: async () => { sends += 1; } });
+    assert.deepEqual(result, { sent: 0, failed: 0, skipped: 'retired_assembly_start' });
+  }
+  assert.equal(sends, 0);
+});

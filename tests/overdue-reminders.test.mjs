@@ -8,6 +8,11 @@ import {
   normalizeDueDateToKstDay,
 } from '../api/_lib/overdueReminders.js';
 import { handleOverdueRemindersDaily } from '../api/cron/overdue-reminders-daily.js';
+import {
+  buildProductionAlertMessage,
+  formatProductionDueDay,
+  formatProductionDueSentence,
+} from '../api/_lib/productionAlertMessage.js';
 
 const TODAY = '2026-10-22';
 const NOW_MS = Date.parse('2026-10-22T00:00:00.000Z');
@@ -95,6 +100,26 @@ test('unshipped reminders start at D+10, ignore ship_scheduled_date, and reject 
   assert.equal(result.missingOrInvalidDue, 2);
 });
 
+test('packing starts at D-3, continues every overdue day, and routes only to 정영호 팀장', () => {
+  const result = collect([
+    order(1, '2026-10-26'), // D-4
+    order(2, '2026-10-25'), // D-3
+    order(3, '2026-10-23'), // D-1
+    order(4, '2026-10-22'), // today
+    order(5, '2026-10-21'), // D+1
+    order(6, '2026-10-12'), // D+10
+    order(7, '2026-10-24T15:00:00.000Z'), // KST 2026-10-25, D-3
+    order(8, null),
+    order(9, '2026-02-30'),
+  ]);
+  const packingGroups = result.groups.filter(group => group.kind === KINDS.PACKING);
+  assert.equal(result.categoryCounts[KINDS.PACKING].eligibleOrders, 6);
+  assert.deepEqual(packingGroups.map(group => group.recipientName), ['정영호 팀장']);
+  assert.deepEqual(packingGroups[0].orders.map(item => item.orderId), [6, 5, 4, 3, 2, 7]);
+  assert.equal(result.categoryCounts[KINDS.PACKING].unknownAssignments, 0);
+  assert.equal(result.missingOrInvalidDue, 2);
+});
+
 test('equipment and packing overdue categories are independent and shipped orders are always excluded', () => {
   const orders = [
     order(1, '2026-10-21'),
@@ -115,7 +140,7 @@ test('equipment and packing overdue categories are independent and shipped order
   assert.equal(result.categoryCounts[KINDS.EQUIPMENT].eligibleOrders, 2);
   assert.equal(result.categoryCounts[KINDS.PACKING].eligibleOrders, 2);
   assert.deepEqual(groupFor(result, KINDS.EQUIPMENT, '신은철').orders.map(item => item.orderId), [1, 3]);
-  assert.deepEqual(groupFor(result, KINDS.PACKING, '신은철').orders.map(item => item.orderId), [1, 2]);
+  assert.deepEqual(groupFor(result, KINDS.PACKING, '정영호 팀장').orders.map(item => item.orderId), [1, 2]);
 });
 
 test('recipients use only sales routes, exact assembly started_by, exact internal contacts, and dedupe overlaps', () => {
@@ -141,7 +166,7 @@ test('recipients use only sales routes, exact assembly started_by, exact interna
   assert.ok(!equipmentNames.includes('백승정'));
   assert.ok(!equipmentNames.includes('까지'));
   assert.equal(groupFor(result, KINDS.EQUIPMENT, '박상규 공장장').orders.filter(item => item.orderId === 2).length, 1);
-  assert.equal(result.unknownAssignments.filter(item => item.orderId === 2 && item.role === 'salesperson').length, 3);
+  assert.equal(result.unknownAssignments.filter(item => item.orderId === 2 && item.role === 'salesperson').length, 2);
   assert.equal(result.groups.some(group => group.recipientName === '알수없음'), false);
 });
 
@@ -150,11 +175,21 @@ test('unknown salesperson and assembly assignments are counted while fixed execu
   assert.equal(result.categoryCounts[KINDS.UNSHIPPED].unknownAssignments, 1);
   assert.equal(result.categoryCounts[KINDS.UNSHIPPED].routedOrders, 0);
   assert.equal(result.categoryCounts[KINDS.EQUIPMENT].unknownAssignments, 2);
-  assert.equal(result.categoryCounts[KINDS.PACKING].unknownAssignments, 2);
+  assert.equal(result.categoryCounts[KINDS.PACKING].unknownAssignments, 0);
   assert.deepEqual(
-    result.groups.filter(group => group.kind === KINDS.EQUIPMENT).map(group => group.recipientName).sort(),
-    ['박상규 공장장', '정영호 팀장', '최우석 이사'].sort(),
+    result.groups.filter(group => group.kind === KINDS.PACKING).map(group => group.recipientName),
+    ['정영호 팀장'],
   );
+});
+
+test('packing and equipment completion remain independent', () => {
+  const equipmentDone = collect([order(1, '2026-10-21')], [process(1, '설비작업', 'completed')]);
+  assert.equal(equipmentDone.categoryCounts[KINDS.EQUIPMENT].eligibleOrders, 0);
+  assert.equal(equipmentDone.categoryCounts[KINDS.PACKING].eligibleOrders, 1);
+
+  const packingDone = collect([order(2, '2026-10-21')], [process(2, '포장', 'completed')]);
+  assert.equal(packingDone.categoryCounts[KINDS.EQUIPMENT].eligibleOrders, 1);
+  assert.equal(packingDone.categoryCounts[KINDS.PACKING].eligibleOrders, 0);
 });
 
 test('messages list at most ten orders, fit 2000 UTF-8 bytes, and report exact totals and omissions', () => {
@@ -175,8 +210,48 @@ test('messages list at most ten orders, fit 2000 UTF-8 bytes, and report exact t
   assert.equal(message.totalCount, 24);
   assert.equal(message.omittedCount, 24 - message.listedCount);
   assert.match(message.text, new RegExp(`외 ${message.omittedCount}건`));
-  assert.match(message.text, /출고 여부 확인 후 출고완료 처리/);
+  assert.match(message.text, /실제 출고 여부를 확인하시고, 출고된 주문은 출고완료 처리/);
   assert.match(message.text, /https:\/\/production-status\.vercel\.app/);
+});
+
+test('mixed packing copy explains before, today, and overdue orders without false delay labels', () => {
+  assert.equal(formatProductionDueSentence(null), '납기일 확인이 필요합니다.');
+  assert.equal(formatProductionDueSentence(Number.NaN), '납기일 확인이 필요합니다.');
+  const message = buildOverdueReminderMessage({
+    kind: KINDS.PACKING,
+    recipientName: '정영호 팀장',
+    kstDate: TODAY,
+    orders: [
+      { orderId: 1, clientName: '가상 A', dueDay: '2026-10-25', daysLeft: 3, overdueDays: -3 },
+      { orderId: 2, clientName: '가상 B', dueDay: TODAY, daysLeft: 0, overdueDays: 0 },
+      { orderId: 3, clientName: '가상 C', dueDay: '2026-10-20', daysLeft: -2, overdueDays: 2 },
+    ],
+  });
+  assert.equal(message.subject, '[생산현황 포장 완료 요청]');
+  assert.match(message.text, /정영호 팀장님,/);
+  assert.match(message.text, /납기 전 1건 · 오늘 납기 1건 · 납기 경과 1건/);
+  assert.match(message.text, /납기까지 3일 남았습니다\..*납기에 맞춰 포장을 서둘러/);
+  assert.match(message.text, /오늘이 납기일입니다\..*납기에 맞춰 포장을 서둘러/);
+  assert.match(message.text, /납기가 2일 지났습니다\..*빠른 출고를 위해 포장을 서둘러/);
+  assert.doesNotMatch(message.text, /-3일 지연|납기 지연 포장|모두 납기 경과/);
+});
+
+test('display due day is strict KST and overrides contradictory legacy daysLeft only for copy', () => {
+  assert.equal(formatProductionDueDay('2026-10-22T15:00:00.000Z'), '2026-10-23');
+  assert.equal(formatProductionDueDay('2026-02-30T00:00:00Z'), '확인 필요');
+  assert.equal(formatProductionDueDay('2026-10-22T25:00:00Z'), '확인 필요');
+  const message = buildProductionAlertMessage({
+    subject: '[검증]',
+    recipientName: '담당자',
+    date: '2026-10-23',
+    items: [
+      { orderId: 1, clientName: 'KST 경계', dueDay: '2026-10-22T15:00:00.000Z', daysLeft: -1 },
+      { orderId: 2, clientName: '잘못된 날짜', dueDay: '2026-02-30T00:00:00Z', daysLeft: 7 },
+    ],
+  });
+  assert.match(message.text, /KST 경계 \| 납기 2026-10-23\n  오늘이 납기일입니다/);
+  assert.match(message.text, /잘못된 날짜 \| 납기 확인 필요\n  납기일 확인이 필요합니다/);
+  assert.doesNotMatch(message.text, /잘못된 날짜[^]*납기까지 7일 남았습니다/);
 });
 
 test('cron rejects missing auth without schema, query, claim, or provider calls', async () => {

@@ -55,14 +55,14 @@ test('실제 자동 알림 규칙만 고객과 사내·관리 그룹에 공개�
   const groups = buildNotificationCatalog(readyEnv(), NOW);
   assert.deepEqual(groups.map(group => [group.id, group.items.length]), [
     ['customer', 5],
-    ['internal', 12],
+    ['internal', 10],
   ]);
 
   const ids = groups.flatMap(group => group.items.map(item => item.id));
   assert.deepEqual(ids, [
     'customer_ordered', 'customer_started', 'customer_packed', 'customer_rescheduled', 'customer_shipped',
     'internal_vcut_completed', 'internal_design_due', 'internal_laser_due', 'internal_welding_due',
-    'internal_assembly_due', 'internal_packing_due', 'internal_assembly_daily', 'chonbe_alert',
+    'internal_assembly_due', 'chonbe_alert',
     'sms_delivery_block_admin_alert', 'internal_overdue_unshipped', 'internal_overdue_equipment',
     'internal_overdue_packing',
   ]);
@@ -93,14 +93,18 @@ test('납기 경과 알림 정의는 전부 자동 카탈로그화되고 기존 
   assert.match(itemById(readyEnv(), 'internal_design_due').configuration.reason, /평일/);
   assert.match(itemById(readyEnv(), 'internal_overdue_unshipped').trigger, /납기일/);
   assert.doesNotMatch(itemById(readyEnv(), 'internal_overdue_unshipped').target, /조립 착수자|정영호|최우석|박상규/);
-  for (const id of ['internal_overdue_equipment', 'internal_overdue_packing']) {
-    const target = itemById(readyEnv(), id).target;
-    assert.match(target, /해당 주문 실제 조립 착수자/);
-    for (const name of ['신은철', '이준형', '황보민수', '정영호 팀장', '최우석 이사', '박상규 공장장']) {
-      assert.match(target, new RegExp(name));
-    }
-    assert.doesNotMatch(target, /010-\d{4}-\d{4}/);
+  const equipmentTarget = itemById(readyEnv(), 'internal_overdue_equipment').target;
+  assert.match(equipmentTarget, /해당 주문 실제 조립 착수자/);
+  for (const name of ['신은철', '이준형', '황보민수', '정영호 팀장', '최우석 이사', '박상규 공장장']) {
+    assert.match(equipmentTarget, new RegExp(name));
   }
+  const packing = itemById(readyEnv(), 'internal_overdue_packing');
+  assert.match(packing.trigger, /납기 3일 전부터 모든 납기 경과일/);
+  assert.equal(packing.target, '정영호 팀장 (010****0577)');
+  assert.deepEqual(packing.milestones, [
+    'internal_overdue_packing', 'internal_packing_due', 'internal_assembly_daily',
+  ]);
+  assert.doesNotMatch(`${equipmentTarget} ${packing.target}`, /010-\d{4}-\d{4}/);
 });
 test('고객 알림은 실제 실행 설정과 정책 중단을 구분한다', () => {
   const ready = readyEnv();
@@ -119,18 +123,13 @@ test('고객 알림은 실제 실행 설정과 정책 중단을 구분한다', (
   assert.match(shipped.timing, /신규·재시도·누락 복구 모두 제외/);
 });
 
-test('사내 수신자는 실제 라우팅을 마스킹해 표시하고 과거 조립팀원은 제외한다', () => {
+test('사내 수신자는 실제 라우팅을 마스킹해 표시한다', () => {
   const items = itemsFor(readyEnv());
   const serialized = JSON.stringify(items);
   for (const name of ['이시아 부장', '김보수 팀장', '이정섭 부장', '최우석 이사', '박상규 공장장', '정영호 팀장']) {
     assert.match(serialized, new RegExp(name));
   }
 
-  const assembly = items.find(item => item.id === 'internal_assembly_daily');
-  for (const name of ['카우사르', '나타왓', '마카라', '백승정', '까지']) {
-    assert.match(assembly.target, new RegExp(name));
-  }
-  assert.doesNotMatch(assembly.target, /강종효|까우사르/);
   assert.doesNotMatch(serialized, /010-\d{4}-\d{4}/);
 
   const vcut = items.find(item => item.id === 'internal_vcut_completed');
@@ -143,7 +142,7 @@ test('사내 수신자는 실제 라우팅을 마스킹해 표시하고 과거 �
 test('예약·혼합·영업 대체 라우팅 설정을 각각 판정한다', () => {
   const noCron = readyEnv({ CRON_SECRET: '' });
   assert.equal(itemById(noCron, 'internal_design_due').configuration.status, 'incomplete');
-  assert.equal(itemById(noCron, 'internal_assembly_daily').configuration.status, 'conditional');
+  assert.equal(itemById(noCron, 'internal_overdue_packing').configuration.status, 'incomplete');
   assert.equal(itemById(noCron, 'sms_delivery_block_admin_alert').configuration.status, 'incomplete');
 
   const noFallback = readyEnv({ ALERT_FALLBACK: '' });
@@ -207,6 +206,18 @@ test('전달 감시 카드 하나가 차단과 최종 실패 별칭을 함께 �
   assert.equal(items.filter(item => item.id === monitor.id).length, 1);
 });
 
+test('통합 포장 카드가 이전 두 태그를 함께 집계하고 별도 카드로 되살리지 않는다', () => {
+  const groups = buildNotificationCatalog(readyEnv(), NOW);
+  const items = attachRecentResults(groups, [
+    { milestone: 'internal_overdue_packing', status: 'success', channel: 'lms', created_at: '2026-10-15T03:00:00Z' },
+    { milestone: 'internal_packing_due', status: 'success', channel: 'lms', created_at: '2026-10-15T02:00:00Z' },
+    { milestone: 'internal_assembly_daily', status: 'failed', channel: 'lms', created_at: '2026-10-15T01:00:00Z' },
+  ]).flatMap(group => group.items);
+  const packing = items.find(item => item.id === 'internal_overdue_packing');
+  assert.equal(packing.recent.counts.total, 3);
+  assert.equal(items.some(item => ['internal_packing_due', 'internal_assembly_daily'].includes(item.id)), false);
+});
+
 test('전체 이력의 새로운 internal 태그를 발견하고 최근 집계와 안전하게 합친다', async () => {
   const calls = [];
   const result = await loadNotificationOverview({
@@ -227,6 +238,8 @@ test('전체 이력의 새로운 internal 태그를 발견하고 최근 집계�
             created_at: '2026-10-14T00:00:00Z', message_subject: '본문 없는 알림', message_text: null,
           },
           { milestone: 'internal_design_due', created_at: '2026-10-15T00:00:00Z', message_text: 'known duplicate' },
+          { milestone: 'internal_packing_due', created_at: '2026-10-15T00:00:00Z', message_text: 'legacy packing' },
+          { milestone: 'internal_assembly_daily', created_at: '2026-10-15T00:00:00Z', message_text: 'legacy assembly' },
           { milestone: 'ordered', created_at: '2026-10-15T00:00:00Z', message_text: 'customer must not appear' },
           { milestone: 'sms_delivery_private_admin_alert', created_at: '2026-10-15T00:00:00Z', message_text: 'admin must not appear' },
         ] };
@@ -271,6 +284,7 @@ test('전체 이력의 새로운 internal 태그를 발견하고 최근 집계�
   assert.equal(noBody.name, '본문 없는 알림');
   assert.equal(noBody.example_message, null);
   assert.equal(items.filter(item => item.milestone === 'internal_design_due').length, 1);
+  assert.equal(items.some(item => ['internal_packing_due', 'internal_assembly_daily'].includes(item.id)), false);
   assert.equal(items.some(item => item.milestone === 'ordered' && item.id === 'ordered'), false);
   assert.equal(items.some(item => item.milestone === 'sms_delivery_private_admin_alert'), false);
   assert.equal(result.catalog_status.state, 'available');
@@ -300,7 +314,7 @@ test('최근 조회와 카탈로그 발견 실패는 서로의 성공 결과를 
   assert.equal(discoveryFailed.log_status.state, 'available');
   assert.equal(discoveryFailed.catalog_status.state, 'unavailable');
   assert.equal(discoveryFailed.groups[0].items[0].recent.counts.total, 1);
-  assert.equal(discoveryFailed.groups.find(group => group.id === 'internal').items.length, 12);
+  assert.equal(discoveryFailed.groups.find(group => group.id === 'internal').items.length, 10);
 });
 
 test('발견 항목은 200개로 제한하고 초과 시 카탈로그 상태만 partial로 표시한다', async () => {
@@ -314,7 +328,7 @@ test('발견 항목은 200개로 제한하고 초과 시 카탈로그 상태만 
     async execute(query) { return { rows: query.sql.includes('DISTINCT ON') ? rows : [] }; },
   }, readyEnv(), NOW);
   assert.equal(result.catalog_status.state, 'partial');
-  assert.equal(result.groups.find(group => group.id === 'internal').items.length, 12 + 200);
+  assert.equal(result.groups.find(group => group.id === 'internal').items.length, 10 + 200);
 });
 
 test('최근 기록과 카탈로그 발견은 읽기 전용 SELECT만 수행하고 모두 실패해도 정책·설정을 반환한다', async () => {

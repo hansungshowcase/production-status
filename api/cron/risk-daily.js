@@ -12,6 +12,7 @@ import { sendAdminLms } from '../_lib/notify.js';
 import { assessOrder, isShipRiskAlert, isKstWeekend } from '../_lib/risk.js';
 import { canonicalAlertRecipientName, routeAlerts } from '../_lib/alertRoutes.js';
 import { findSolapiAttemptReceipt } from '../_lib/solapiDeliveryMonitor.js';
+import { buildProductionAlertMessage } from '../_lib/productionAlertMessage.js';
 
 // 상수시간 비교 (타이밍 사이드채널 방지)
 function timingSafeMatch(a, b) {
@@ -65,16 +66,21 @@ export async function finishDailyNotification(db, claim, result) {
 }
 
 export function buildChonbeAlertMessage({ today, persons, items = [] }) {
-  const MAX = 20;
   const subject = `[한성쇼케이스 분체 미착수 경보 ${today}]`;
-  const listed = items.slice(0, MAX).map(a => `- ${a.client_name} D-${a.days_left} | 현재 ${a.current_step}`);
-  const lines = [
-    `${persons}님 담당 — 출고 5일 이내인데 분체작업 미착수 ${items.length}건 (현장 확인 요망)`,
-    '',
-    ...listed,
-  ];
-  if (items.length > MAX) lines.push(`외 ${items.length - MAX}건 — 관리자 화면에서 전체 확인`);
-  return { subject, text: [subject, '', ...lines].join('\n') };
+  return buildProductionAlertMessage({
+    subject,
+    recipientName: persons,
+    date: today,
+    summary: `분체작업 착수 확인 대상 ${items.length}건입니다.`,
+    items: items.map(item => ({
+      orderId: item.order_id,
+      clientName: item.client_name,
+      dueDay: item.due_date,
+      daysLeft: item.days_left,
+      detail: `현재 공정: ${item.current_step || '확인 필요'}`,
+      action: '분체작업 진행 상황을 확인하고 필요한 착수 조치를 해 주시기 바랍니다.',
+    })),
+  });
 }
 
 export async function handleRiskDaily(req, res, dependencies = {}) {
@@ -131,8 +137,10 @@ export async function handleRiskDaily(req, res, dependencies = {}) {
     // 대상: 출고 5일 이내인데 분체작업 미착수 — 이것만 문자 발송
     if (isShipRiskAlert(a)) {
       alerts.push({
+        order_id: Number(order.id),
         sales_person: order.sales_person || null,
         client_name: order.client_name || `주문 ${order.id}`,
+        due_date: order.ship_scheduled_date || order.due_date || null,
         days_left: a.daysLeft,
         current_step: a.currentStep || '-',
       });

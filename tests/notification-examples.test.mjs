@@ -49,5 +49,16 @@ test('정의에 추가된 납기 경과 종류는 별도 예시 목록 수정 �
     milestone: OVERDUE_REMINDER_DEFINITIONS.UNSHIPPED.kind,
     policy: { status: 'active' },
   }, NOW);
-  assert.match(unshipped.text, /납기 2026-10-20 \| 11일 지연/);
+  assert.match(unshipped.text, /납기 2026-10-20/);
+  assert.match(unshipped.text, /납기가 11일 지났습니다/);
+
+  const packing = buildNotificationExample({
+    milestone: OVERDUE_REMINDER_DEFINITIONS.PACKING.kind,
+    policy: { status: 'active' },
+  }, NOW);
+  assert.match(packing.text, /정영호 팀장님,/);
+  assert.match(packing.text, /납기 전 1건 · 오늘 납기 1건 · 납기 경과 1건/);
+  assert.match(packing.text, /납기까지 3일 남았습니다/);
+  assert.match(packing.text, /오늘이 납기일입니다/);
+  assert.match(packing.text, /납기가 2일 지났습니다/);
 });

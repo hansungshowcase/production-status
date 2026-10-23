@@ -123,7 +123,7 @@ test('납기 단계별 담당자 알림은 기준일에 미완료된 공정만 �
     order(2, '2026-09-09'), // D-8: 도면 완료, 레이저
     order(3, '2026-09-07'), // D-6: 용접 미착수
     order(4, '2026-09-05'), // D-4: 조립 미완료
-    order(5, '2026-09-04'), // D-3: 포장 미완료
+    order(5, '2026-09-04'), // D-3: 통합 포장 알림으로 이관
   ];
   const allProcesses = [
     ...processes(1),
@@ -147,7 +147,7 @@ test('납기 단계별 담당자 알림은 기준일에 미완료된 공정만 �
   assert.deepEqual(typesFor(items, 2), ['laser_due']);
   assert.deepEqual(typesFor(items, 3), ['welding_due']);
   assert.deepEqual(typesFor(items, 4), ['assembly_due']);
-  assert.deepEqual(typesFor(items, 5), ['packing_due']);
+  assert.deepEqual(typesFor(items, 5), []);
 });
 
 test('기준일이 주말이었거나 주문이 늦게 등록되어도 첫 평일에 한 번 확인한다', async () => {
@@ -181,7 +181,7 @@ test('용접이 시작되면 D-6 경보를 제외하고 조립·포장 완료 �
   assert.deepEqual(typesFor(items, 8), []);
 });
 
-test('조립팀 문자는 포장 미완료 주문을 시작한 각 작업자 본인에게만 만든다', async () => {
+test('기존 일일 수집기는 포장 납기와 조립팀 일일 알림을 더 이상 만들지 않는다', async () => {
   const alerts = await loadAlertsModule();
   const started = processes(9, {
     '도면설계': 'completed', '레이저작업': 'completed', 'V-커팅작업': 'completed', '절곡작업': 'completed',
@@ -198,13 +198,7 @@ test('조립팀 문자는 포장 미완료 주문을 시작한 각 작업자 본
     processes: [...started, ...packed],
     today: '2026-09-01',
   });
-  const daily = items.filter(item => item.type === 'assembly_daily');
-
-  assert.deepEqual(daily.map(item => item.recipientName).sort(), ['카우사르']);
-  assert.deepEqual(daily.map(item => item.phone).sort(), ['010-8302-2576']);
-  assert.equal(daily.some(item => item.recipientName === '강종효'), false);
-  assert.equal(daily.every(item => item.orderId === 9 && item.alertDate === '2026-09-01'), true);
-  assert.equal(daily.some(item => item.orderId === 10), false);
+  assert.equal(items.some(item => ['packing_due', 'assembly_daily'].includes(item.type)), false);
 });
 
 test('출고 완료·납기 경과·납기 미입력 주문에는 새 내부 알림을 만들지 않는다', async () => {
@@ -243,11 +237,13 @@ test('같은 수신자의 여러 주문은 한 문자 묶음으로 만든다', a
   assert.match(message.text, /김보수 팀장님/);
   assert.match(message.text, /거래처 20/);
   assert.match(message.text, /거래처 21/);
-  assert.match(message.text, /도면설계가 아직 완료되지 않은 작업 2건/);
+  assert.match(message.text, /쇼케이스\/뒷문 · 1200x750x1870/);
+  assert.match(message.text, /확인할 생산 작업 2건/);
+  assert.match(message.text, /납기까지 9일 남았습니다/);
   assert.match(message.text, /후속 생산공정이 일정대로 시작될 수 있도록 도면 작업을 서둘러 진행해 주세요/);
 });
 
-test('용접·조립·포장 알림은 승인된 책임 문구와 실제 공정 상태를 담는다', async () => {
+test('용접·조립 알림은 승인된 책임 문구와 실제 공정 상태를 담는다', async () => {
   const alerts = await loadAlertsModule();
   const allProcesses = [
     ...processes(22, {
@@ -257,13 +253,9 @@ test('용접·조립·포장 알림은 승인된 책임 문구와 실제 공정 
       '도면설계': 'completed', '레이저작업': 'completed', 'V-커팅작업': 'completed', '절곡작업': 'completed',
       '용접작업': 'completed', '분체작업': 'completed',
     }),
-    ...processes(24, {
-      '도면설계': 'completed', '레이저작업': 'completed', 'V-커팅작업': 'completed', '절곡작업': 'completed',
-      '용접작업': 'completed', '분체작업': 'completed', '조립작업': 'completed', '설비작업': 'in_progress',
-    }),
   ];
   const items = alerts.collectInternalDailyAlerts({
-    orders: [order(22, '2026-09-07'), order(23, '2026-09-05'), order(24, '2026-09-04')],
+    orders: [order(22, '2026-09-07'), order(23, '2026-09-05')],
     processes: allProcesses,
     today: '2026-09-01',
   });
@@ -272,10 +264,8 @@ test('용접·조립·포장 알림은 승인된 책임 문구와 실제 공정 
 
   assert.match(textFor('welding_due'), /V-커팅 완료 · 절곡 진행중 · 용접 대기/);
   assert.match(textFor('welding_due'), /용접작업이 지체 없이 시작될 수 있도록 V-커팅과 절곡 진행 상황을 확인하고 담당자를 지정해 주세요/);
-  assert.match(textFor('assembly_due'), /조립작업이 아직 완료되지 않은 작업/);
+  assert.match(textFor('assembly_due'), /오늘이 납기일입니다|납기까지 4일 남았습니다/);
   assert.match(textFor('assembly_due'), /조립 담당자 지정 및 완료 일정을 점검해 주세요/);
-  assert.match(textFor('packing_due'), /설비 진행중 · 포장 대기/);
-  assert.match(textFor('packing_due'), /설비작업에서 끝나지 않고 포장 완료까지 이어질 수 있도록/);
 });
 
 test('V-커팅 완료 즉시 자재 입고 요청 문구를 만든다', async () => {
@@ -292,10 +282,21 @@ test('V-커팅 완료 즉시 자재 입고 요청 문구를 만든다', async ()
   assert.equal(item.stateKey, 'internal:vcut_completed');
   assert.equal(message.subject, '[한성쇼케이스 자재 입고 요청]');
   assert.match(message.text, /V-커팅 작업이 완료되었습니다/);
+  assert.match(message.text, /쇼케이스\/뒷문 · 1200x750x1870/);
   assert.match(message.text, /현장 작업이 지체되지 않도록 해당 작업의 자재가 바로 입고될 수 있게 확인해 주세요/);
 });
 
-test('조립팀 시작 문자는 평일에 시작 버튼을 누른 본인에게만 만들고 주말에는 만들지 않는다', async () => {
+test('V-커팅 납기 누락은 오늘 납기로 오인하지 않는다', async () => {
+  const alerts = await loadAlertsModule();
+  const item = alerts.createVcutCompletionAlert({ order: order(251, null), today: '2026-09-01' });
+  const message = alerts.buildInternalAlertMessage(alerts.groupInternalAlerts([item])[0]);
+  assert.equal(item.daysLeft, null);
+  assert.match(message.text, /납기 확인 필요/);
+  assert.match(message.text, /납기일 확인이 필요합니다/);
+  assert.doesNotMatch(message.text, /오늘이 납기일입니다/);
+});
+
+test('조립 시작 알림 호환 export는 모든 작업자와 요일에 null을 반환한다', async () => {
   const alerts = await loadAlertsModule();
   assert.equal(typeof alerts.createAssemblyStartAlert, 'function');
   const targetOrder = order(26, '2026-09-10');
@@ -303,19 +304,10 @@ test('조립팀 시작 문자는 평일에 시작 버튼을 누른 본인에게�
   const weekday = Date.parse('2026-09-01T00:00:00.000Z'); // KST 화요일
   const weekend = Date.parse('2026-09-05T00:00:00.000Z'); // KST 토요일
 
-  const item = alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '카우사르', today: '2026-09-01', nowMs: weekday });
-  assert.equal(item.recipientName, '카우사르');
-  assert.equal(item.phone, '010-8302-2576');
-  assert.equal(item.alertDate, '2026-09-01');
-  assert.equal(item.stateKey, 'internal:assembly_daily:카우사르');
+  assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '카우사르', today: '2026-09-01', nowMs: weekday }), null);
   assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '강종효', today: '2026-09-01', nowMs: weekday }), null);
   assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '거니', today: '2026-09-01', nowMs: weekday }), null);
   assert.equal(alerts.createAssemblyStartAlert({ order: targetOrder, process, workerName: '카우사르', today: '2026-09-05', nowMs: weekend }), null);
-
-  const message = alerts.buildInternalAlertMessage(alerts.groupInternalAlerts([item])[0]);
-  assert.match(message.text, /카우사르님/);
-  assert.match(message.text, /포장이 아직 완료되지 않았습니다/);
-  assert.match(message.text, /납기는 한성 팀원 모두의 책임입니다/);
 });
 
 test('V-커팅 완료 훅만 자재 담당자에게 즉시 알림을 전달한다', async () => {
@@ -349,7 +341,7 @@ test('V-커팅 완료 훅만 자재 담당자에게 즉시 알림을 전달한�
   assert.equal(groups[0].phone, '010-4221-4237');
 });
 
-test('공정 시작 훅은 평일에 시작한 조립팀 본인에게만 즉시 알림을 전달한다', async () => {
+test('공정 시작 알림 함수는 모든 작업자에 대해 명시적으로 미발송한다', async () => {
   const alerts = await loadAlertsModule();
   assert.equal(typeof alerts.notifyInternalProcessStart, 'function');
   const groups = [];
@@ -389,13 +381,10 @@ test('공정 시작 훅은 평일에 시작한 조립팀 본인에게만 즉시 
     nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
   }, { sendGroup });
 
-  assert.deepEqual(unknown, { sent: 0, failed: 0, skipped: 'not_target' });
-  assert.deepEqual(weekend, { sent: 0, failed: 0, skipped: 'not_target' });
-  assert.deepEqual(retired, { sent: 0, failed: 0, skipped: 'not_target' });
-  assert.equal(sent.sent, 1);
-  assert.equal(groups.length, 1);
-  assert.equal(groups[0].recipientName, '카우사르');
-  assert.equal(groups[0].phone, '010-8302-2576');
+  for (const result of [unknown, weekend, retired, sent]) {
+    assert.deepEqual(result, { sent: 0, failed: 0, skipped: 'retired_assembly_start' });
+  }
+  assert.equal(groups.length, 0);
 });
 
 function makeInternalStateDb() {
@@ -464,35 +453,20 @@ test('주문 알림 상태를 원자적으로 선점해 같은 내부 문자를 
   assert.ok(db.statements.some(statement => statement.includes('RETURNING id')));
 });
 
-test('조립팀 일일 문자는 같은 날 한 번만 보내고 다음 평일에는 다시 보낸다', async () => {
+test('폐기된 조립팀 일일 알림은 상태 선점과 발송을 만들지 않는다', async () => {
   const alerts = await loadAlertsModule();
   const targetOrder = order(32, '2026-09-12');
   const targetProcess = { order_id: 32, step_name: '용접작업', status: 'in_progress', started_by: '카우사르' };
-  const dayOne = alerts.createAssemblyStartAlert({
+  const db = makeInternalStateDb();
+  let sendCount = 0;
+  const result = await alerts.notifyInternalProcessStart(db, {
     order: targetOrder,
     process: targetProcess,
     workerName: '카우사르',
-    today: '2026-09-01',
-    nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
-  });
-  const dayTwo = { ...dayOne, alertDate: '2026-09-02', daysLeft: dayOne.daysLeft - 1 };
-  const db = makeInternalStateDb();
-  let sendCount = 0;
-  const options = {
-    ensureSchema: async () => {},
-    nowMs: Date.parse('2026-09-01T00:00:00.000Z'),
-    sendLms: async () => ({ ok: true, channel: 'lms', msgId: `daily-${++sendCount}` }),
-  };
-
-  await alerts.sendInternalAlertGroup(db, alerts.groupInternalAlerts([dayOne])[0], options);
-  await alerts.sendInternalAlertGroup(db, alerts.groupInternalAlerts([dayOne])[0], options);
-  await alerts.sendInternalAlertGroup(db, alerts.groupInternalAlerts([dayTwo])[0], {
-    ...options,
-    nowMs: Date.parse('2026-09-02T00:00:00.000Z'),
-  });
-
-  assert.equal(sendCount, 2);
-  assert.equal(db.notifyState.get(32)['internal:assembly_daily:카우사르'].date, '2026-09-02');
+  }, { sendGroup: async () => { sendCount += 1; } });
+  assert.deepEqual(result, { sent: 0, failed: 0, skipped: 'retired_assembly_start' });
+  assert.equal(sendCount, 0);
+  assert.equal(db.statements.length, 0);
 });
 
 test('내부 문자 발송 실패는 실패 상태로 남겨 같은 대상의 다음 시도에서 재전송한다', async () => {

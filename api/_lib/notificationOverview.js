@@ -1,9 +1,5 @@
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
-import {
-  INTERNAL_ALERT_CONTACTS,
-  assemblyWorkerPhone,
-} from './internalProductionAlerts.js';
-import { INTERNAL_MEMBER_NAMES } from './internalNotificationHistory.js';
+import { INTERNAL_ALERT_CONTACTS } from './internalProductionAlerts.js';
 import { buildNotificationExample } from './notificationExamples.js';
 import { OVERDUE_REMINDER_DEFINITIONS } from './overdueReminders.js';
 import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
@@ -156,13 +152,6 @@ function internalRule({ id, name, milestone, trigger, target, timing, scheduled 
   };
 }
 
-function activeAssemblyWorkers() {
-  return [...INTERNAL_MEMBER_NAMES]
-    .map(name => ({ name, phone: assemblyWorkerPhone(name) }))
-    .filter(({ phone }) => phone)
-    .map(({ name, phone }) => `${name} (${maskPhone(phone)})`);
-}
-
 function salesTargets(env) {
   const names = [...new Set(Object.keys(ALERT_ROUTES).map(canonicalAlertRecipientName).filter(Boolean))];
   const mapped = names.map((name) => {
@@ -260,17 +249,6 @@ export function buildNotificationCatalog(env = process.env, now = new Date()) {
       trigger: '생산중 · 납기 0~4일 · 조립작업 미완료', target: contactTarget(INTERNAL_ALERT_CONTACTS.assembly),
       timing: '월~금 08:40 KST', scheduled: true,
     }, env),
-    internalRule({
-      id: 'internal_packing_due', name: '포장 완료 납기 알림', milestone: 'internal_packing_due',
-      trigger: '생산중 · 납기 0~3일 · 포장 미완료', target: contactTarget(INTERNAL_ALERT_CONTACTS.packing),
-      timing: '월~금 08:40 KST', scheduled: true,
-    }, env),
-    internalRule({
-      id: 'internal_assembly_daily', name: '조립팀 포장 완료 점검', milestone: 'internal_assembly_daily',
-      trigger: '등록 조립작업자가 착수한 주문 중 포장 미완료',
-      target: `해당 주문 착수자: ${activeAssemblyWorkers().join(', ')}`,
-      timing: '조립 착수 이벤트(주말 제외) · 월~금 08:40 KST 일일 점검', scheduled: true, mixed: true,
-    }, env),
     {
       ...internalRule({
         id: 'chonbe_alert', name: '분체 미착수 영업 알림', milestone: 'chonbe_alert',
@@ -291,13 +269,22 @@ export function buildNotificationCatalog(env = process.env, now = new Date()) {
       policy: policy('active'),
       configuration: monitorConfiguration(env),
     },
-    ...Object.values(OVERDUE_REMINDER_DEFINITIONS).map(definition => internalRule({
-      id: definition.kind,
-      milestone: definition.kind,
-      ...definition.overview,
-      scheduled: true,
-      daily: true,
-    }, env)),
+    ...Object.values(OVERDUE_REMINDER_DEFINITIONS).map(definition => ({
+      ...internalRule({
+        id: definition.kind,
+        milestone: definition.kind,
+        ...definition.overview,
+        scheduled: true,
+        daily: true,
+      }, env),
+      ...(definition.kind === OVERDUE_REMINDER_DEFINITIONS.PACKING.kind ? {
+        milestones: [
+          OVERDUE_REMINDER_DEFINITIONS.PACKING.kind,
+          'internal_packing_due',
+          'internal_assembly_daily',
+        ],
+      } : {}),
+    })),
   ].map(item => withExample(withCheckedAt(item, checkedAt), now));
 
   return [
