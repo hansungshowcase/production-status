@@ -53,6 +53,7 @@ function buildInternalExample(type) {
     items: [{
       type,
       order: SAMPLE_ORDER,
+      orderId: SAMPLE_ORDER.id,
       daysLeft: 3,
       referenceDate: '2026-10-27',
       currentStep: '가상 공정',

@@ -17,6 +17,7 @@ test('알려진 모든 알림은 실제 순수 빌더의 비어 있지 않은 �
       assert.equal(item.example_message.source, 'sample');
       assert.ok(item.example_message.subject.trim(), item.id);
       assert.ok(item.example_message.text.trim(), item.id);
+      if (item.id.startsWith('internal_')) assert.match(item.example_message.text, /주문 #1001/, item.id);
     }
     assert.equal(items.find(item => item.id === 'customer_shipped').example_message.label, '중단된 알림의 문구 예시');
     for (const item of items.filter(item => item.id !== 'customer_shipped')) {
