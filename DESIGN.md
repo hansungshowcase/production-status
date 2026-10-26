@@ -135,6 +135,11 @@ All spacing derives from a base of 4px.
 - **Scroll and accessibility**: the rule list is the overview panel's desktop scroll owner. Page tabs, group tabs, retry actions, and disclosures keep visible keyboard focus, native button semantics, and shared spacing, surface, radius, and color tokens.
 - **Page-local status palette**: `/sms-history` defines white/ink `#FFFFFF/#172033`, customer sky `#EAF4FF/#174EA6`, selected tab `#1D4ED8/#FFFFFF`, employee/ready mint `#DDF8EE/#065F46`, paused/off pink `#FFE4EC/#9F1239`, setup/check amber `#FFF2CC/#854D0E`, test violet `#EEE8FF/#5B21B6`, and unknown gray `#EEF2F7/#374151`. Summary cells, selected tabs, the history heading, and the filter area use these surfaces; color always accompanies visible text and never implies confirmed receipt.
 
+### Custom SMS Draft Registration
+- **Boundary**: a compact customer/employee toolbar opens a native dialog for listing, creating, editing and previewing registered message drafts. Existing automatic rules and delivery records remain unchanged. Draft registration never sends a message or enables a schedule.
+- **Form**: use explicit Korean labels, native customer/employee and condition selectors, bounded title/body inputs and visible supported variables. Show the draft state and a message preview as plain text. Saving prevents duplicate clicks; failed saves retain input, and version conflicts require reloading the current draft.
+- **Dialog**: retain native focus trapping, Escape dismissal and focus return; keep a single dialog scroll area, 44px controls and existing surface, border, radius and shadow tokens. At 375px controls stack without horizontal overflow; at desktop the modal does not reduce the underlying history list height.
+
 ## 6. Motion & Interaction
 
 | Type | Duration | Easing | Usage |

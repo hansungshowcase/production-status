@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { fetchInternalNotifications } from '../api/internalNotifications';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
+import SmsCampaignManager from '../components/SmsCampaignManager';
 import {
   groupNotificationsByKstDate,
   NOTIFICATION_RECIPIENT_FILTERS,
@@ -169,6 +170,8 @@ export default function SmsHistoryPage() {
             직원
           </button>
         </div>
+
+        <SmsCampaignManager audience={audience} />
 
         <div
           id="sms-history-audience-panel-customer"

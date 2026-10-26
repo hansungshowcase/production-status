@@ -607,7 +607,7 @@
     min-height: 0;
     padding: var(--space-3) 0 var(--space-4);
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
   }
 
   .sms-history-employee-panel,
