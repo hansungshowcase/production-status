@@ -327,7 +327,7 @@ async function sendCustomerMessage({ to, subject, text, variables, templateEnv, 
 }
 
 // ── notification_log 기록 (attempt = 해당 주문·마일스톤의 기존 로그 수 + 1) ──
-async function logAttempt(db, { orderId, milestoneKey, channel, toPhone, status, msgId, error }) {
+async function logAttempt(db, { orderId, milestoneKey, channel, toPhone, status, msgId, error, recipientName, subject, text }) {
   let attempt = 1;
   try {
     const { rows } = await db.execute({
@@ -337,11 +337,13 @@ async function logAttempt(db, { orderId, milestoneKey, channel, toPhone, status,
     attempt = (rows[0]?.n || 0) + 1;
   } catch { /* 카운트 실패는 attempt=1 로 계속 */ }
   await db.execute({
-    sql: `INSERT INTO notification_log (order_id, milestone, channel, to_phone, status, provider_msgid, error, attempt)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO notification_log (order_id, milestone, channel, to_phone, status, provider_msgid, error, attempt,
+          recipient_name, message_subject, message_text)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       orderId, milestoneKey, channel || null, toPhone || null, status,
       msgId || null, error ? String(error).slice(0, 500) : null, attempt,
+      recipientName || null, subject || null, text || null,
     ],
   });
   return attempt;
@@ -426,6 +428,7 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
 
   const toPhoneMasked = maskPhone(order.phone);
   let providerAttempted = false;
+  let messageSnapshot = null;
 
   try {
     // 2) 대상성 검사 — 전화번호 없으면 skip 확정
@@ -469,6 +472,11 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
       console.error('[notify] track_token 확보 실패(링크 없이 계속):', err?.message || err);
     }
     const msg = buildMessage(order, milestone, trackUrl, extra);
+    messageSnapshot = {
+      recipientName: order.client_name || null,
+      subject: msg.subject || null,
+      text: msg.text || null,
+    };
 
     // 5) 발송 (env 없으면 dry_run)
     providerAttempted = true;
@@ -499,7 +507,7 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
         }
       }
       try {
-        await logAttempt(db, { orderId, milestoneKey: key, channel: result.channel, toPhone: toPhoneMasked, status: finalStatus, msgId: result.msgId || null });
+        await logAttempt(db, { orderId, milestoneKey: key, channel: result.channel, toPhone: toPhoneMasked, status: finalStatus, msgId: result.msgId || null, ...messageSnapshot });
       } catch (logErr) {
         console.error('[notify] 발송 성공 로그 기록 실패(무시):', logErr?.message || logErr);
       }
@@ -518,7 +526,7 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
         attempt_token: attemptToken,
       });
     }
-    await logAttempt(db, { orderId, milestoneKey: key, channel: result.channel, toPhone: toPhoneMasked, status, error: result.error });
+    await logAttempt(db, { orderId, milestoneKey: key, channel: result.channel, toPhone: toPhoneMasked, status, error: result.error, ...messageSnapshot });
     return { ok: false, error: result.error };
   } catch (err) {
     // 발송 '이전' 단계 예외 → failed 기록 (스윕이 최대 3회까지 재시도)
@@ -531,7 +539,7 @@ export async function maybeNotify(db, order, milestone, extra = {}) {
         at: new Date().toISOString(),
         attempt_token: attemptToken,
       });
-      await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status, error: err?.message || err });
+      await logAttempt(db, { orderId, milestoneKey: key, channel: null, toPhone: toPhoneMasked, status, error: err?.message || err, ...(messageSnapshot || {}) });
     } catch (inner) {
       console.error('[notify] 실패 상태 기록마저 실패:', inner?.message || inner);
     }

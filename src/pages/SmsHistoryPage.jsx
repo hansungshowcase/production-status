@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchInternalNotifications } from '../api/internalNotifications';
+import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
 import {
   groupNotificationsByKstDate,
@@ -71,6 +72,7 @@ export default function SmsHistoryPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [expandedId, setExpandedId] = useState(null);
+  const [audience, setAudience] = useState('customer');
   const [activePanel, setActivePanel] = useState('history');
   const requestIdRef = useRef(0);
 
@@ -145,6 +147,45 @@ export default function SmsHistoryPage() {
       </header>
 
       <main className="sms-history-main">
+        <div className="sms-history-audience-tabs" role="tablist" aria-label="문자 관리 대상">
+          <button
+            type="button"
+            role="tab"
+            id="sms-history-audience-customer"
+            aria-selected={audience === 'customer'}
+            aria-controls="sms-history-audience-panel-customer"
+            onClick={() => setAudience('customer')}
+          >
+            고객
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="sms-history-audience-employee"
+            aria-selected={audience === 'employee'}
+            aria-controls="sms-history-audience-panel-employee"
+            onClick={() => setAudience('employee')}
+          >
+            직원
+          </button>
+        </div>
+
+        <div
+          id="sms-history-audience-panel-customer"
+          role="tabpanel"
+          aria-labelledby="sms-history-audience-customer"
+          hidden={audience !== 'customer'}
+        >
+          <CustomerSmsPanel />
+        </div>
+
+        <div
+          className="sms-history-employee-panel"
+          id="sms-history-audience-panel-employee"
+          role="tabpanel"
+          aria-labelledby="sms-history-audience-employee"
+          hidden={audience !== 'employee'}
+        >
         <div className="sms-history-view-tabs" role="tablist" aria-label="문자 현황 보기">
           <button
             type="button"
@@ -431,6 +472,7 @@ export default function SmsHistoryPage() {
           </nav>
         )}
           </section>
+        </div>
         </div>
       </main>
     </div>

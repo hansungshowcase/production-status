@@ -1,0 +1,199 @@
+.customer-sms-panel {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  color: var(--text);
+}
+
+.customer-sms-intro {
+  padding: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--blue-light);
+  box-shadow: var(--shadow);
+}
+
+.customer-sms-intro h2 { margin: 0 0 var(--space-1); color: var(--blue-dark); font-size: 20px; line-height: 1.25; }
+.customer-sms-intro p { margin: 0; color: var(--text-mid); font-size: 14px; line-height: 1.45; word-break: keep-all; }
+.customer-sms-intro .customer-sms-intro__notice { max-width: 300px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: var(--surface); color: var(--blue-dark); font-size: 12px; font-weight: 700; }
+
+.customer-sms-tabs {
+  margin-top: var(--space-3);
+  padding: var(--space-1);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface2);
+}
+
+.customer-sms-tabs button,
+.customer-sms-pagination button,
+.customer-sms-state button,
+.customer-sms-send button,
+.customer-sms-filters button {
+  min-height: var(--control-min-height);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-mid);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.customer-sms-tabs button { border: 0; background: transparent; }
+.customer-sms-tabs button[aria-selected='true'] { background: var(--blue); color: var(--surface); box-shadow: var(--shadow); }
+
+.customer-sms-tabs button:focus-visible,
+.customer-sms-pagination button:focus-visible,
+.customer-sms-state button:focus-visible,
+.customer-sms-send button:focus-visible,
+.customer-sms-filters button:focus-visible,
+.customer-sms-filters input:focus-visible,
+.customer-sms-filters select:focus-visible,
+.customer-sms-review-toolbar select:focus-visible,
+.customer-sms-disclosure:focus-visible,
+.customer-sms-review-item:focus-within {
+  outline: 3px solid var(--blue);
+  outline-offset: var(--space-1);
+}
+
+#customer-sms-history:not([hidden]),
+#customer-sms-reviews:not([hidden]) { min-height: 0; display: flex; flex: 1; flex-direction: column; }
+
+.customer-sms-filters,
+.customer-sms-review-toolbar {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.customer-sms-filters label,
+.customer-sms-review-toolbar label { min-width: 0; display: grid; gap: var(--space-1); color: var(--text-mid); font-size: 13px; font-weight: 800; }
+.customer-sms-filters input,
+.customer-sms-filters select,
+.customer-sms-review-toolbar select { width: 100%; min-height: var(--control-min-height); box-sizing: border-box; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; }
+.customer-sms-filters button { padding: var(--space-2) var(--space-3); color: var(--blue-dark); }
+
+.customer-sms-sync-notice { margin: var(--space-2) 0 0; padding: var(--space-2) var(--space-3); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--blue-light); color: var(--text-mid); font-size: 12px; font-weight: 700; line-height: 1.5; word-break: keep-all; }
+.customer-sms-sync-notice.is-error,
+.customer-sms-sync-notice.is-partial { background: var(--orange-light); }
+.customer-sms-sync-notice.is-date_required { background: var(--surface2); }
+.customer-sms-sync-notice time { color: var(--text-dim); white-space: nowrap; }
+
+.customer-sms-summary { margin-top: var(--space-3); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.customer-sms-summary > div { min-width: 0; min-height: 58px; padding: var(--space-2) var(--space-3); display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--blue-light); box-shadow: var(--shadow); }
+.customer-sms-summary span { color: var(--text-mid); font-size: 13px; font-weight: 700; }
+.customer-sms-summary strong { font-size: 22px; line-height: 1; }
+.customer-sms-summary .is-success { background: var(--green-light); }
+.customer-sms-summary .is-success strong { color: var(--green); }
+.customer-sms-summary .is-failed { background: var(--red-light); }
+.customer-sms-summary .is-failed strong { color: var(--red); }
+
+.customer-sms-state { margin-top: var(--space-3); min-height: 140px; padding: var(--space-4); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); border: 1px dashed var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--text-mid); text-align: center; }
+.customer-sms-state--error { border-color: var(--red); background: var(--red-light); }
+.customer-sms-state button { padding: var(--space-2) var(--space-4); background: var(--blue); color: var(--surface); }
+
+.customer-sms-list,
+.customer-sms-review-list { flex-shrink: 0; min-height: 0; margin-top: var(--space-3); display: grid; gap: var(--space-2); }
+.customer-sms-item { min-width: 0; padding: var(--space-3); border: 1px solid var(--border); border-left: 3px solid var(--blue); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+.customer-sms-item__heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
+.customer-sms-item__heading > div { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.customer-sms-item__heading strong { font-size: 17px; }
+.customer-sms-item__heading > div:first-child span { color: var(--text-dim); font-size: 12px; font-weight: 700; }
+.customer-sms-badge { min-height: 26px; padding: var(--space-1) var(--space-2); display: inline-flex; align-items: center; border-radius: 999px; background: var(--surface2); color: var(--text-mid); font-size: 12px; font-weight: 800; }
+.customer-sms-badge.is-success { background: var(--green-light); color: var(--green); }
+.customer-sms-badge.is-failed { background: var(--red-light); color: var(--red); }
+.customer-sms-badge.is-pending { background: var(--purple-light); color: var(--purple); }
+.customer-sms-badge.is-uncertain { background: var(--orange-light); color: var(--text-mid); }
+.customer-sms-badge.is-muted { background: var(--surface2); color: var(--text-dim); }
+.customer-sms-meta { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--text-dim); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.customer-sms-item h3 { margin: var(--space-2) 0 0; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.customer-sms-disclosure { width: 100%; min-height: var(--control-min-height); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text-mid); cursor: pointer; font: inherit; font-size: 14px; font-weight: 800; }
+.customer-sms-body { margin-top: var(--space-2); padding: var(--space-3); border-left: 3px solid var(--blue); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--blue-light); color: var(--text-mid); font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+.customer-sms-body > p { margin: 0; }
+.customer-sms-attempts { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); white-space: normal; }
+.customer-sms-attempts h4 { margin: 0 0 var(--space-2); color: var(--text); font-size: 13px; }
+.customer-sms-attempts ul { margin: 0; padding: 0; display: grid; gap: var(--space-2); list-style: none; }
+.customer-sms-attempts li { min-width: 0; display: grid; grid-template-columns: minmax(84px, auto) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); }
+.customer-sms-attempts li > span:last-child { color: var(--text-dim); font-size: 12px; overflow-wrap: anywhere; }
+
+.customer-sms-pagination { margin-top: var(--space-3); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--space-1); }
+.customer-sms-pagination button { min-width: var(--control-min-height); padding: var(--space-2); }
+.customer-sms-pagination button.is-selected { border-color: var(--blue); background: var(--blue); color: var(--surface); }
+.customer-sms-panel button:disabled { cursor: default; opacity: 0.5; }
+
+.customer-sms-connection { margin-top: var(--space-3); padding: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--orange-light); color: var(--text-mid); font-size: 13px; }
+.customer-sms-connection strong { color: var(--text); }
+.customer-sms-connection.is-ready { background: var(--green-light); }
+.customer-sms-review-toolbar { grid-template-columns: minmax(220px, 1fr) auto; }
+.customer-sms-review-toolbar > div { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--text-mid); font-size: 13px; font-weight: 800; }
+
+.customer-sms-campaign { margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--blue-light); box-shadow: var(--shadow); }
+.customer-sms-campaign > div { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.customer-sms-campaign > div span { color: var(--text-dim); font-size: 12px; font-weight: 700; }
+.customer-sms-campaign h3 { margin: var(--space-3) 0 var(--space-1); font-size: 16px; }
+.customer-sms-campaign p { margin: 0; color: var(--text-mid); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.customer-sms-campaign dl { margin: var(--space-3) 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.customer-sms-campaign dl div { min-width: 0; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--surface); }
+.customer-sms-campaign dt { color: var(--text-dim); font-size: 12px; font-weight: 700; }
+.customer-sms-campaign dd { margin: var(--space-1) 0 0; color: var(--text); font-size: 13px; font-weight: 800; overflow-wrap: anywhere; }
+
+.customer-sms-review-item { min-width: 0; min-height: var(--control-min-height); padding: var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow); cursor: pointer; }
+.customer-sms-review-item.is-disabled { background: var(--surface2); cursor: default; }
+.customer-sms-review-item input { width: 20px; height: 20px; margin: 0; accent-color: var(--blue); }
+.customer-sms-review-item__copy { min-width: 0; display: grid; gap: var(--space-1); }
+.customer-sms-review-item__copy strong { font-size: 15px; }
+.customer-sms-review-item__copy span { color: var(--text-dim); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.customer-sms-send { margin-top: var(--space-3); padding: var(--space-3); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.customer-sms-send p { margin: 0; color: var(--text-mid); font-size: 13px; line-height: 1.5; word-break: keep-all; }
+.customer-sms-send button { flex: 0 0 auto; padding: var(--space-2) var(--space-4); background: var(--blue); color: var(--surface); }
+
+@media (min-width: 1100px) {
+  .customer-sms-panel { overflow: hidden; }
+  #customer-sms-history:not([hidden]),
+  #customer-sms-reviews:not([hidden]) { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: var(--space-1); }
+}
+
+@media (max-width: 720px) {
+  .customer-sms-intro { flex-direction: column; gap: var(--space-2); }
+  .customer-sms-intro .customer-sms-intro__notice { max-width: none; }
+  .customer-sms-filters { grid-template-columns: minmax(0, 1fr); }
+  .customer-sms-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .customer-sms-campaign dl { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .customer-sms-intro,
+  .customer-sms-filters,
+  .customer-sms-review-toolbar,
+  .customer-sms-campaign { padding: var(--space-3); }
+  .customer-sms-review-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .customer-sms-summary { gap: var(--space-1); }
+  .customer-sms-summary > div { padding: var(--space-2); flex-direction: column; align-items: flex-start; justify-content: center; }
+  .customer-sms-review-item { grid-template-columns: auto minmax(0, 1fr); }
+  .customer-sms-attempts li { grid-template-columns: minmax(0, 1fr) auto; }
+  .customer-sms-attempts li > span:last-child { grid-column: 1 / -1; }
+  .customer-sms-review-item > .customer-sms-badge { grid-column: 2; justify-self: start; }
+  .customer-sms-send { align-items: stretch; flex-direction: column; }
+  .customer-sms-send button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .customer-sms-panel * { scroll-behavior: auto; transition: none; }
+}
