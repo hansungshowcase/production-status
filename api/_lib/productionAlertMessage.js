@@ -71,17 +71,15 @@ function copyDaysLeft(dueDay, referenceDate, providedDaysLeft) {
 }
 
 function orderLines(item, referenceDate) {
-  const orderNumber = Number.isFinite(Number(item?.orderId)) ? `주문 #${Number(item.orderId)}` : '주문번호 확인 필요';
-  const clientName = truncateUtf8(item?.clientName || '거래처 확인 필요', 72);
+  const clientName = truncateUtf8(String(item?.clientName || '').trim() || '거래처명 확인 필요', 72);
   const normalizedDueDay = normalizeProductionDueDay(item?.dueDay);
   const dueDay = normalizedDueDay || '확인 필요';
   const daysLeft = copyDaysLeft(item?.dueDay, item?.referenceDate || referenceDate, item?.daysLeft);
   const context = [
     formatProductionDueSentence(daysLeft),
     truncateUtf8(item?.detail, 180),
-    truncateUtf8(item?.action, 240),
   ].filter(Boolean).join(' ');
-  return `- ${orderNumber} | ${clientName} | 납기 ${dueDay}\n  ${context}`;
+  return `- ${clientName} | 납기 ${dueDay}\n  ${context}`;
 }
 
 export function buildProductionAlertMessage({
@@ -106,7 +104,10 @@ export function buildProductionAlertMessage({
   ];
   const suffix = [
     '',
-    ...footerLines.map(line => truncateUtf8(line, 300)).filter(Boolean),
+    ...new Set([
+      ...items.map(item => item?.action),
+      ...footerLines,
+    ].map(line => truncateUtf8(String(line ?? '').trim(), 300)).filter(Boolean)),
     ...(url ? [truncateUtf8(url, 200)] : []),
   ];
   let listed = items.slice(0, MAX_LISTED_ORDERS).map(item => orderLines(item, date));

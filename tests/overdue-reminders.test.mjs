@@ -209,6 +209,8 @@ test('messages list at most ten orders, fit 2000 UTF-8 bytes, and report exact t
   assert.ok(message.listedCount <= 10);
   assert.equal(message.totalCount, 24);
   assert.equal(message.omittedCount, 24 - message.listedCount);
+  assert.equal(message.text.split('출고된 주문은').length - 1, 1);
+  assert.doesNotMatch(message.text, /주문 #[0-9]+/);
   assert.match(message.text, new RegExp(`외 ${message.omittedCount}건`));
   assert.match(message.text, /실제 출고 여부를 확인하시고, 출고된 주문은 출고완료 처리/);
   assert.match(message.text, /https:\/\/production-status\.vercel\.app/);
@@ -230,9 +232,9 @@ test('mixed packing copy explains before, today, and overdue orders without fals
   assert.equal(message.subject, '[생산현황 포장 완료 요청]');
   assert.match(message.text, /정영호 팀장님,/);
   assert.match(message.text, /납기 전 1건 · 오늘 납기 1건 · 납기 경과 1건/);
-  assert.match(message.text, /납기까지 3일 남았습니다\..*납기에 맞춰 포장을 서둘러/);
-  assert.match(message.text, /오늘이 납기일입니다\..*납기에 맞춰 포장을 서둘러/);
-  assert.match(message.text, /납기가 2일 지났습니다\..*빠른 출고를 위해 포장을 서둘러/);
+  assert.match(message.text, /납기까지 3일 남았습니다/);
+  assert.match(message.text, /오늘이 납기일입니다/);
+  assert.match(message.text, /납기가 2일 지났습니다/);
   assert.doesNotMatch(message.text, /-3일 지연|납기 지연 포장|모두 납기 경과/);
 });
 

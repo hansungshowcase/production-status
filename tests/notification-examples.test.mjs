@@ -17,7 +17,10 @@ test('알려진 모든 알림은 실제 순수 빌더의 비어 있지 않은 �
       assert.equal(item.example_message.source, 'sample');
       assert.ok(item.example_message.subject.trim(), item.id);
       assert.ok(item.example_message.text.trim(), item.id);
-      if (item.id.startsWith('internal_')) assert.match(item.example_message.text, /주문 #1001/, item.id);
+      if (item.id.startsWith('internal_')) {
+        assert.doesNotMatch(item.example_message.text, /주문 #[0-9]+/, item.id);
+        assert.match(item.example_message.text, /가상 고객|가상 거래처/, item.id);
+      }
     }
     assert.equal(items.find(item => item.id === 'customer_shipped').example_message.label, '중단된 알림의 문구 예시');
     for (const item of items.filter(item => item.id !== 'customer_shipped')) {
@@ -44,7 +47,7 @@ test('정의에 추가된 납기 경과 종류는 별도 예시 목록 수정 �
     const example = buildNotificationExample({ milestone: definition.kind, policy: { status: 'active' } }, NOW);
     assert.match(example.subject, new RegExp(definition.title));
     assert.match(example.text, /가상 거래처/);
-    assert.match(example.text, /주문 #1001/);
+    assert.doesNotMatch(example.text, /주문 #[0-9]+/);
   }
   const unshipped = buildNotificationExample({
     milestone: OVERDUE_REMINDER_DEFINITIONS.UNSHIPPED.kind,

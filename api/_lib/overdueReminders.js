@@ -245,7 +245,7 @@ export function collectOverdueReminderGroups({
     const overdueDays = todayNumber - dayNumber(dueDay);
     const orderInfo = {
       orderId,
-      clientName: String(order.client_name || '').trim() || `주문 ${orderId}`,
+      clientName: String(order.client_name || '').trim() || '거래처명 확인 필요',
       dueDay,
       daysLeft: -overdueDays,
       overdueDays,
@@ -304,11 +304,9 @@ export function collectOverdueReminderGroups({
   };
 }
 
-function reminderAction(kind, daysLeft) {
+function reminderAction(kind) {
   if (kind === OVERDUE_REMINDER_KINDS.PACKING) {
-    return daysLeft >= 0
-      ? '포장이 완료되지 않았으니 납기에 맞춰 포장을 서둘러 주시기 바랍니다.'
-      : '빠른 출고를 위해 포장을 서둘러 주시기 바랍니다.';
+    return '납기일을 확인하시고 빠른 출고를 위해 포장을 서둘러 주시기 바랍니다.';
   }
   if (kind === OVERDUE_REMINDER_KINDS.EQUIPMENT) {
     return '설비작업을 확인하시고 완료 처리해 주시기 바랍니다.';
@@ -336,7 +334,7 @@ export function buildOverdueReminderMessage(group) {
     items: orders.map(order => ({
       ...order,
       daysLeft: Number.isInteger(order.daysLeft) ? order.daysLeft : -order.overdueDays,
-      action: reminderAction(group.kind, Number.isInteger(order.daysLeft) ? order.daysLeft : -order.overdueDays),
+      action: reminderAction(group.kind),
     })),
     url: SITE_URL,
   });
