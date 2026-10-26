@@ -64,6 +64,63 @@ export function recipientFilterForName(name) {
 
 const PUBLIC_STATUSES = new Set(['success', 'failed', 'dry_run']);
 
+export const DELIVERY_CLASSIFICATION_SQL = `CASE
+  WHEN COALESCE(status, 'failed') = 'dry_run' THEN 'unknown'
+  WHEN COALESCE(status, 'failed') <> 'success' THEN 'failed'
+  WHEN BTRIM(COALESCE(delivery_status_code, '')) = '4000' THEN 'received'
+  WHEN BTRIM(COALESCE(delivery_status_code, '')) IN ('2000', '3000') THEN 'pending'
+  WHEN BTRIM(COALESCE(delivery_status_code, '')) ~ '^[123][0-9]{3}$' THEN 'failed'
+  ELSE 'unknown'
+END`;
+
+const DELIVERY_LABELS = Object.freeze({
+  received: '수신 완료',
+  pending: '전달 확인 중',
+  failed: '전달 실패',
+  unknown: '전달 미확인',
+});
+
+function normalizedDeliveryCode(value) {
+  const code = String(value ?? '').trim();
+  return /^\d{4}$/.test(code) ? code : null;
+}
+
+export function classifyInternalNotificationDelivery(row) {
+  const code = normalizedDeliveryCode(row?.delivery_status_code);
+  let state = 'unknown';
+  if (row?.status === 'dry_run') {
+    state = 'unknown';
+  } else if (row?.status !== 'success') {
+    state = 'failed';
+  } else if (code === '4000') {
+    state = 'received';
+  } else if (code === '2000' || code === '3000') {
+    state = 'pending';
+  } else if (code && /^[123]\d{3}$/.test(code)) {
+    state = 'failed';
+  }
+
+  const label = row?.status === 'dry_run'
+    ? '시험 기록 · 전달 미확인'
+    : row?.status !== 'success'
+      ? '발송 요청 실패'
+      : code === '3040'
+        ? '전달 실패 · 전송시간 초과'
+        : DELIVERY_LABELS[state];
+  return { state, label, code };
+}
+
+function deliveryObject(row, classification) {
+  return {
+    state: classification.state,
+    code: classification.code,
+    label: classification.label,
+    reported_at: row?.delivery_reported_at || null,
+    received_at: classification.state === 'received' ? row?.delivery_received_at || null : null,
+    checked_at: row?.delivery_checked_at || null,
+  };
+}
+
 export function audienceForMilestone(milestone) {
   if (milestone === 'chonbe_alert') return 'sales';
   return milestone === 'internal_assembly_daily' ? 'member' : 'executive';
@@ -91,6 +148,7 @@ export function isPublicNotificationRow(row) {
 export function serializeInternalNotification(row) {
   const milestone = String(row?.milestone || '');
   const phone = maskedPhone(row?.to_phone);
+  const delivery = classifyInternalNotificationDelivery(row);
   return {
     id: Number(row?.id),
     milestone,
@@ -105,6 +163,7 @@ export function serializeInternalNotification(row) {
     subject: row?.message_subject || '',
     text: row?.message_text || null,
     sent_at: row?.created_at || null,
+    delivery: deliveryObject(row, delivery),
   };
 }
 

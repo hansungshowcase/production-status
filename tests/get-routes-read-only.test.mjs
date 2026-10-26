@@ -148,6 +148,6 @@ test('internal notification history GET executes only its count and page SELECTs
 
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body.items, []);
-  assert.deepEqual(res.body.counts, { total: 0, success: 0, failed: 0, dry_run: 0 });
+  assert.deepEqual(res.body.counts, { total: 0, success: 0, failed: 0, dry_run: 0, delivery: { received: 0, failed: 0, pending: 0, unknown: 0 } });
   assert.equal(db.statements.length, 2);
 });

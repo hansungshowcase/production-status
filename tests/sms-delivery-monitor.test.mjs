@@ -806,7 +806,7 @@ test('Solapi report lookup repeats messageIds and deduplicates 50-item batches',
   }
 });
 
-test('delivery monitor cron authenticates requests and skips KST weekends', async () => {
+test('delivery monitor cron authenticates requests and checks receipts on KST weekends', async () => {
   const cron = await import(`../api/cron/sms-delivery-monitor.js?cron=${Math.random()}`);
   assert.equal(typeof cron.handleSmsDeliveryMonitor, 'function');
   const originalSecret = process.env.CRON_SECRET;
@@ -852,18 +852,34 @@ test('delivery monitor cron authenticates requests and skips KST weekends', asyn
     assert.deepEqual(authorized.body, { ok: true, ...monitorResult });
     assert.deepEqual(monitorLogs, [{ label: '[sms-delivery-monitor]', payload: monitorResult }]);
 
-    const weekend = mockResponse();
-    await cron.handleSmsDeliveryMonitor(
-      { method: 'GET', headers: { authorization: 'Bearer delivery-monitor-secret' } },
-      weekend,
-      {
-        db: {},
-        nowMs: Date.parse('2026-09-05T00:00:00.000Z'),
-        monitor: async () => { calls.push('weekend'); },
-      },
-    );
-    assert.deepEqual(weekend.body, { ok: true, skipped: 'weekend' });
-    assert.deepEqual(calls, ['weekday']);
+    for (const [day, date] of [
+      ['saturday', '2026-09-04T15:00:00.000Z'],
+      ['sunday', '2026-09-05T15:00:00.000Z'],
+    ]) {
+      const weekend = mockResponse();
+      await cron.handleSmsDeliveryMonitor(
+        { method: 'GET', headers: { authorization: 'Bearer delivery-monitor-secret' } },
+        weekend,
+        {
+          db: {},
+          nowMs: Date.parse(date),
+          monitor: async (_db, options) => {
+            assert.equal(options.nowMs, Date.parse(date));
+            calls.push(day);
+            return monitorResult;
+          },
+          logger: { info() {} },
+        },
+      );
+      assert.deepEqual(weekend.body, { ok: true, ...monitorResult });
+      const denied = mockResponse();
+      await cron.handleSmsDeliveryMonitor(
+        { method: 'GET', headers: {} }, denied,
+        { db: {}, nowMs: Date.parse(date), monitor: async () => { calls.push('unauthorized'); } },
+      );
+      assert.equal(denied.statusCode, 401);
+    }
+    assert.deepEqual(calls, ['weekday', 'saturday', 'sunday']);
   } finally {
     if (originalSecret === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = originalSecret;

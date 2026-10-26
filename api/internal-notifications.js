@@ -5,6 +5,7 @@ import {
   isPublicNotificationRow,
   NOTIFICATION_RECIPIENT_NAMES,
   PUBLIC_CHONBE_RECIPIENTS,
+  DELIVERY_CLASSIFICATION_SQL,
   recipientFilterForName,
   serializeInternalNotification,
 } from './_lib/internalNotificationHistory.js';
@@ -104,7 +105,11 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
     sql: `SELECT COUNT(*) AS total,
                  COUNT(*) FILTER (WHERE status = 'success') AS success,
                  COUNT(*) FILTER (WHERE COALESCE(status, 'failed') NOT IN ('success', 'dry_run')) AS failed,
-                 COUNT(*) FILTER (WHERE status = 'dry_run') AS dry_run
+                 COUNT(*) FILTER (WHERE status = 'dry_run') AS dry_run,
+                 COUNT(*) FILTER (WHERE (${DELIVERY_CLASSIFICATION_SQL}) = 'received') AS delivery_received,
+                 COUNT(*) FILTER (WHERE (${DELIVERY_CLASSIFICATION_SQL}) = 'failed') AS delivery_failed,
+                 COUNT(*) FILTER (WHERE (${DELIVERY_CLASSIFICATION_SQL}) = 'pending') AS delivery_pending,
+                 COUNT(*) FILTER (WHERE (${DELIVERY_CLASSIFICATION_SQL}) = 'unknown') AS delivery_unknown
             FROM notification_log
            WHERE ${filters.join(' AND ')}`,
     args: [...args],
@@ -116,6 +121,12 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
     success: countValue(countRow.success),
     failed: countValue(countRow.failed),
     dry_run: countValue(countRow.dry_run),
+    delivery: {
+      received: countValue(countRow.delivery_received),
+      failed: countValue(countRow.delivery_failed),
+      pending: countValue(countRow.delivery_pending),
+      unknown: countValue(countRow.delivery_unknown),
+    },
   };
   const totalPages = Math.ceil(counts.total / limit);
   const effectivePage = totalPages > 0 ? Math.min(page, totalPages) : 1;
@@ -123,7 +134,9 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
 
   const { rows } = await db.execute({
     sql: `SELECT id, milestone, to_phone, status, recipient_name,
-                 message_subject, message_text, created_at
+                 message_subject, message_text, created_at,
+                 delivery_status_code, delivery_reported_at,
+                 delivery_received_at, delivery_checked_at
             FROM notification_log
            WHERE ${filters.join(' AND ')}
            ORDER BY created_at DESC, id DESC

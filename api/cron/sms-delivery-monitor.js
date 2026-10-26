@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 
 import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
-import { isKstWeekend } from '../_lib/risk.js';
 import { runSmsDeliveryMonitor } from '../_lib/solapiDeliveryMonitor.js';
 
 function timingSafeMatch(left, right) {
@@ -23,9 +22,6 @@ export async function handleSmsDeliveryMonitor(req, res, dependencies = {}) {
   }
 
   const nowMs = dependencies.nowMs ?? Date.now();
-  if (isKstWeekend(nowMs)) {
-    return res.json({ ok: true, skipped: 'weekend' });
-  }
 
   const db = dependencies.db || getDb();
   const monitor = dependencies.monitor || runSmsDeliveryMonitor;

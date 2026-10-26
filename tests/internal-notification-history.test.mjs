@@ -183,6 +183,7 @@ function makeHistoryDb(rows = historyRows) {
             success: publicRows.filter(row => row.status === 'success').length,
             failed: publicRows.filter(row => !['success', 'dry_run'].includes(row.status)).length,
             dry_run: publicRows.filter(row => row.status === 'dry_run').length,
+            delivery_received: 0, delivery_failed: 0, delivery_pending: 0, delivery_unknown: publicRows.length,
           }],
         };
       }
@@ -242,7 +243,7 @@ test('공개 발송내역 API는 인증 없이 내부 문자와 분체 미착수
   assert.equal(res.body.items[1].phone, '010****0873');
   assert.equal(res.body.items[2].recipient_name, '김보수 팀장');
   assert.equal(res.body.items[2].text, null);
-  assert.deepEqual(res.body.counts, { total: 3, success: 2, failed: 0, dry_run: 1 });
+  assert.deepEqual(res.body.counts, { total: 3, success: 2, failed: 0, dry_run: 1, delivery: { received: 0, failed: 0, pending: 0, unknown: 3 } });
   assert.equal('error' in res.body.items[0], false);
   assert.equal('provider_msgid' in res.body.items[0], false);
   assert.match(db.calls.at(-1).sql, /milestone = 'chonbe_alert'/);
@@ -299,7 +300,7 @@ test('발송내역 API는 9월 1일부터만 집계하고 10건씩 페이지로 
       };
       calls.push(call);
       if (/SELECT COUNT\(\*\) AS total/.test(call.sql)) {
-        return { rows: [{ total: 26, success: 20, failed: 4, dry_run: 2 }] };
+        return { rows: [{ total: 26, success: 20, failed: 4, dry_run: 2, delivery_received: 0, delivery_failed: 4, delivery_pending: 0, delivery_unknown: 22 }] };
       }
       return { rows: historyRows.slice(0, 3) };
     },
@@ -315,7 +316,7 @@ test('발송내역 API는 9월 1일부터만 집계하고 10건씩 페이지로 
   }
   assert.match(calls[1].sql, /ORDER BY created_at DESC, id DESC LIMIT \? OFFSET \?/);
   assert.deepEqual(calls[1].args.slice(-2), [10, 10]);
-  assert.deepEqual(res.body.counts, { total: 26, success: 20, failed: 4, dry_run: 2 });
+  assert.deepEqual(res.body.counts, { total: 26, success: 20, failed: 4, dry_run: 2, delivery: { received: 0, failed: 4, pending: 0, unknown: 22 } });
   assert.deepEqual(res.body.pagination, {
     page: 2,
     page_size: 10,
@@ -452,4 +453,49 @@ test('내부 문자 이력 열 보정은 일반 주문 알림 스키마 경로�
     db.calls.filter(call => /^ALTER TABLE notification_log ADD COLUMN/.test(call.sql)).length,
     3,
   );
+});
+
+test('3040 delivery result is serialized as final delivery failure separately from request success', async () => {
+  const { serializeInternalNotification } = await import('../api/_lib/internalNotificationHistory.js');
+  const item = serializeInternalNotification({
+    id: 2002,
+    milestone: 'internal_overdue_equipment',
+    to_phone: '010-9606-4537',
+    status: 'success',
+    delivery_status_code: '3040',
+    delivery_reported_at: '2026-10-25T23:59:00.000Z',
+    delivery_received_at: null,
+    delivery_checked_at: '2026-10-26T00:00:16.000Z',
+    created_at: '2026-10-23T23:40:21.000Z',
+  });
+
+  assert.equal(item.status, 'success');
+  assert.deepEqual(item.delivery, {
+    state: 'failed',
+    code: '3040',
+    label: '전달 실패 · 전송시간 초과',
+    reported_at: '2026-10-25T23:59:00.000Z',
+    received_at: null,
+    checked_at: '2026-10-26T00:00:16.000Z',
+  });
+  assert.equal('provider_msgid' in item, false);
+  assert.equal('delivery_reason' in item.delivery, false);
+});
+
+test('delivery states distinguish receipt, processing, failure, unknown and unsent records', async () => {
+  const { serializeInternalNotification } = await import('../api/_lib/internalNotificationHistory.js');
+  for (const [status, code, state] of [
+    ['success', '4000', 'received'], ['success', ' 4000 ', 'received'],
+    ['success', '2000', 'pending'], ['success', '3000', 'pending'],
+    ['success', '3040', 'failed'], ['success', '1061', 'failed'],
+    ['success', '2230', 'failed'], ['success', null, 'unknown'],
+    ['success', '9999', 'unknown'], ['success', 'malformed', 'unknown'],
+    ['failed', null, 'failed'], ['dry_run', '3040', 'unknown'],
+  ]) {
+    const item = serializeInternalNotification({ status, delivery_status_code: code,
+      delivery_received_at: '2026-10-26T00:00:00Z' });
+    assert.equal(item.delivery.state, state, status + ':' + code);
+    if (state !== 'received') assert.equal(item.delivery.received_at, null);
+    if (status === 'dry_run') assert.match(item.delivery.label, /시험 기록/);
+  }
 });

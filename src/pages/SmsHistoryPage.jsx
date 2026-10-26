@@ -21,7 +21,12 @@ const AUDIENCE_LABELS = {
   sales: '영업',
 };
 
-const EMPTY_SUMMARY = Object.freeze({ total: 0, success: 0, failed: 0 });
+const EMPTY_SUMMARY = Object.freeze({
+  total: 0,
+  success: 0,
+  failed: 0,
+  delivery: Object.freeze({ received: 0, failed: 0, pending: 0, unknown: 0 }),
+});
 const EMPTY_PAGINATION = Object.freeze({
   page: 1,
   page_size: 10,
@@ -50,6 +55,12 @@ function statusMeta(status) {
   return STATUS_META[status] || STATUS_META.failed;
 }
 
+function deliveryMeta(item) {
+  const delivery = item.delivery;
+  const className = { received: 'success', failed: 'failed', pending: 'pending', unknown: 'dry-run' }[delivery?.state] || 'dry-run';
+  return { label: delivery?.label || '전달 미확인', className };
+}
+
 export default function SmsHistoryPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
@@ -75,6 +86,12 @@ export default function SmsHistoryPage() {
         total: Number(data?.counts?.total) || 0,
         success: Number(data?.counts?.success) || 0,
         failed: Number(data?.counts?.failed) || 0,
+        delivery: {
+          received: Number(data?.counts?.delivery?.received) || 0,
+          failed: Number(data?.counts?.delivery?.failed) || 0,
+          pending: Number(data?.counts?.delivery?.pending) || 0,
+          unknown: Number(data?.counts?.delivery?.unknown) || 0,
+        },
       });
       setPagination({
         page: Number(data?.pagination?.page) || 1,
@@ -260,6 +277,18 @@ export default function SmsHistoryPage() {
             <span>요청 실패</span>
             <strong>{summary.failed}</strong>
           </div>
+          <div className="sms-history-summary__cell sms-history-summary__cell--success">
+            <span>수신 완료</span>
+            <strong>{summary.delivery.received}</strong>
+          </div>
+          <div className="sms-history-summary__cell sms-history-summary__cell--failed">
+            <span>전달 실패</span>
+            <strong>{summary.delivery.failed}</strong>
+          </div>
+          <div className="sms-history-summary__cell">
+            <span>확인 중·미확인</span>
+            <strong>{summary.delivery.pending + summary.delivery.unknown}</strong>
+          </div>
         </section>
 
         <div className="sms-history-list-scroll" data-history-scroll aria-label="문자 발송 기록" tabIndex={0}>
@@ -300,6 +329,7 @@ export default function SmsHistoryPage() {
                 <div className="sms-history-list">
                   {group.items.map(item => {
                     const meta = statusMeta(item.status);
+                    const delivery = deliveryMeta(item);
                     const isExpanded = expandedId === item.id;
                     const bodyId = `sms-history-body-${item.id}`;
                     return (
@@ -311,15 +341,24 @@ export default function SmsHistoryPage() {
                               {AUDIENCE_LABELS[item.audience] || '수신자'}
                             </span>
                           </div>
-                          <span className={`sms-history-status sms-history-status--${meta.className}`}>
-                            {meta.label}
-                          </span>
+                          <div className="sms-history-results">
+                            <span className={`sms-history-status sms-history-status--${delivery.className}`}>
+                              {delivery.label}
+                            </span>
+                            <span className="sms-history-request-status">{meta.label}</span>
+                          </div>
                         </div>
 
                         <div className="sms-history-meta">
                           <span>{item.phone || '번호 정보 없음'}</span>
                           <span aria-hidden="true">·</span>
                           <time dateTime={item.sent_at || undefined}>{formatSentAt(item.sent_at)}</time>
+                          {item.delivery?.reported_at && (
+                            <span>결과 확정 {formatSentAt(item.delivery.reported_at)}</span>
+                          )}
+                          {item.delivery?.checked_at && (
+                            <span>확인 {formatSentAt(item.delivery.checked_at)}</span>
+                          )}
                         </div>
 
                         <h3>{item.subject || '제목 저장 전 기록'}</h3>

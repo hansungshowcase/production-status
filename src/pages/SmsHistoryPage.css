@@ -427,6 +427,9 @@
 }
 
 .sms-history-audience { background: var(--surface2); color: var(--text-mid); }
+.sms-history-results { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.sms-history-request-status { color: var(--text-dim); font-size: 12px; }
+.sms-history-status--pending { background: var(--sms-test-bg); color: var(--sms-test-ink); }
 .sms-history-status--success { background: var(--sms-employee-bg); color: var(--sms-employee-ink); }
 .sms-history-status--failed { background: var(--sms-paused-bg); color: var(--sms-paused-ink); }
 .sms-history-status--dry-run { background: var(--sms-test-bg); color: var(--sms-test-ink); }

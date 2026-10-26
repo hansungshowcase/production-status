@@ -57,6 +57,9 @@ const ALERT_LABELS = {
   internal_packing_due: '포장 완료 납기 알림',
   internal_assembly_daily: '조립팀 포장 완료 일일 알림',
   chonbe_alert: '분체 미착수 영업담당자 알림',
+  internal_overdue_equipment: '납기 지연 설비작업 미완료',
+  internal_overdue_packing: '포장 완료 요청',
+  internal_overdue_unshipped: '납기 지연 출고 미완료',
 };
 
 function solapiAuthHeader() {
@@ -211,7 +214,14 @@ export function buildAdminAlert(row, report, nowMs, alertToken) {
   const recipient = String(row.recipient_name || '').trim() || '수신자 미확인';
   const phone = String(row.to_phone || '').trim() || '번호 미확인';
   const label = ALERT_LABELS[row.milestone] || row.milestone;
-  const reason = report.reason || '수신거부 또는 차단';
+  const reason = report.reason || (FINAL_FAILURE_ALERT_CODES.has(report.statusCode)
+    ? '전송시간 초과' : '수신거부 또는 차단');
+  const sentAt = Date.parse(row.created_at || '');
+  const reportedAt = Date.parse(report.dateReported || '');
+  const timingLines = [
+    Number.isFinite(sentAt) ? `원문 발송 시각: ${kstDateTime(sentAt)}` : '원문 발송 시각: 미확인',
+    ...(Number.isFinite(reportedAt) ? [`결과 확정 시각: ${kstDateTime(reportedAt)}`] : []),
+  ];
   const subject = '[한성쇼케이스 문자 수신 이상]';
   if (FINAL_FAILURE_ALERT_CODES.has(report.statusCode)) {
     return {
@@ -223,6 +233,7 @@ export function buildAdminAlert(row, report, nowMs, alertToken) {
         subject,
         `수신자: ${recipient} (${phone})`,
         `알림 종류: ${label}`,
+        ...timingLines,
         `최종 전달 실패: ${report.statusCode} ${reason}`,
         `확인 시각: ${kstDateTime(nowMs)}`,
       ].join('\n'),
@@ -237,6 +248,7 @@ export function buildAdminAlert(row, report, nowMs, alertToken) {
       subject,
       `수신자: ${recipient} (${phone})`,
       `알림 종류: ${label}`,
+      ...timingLines,
       `확인 결과: ${report.statusCode} ${reason}`,
       `확인 시각: ${kstDateTime(nowMs)}`,
       '',
