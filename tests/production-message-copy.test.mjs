@@ -18,6 +18,7 @@ test('employee order lists identify clients and put a shared request only once a
   assert.doesNotMatch(message.text, /주문\s*#?\d+/);
   assert.match(message.text, /- 본가대성집1층 \| 납기 2026-08-28/);
   assert.match(message.text, /- 우담정육점 \| 납기 2026-10-05/);
+  assert.ok(message.text.includes(String.fromCharCode(10).repeat(2) + '- 우담정육점 | 납기 2026-10-05'), 'separate order blocks with one blank line');
   assert.equal(countText(message.text, action), 1);
   assert.ok(message.text.indexOf(action) > message.text.indexOf('- 우담정육점'));
   assert.ok(message.text.indexOf(action) < message.text.indexOf('https://'));

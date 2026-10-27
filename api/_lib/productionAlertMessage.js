@@ -115,7 +115,7 @@ export function buildProductionAlertMessage({
   while (true) {
     const omittedCount = totalCount - listed.length;
     const omitted = omittedCount > 0 ? [`외 ${omittedCount}건`] : [];
-    text = [...prefix, ...listed, ...omitted, ...suffix].join('\n');
+    text = [...prefix, ...(listed.length ? [listed.join('\n\n')] : []), ...omitted, ...suffix].join('\n');
     if (Buffer.byteLength(text, 'utf8') <= MAX_MESSAGE_BYTES || listed.length === 0) break;
     listed = listed.slice(0, -1);
   }
