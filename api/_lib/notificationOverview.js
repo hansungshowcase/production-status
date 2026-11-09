@@ -3,6 +3,7 @@ import { INTERNAL_ALERT_CONTACTS } from './internalProductionAlerts.js';
 import { buildNotificationExample } from './notificationExamples.js';
 import { OVERDUE_REMINDER_DEFINITIONS } from './overdueReminders.js';
 import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
+import { SHIP_DAY_REMINDER_DEFINITION } from './shipDayReminders.js';
 
 export const NOTIFICATION_OVERVIEW_DAYS = 7;
 const PUBLIC_INTERNAL_HISTORY_START_MS = Date.parse('2026-09-01T00:00:00+09:00');
@@ -285,6 +286,13 @@ export function buildNotificationCatalog(env = process.env, now = new Date()) {
         ],
       } : {}),
     })),
+    internalRule({
+      id: SHIP_DAY_REMINDER_DEFINITION.kind,
+      milestone: SHIP_DAY_REMINDER_DEFINITION.kind,
+      ...SHIP_DAY_REMINDER_DEFINITION.overview,
+      scheduled: true,
+      daily: true,
+    }, env),
   ].map(item => withExample(withCheckedAt(item, checkedAt), now));
 
   return [

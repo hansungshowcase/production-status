@@ -4,6 +4,10 @@ import {
   OVERDUE_REMINDER_DEFINITIONS,
   buildOverdueReminderMessage,
 } from './overdueReminders.js';
+import {
+  SHIP_DAY_REMINDER_DEFINITION,
+  buildShipDayReminderMessage,
+} from './shipDayReminders.js';
 import { buildAdminAlert } from './solapiDeliveryMonitor.js';
 import { buildChonbeAlertMessage } from '../cron/risk-daily.js';
 
@@ -101,6 +105,14 @@ export function buildNotificationExample(item, now = new Date()) {
   if (INTERNAL_TYPES[milestone]) return sample(buildInternalExample(INTERNAL_TYPES[milestone]));
   if (Object.values(OVERDUE_REMINDER_DEFINITIONS).some(definition => definition.kind === milestone)) {
     return sample(buildOverdueExample(milestone));
+  }
+  if (milestone === SHIP_DAY_REMINDER_DEFINITION.kind) {
+    return sample(buildShipDayReminderMessage({
+      kind: milestone,
+      recipientName: '가상 담당자',
+      kstDate: SAMPLE_DATE,
+      orders: [{ orderId: 1001, clientName: '가상 거래처', dueDay: SAMPLE_DATE, shipDay: SAMPLE_DATE }],
+    }));
   }
   if (milestone === 'chonbe_alert') {
     return sample(buildChonbeAlertMessage({

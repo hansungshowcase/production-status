@@ -55,7 +55,7 @@ test('실제 자동 알림 규칙만 고객과 사내·관리 그룹에 공개�
   const groups = buildNotificationCatalog(readyEnv(), NOW);
   assert.deepEqual(groups.map(group => [group.id, group.items.length]), [
     ['customer', 5],
-    ['internal', 10],
+    ['internal', 11],
   ]);
 
   const ids = groups.flatMap(group => group.items.map(item => item.id));
@@ -64,7 +64,7 @@ test('실제 자동 알림 규칙만 고객과 사내·관리 그룹에 공개�
     'internal_vcut_completed', 'internal_design_due', 'internal_laser_due', 'internal_welding_due',
     'internal_assembly_due', 'chonbe_alert',
     'sms_delivery_block_admin_alert', 'internal_overdue_unshipped', 'internal_overdue_equipment',
-    'internal_overdue_packing',
+    'internal_overdue_packing', 'internal_ship_day',
   ]);
   assert.equal(ids.some(id => id.includes('demo') || id.includes('test_send')), false);
 });
@@ -314,7 +314,7 @@ test('최근 조회와 카탈로그 발견 실패는 서로의 성공 결과를 
   assert.equal(discoveryFailed.log_status.state, 'available');
   assert.equal(discoveryFailed.catalog_status.state, 'unavailable');
   assert.equal(discoveryFailed.groups[0].items[0].recent.counts.total, 1);
-  assert.equal(discoveryFailed.groups.find(group => group.id === 'internal').items.length, 10);
+  assert.equal(discoveryFailed.groups.find(group => group.id === 'internal').items.length, 11);
 });
 
 test('발견 항목은 200개로 제한하고 초과 시 카탈로그 상태만 partial로 표시한다', async () => {
@@ -328,7 +328,7 @@ test('발견 항목은 200개로 제한하고 초과 시 카탈로그 상태만 
     async execute(query) { return { rows: query.sql.includes('DISTINCT ON') ? rows : [] }; },
   }, readyEnv(), NOW);
   assert.equal(result.catalog_status.state, 'partial');
-  assert.equal(result.groups.find(group => group.id === 'internal').items.length, 10 + 200);
+  assert.equal(result.groups.find(group => group.id === 'internal').items.length, 11 + 200);
 });
 
 test('최근 기록과 카탈로그 발견은 읽기 전용 SELECT만 수행하고 모두 실패해도 정책·설정을 반환한다', async () => {
