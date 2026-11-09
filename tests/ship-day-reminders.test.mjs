@@ -18,7 +18,7 @@ function order(id, extra = {}) {
   return {
     id,
     client_name: `거래처 ${id}`,
-    sales_person: '신은철',
+    sales_person: '이준형',
     status: 'in_production',
     due_date: TODAY,
     ship_scheduled_date: null,
@@ -92,25 +92,34 @@ test('shipped or non-production orders are excluded', () => {
   assert.equal(result.groups.length, 0);
 });
 
-test('orders are grouped per salesperson, one message each', () => {
+test('only 이준형 orders are sent, to 이준형 only, one message', () => {
   const result = collect([
     order(1), order(2),
-    order(3, { sales_person: '이준형' }),
+    order(3, { sales_person: '신은철' }),
+    order(4, { sales_person: '황보민수' }),
   ]);
-  assert.equal(result.groups.length, 2);
-  const kim = result.groups.find(group => group.recipientName === '신은철');
-  assert.deepEqual(kim.orders.map(item => item.orderId), [1, 2]);
-  const message = buildShipDayReminderMessage(kim);
+  assert.equal(result.groups.length, 1);
+  const lee = result.groups[0];
+  assert.equal(lee.recipientName, '이준형');
+  assert.equal(lee.toPhone, '01077314237');
+  assert.deepEqual(lee.orders.map(item => item.orderId), [1, 2]);
+  const message = buildShipDayReminderMessage(lee);
   assert.match(message.subject, /\[생산현황 오늘 출고 예정\]/);
   assert.match(message.text, /거래처 1/);
   assert.match(message.text, /주문번호 2/);
   assert.match(message.text, /오늘 출고 예정입니다/);
+  assert.doesNotMatch(message.text, /거래처 3|거래처 4/);
 });
 
-test('unmapped salespeople are counted and excluded without a fallback phone', () => {
-  const result = collect([order(1, { sales_person: '김보수' }), order(2, { sales_person: null })]);
-  assert.equal(result.groups.length, 0);
-  assert.equal(result.unknownAssignments.length, 2);
+test('unassigned or other salespeople never go to a fallback phone', () => {
+  const saved = process.env.ALERT_FALLBACK;
+  process.env.ALERT_FALLBACK = '010-0000-0000';
+  try {
+    const result = collectShipDayReminderGroups({ orders: [order(1, { sales_person: '김보수' }), order(2, { sales_person: null })], today: TODAY });
+    assert.equal(result.groups.length, 0);
+  } finally {
+    if (saved === undefined) delete process.env.ALERT_FALLBACK; else process.env.ALERT_FALLBACK = saved;
+  }
 });
 
 test('handler: already_claimed does not send', async () => {
@@ -131,7 +140,7 @@ test('handler: dry_run result is reported and send uses kind as tag', async () =
   assert.equal(res.body.dryRun, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].tag, KIND);
-  assert.equal(calls[0].to, '01073467407');
+  assert.equal(calls[0].to, '01077314237');
 });
 
 test('handler: rejects missing secret and wrong method', async () => {

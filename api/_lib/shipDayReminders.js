@@ -1,4 +1,4 @@
-import { ALERT_ROUTES, alertFallbackPhone, canonicalAlertRecipientName } from './alertRoutes.js';
+import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { kstDayFromNow, normalizeDueDateToKstDay } from './overdueReminders.js';
 import { buildProductionAlertMessage } from './productionAlertMessage.js';
 
@@ -15,11 +15,14 @@ function salesTarget() {
   const seen = new Set();
   return Object.entries(ALERT_ROUTES).flatMap(([routeName, phone]) => {
     const name = canonicalAlertRecipientName(routeName);
-    if (!name || seen.has(name)) return [];
+    if (!name || seen.has(name) || !SHIP_DAY_RECIPIENTS.includes(name)) return [];
     seen.add(name);
     return [`${name} (${maskedPhone(phone)})`];
   }).join(', ');
 }
+
+// 2026-11-09 사장님(이준형) 지시: 본인 담당 출고 건만 본인에게. 다른 담당자·미지정 주문은 보내지 않음.
+export const SHIP_DAY_RECIPIENTS = Object.freeze(['이준형']);
 
 export const SHIP_DAY_REMINDER_DEFINITION = Object.freeze({
   kind: 'internal_ship_day',
@@ -28,7 +31,7 @@ export const SHIP_DAY_REMINDER_DEFINITION = Object.freeze({
   overview: Object.freeze({
     name: '오늘 출고 예정 알림',
     trigger: '생산중 · 미출고 · 출고예정일(없으면 납기일)=오늘',
-    target: `해당 주문의 영업담당자 (등록 라우팅: ${salesTarget()})`,
+    target: `영업담당자가 ${SHIP_DAY_RECIPIENTS.join(", ")}인 주문만 → ${salesTarget()}`,
     timing: '매일 08:42 KST',
   }),
 });
@@ -53,7 +56,6 @@ export function collectShipDayReminderGroups({
 } = {}) {
   const kstDate = today || kstDayFromNow(nowMs);
   const kind = SHIP_DAY_REMINDER_DEFINITION.kind;
-  const fallbackPhone = normalizedPhone(alertFallbackPhone());
   const grouped = new Map();
   const unknownAssignments = [];
   const seen = new Set();
@@ -65,13 +67,14 @@ export function collectShipDayReminderGroups({
     if (!Number.isFinite(orderId) || seen.has(orderId)) continue;
     const shipDay = normalizeDueDateToKstDay(order.ship_scheduled_date || order.due_date);
     if (shipDay !== kstDate) continue;
+    // 지정 담당자(SHIP_DAY_RECIPIENTS)의 주문만 — 다른 담당자·미지정 주문은 대체 번호로도 보내지 않는다.
+    if (!SHIP_DAY_RECIPIENTS.includes(canonicalAlertRecipientName(order.sales_person))) continue;
     seen.add(orderId);
     eligibleOrders += 1;
-    let recipient = salesRecipient(order.sales_person, routes);
+    const recipient = salesRecipient(order.sales_person, routes);
     if (!recipient) {
       unknownAssignments.push({ kind, orderId, role: 'salesperson', value: String(order.sales_person || '').trim() || null });
-      if (!fallbackPhone) continue;
-      recipient = { recipientName: '담당자', toPhone: fallbackPhone };
+      continue;
     }
     if (!grouped.has(recipient.toPhone)) {
       grouped.set(recipient.toPhone, { kind, recipientName: recipient.recipientName, toPhone: recipient.toPhone, kstDate, orders: [] });
