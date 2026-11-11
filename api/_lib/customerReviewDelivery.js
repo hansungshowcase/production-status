@@ -8,7 +8,7 @@ const normalizePhone = value => String(value || '').replace(/\D/g, '');
 const validPhone = value => /^01[016789][0-9]{7,8}$/.test(value);
 export const matchReviewMessage = matchReviewCampaign;
 
-function safeText(value) {
+export function safeText(value) {
   if (value == null) return null;
   return redactCustomerSnapshot(String(value).replace(/https?:\/\/[^\s]*(?:coolsms-storage|amazonaws\.com)[^\s]*/gi, '[만료되는 이미지 링크]'));
 }
@@ -71,7 +71,7 @@ export function buildReviewDeliveryHistory(messages = [], { checkedAt = new Date
   });
 }
 
-function authHeader() {
+export function authHeader() {
   const key = process.env.SOLAPI_API_KEY, secret = process.env.SOLAPI_API_SECRET;
   if (!key || !secret) throw new Error('Solapi credentials are not configured');
   const date = new Date().toISOString(), salt = crypto.randomBytes(16).toString('hex');

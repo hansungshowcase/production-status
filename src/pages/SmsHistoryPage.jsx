@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { fetchInternalNotifications } from '../api/internalNotifications';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
+import SolapiMessageLog from '../components/SolapiMessageLog';
 import SmsCampaignManager from '../components/SmsCampaignManager';
 import {
   groupNotificationsByKstDate,
@@ -73,7 +74,8 @@ export default function SmsHistoryPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [expandedId, setExpandedId] = useState(null);
-  const [audience, setAudience] = useState('customer');
+  const [mainTab, setMainTab] = useState('solapi');
+  const audience = mainTab === 'employee' ? 'employee' : 'customer';
   const [activePanel, setActivePanel] = useState('history');
   const requestIdRef = useRef(0);
 
@@ -148,36 +150,57 @@ export default function SmsHistoryPage() {
       </header>
 
       <main className="sms-history-main">
-        <div className="sms-history-audience-tabs" role="tablist" aria-label="문자 관리 대상">
+        <div className="sms-history-audience-tabs sms-history-audience-tabs--main" role="tablist" aria-label="문자 관리 대상">
+          <button
+            type="button"
+            role="tab"
+            id="sms-history-audience-solapi"
+            aria-selected={mainTab === 'solapi'}
+            aria-controls="sms-history-audience-panel-solapi"
+            onClick={() => setMainTab('solapi')}
+          >
+            쏠라피 발송내역
+          </button>
           <button
             type="button"
             role="tab"
             id="sms-history-audience-customer"
-            aria-selected={audience === 'customer'}
+            aria-selected={mainTab === 'customer'}
             aria-controls="sms-history-audience-panel-customer"
-            onClick={() => setAudience('customer')}
+            onClick={() => setMainTab('customer')}
           >
-            고객
+            고객 문자 관리
           </button>
           <button
             type="button"
             role="tab"
             id="sms-history-audience-employee"
-            aria-selected={audience === 'employee'}
+            aria-selected={mainTab === 'employee'}
             aria-controls="sms-history-audience-panel-employee"
-            onClick={() => setAudience('employee')}
+            onClick={() => setMainTab('employee')}
           >
-            직원
+            직원 알림 관리
           </button>
         </div>
 
-        <SmsCampaignManager audience={audience} />
+        <div
+          id="sms-history-audience-panel-solapi"
+          role="tabpanel"
+          aria-labelledby="sms-history-audience-solapi"
+          hidden={mainTab !== 'solapi'}
+        >
+          <SolapiMessageLog />
+        </div>
+
+        <div hidden={mainTab === 'solapi'}>
+          <SmsCampaignManager audience={audience} />
+        </div>
 
         <div
           id="sms-history-audience-panel-customer"
           role="tabpanel"
           aria-labelledby="sms-history-audience-customer"
-          hidden={audience !== 'customer'}
+          hidden={mainTab !== 'customer'}
         >
           <CustomerSmsPanel />
         </div>
@@ -187,7 +210,7 @@ export default function SmsHistoryPage() {
           id="sms-history-audience-panel-employee"
           role="tabpanel"
           aria-labelledby="sms-history-audience-employee"
-          hidden={audience !== 'employee'}
+          hidden={mainTab !== 'employee'}
         >
         <div className="sms-history-view-tabs" role="tablist" aria-label="문자 현황 보기">
           <button

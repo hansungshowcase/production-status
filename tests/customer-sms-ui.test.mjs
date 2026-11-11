@@ -15,10 +15,12 @@ const panelSource = readFileSync(new URL('../src/components/CustomerSmsPanel.jsx
 const panelCss = readFileSync(new URL('../src/components/CustomerSmsPanel.css', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../src/api/customerNotifications.js', import.meta.url), 'utf8');
 
-test('고객 문자가 기본 상위 탭이며 기존 직원 패널은 함께 유지된다', () => {
-  assert.match(pageSource, /useState\('customer'\)/);
-  assert.match(pageSource, />\s*고객\s*</);
-  assert.match(pageSource, />\s*직원\s*</);
+test('쏠라피 발송내역이 기본 상위 탭이며 고객·직원 관리 탭과 기존 패널은 함께 유지된다', () => {
+  assert.match(pageSource, /useState\('solapi'\)/);
+  assert.match(pageSource, />\s*고객 문자 관리\s*</);
+  assert.match(pageSource, />\s*직원 알림 관리\s*</);
+  assert.match(pageSource, />\s*쏠라피 발송내역\s*</);
+  assert.match(pageSource, /<SolapiMessageLog \/>/);
   assert.match(pageSource, /<CustomerSmsPanel \/>/);
   assert.match(pageSource, /<NotificationOverview \/>/);
   assert.match(pageSource, /id="sms-history-recipient"/);

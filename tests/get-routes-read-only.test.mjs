@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import * as internalNotificationsModule from '../api/internal-notifications.js';
+import * as solapiMessagesModule from '../api/solapi-messages.js';
 import * as orderDetailModule from '../api/orders/[id]/index.js';
 import * as workOrderImageModule from '../api/orders/[id]/work-order-image.js';
 import * as trackModule from '../api/track/[token].js';
@@ -128,6 +129,26 @@ test('customer track GET preserves rate limiting and response fields with SELECT
   assert.deepEqual(res.body.steps, processes.map(({ step_name: name, status }) => ({ name, status })));
   assert.deepEqual(rateLimitCalls, [{ url: '/api/track', options: { windowMs: 60000, max: 30 } }]);
   assert.equal(db.statements.length, 2);
+});
+
+test('solapi message log GET executes only one SELECT and no writes', async () => {
+  process.env.SOLAPI_API_KEY = 'test-key';
+  process.env.SOLAPI_API_SECRET = 'test-secret';
+  try {
+    const db = selectOnlyDb(() => ({ rows: [] }));
+    const res = response();
+    await solapiMessagesModule.handleSolapiMessages({ method: 'GET', query: { date: '2026-11-10' } }, res, {
+      db,
+      rateLimitCheck: () => true,
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ messageList: {} }) }),
+    });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body.items, []);
+    assert.equal(db.statements.length, 1);
+  } finally {
+    delete process.env.SOLAPI_API_KEY;
+    delete process.env.SOLAPI_API_SECRET;
+  }
 });
 
 test('internal notification history GET executes only its count and page SELECTs', async () => {

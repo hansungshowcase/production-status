@@ -134,6 +134,25 @@
   box-shadow: var(--shadow);
 }
 
+.sms-history-audience-tabs--main {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sms-history-audience-tabs--main button {
+  min-width: 0;
+  padding: var(--space-2);
+  font-size: 14px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+@media (max-width: 420px) {
+  .sms-history-audience-tabs--main button {
+    font-size: 13px;
+  }
+}
+
 .sms-history-employee-panel,
 .sms-history-employee-panel > .sms-history-workspace {
   min-width: 0;
