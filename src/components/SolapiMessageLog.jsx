@@ -417,7 +417,7 @@ export default function SolapiMessageLog({
           쏠라피 발송 기록 · {date} 하루(한국시간) · 수신번호 가운데와 본문 속 링크·전화번호는 가림
           {checked ? ` · 확인 ${checked}` : ''}
         </p>
-        <p>쏠라피에 닿기 전에 멈춘 문자(키 미설정·시험 기록·요청 실패)는 이 탭에 없고 &apos;고객 문자 관리&apos;·&apos;직원 알림 관리&apos; 탭에 있습니다.</p>
+        <p>쏠라피에 닿기 전에 멈춘 문자(키 미설정·시험 기록·요청 실패)는 이 탭에 없고 &apos;고객 문자 관리&apos;·&apos;직원 문자 관리&apos; 메뉴에 있습니다.</p>
         {data?.partial ? <p className="solapi-log-notice__warn">건수가 많아 1,500건까지만 표시합니다(일부 누락).</p> : null}
         {notConfigured ? <p className="solapi-log-notice__warn">쏠라피 키가 설정되지 않아 조회할 수 없습니다.</p> : null}
         {data?.groups_partial ? <p className="solapi-log-notice__warn">쏠라피 요청 목록을 일부만 불러왔습니다(조회 실패 또는 건수 많음). 상태·타입이 비어 있는 줄이 있을 수 있습니다.</p> : null}

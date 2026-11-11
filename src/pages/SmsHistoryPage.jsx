@@ -92,6 +92,7 @@ export default function SmsHistoryPage() {
   else if (state.menu === 'customer') lastAudienceRef.current = 'customer';
   const audience = lastAudienceRef.current;
   const [activePanel, setActivePanel] = useState('history');
+  const [customerPanel, setCustomerPanel] = useState('history');
   const requestIdRef = useRef(0);
 
   useEffect(() => {
@@ -243,7 +244,46 @@ export default function SmsHistoryPage() {
             id="sms-history-audience-panel-customer"
             hidden={state.menu !== 'customer'}
           >
-            <CustomerSmsPanel />
+            <div className="sms-history-view-tabs" role="tablist" aria-label="고객 문자 보기">
+              <button
+                type="button"
+                role="tab"
+                id="sms-history-customer-tab-history"
+                aria-selected={customerPanel === 'history'}
+                aria-controls="sms-history-customer-panel-history"
+                onClick={() => setCustomerPanel('history')}
+              >
+                발송 내역
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="sms-history-customer-tab-overview"
+                aria-selected={customerPanel === 'overview'}
+                aria-controls="sms-history-customer-panel-overview"
+                onClick={() => setCustomerPanel('overview')}
+              >
+                등록 현황
+              </button>
+            </div>
+            <div className="sms-history-workspace">
+              <section
+                className={`sms-history-workspace-panel sms-history-workspace-panel--overview ${customerPanel === 'overview' ? 'is-active' : ''}`}
+                id="sms-history-customer-panel-overview"
+                role="tabpanel"
+                aria-labelledby="sms-history-customer-tab-overview"
+              >
+                <NotificationOverview group="customer" />
+              </section>
+              <section
+                className={`sms-history-workspace-panel sms-history-workspace-panel--history ${customerPanel === 'history' ? 'is-active' : ''}`}
+                id="sms-history-customer-panel-history"
+                role="tabpanel"
+                aria-labelledby="sms-history-customer-tab-history"
+              >
+                <CustomerSmsPanel />
+              </section>
+            </div>
           </div>
         )}
 
@@ -272,7 +312,7 @@ export default function SmsHistoryPage() {
             aria-controls="sms-history-panel-overview"
             onClick={() => setActivePanel('overview')}
           >
-            적용 현황
+            등록 현황
           </button>
         </div>
 
@@ -284,7 +324,7 @@ export default function SmsHistoryPage() {
             aria-labelledby="sms-history-tab-overview"
             data-sms-panel="overview"
           >
-            <NotificationOverview />
+            <NotificationOverview group="internal" />
           </section>
 
           <section
@@ -297,7 +337,7 @@ export default function SmsHistoryPage() {
 
         <section className="sms-history-intro" aria-labelledby="sms-history-title">
           <div>
-            <h2 id="sms-history-title">직원 알림 발송내역</h2>
+            <h2 id="sms-history-title">직원 문자 발송내역</h2>
             <p>
               생산 담당자, 작업자, 영업담당자에게 자동 발송된{' '}
               <span className="sms-history-keep-together">문자 내용과 요청 결과입니다.</span>

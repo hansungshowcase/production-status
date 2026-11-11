@@ -18,7 +18,7 @@ const overviewSource = readFileSync(new URL('../api/_lib/notificationOverview.js
 
 test('자동 알림 현황은 기존 직원 발송내역 위에 독립 컴포넌트로 표시된다', () => {
   assert.match(pageSource, /import NotificationOverview/);
-  assert.match(pageSource, /<NotificationOverview\s*\/>[\s\S]*직원 알림 발송내역/);
+  assert.match(pageSource, /<NotificationOverview group="internal" \/>[\s\S]*직원 문자 발송내역/);
   assert.match(componentSource, /data-notification-overview/);
   assert.match(overviewSource, /label: '고객 알림'/);
   assert.match(overviewSource, /label: '사내·관리 알림'/);
@@ -30,7 +30,7 @@ test('현황 조회 상태와 재시도는 기존 발송내역 요청과 분리�
   assert.match(componentSource, /useState\('loading'\)/);
   assert.match(componentSource, /setStatus\('error'\)/);
   assert.match(componentSource, /현황 다시 불러오기/);
-  assert.match(componentSource, /아래 직원 알림 발송내역은 계속 확인/);
+  assert.match(componentSource, /아래 직원 문자 발송내역은 계속 확인/);
   assert.doesNotMatch(pageSource, /fetchNotificationOverview/);
 });
 
@@ -44,7 +44,13 @@ test('규칙 상세는 키보드 버튼 의미와 상태 연결을 제공한다'
 });
 
 test('현황은 요약과 고객·사내 그룹 탭을 고정하고 선택 그룹만 노출한다', () => {
-  assert.match(componentSource, /className="notification-overview-summary"/);
+  assert.match(componentSource, /className=\{`notification-overview-summary\$\{copy/);
+  // 메뉴별 한 대상 보기: 고객 문자 관리는 고객만, 직원 문자 관리는 직원만(탭 없이)
+  assert.match(componentSource, /allGroups\.filter\(group => group\.id === onlyGroup\)/);
+  assert.match(componentSource, /\{!copy && \(/);
+  assert.match(componentSource, /등록된 자동 문자가 없습니다\./);
+  assert.match(componentSource, /onlyGroup === 'customer' \? '고객 문자 발송 내역은 계속 확인할 수 있습니다\.'/);
+  assert.match(componentCss, /\.notification-overview-summary--single\s*\{\s*grid-template-columns:\s*repeat\(2/);
   assert.match(componentSource, /고객 알림/);
   assert.match(componentSource, /직원 알림/);
   assert.match(componentSource, /보내지 않음/);

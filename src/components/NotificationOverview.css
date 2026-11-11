@@ -127,6 +127,12 @@
 .notification-overview-summary > div:nth-child(1) dd { color: var(--sms-customer-ink); }
 .notification-overview-summary > div:nth-child(2) dd { color: var(--sms-employee-ink); }
 .notification-overview-summary > div:nth-child(3) dd { color: var(--sms-paused-ink); }
+/* 한 대상만 보여 줄 때(고객 문자 관리·직원 문자 관리): [그 대상 수 | 보내지 않음] 두 칸 */
+.notification-overview-summary--single { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.notification-overview-summary--single > div:nth-child(2) { background: var(--sms-paused-bg); }
+.notification-overview-summary--single > div:nth-child(2) dd { color: var(--sms-paused-ink); }
+.notification-overview-summary--internal > div:nth-child(1) { background: var(--sms-employee-bg); }
+.notification-overview-summary--internal > div:nth-child(1) dd { color: var(--sms-employee-ink); }
 
 .notification-overview-summary dt {
   color: var(--sms-ink);

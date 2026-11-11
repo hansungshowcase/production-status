@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { fetchNotificationOverview } from '../api/notificationOverview';
 import {
   notificationChannelPresentation,
@@ -130,10 +130,19 @@ function OverviewItem({ item, days, expanded, onToggle }) {
   );
 }
 
-export default function NotificationOverview() {
+// group 을 주면 그 대상(customer=고객, internal=직원)의 자동 문자만 보여 준다(고객 문자 관리·직원 문자 관리 메뉴가 따로 쓴다).
+// 주지 않으면 예전처럼 고객·직원 탭을 함께 보여 준다.
+const GROUP_COPY = {
+  customer: { eyebrow: '고객 자동 문자 등록 현황', title: '고객에게 가는 자동 문자', count: '고객 자동 문자' },
+  internal: { eyebrow: '직원 자동 문자 등록 현황', title: '직원에게 가는 자동 문자', count: '직원 자동 문자' },
+};
+
+export default function NotificationOverview({ group: onlyGroup = null } = {}) {
+  const copy = GROUP_COPY[onlyGroup] || null;
+  const titleId = useId();
   const [status, setStatus] = useState('loading');
   const [overview, setOverview] = useState(null);
-  const [activeGroupId, setActiveGroupId] = useState('customer');
+  const [activeGroupId, setActiveGroupId] = useState(copy ? onlyGroup : 'customer');
   const [expandedByGroup, setExpandedByGroup] = useState({ customer: null, internal: null });
   const requestIdRef = useRef(0);
 
@@ -157,9 +166,12 @@ export default function NotificationOverview() {
   }, [loadOverview]);
 
   const days = Number(overview?.recent_period?.days) || 7;
-  const groups = overview?.groups || [];
-  const customerCount = groups.find(group => group.id === 'customer')?.items?.length || 0;
-  const internalCount = groups.find(group => group.id === 'internal')?.items?.length || 0;
+  const allGroups = overview?.groups || [];
+  const groups = copy ? allGroups.filter(group => group.id === onlyGroup) : allGroups;
+  const customerCount = allGroups.find(group => group.id === 'customer')?.items?.length || 0;
+  const internalCount = allGroups.find(group => group.id === 'internal')?.items?.length || 0;
+  const shownCount = groups.reduce((count, group) => count + (group.items || []).length, 0);
+  const stateLabel = copy ? copy.eyebrow : '자동 알림 적용 현황';
   const pausedCount = groups.reduce(
     (count, group) => count + (group.items || []).filter(item => item.policy?.status === 'paused').length,
     0,
@@ -169,13 +181,13 @@ export default function NotificationOverview() {
   return (
     <section
       className="notification-overview"
-      aria-labelledby="notification-overview-title"
-      data-notification-overview
+      aria-labelledby={titleId}
+      data-notification-overview={onlyGroup || 'all'}
     >
       <div className="notification-overview__intro">
         <div>
-          <p className="notification-overview__eyebrow">자동 알림 적용 현황</p>
-          <h2 id="notification-overview-title">자동 알림과 받는 사람</h2>
+          <p className="notification-overview__eyebrow">{stateLabel}</p>
+          <h2 id={titleId}>{copy ? copy.title : '자동 알림과 받는 사람'}</h2>
         </div>
         {status === 'ready' && (
           <time dateTime={overview?.checked_at || undefined}>
@@ -190,23 +202,32 @@ export default function NotificationOverview() {
 
       {status === 'loading' && (
         <div className="notification-overview-state" role="status" aria-live="polite">
-          자동 알림 적용 현황을 불러오는 중입니다.
+          {stateLabel}을 불러오는 중입니다.
         </div>
       )}
 
       {status === 'error' && (
         <div className="notification-overview-state notification-overview-state--error" role="alert">
-          <strong>자동 알림 적용 현황을 불러오지 못했습니다.</strong>
-          <span>아래 직원 알림 발송내역은 계속 확인할 수 있습니다.</span>
+          <strong>{stateLabel}을 불러오지 못했습니다.</strong>
+          <span>{onlyGroup === 'customer' ? '고객 문자 발송 내역은 계속 확인할 수 있습니다.' : '아래 직원 문자 발송내역은 계속 확인할 수 있습니다.'}</span>
           <button type="button" onClick={loadOverview}>현황 다시 불러오기</button>
         </div>
       )}
 
       {status === 'ready' && (
         <>
-          <dl className="notification-overview-summary" aria-label="자동 알림 종류 요약">
-            <div><dt>고객 알림</dt><dd>{customerCount}</dd></div>
-            <div><dt>직원 알림</dt><dd>{internalCount}</dd></div>
+          <dl
+            className={`notification-overview-summary${copy ? ` notification-overview-summary--single notification-overview-summary--${onlyGroup}` : ''}`}
+            aria-label={copy ? `${copy.count} 요약` : '자동 알림 종류 요약'}
+          >
+            {copy ? (
+              <div><dt>{copy.count}</dt><dd>{shownCount}</dd></div>
+            ) : (
+              <>
+                <div><dt>고객 알림</dt><dd>{customerCount}</dd></div>
+                <div><dt>직원 알림</dt><dd>{internalCount}</dd></div>
+              </>
+            )}
             <div><dt>보내지 않음</dt><dd>{pausedCount}</dd></div>
           </dl>
           {catalogWarning && (
@@ -219,6 +240,7 @@ export default function NotificationOverview() {
               {notificationLogMessagePresentation(overview.log_status.message)}
             </p>
           )}
+          {!copy && (
           <div
             className="notification-overview-group-tabs"
             role="tablist"
@@ -243,14 +265,18 @@ export default function NotificationOverview() {
               );
             })}
           </div>
-          <div className="notification-overview-scroll" aria-label="자동 알림 종류 목록" tabIndex={0}>
+          )}
+          {copy && shownCount === 0 && (
+            <div className="notification-overview-state" role="status">등록된 자동 문자가 없습니다.</div>
+          )}
+          <div className="notification-overview-scroll" aria-label={copy ? `${copy.count} 목록` : '자동 알림 종류 목록'} tabIndex={0}>
             <div className="notification-overview-groups">
             {groups.map(group => (
               <section
                 className="notification-overview-group"
-                role="tabpanel"
+                role={copy ? undefined : 'tabpanel'}
                 id={`notification-overview-panel-${group.id}`}
-                aria-labelledby={`notification-overview-tab-${group.id}`}
+                aria-labelledby={copy ? undefined : `notification-overview-tab-${group.id}`}
                 key={group.id}
                 hidden={activeGroupId !== group.id}
               >

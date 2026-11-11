@@ -18,7 +18,7 @@ export const CONSOLE_MENUS = Object.freeze([
     ],
   },
   { id: 'customer', label: '고객 문자 관리' },
-  { id: 'staff', label: '직원 알림 관리' },
+  { id: 'staff', label: '직원 문자 관리' },
 ]);
 
 export const MENU_IDS = Object.freeze(CONSOLE_MENUS.map(menu => menu.id));

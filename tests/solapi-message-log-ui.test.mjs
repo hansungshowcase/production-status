@@ -43,7 +43,7 @@ test('안내 문구와 가림·부분 조회·키 미설정 표시(잠긴 결정
   assert.match(src, /수신번호 가운데/);
   assert.match(src, /쏠라피에 닿기 전에 멈춘 문자\(키 미설정·시험 기록·요청 실패\)는 이 탭에 없고/);
   assert.match(src, /고객 문자 관리/);
-  assert.match(src, /직원 알림 관리/);
+  assert.match(src, /직원 문자 관리/);
   assert.match(src, /1,500건까지만 표시합니다\(일부 누락\)/);
   assert.match(src, /쏠라피 키가 설정되지 않아 조회할 수 없습니다/);
   assert.match(src, /하루\(한국시간\)/);

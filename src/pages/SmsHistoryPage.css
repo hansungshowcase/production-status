@@ -164,7 +164,8 @@
 }
 
 .sms-history-employee-panel,
-.sms-history-employee-panel > .sms-history-workspace {
+.sms-history-employee-panel > .sms-history-workspace,
+#sms-history-audience-panel-customer > .sms-history-workspace {
   min-width: 0;
 }
 
@@ -651,7 +652,8 @@
     flex-direction: column;
   }
 
-  .sms-history-employee-panel > .sms-history-workspace {
+  .sms-history-employee-panel > .sms-history-workspace,
+  #sms-history-audience-panel-customer > .sms-history-workspace {
     flex: 1;
   }
 

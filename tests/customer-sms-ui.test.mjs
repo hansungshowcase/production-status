@@ -20,11 +20,14 @@ test('사이드바 메뉴(현황판 기본·발송 내역·고객/직원 관리)
   // 11/11 장부 20번: 가로 탭 3개 → 쏠라피식 왼쪽 사이드바. 메뉴 이름은 shared/smsConsole.js 한 곳에서 관리.
   assert.match(pageSource, /parseConsoleQuery\(/);
   assert.match(pageSource, /<SmsConsoleSidebar /);
-  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['현황판', '발송 내역', '알림톡 템플릿', '고객 문자 관리', '직원 알림 관리']);
+  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['현황판', '발송 내역', '알림톡 템플릿', '고객 문자 관리', '직원 문자 관리']);
   assert.equal(parseConsoleQuery(new URLSearchParams('')).menu, 'dashboard');
   assert.match(pageSource, /<SolapiMessageLog[\s>]/);
   assert.match(pageSource, /<CustomerSmsPanel \/>/);
-  assert.match(pageSource, /<NotificationOverview \/>/);
+  // 고객 메뉴: 고객 자동 문자 등록 현황(고객 대상만) + 발송 내역, 직원 메뉴: 직원 대상만
+  assert.match(pageSource, /id="sms-history-audience-panel-customer"[\s\S]*<NotificationOverview group="customer" \/>[\s\S]*<CustomerSmsPanel \/>/);
+  assert.match(pageSource, /id="sms-history-audience-panel-employee"[\s\S]*<NotificationOverview group="internal" \/>/);
+  assert.doesNotMatch(pageSource, /<NotificationOverview\s*\/>/);
   assert.match(pageSource, /id="sms-history-recipient"/);
   assert.match(pageSource, /id="sms-history-date"/);
 });
