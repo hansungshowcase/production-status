@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchSolapiMessages } from '../api/solapiMessages';
+import SolapiGroupTable from './solapi/SolapiGroupTable';
+import SolapiMessageTable from './solapi/SolapiMessageTable';
+import SolapiMessageDetail from './solapi/SolapiMessageDetail';
 import './SolapiMessageLog.css';
+
+const VIEW_TABS = [
+  { value: 'groups', label: '요청별 내역' },
+  { value: 'messages', label: '건별 내역' },
+];
 
 const AUDIENCE_TABS = [
   { value: 'all', label: '전체' },
@@ -8,19 +16,54 @@ const AUDIENCE_TABS = [
   { value: 'staff', label: '직원' },
 ];
 
-const VIEW_TABS = [
-  { value: 'messages', label: '건별 내역' },
-  { value: 'groups', label: '요청별 내역' },
-];
+const PAGE_SIZES = [20, 50, 100];
 
-const STATUS_OPTIONS = [
-  { value: 'all', label: '전체' },
+const MESSAGE_STATUS = [
   { value: 'success', label: '발송 성공' },
-  { value: 'pending', label: '발송중/대기' },
+  { value: 'pending', label: '발송중·대기' },
   { value: 'failed', label: '실패' },
 ];
 
-const AUDIENCE_LABEL = { customer: '고객', staff: '직원', other: '기타' };
+const GROUP_STATUS = [
+  { value: 'COMPLETE', label: '처리완료' },
+  { value: 'SENDING', label: '발송요청완료' },
+  { value: 'PENDING', label: '접수대기' },
+  { value: 'SCHEDULED', label: '예약대기' },
+  { value: 'FAILED', label: '실패' },
+];
+
+const ID_RE = /^[A-Za-z0-9]{10,40}$/;
+const TEMPLATE_RE = /^[\w-]{1,64}$/;
+const SENDER_RE = /^[0-9*-]{4,20}$/;
+const MESSAGE_ID_RE = /^[A-Za-z0-9_-]{6,60}$/;
+// 서버(api/solapi-messages.js optionalCount)와 같은 상한 100,000
+const COUNT_RE = /^(?:[0-9]{1,5}|100000)$/;
+
+// 칩 정의: 보기마다 다르다. kind = select | text | number | date
+const CHIPS = {
+  groups: [
+    { key: 'date', label: '생성일', kind: 'date' },
+    { key: 'group_status', label: '그룹상태', kind: 'select', options: GROUP_STATUS },
+    { key: 'group_id', label: 'Group ID', kind: 'text', test: ID_RE, hint: '영문·숫자 10~40자' },
+    { key: 'min_total', label: '접수건수', kind: 'number', test: COUNT_RE, hint: '이상(숫자)' },
+    { key: 'min_sent', label: '발송건수', kind: 'number', test: COUNT_RE, hint: '이상(숫자)' },
+  ],
+  messages: [
+    { key: 'status', label: '발송 상태', kind: 'select', options: MESSAGE_STATUS },
+    { key: 'date', label: '생성일', kind: 'date' },
+    { key: 'type', label: '메시지종류', kind: 'select', dynamic: 'types' },
+    { key: 'to4', label: '수신번호', kind: 'text', test: /^[0-9]{4}$/, hint: '끝 4자리' },
+    { key: 'from', label: '발신번호', kind: 'select', dynamic: 'senders' },
+    { key: 'message_id', label: 'Message ID', kind: 'text', test: MESSAGE_ID_RE, hint: '메시지 ID' },
+    { key: 'group_id', label: 'Group ID', kind: 'text', test: ID_RE, hint: '영문·숫자 10~40자' },
+    { key: 'template_id', label: '알림톡 템플릿 ID', kind: 'text', test: TEMPLATE_RE, hint: '템플릿 ID' },
+  ],
+};
+
+const FILTER_KEYS_BY_VIEW = {
+  groups: CHIPS.groups.filter((c) => c.key !== 'date').map((c) => c.key),
+  messages: CHIPS.messages.filter((c) => c.key !== 'date').map((c) => c.key),
+};
 
 const kstDateFormat = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul',
@@ -29,13 +72,10 @@ const kstDateFormat = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
-const kstTimeFormat = new Intl.DateTimeFormat('ko-KR', {
+const kstClockFormat = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul',
-  month: '2-digit',
-  day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
-  second: '2-digit',
   hour12: false,
 });
 
@@ -43,82 +83,145 @@ function todayKst() {
   return kstDateFormat.format(new Date());
 }
 
-function formatKst(value) {
-  if (!value) return '-';
+function clock(value) {
+  if (!value) return '';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
-  return kstTimeFormat.format(d);
+  return Number.isNaN(d.getTime()) ? '' : kstClockFormat.format(d);
 }
 
-function pageNumbers(page, totalPages) {
-  const start = Math.max(1, Math.min(page - 2, totalPages - 4));
-  const end = Math.min(totalPages, start + 4);
-  const out = [];
-  for (let n = start; n <= end; n += 1) out.push(n);
-  return out;
+function keepFor(view, filters, dropDynamic) {
+  const next = {};
+  for (const key of FILTER_KEYS_BY_VIEW[view]) {
+    if (dropDynamic && (key === 'type' || key === 'from')) continue;
+    if (filters[key]) next[key] = filters[key];
+  }
+  return next;
 }
 
-function emptyCounts() {
-  return { total: 0, success: 0, pending: 0, failed: 0 };
+function useOutsideClose(ref, open, onClose) {
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDown(e) { if (ref.current && !ref.current.contains(e.target)) onClose(); }
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ref, open, onClose]);
 }
 
-function AudienceBadge({ audience }) {
+function FilterChip({ chip, value, options, onApply, onClear }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  const wrapRef = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  useOutsideClose(wrapRef, open, close);
+
+  const active = Boolean(value);
+  const clearable = chip.key !== 'date';
+  const shown = chip.kind === 'select'
+    ? (options.find((o) => o.value === value)?.label || value)
+    : value;
+
+  function toggle() {
+    setDraft(value || '');
+    setInvalid(false);
+    setOpen((v) => !v);
+  }
+
+  function apply(next) {
+    const text = String(next || '').trim();
+    if (!text) { if (clearable) onClear(chip.key); setOpen(false); return; }
+    if (chip.test && !chip.test.test(text)) { setInvalid(true); return; }
+    onApply(chip.key, text);
+    setOpen(false);
+  }
+
   return (
-    <span className={`solapi-log-audience solapi-log-audience--${audience}`}>
-      {AUDIENCE_LABEL[audience] || '기타'}
+    <span className="solapi-log-chipwrap" ref={wrapRef}>
+      <span className={`solapi-log-chip${active ? ' is-active' : ''}`}>
+        <button
+          type="button"
+          className="solapi-log-chip__main"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={toggle}
+        >
+          <span aria-hidden="true">{active ? '' : '⊕ '}</span>
+          {chip.label}{active ? `: ${shown}` : ''}
+        </button>
+        {active && clearable ? (
+          <button
+            type="button"
+            className="solapi-log-chip__clear"
+            aria-label={`${chip.label} 필터 해제`}
+            onClick={() => onClear(chip.key)}
+          >
+            ✕
+          </button>
+        ) : null}
+      </span>
+      {open ? (
+        <div className="solapi-log-pop" role="dialog" aria-label={`${chip.label} 필터`}>
+          {chip.kind === 'select' ? (
+            <ul className="solapi-log-pop__list">
+              {options.length === 0 ? <li className="solapi-log-pop__empty">고를 값이 없습니다</li> : null}
+              {options.map((o) => (
+                <li key={o.value}>
+                  <button
+                    type="button"
+                    className={o.value === value ? 'is-selected' : ''}
+                    onClick={() => apply(o.value)}
+                  >
+                    {o.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <form
+              className="solapi-log-pop__form"
+              onSubmit={(e) => { e.preventDefault(); apply(draft); }}
+            >
+              <input
+                autoFocus
+                type={chip.kind === 'date' ? 'date' : chip.kind === 'number' ? 'number' : 'text'}
+                min={chip.kind === 'number' ? 0 : undefined}
+                inputMode={chip.key === 'to4' || chip.kind === 'number' ? 'numeric' : undefined}
+                value={draft}
+                placeholder={chip.hint || ''}
+                aria-label={chip.label}
+                onChange={(e) => { setDraft(e.target.value); setInvalid(false); }}
+              />
+              {invalid ? <span className="solapi-log-pop__error" role="alert">형식이 맞지 않습니다 ({chip.hint})</span> : null}
+              <button type="submit" className="solapi-log-pop__apply">적용</button>
+            </form>
+          )}
+        </div>
+      ) : null}
     </span>
-  );
-}
-
-function StatusChip({ item }) {
-  return (
-    <span className={`solapi-log-status solapi-log-status--${item.status}`}>
-      {item.status_label}
-      {item.status_code && !String(item.status_label || '').includes(item.status_code) ? <small>{item.status_code}</small> : null}
-    </span>
-  );
-}
-
-function Recipient({ item }) {
-  return (
-    <span className="solapi-log-recipient">
-      {item.recipient_name ? <strong>{item.recipient_name}</strong> : null}
-      <span>{item.to}</span>
-    </span>
-  );
-}
-
-function Detail({ item, id }) {
-  return (
-    <div className="solapi-log-detail" id={id}>
-      {item.subject ? <p className="solapi-log-detail__subject">{item.subject}</p> : null}
-      <div className="solapi-log-detail__text">{item.text || '(본문 없음)'}</div>
-      <dl className="solapi-log-detail__meta">
-        <div><dt>메시지 ID</dt><dd>{item.message_id}</dd></div>
-        <div><dt>그룹 ID</dt><dd>{item.group_id}</dd></div>
-        <div><dt>발신번호</dt><dd>{item.from || '-'}</dd></div>
-        <div><dt>접수 시각</dt><dd>{formatKst(item.created_at)}</dd></div>
-        <div><dt>리포트 시각</dt><dd>{formatKst(item.reported_at)}</dd></div>
-        <div><dt>수신 시각</dt><dd>{formatKst(item.received_at)}</dd></div>
-        {item.reason ? <div><dt>실패 사유</dt><dd>{item.reason}</dd></div> : null}
-      </dl>
-    </div>
   );
 }
 
 export default function SolapiMessageLog() {
+  const [view, setView] = useState('groups');
   const [audience, setAudience] = useState('all');
-  const [view, setView] = useState('messages');
-  const [status, setStatus] = useState('all');
   const [date, setDate] = useState(todayKst);
-  const [type, setType] = useState('all');
+  const [filters, setFilters] = useState({});
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [expandedId, setExpandedId] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [selected, setSelected] = useState(null);
   const requestIdRef = useRef(0);
+  const rowRef = useRef(null);
 
   const load = useCallback(async () => {
     const requestId = requestIdRef.current + 1;
@@ -126,237 +229,209 @@ export default function SolapiMessageLog() {
     setLoading(true);
     setError('');
     try {
-      const result = await fetchSolapiMessages({ date, audience, status, type, view, page });
+      const result = await fetchSolapiMessages({ date, audience, view, page, page_size: pageSize, ...filters });
       if (requestId !== requestIdRef.current) return;
       setData(result);
-      setExpandedId('');
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
       setError(err?.message || '쏠라피 발송내역을 불러오지 못했습니다');
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [date, audience, status, type, view, page]);
+  }, [date, audience, view, page, pageSize, filters]);
 
   useEffect(() => {
     load();
   }, [load, reloadKey]);
 
   const counts = data?.counts || {};
-  const shown = counts[audience] || counts.all || emptyCounts();
-  const otherTotal = counts.other?.total || 0;
+  const groupCounts = data?.group_counts || {};
   const pagination = data?.pagination || { page: 1, total_pages: 0, total_items: 0 };
   const items = data?.items || [];
   const groups = data?.groups || [];
-  const types = data?.types || [];
   const rows = view === 'groups' ? groups : items;
   const notConfigured = data && data.configured === false;
+  const summary = counts[audience] || counts.all || { success: 0, pending: 0, failed: 0 };
+  const currentPage = pagination.page || page;
 
-  // 구분·날짜가 바뀌면 타입 목록도 바뀌므로 타입은 '전체'로 되돌린다(안 보이는 필터가 남지 않게).
-  function changeAudience(value) { setAudience(value); setType('all'); setPage(1); }
-  function changeView(value) { setView(value); setPage(1); }
-  function changeStatus(value) { setStatus(value); setPage(1); }
-  function changeDate(value) { if (value) { setDate(value); setType('all'); setPage(1); } }
-  function changeType(value) { setType(value); setPage(1); }
+  const audienceTabs = [...AUDIENCE_TABS];
+  const otherCount = view === 'groups' ? groupCounts.other || 0 : counts.other?.total || 0;
+  if (otherCount > 0 || audience === 'other') audienceTabs.push({ value: 'other', label: '기타' });
+  function audienceCount(value) {
+    return view === 'groups' ? groupCounts[value] ?? 0 : counts[value]?.total ?? 0;
+  }
+
+  function changeView(next) {
+    if (next === view) return;
+    setView(next);
+    setFilters((f) => keepFor(next, f, false));
+    setPage(1);
+    setSelected(null);
+  }
+  function changeAudience(next) {
+    setAudience(next);
+    setFilters((f) => keepFor(view, f, true));
+    setPage(1);
+  }
+  function changeDate(value) {
+    if (!value) return;
+    setDate(value);
+    setFilters((f) => keepFor(view, f, true));
+    setPage(1);
+  }
+  function applyFilter(key, value) {
+    if (key === 'date') { changeDate(value); return; }
+    setFilters((f) => ({ ...f, [key]: value }));
+    setPage(1);
+  }
+  function clearFilter(key) {
+    setFilters((f) => {
+      const next = { ...f };
+      delete next[key];
+      return next;
+    });
+    setPage(1);
+  }
+  function changePageSize(value) {
+    setPageSize(Number(value));
+    setPage(1);
+  }
+  function openGroup(groupId) {
+    setView('messages');
+    setFilters({ group_id: groupId });
+    setPage(1);
+  }
+  function openMessage(item, rowEl) {
+    rowRef.current = rowEl || null;
+    setSelected(item);
+  }
+  function closeMessage() {
+    setSelected(null);
+    const el = rowRef.current;
+    if (el && el.isConnected && typeof el.focus === 'function') el.focus();
+  }
+
+  const chips = CHIPS[view];
+  const checked = clock(data?.checked_at);
 
   return (
     <section className="solapi-log" aria-label="쏠라피 발송내역">
-      <div className="solapi-log-audience-tabs" role="tablist" aria-label="받는 사람 구분">
-        {AUDIENCE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            role="tab"
-            aria-selected={audience === tab.value}
-            onClick={() => changeAudience(tab.value)}
-          >
-            {tab.label}
-            <span className="solapi-log-badge">{(counts[tab.value]?.total) ?? 0}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="solapi-log-view-tabs" role="tablist" aria-label="보기 전환">
-        {VIEW_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            role="tab"
-            aria-selected={view === tab.value}
-            onClick={() => changeView(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="solapi-log-filters">
-        <label className="solapi-log-field">
-          <span>발송 상태</span>
-          <select value={status} onChange={(e) => changeStatus(e.target.value)} aria-label="발송 상태">
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
-        <label className="solapi-log-field">
-          <span>날짜</span>
-          <input type="date" value={date} onChange={(e) => changeDate(e.target.value)} aria-label="발송 날짜" />
-        </label>
-        <label className="solapi-log-field">
-          <span>타입</span>
-          <select value={type} onChange={(e) => changeType(e.target.value)} aria-label="메시지 타입">
-            <option value="all">전체</option>
-            {types.map((t) => (
-              <option key={t.type} value={t.type}>{t.type} ({t.count})</option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="solapi-log-refresh" onClick={() => setReloadKey((k) => k + 1)} disabled={loading}>
-          새로고침
-        </button>
+      <div className="solapi-log-tabrow">
+        <div className="solapi-log-pills" role="tablist" aria-label="보기 전환">
+          {VIEW_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={view === tab.value}
+              onClick={() => changeView(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="solapi-log-pills solapi-log-pills--audience" role="tablist" aria-label="받는 사람 구분">
+          {audienceTabs.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={audience === tab.value}
+              onClick={() => changeAudience(tab.value)}
+            >
+              {tab.label}
+              <span className="solapi-log-badge">{audienceCount(tab.value)}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="solapi-log-notice" role="status" aria-live="polite" aria-atomic="true">
         <p>
-          쏠라피 기록 기준 · {date} 0시~24시(한국시간) · 수신번호 가운데 가림
-          {data?.checked_at ? ` · 확인 ${formatKst(data.checked_at)}` : ''}
+          쏠라피 발송 기록 · {date} 하루(한국시간) · 수신번호 가운데와 본문 속 링크·전화번호는 가림
+          {checked ? ` · 확인 ${checked}` : ''}
         </p>
         <p>쏠라피에 닿기 전에 멈춘 문자(키 미설정·시험 기록·요청 실패)는 이 탭에 없고 &apos;고객 문자 관리&apos;·&apos;직원 알림 관리&apos; 탭에 있습니다.</p>
         {data?.partial ? <p className="solapi-log-notice__warn">건수가 많아 1,500건까지만 표시합니다(일부 누락).</p> : null}
         {notConfigured ? <p className="solapi-log-notice__warn">쏠라피 키가 설정되지 않아 조회할 수 없습니다.</p> : null}
+        {data?.groups_partial ? <p className="solapi-log-notice__warn">쏠라피 요청 목록을 일부만 불러왔습니다(조회 실패 또는 건수 많음). 상태·타입이 비어 있는 줄이 있을 수 있습니다.</p> : null}
       </div>
 
-      <div className="solapi-log-summary">
-        <div className="solapi-log-summary__cell"><span>전체</span><strong>{shown.total}</strong></div>
-        <div className="solapi-log-summary__cell solapi-log-summary__cell--success"><span>발송 성공</span><strong>{shown.success}</strong></div>
-        <div className="solapi-log-summary__cell solapi-log-summary__cell--pending"><span>발송중·대기</span><strong>{shown.pending}</strong></div>
-        <div className="solapi-log-summary__cell solapi-log-summary__cell--failed"><span>실패</span><strong>{shown.failed}</strong></div>
+      <div className="solapi-log-chips" role="group" aria-label="필터">
+        <span className="solapi-log-funnel" aria-hidden="true">▼</span>
+        {chips.map((chip) => {
+          const options = chip.dynamic === 'types'
+            ? (data?.types || []).map((t) => ({ value: t.type, label: `${t.type} (${t.count})` }))
+            : chip.dynamic === 'senders'
+              ? (data?.senders || []).map((s) => ({ value: s.from, label: `${s.from} (${s.count})` }))
+              : chip.options || [];
+          return (
+            <FilterChip
+              key={`${view}-${chip.key}`}
+              chip={chip}
+              value={chip.key === 'date' ? date : filters[chip.key] || ''}
+              options={options}
+              onApply={applyFilter}
+              onClear={clearFilter}
+            />
+          );
+        })}
       </div>
-      {otherTotal > 0 ? <p className="solapi-log-other">기타 {otherTotal}</p> : null}
 
-      {loading && !data ? (
-        <div className="solapi-log-state" role="status"><div className="solapi-log-spinner" /><strong>불러오는 중</strong></div>
-      ) : error ? (
-        <div className="solapi-log-state solapi-log-state--error" role="alert">
-          <strong>발송내역을 불러오지 못했습니다</strong>
-          <span>{error}</span>
-          <button type="button" onClick={() => setReloadKey((k) => k + 1)}>다시 불러오기</button>
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="solapi-log-state">
-          <strong>{loading ? '불러오는 중' : '조건에 맞는 발송내역이 없습니다'}</strong>
-          <span>{date} 기준으로 조회했습니다.</span>
-        </div>
-      ) : view === 'groups' ? (
-        <ul className="solapi-log-cards" aria-label="요청별 내역">
-          {groups.map((g, i) => (
-            <li key={g.group_id || `${g.created_at}-${i}`} className="solapi-log-card">
-              <div className="solapi-log-card__top">
-                <AudienceBadge audience={g.audience} />
-                <span className="solapi-log-time">{formatKst(g.created_at)}</span>
-              </div>
-              <p className="solapi-log-card__title">{g.category}</p>
-              <p className="solapi-log-card__meta">{g.type_label}</p>
-              <p className="solapi-log-progress">
-                성공 {g.success} · 발송중 {g.pending} · 실패 {g.failed} / 총 {g.total}
-              </p>
-              <p className="solapi-log-card__meta">
-                {(g.recipients_preview || []).join(', ')}
-              </p>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <>
-          <div className="solapi-log-table-wrap">
-            <table className="solapi-log-table">
-              <thead>
-                <tr>
-                  <th>시각</th><th>구분</th><th>받는 사람</th><th>종류</th><th>타입</th><th>상태</th><th><span className="solapi-log-sr">상세</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const open = expandedId === item.message_id;
-                  const detailId = `solapi-log-detail-${item.message_id}`;
-                  return [
-                    <tr key={item.message_id} className={open ? 'is-open' : ''}>
-                      <td>{formatKst(item.created_at)}</td>
-                      <td><AudienceBadge audience={item.audience} /></td>
-                      <td><Recipient item={item} /></td>
-                      <td>{item.category}</td>
-                      <td>{item.type_label}</td>
-                      <td><StatusChip item={item} /></td>
-                      <td>
-                        <button
-                          type="button"
-                          className="solapi-log-toggle"
-                          aria-expanded={open}
-                          aria-controls={detailId}
-                          onClick={() => setExpandedId(open ? '' : item.message_id)}
-                        >
-                          {open ? '접기' : '상세'}
-                        </button>
-                      </td>
-                    </tr>,
-                    open ? (
-                      <tr key={`${item.message_id}-d`} className="solapi-log-table__detail">
-                        <td colSpan={7}><Detail item={item} id={detailId} /></td>
-                      </tr>
-                    ) : null,
-                  ];
-                })}
-              </tbody>
-            </table>
+      {view === 'messages' ? (
+        <p className="solapi-log-maskbar">👁 수신번호·본문 일부가 가려져 있습니다</p>
+      ) : null}
+
+      <div className="solapi-log-card">
+        <div className="solapi-log-toolbar">
+          <button type="button" className="solapi-log-refresh" onClick={() => setReloadKey((k) => k + 1)} disabled={loading}>
+            <span aria-hidden="true">⟳ </span>새로고침
+          </button>
+          <div className="solapi-log-toolbar__right">
+            <span className="solapi-log-summary" title="필터와 관계없이 이 날짜·구분의 전체 건수">
+              하루 합계 · 성공 {summary.success} · 발송중 {summary.pending} · 실패 {summary.failed}
+            </span>
+            <label className="solapi-log-size">
+              <span className="solapi-log-sr">쪽 크기</span>
+              <select value={pageSize} onChange={(e) => changePageSize(e.target.value)} aria-label="쪽 크기">
+                {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <nav className="solapi-log-pager" aria-label="쏠라피 발송내역 페이지">
+              <span>{pagination.total_pages > 0 ? `${currentPage} / ${pagination.total_pages}` : '0 / 0'}</span>
+              <button type="button" aria-label="이전 쪽" disabled={currentPage <= 1 || loading} onClick={() => setPage(currentPage - 1)}>‹</button>
+              <button type="button" aria-label="다음 쪽" disabled={currentPage >= pagination.total_pages || loading} onClick={() => setPage(currentPage + 1)}>›</button>
+            </nav>
           </div>
+        </div>
 
-          <ul className="solapi-log-cards solapi-log-cards--messages" aria-label="건별 내역">
-            {items.map((item) => {
-              const open = expandedId === item.message_id;
-              const detailId = `solapi-log-card-detail-${item.message_id}`;
-              return (
-                <li key={item.message_id} className="solapi-log-card">
-                  <div className="solapi-log-card__top">
-                    <AudienceBadge audience={item.audience} />
-                    <StatusChip item={item} />
-                  </div>
-                  <Recipient item={item} />
-                  <p className="solapi-log-card__meta">
-                    {formatKst(item.created_at)} · {item.category} · {item.type_label}
-                  </p>
-                  <button
-                    type="button"
-                    className="solapi-log-toggle solapi-log-toggle--wide"
-                    aria-expanded={open}
-                    aria-controls={detailId}
-                    onClick={() => setExpandedId(open ? '' : item.message_id)}
-                  >
-                    {open ? '접기' : '본문·상세 보기'}
-                  </button>
-                  {open ? <Detail item={item} id={detailId} /> : null}
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
+        {loading && !data ? (
+          <div className="solapi-log-state" role="status"><div className="solapi-log-spinner" /><strong>불러오는 중</strong></div>
+        ) : error ? (
+          <div className="solapi-log-state solapi-log-state--error" role="alert">
+            <strong>발송내역을 불러오지 못했습니다</strong>
+            <span>{error}</span>
+            <button type="button" onClick={() => setReloadKey((k) => k + 1)}>다시 불러오기</button>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="solapi-log-state">
+            <strong>{loading ? '불러오는 중' : '조회된 내역이 없습니다'}</strong>
+            <span>{date} 기준으로 조회했습니다.</span>
+          </div>
+        ) : view === 'groups' ? (
+          <SolapiGroupTable groups={groups} checkedAt={data?.checked_at} onOpenGroup={openGroup} />
+        ) : (
+          <SolapiMessageTable items={items} onOpen={openMessage} />
+        )}
+      </div>
 
-      {pagination.total_pages > 0 ? (
-        <nav className="solapi-log-pagination" aria-label="쏠라피 발송내역 페이지">
-          <button type="button" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>이전</button>
-          {pageNumbers(pagination.page || page, pagination.total_pages).map((n) => (
-            <button
-              key={n}
-              type="button"
-              className={n === (pagination.page || page) ? 'is-selected' : ''}
-              aria-current={n === (pagination.page || page) ? 'page' : undefined}
-              disabled={loading}
-              onClick={() => setPage(n)}
-            >
-              {n}
-            </button>
-          ))}
-          <button type="button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(page + 1)}>다음</button>
-        </nav>
+      {selected ? (
+        <SolapiMessageDetail
+          item={selected}
+          group={data?.group_map?.[selected.group_id] || null}
+          checkedAt={data?.checked_at}
+          onClose={closeMessage}
+        />
       ) : null}
     </section>
   );

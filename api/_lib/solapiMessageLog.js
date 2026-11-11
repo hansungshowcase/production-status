@@ -7,7 +7,6 @@ import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
 
 const SOLAPI_URL = 'https://api.solapi.com/messages/v4/list';
 const DAY_MS = 86400000;
-const PAGE_SIZE = 20;
 const CACHE_TTL_MS = 60000;
 const CACHE_MAX_DATES = 8;
 const PENDING_REPLACEMENT_GRACE_MS = 600000;
@@ -72,6 +71,11 @@ function slimButtons(buttons) {
     linkMo: button?.linkMo, linkPc: button?.linkPc, linkMobile: button?.linkMobile,
   }));
 }
+function slimLog(log) {
+  return (Array.isArray(log) ? log : []).slice(-20).map(entry => ({
+    createAt: entry?.createAt || null, message: entry?.message == null ? null : String(entry.message).slice(0, 300),
+  }));
+}
 const FIELD_KEYS = ['hookId', 'hook_id', 'storeId', 'store_id', 'productOrderId'];
 export function slimMessage(message = {}) {
   const options = message.kakaoOptions || {};
@@ -86,7 +90,12 @@ export function slimMessage(message = {}) {
     subject: message.subject ?? null, text: message.text ?? null,
     replacement: message.replacement === true, imageId: message.imageId || null,
     customFields: fields,
+    networkName: message.networkName || null, country: message.country || null,
+    autoTypeDetect: typeof message.autoTypeDetect === 'boolean' ? message.autoTypeDetect : null,
+    dateUpdated: message.dateUpdated || null, dateProcessed: message.dateProcessed || null,
+    log: slimLog(message.log),
     kakaoOptions: {
+      templateId: options.templateId || null,
       pfId: options.pfId, imageId: options.imageId, disableSms: options.disableSms,
       buttons: slimButtons(options.buttons),
       bms: { imageId: options.bms?.imageId, buttons: slimButtons(options.bms?.buttons) },
@@ -160,7 +169,7 @@ export function findDbRow(index, message) {
 }
 
 // ---------- 구분·종류 ----------
-export function classifyAudience(entry, dbRow) {
+export function classifyAudience(entry, dbRow, source = null) {
   const { staff, sales } = directory();
   const phone = digitsOf(entry.final.to);
   const staffName = staff.get(phone) || null;
@@ -178,7 +187,7 @@ export function classifyAudience(entry, dbRow) {
   }
   if (reviewCategory) return { audience: staffName ? 'staff' : 'customer', category: reviewCategory, name: staffName, matched: false };
   if (staffName) return { audience: 'staff', category: '직원 문자(기록 없음)', name: staffName, matched: false };
-  return { audience: 'customer', category: externalCategory(entry), name: null, matched: false, external: true };
+  return { audience: 'customer', category: externalCategory(entry, source), name: null, matched: false, external: true };
 }
 
 // 우리 기록에 없는 고객 문자: 본문 첫머리로 종류, 쏠라피 연동 표시(customFields 키)로 발송처를 붙인다.
@@ -188,14 +197,15 @@ const EXTERNAL_TOPICS = [
   [/무료 지원 이벤트/, '무료 지원 이벤트'],
   [/리뷰|후기/, '리뷰 안내'],
 ];
-export function externalCategory(entry) {
+export const SOURCE_NAMES = { AUTO: '쏠라피 자동화', COMM: '스마트스토어 연동', API: '다른 API 프로그램', APP: '쏠라피 앱' };
+export function externalCategory(entry, source = null) {
   const text = [entry.orig.subject, entry.orig.text, entry.final.subject, entry.final.text].filter(Boolean).join(' ').slice(0, 300);
   const found = EXTERNAL_TOPICS.find(([pattern]) => pattern.test(text));
   const topic = found ? found[1] : /\(광고\)/.test(text) ? '광고 문자' : '기타 고객 문자';
   const fields = entry.orig.customFields || {};
-  const source = (fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
-    : (fields.hookId || fields.hook_id) ? '쏠라피 자동발송' : '외부 발송';
-  return `${topic}(${source})`;
+  const sourceName = SOURCE_NAMES[source] || ((fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
+    : (fields.hookId || fields.hook_id) ? '쏠라피 자동발송' : '외부 발송');
+  return `${topic}(${sourceName})`;
 }
 
 // ---------- item / group ----------
@@ -204,17 +214,48 @@ function cut40(value) {
   return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 }
 
-export function buildItems(messages, dbRows = [], { nowMs = Date.now() } = {}) {
+const TYPE_NAMES = { SMS: '단문문자', LMS: '장문문자', MMS: '사진문자', ATA: '알림톡', CTA: '친구톡', CTI: '친구톡', NSA: '네이버톡' };
+export function typeName(type) {
+  const raw = String(type || '').toUpperCase();
+  if (!raw) return '';
+  if (raw.startsWith('BMS')) return '브랜드메시지';
+  if (raw.startsWith('RCS')) return 'RCS';
+  return TYPE_NAMES[raw] || raw;
+}
+export function textBytes(text) {
+  let bytes = 0;
+  for (const ch of String(text ?? '')) bytes += ch.codePointAt(0) >= 0x80 ? 2 : 1;
+  return bytes;
+}
+function statusText(state, code) {
+  if (state.status === 'success') return '발송완료';
+  if (state.status === 'failed') return code && /^[12]/.test(code) ? '발송불가' : '발송실패';
+  if (/^대체 발송 대기/.test(state.status_label)) return '대체발송대기';
+  if (code === '2000') return '발송대기';
+  if (code === '3000') return '발송중';
+  return '상태확인중';
+}
+function sourceOf(groupSources, groupId) {
+  if (!groupSources || !groupId) return null;
+  const value = groupSources instanceof Map ? groupSources.get(groupId) : groupSources[groupId];
+  return value || null;
+}
+const nullable = value => (value == null || value === '' ? null : String(value));
+
+export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null } = {}) {
   const index = buildDbIndex(dbRows);
   const items = collapseReplacements(messages).map(entry => {
     const { orig, final, replaced } = entry;
     const dbRow = findDbRow(index, final) || (replaced ? findDbRow(index, orig) : null);
-    const kind = classifyAudience(entry, dbRow);
+    const source = sourceOf(groupSources, final.groupId || orig.groupId);
+    const kind = classifyAudience(entry, dbRow, source);
     const replacementPossible = !replaced && isKakaoType(orig.type) && orig.kakaoOptions?.disableSms !== true;
     const state = classifyStatus(final, { nowMs, replacementPossible });
     let subject = safeText(final.subject ?? dbRow?.message_subject ?? null);
     let text = safeText(final.text);
     if (kind.external) { text = text == null ? null : cut40(text); subject = subject == null ? null : cut40(subject); }
+    const disableSms = orig.kakaoOptions?.disableSms;
+    const logs = (final.log?.length ? final.log : orig.log) || [];
     return {
       message_id: final.messageId, group_id: final.groupId || null, created_at: orig.dateCreated || null,
       audience: kind.audience, category: kind.category,
@@ -223,7 +264,17 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now() } = {}) {
       type: final.type, type_label: replaced ? `${typeLabel(orig.type)} → ${typeLabel(final.type)}` : typeLabel(final.type),
       replaced_from: replaced ? orig.type : null,
       ...state,
-      reason: state.status === 'success' ? null : safeText(final.reason || null),
+      source,
+      status_text: statusText(state, state.status_code),
+      reason: safeText(final.reason || null),
+      network_name: nullable(final.networkName), country: nullable(final.country),
+      auto_type_detect: typeof final.autoTypeDetect === 'boolean' ? final.autoTypeDetect : null,
+      replacement: replaced || final.replacement === true,
+      disable_sms: typeof disableSms === 'boolean' ? disableSms : null,
+      template_id: nullable(orig.kakaoOptions?.templateId || final.kakaoOptions?.templateId),
+      bytes: textBytes(final.text), type_name: typeName(replaced ? orig.type : final.type),
+      updated_at: final.dateUpdated || null, processed_at: final.dateProcessed || null,
+      log: logs.slice(-20).map(entry => ({ at: entry.createAt || null, message: safeText(entry.message) })),
       reported_at: final.dateReported || null, received_at: state.status === 'success' ? final.dateReceived || null : null,
       subject, text,
     };
@@ -264,24 +315,39 @@ export function buildGroups(items) {
       map.set(key, {
         group_id: item.group_id, created_at: item.created_at, audience: item.audience, category: item.category,
         type_label: item.type_label, total: 0, success: 0, pending: 0, failed: 0, recipients_preview: [],
+        updated_at: item.updated_at || item.created_at, sent_at: null, completed_at: null, status: null, status_label: null,
+        source: item.source || null, types: [], sent_total: 0, registered_failed: 0, replacement: 0, refund: 0,
+        is_refunded: false, last_log: null,
       });
     }
     const group = map.get(key);
     group.total += 1;
+    group.sent_total += 1;
     group[item.status] += 1;
+    if (item.replacement) group.replacement += 1;
+    const typeKeyName = String(item.type || '').toUpperCase().startsWith('BMS') ? 'BMS' : item.type;
+    if (typeKeyName && !group.types.includes(typeKeyName)) group.types.push(typeKeyName);
     const label = item.recipient_name || item.to;
     if (label && group.recipients_preview.length < 3 && !group.recipients_preview.includes(label)) group.recipients_preview.push(label);
   }
   return [...map.values()].sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));
 }
 
-export function paginate(list, page) {
-  const totalPages = Math.ceil(list.length / PAGE_SIZE);
+export const PAGE_SIZES = [20, 50, 100];
+export function paginate(list, page, pageSize = 50) {
+  const size = PAGE_SIZES.includes(pageSize) ? pageSize : 50;
+  const totalPages = Math.ceil(list.length / size);
   const effective = totalPages > 0 ? Math.min(Math.max(1, page), totalPages) : 1;
   return {
-    rows: list.slice((effective - 1) * PAGE_SIZE, effective * PAGE_SIZE),
-    pagination: { page: effective, page_size: PAGE_SIZE, total_items: list.length, total_pages: totalPages },
+    rows: list.slice((effective - 1) * size, effective * size),
+    pagination: { page: effective, page_size: size, total_items: list.length, total_pages: totalPages },
   };
+}
+
+export function countSenders(items) {
+  const map = new Map();
+  for (const item of items) if (item.from) map.set(item.from, (map.get(item.from) || 0) + 1);
+  return [...map.entries()].map(([from, count]) => ({ from, count })).sort((a, b) => b.count - a.count || a.from.localeCompare(b.from));
 }
 
 export function hasSolapiCredentials() {

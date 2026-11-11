@@ -140,7 +140,7 @@ test('solapi message log GET executes only one SELECT and no writes', async () =
     await solapiMessagesModule.handleSolapiMessages({ method: 'GET', query: { date: '2026-11-10' } }, res, {
       db,
       rateLimitCheck: () => true,
-      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ messageList: {} }) }),
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ messageList: {}, groupList: {} }) }),
     });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body.items, []);
