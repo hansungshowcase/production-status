@@ -4538,6 +4538,29 @@
   margin-bottom: 10px;
 }
 
+/* 조립작업·설비작업 → 다음 공정: QC 도장 확인 알림 (완료 확인 창 위에 겹쳐 뜬다) */
+.sv-qc-overlay {
+  z-index: 249;
+}
+
+.sv-card-popup.sv-qc-popup {
+  z-index: 250;
+}
+
+.sv-qc-popup__box {
+  margin: 0 0 12px;
+  padding: 14px 12px;
+}
+
+.sv-qc-popup__message {
+  font-size: 15px;
+  font-weight: 700;
+  color: #9a3412;
+  line-height: 1.55;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 .sv-card-popup__sms-preview {
   background: #f8fafc;
   border-radius: 10px;

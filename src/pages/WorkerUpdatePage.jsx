@@ -8,6 +8,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 import ErrorState from '../components/common/ErrorState';
 import { getOrder } from '../api/orders';
 import { startProcess, completeProcess } from '../api/processes';
+import { confirmQcStamp } from './qcStampNotice';
 import { reportIssue as reportIssueApi } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { formatDueStatus } from '../utils/dateUtils';
@@ -135,6 +136,10 @@ export default function WorkerUpdatePage() {
   const confirmComplete = async () => {
     if (!inProgressProcess) {
       showToast('완료할 수 있는 공정이 없습니다');
+      closeModal();
+      return;
+    }
+    if (!confirmQcStamp(inProgressProcess.step_name)) {
       closeModal();
       return;
     }

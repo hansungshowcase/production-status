@@ -12,6 +12,7 @@ import ErrorState from '../components/common/ErrorState';
 import SearchBar from '../components/common/SearchBar';
 import { getOrders, getOrder } from '../api/orders';
 import { startProcess, completeProcess } from '../api/processes';
+import { confirmQcStamp } from './qcStampNotice';
 import { reportIssue as reportIssueApi } from '../api/issues';
 import { uploadPhoto } from '../api/photos';
 import { getStats } from '../api/stats';
@@ -293,6 +294,10 @@ export default function WorkerPage() {
             .find((p) => p?.status === 'in_progress');
       if (!inProgressProcess) {
         showToast('완료할 수 있는 공정이 없습니다');
+        closeModal();
+        return;
+      }
+      if (!confirmQcStamp(inProgressProcess.step_name)) {
         closeModal();
         return;
       }

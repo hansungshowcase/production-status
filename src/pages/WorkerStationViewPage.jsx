@@ -17,6 +17,7 @@ import { shipOrderFromWorker } from '../api/orders';
 import { PROCESS_STEPS, STEP_ICONS } from '../stationConstants';
 import { WORKER_STORAGE_KEY, DEPARTMENT_STORAGE_KEY, WORKER_CONFIRMED_KEY } from '../constants';
 import { shouldAskWorkerIdentity } from './workerIdentityConfirm';
+import { needsQcStampNotice, QC_STAMP_TITLE, QC_STAMP_MESSAGE } from './qcStampNotice';
 import { extractDueDateFromOrder, formatProcessCompletionTime, getDaysUntilDue, parseDate } from '../utils/dateUtils';
 import { getVisibleOrderMemo } from '../utils/orderText';
 import { useDialogFocus } from '../utils/useDialogFocus';
@@ -125,6 +126,7 @@ export default function WorkerStationViewPage() {
   const [toast, setToast] = useState(null);
   const [confirmTarget, setConfirmTarget] = useState(null); // { processId, clientName, status, orderId }
   const [directShipTarget, setDirectShipTarget] = useState(null); // { orderId, clientName }
+  const [qcNotice, setQcNotice] = useState(null); // { kind: 'complete', nextStep } | { kind: 'ship' }, openedAt
   const [completedIds, setCompletedIds] = useState(new Set()); // 완료 애니메이션용
   const [issueModal, setIssueModal] = useState(null);
   const [issueDesc, setIssueDesc] = useState('');
@@ -156,6 +158,7 @@ export default function WorkerStationViewPage() {
   const isLastStep = currentStepIndex === PROCESS_STEPS.length - 1;
   const isDrawingStep = decodedStep === '도면설계';
   const isLaserStep = decodedStep === '레이저작업';
+  const needsQcStamp = needsQcStampNotice(decodedStep);
   const canUndoProcess = identityAsked && isProcessUndoManager(workerName);
   const timerRef = useRef(null);
   const toastTimerRef = useRef(null);
@@ -248,6 +251,7 @@ export default function WorkerStationViewPage() {
   function closeAllModals() {
     setConfirmTarget(null);
     setDirectShipTarget(null);
+    setQcNotice(null);
     setIssueModal(null);
     setPhotoModal(null);
     setIssueListModal(null);
@@ -269,6 +273,21 @@ export default function WorkerStationViewPage() {
     if (actionLoading || !item?.order_id) return;
     closeAllModals();
     setDirectShipTarget({ orderId: item.order_id, clientName: item.client_name || '거래처' });
+  }
+
+  // 조립작업·설비작업은 QC 도장 확인 알림에서 [확인]을 눌러야 넘어간다.
+  function openQcNotice(notice) {
+    setQcNotice({ ...notice, openedAt: Date.now() });
+  }
+
+  function confirmQcNotice() {
+    if (!qcNotice || actionLoading) return;
+    // 앞 창의 버튼을 두 번 빠르게 눌러 알림을 읽지 않고 넘어가는 것을 막는다.
+    if (Date.now() - qcNotice.openedAt < 500) return;
+    const notice = qcNotice;
+    setQcNotice(null);
+    if (notice.kind === 'ship') executeDirectShip();
+    else executeComplete(notice.nextStep);
   }
 
   async function executeReceipt(item) {
@@ -1746,7 +1765,7 @@ export default function WorkerStationViewPage() {
                   <button
                     key={step}
                     className={`sv-card-popup__next-btn${idx === 0 ? ' sv-card-popup__next-btn--primary' : ''}`}
-                    onClick={() => executeComplete(step)}
+                    onClick={() => (needsQcStamp ? openQcNotice({ kind: 'complete', nextStep: step }) : executeComplete(step))}
                     disabled={decodedStep === '포장' && !packingPhotoFile}
                   >
                     {STEP_ICONS[step] || ''} {step}
@@ -1776,8 +1795,27 @@ export default function WorkerStationViewPage() {
             <div className="sv-card-popup__title">{directShipTarget.clientName}</div>
             <div className="sv-card-popup__desc">현재 공정과 관계없이 바로 출고 처리하시겠습니까?</div>
             <div className="sv-card-popup__actions">
-              <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={executeDirectShip}>출고완료</button>
+              <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={() => (needsQcStamp ? openQcNotice({ kind: 'ship' }) : executeDirectShip())}>출고완료</button>
               <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setDirectShipTarget(null)}>취소</button>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {qcNotice && (confirmTarget || directShipTarget) && createPortal(
+        <>
+          <div className="sv-overlay sv-qc-overlay" onClick={() => setQcNotice(null)} />
+          <div className="sv-card-popup sv-qc-popup" role="alertdialog" aria-modal="true" aria-labelledby="sv-qc-popup-title" aria-describedby="sv-qc-popup-message" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+            <div className="sv-card-popup__title">{(qcNotice.kind === 'ship' ? directShipTarget?.clientName : confirmTarget?.clientName) || '거래처'}</div>
+            <div className="sv-card-popup__desc">{decodedStep} → {qcNotice.kind === 'ship' ? '출고' : qcNotice.nextStep}</div>
+            <div className="sv-card-popup__required-photo sv-qc-popup__box">
+              <div id="sv-qc-popup-title" className="sv-card-popup__required-title">{QC_STAMP_TITLE}</div>
+              <div id="sv-qc-popup-message" className="sv-qc-popup__message">{QC_STAMP_MESSAGE}</div>
+            </div>
+            <div className="sv-card-popup__actions">
+              <button className="sv-card-popup__btn sv-card-popup__btn--ok" onClick={confirmQcNotice}>확인</button>
+              <button className="sv-card-popup__btn sv-card-popup__btn--cancel" onClick={() => setQcNotice(null)}>취소</button>
             </div>
           </div>
         </>,

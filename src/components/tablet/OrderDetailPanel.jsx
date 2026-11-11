@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PROCESS_STEPS } from '../../constants';
 import { updatePreProduction } from '../../api/preProduction';
+import { confirmQcStamp } from '../../pages/qcStampNotice';
 import './OrderDetailPanel.css';
 
 const STEP_ORDER = PROCESS_STEPS;
@@ -143,7 +144,7 @@ export default function OrderDetailPanel({
     if (confirm.type === 'start') {
       onStartProcess(currentProcess.id);
     } else if (confirm.type === 'complete') {
-      onCompleteProcess(currentProcess.id);
+      if (confirmQcStamp(currentStepName)) onCompleteProcess(currentProcess.id);
     }
     setConfirm(null);
   }
