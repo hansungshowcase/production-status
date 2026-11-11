@@ -105,10 +105,24 @@ test('구분 규칙: DB 직원·DB 고객·직원 번호·리뷰·외부·분체
   assert.equal(byId[staffNoDb.messageId].recipient_name, laser.name);
   assert.equal(byId[reviewLms.messageId].audience, 'customer');
   assert.equal(byId[reviewLms.messageId].category, '리뷰 이벤트(블로그)');
-  assert.equal(byId[external.messageId].category, '외부 발송(우리 기록 없음)');
+  assert.equal(byId[external.messageId].category, '기타 고객 문자(외부 발송)');
   assert.equal(byId[chonbeOther.messageId].audience, 'other');
   assert.equal(byId[chonbeOther.messageId].category, '분체 알림(기타 수신)');
   assert.equal(response.body.items.length, 7);
+});
+
+test('우리 기록에 없는 고객 문자는 본문으로 종류, 연동 표시로 발송처를 붙인다', async () => {
+  const order = msg({ to: OTHER_PHONE, type: 'ATA', text: '안녕하세요 대표님 한성입니다 주문이 정상 접수되었습니다 예상 출고일 안내', customFields: { hookId: 'H1' } });
+  const ship = msg({ to: OTHER_PHONE, type: 'ATA', text: '안녕하세요 대표님 구매하신 제품의 출고일 안내드립니다', customFields: { storeId: 'S1', productOrderId: 'P1' } });
+  const free = msg({ to: OTHER_PHONE, type: 'BMS_FREE', subject: '(광고)한성쇼케이스그룹', text: '[한성쇼케이스 무료 지원 이벤트] 안녕하세요', customFields: {} });
+  const ad = msg({ to: OTHER_PHONE, text: '(광고) 신제품 소개', customFields: {} });
+  const { response } = await call({ date: '2026-11-11' }, { messages: [order, ship, free, ad] });
+  const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
+  assert.equal(byId[order.messageId].category, '주문 안내(쏠라피 자동발송)');
+  assert.equal(byId[ship.messageId].category, '출고 안내(스마트스토어 연동)');
+  assert.equal(byId[free.messageId].category, '무료 지원 이벤트(외부 발송)');
+  assert.equal(byId[ad.messageId].category, '광고 문자(외부 발송)');
+  assert.ok(!JSON.stringify(response.body).includes('customFields'));
 });
 
 test('분체 알림은 영업 번호면 직원', async () => {

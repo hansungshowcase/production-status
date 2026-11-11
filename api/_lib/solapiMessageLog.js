@@ -178,7 +178,24 @@ export function classifyAudience(entry, dbRow) {
   }
   if (reviewCategory) return { audience: staffName ? 'staff' : 'customer', category: reviewCategory, name: staffName, matched: false };
   if (staffName) return { audience: 'staff', category: '직원 문자(기록 없음)', name: staffName, matched: false };
-  return { audience: 'customer', category: '외부 발송(우리 기록 없음)', name: null, matched: false, external: true };
+  return { audience: 'customer', category: externalCategory(entry), name: null, matched: false, external: true };
+}
+
+// 우리 기록에 없는 고객 문자: 본문 첫머리로 종류, 쏠라피 연동 표시(customFields 키)로 발송처를 붙인다.
+const EXTERNAL_TOPICS = [
+  [/주문이 정상|주문(이)? 접수|주문 확인/, '주문 안내'],
+  [/출고일|출고 안내|출고되었|출고 예정/, '출고 안내'],
+  [/무료 지원 이벤트/, '무료 지원 이벤트'],
+  [/리뷰|후기/, '리뷰 안내'],
+];
+export function externalCategory(entry) {
+  const text = [entry.orig.subject, entry.orig.text, entry.final.subject, entry.final.text].filter(Boolean).join(' ').slice(0, 300);
+  const found = EXTERNAL_TOPICS.find(([pattern]) => pattern.test(text));
+  const topic = found ? found[1] : /\(광고\)/.test(text) ? '광고 문자' : '기타 고객 문자';
+  const fields = entry.orig.customFields || {};
+  const source = (fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
+    : (fields.hookId || fields.hook_id) ? '쏠라피 자동발송' : '외부 발송';
+  return `${topic}(${source})`;
 }
 
 // ---------- item / group ----------
