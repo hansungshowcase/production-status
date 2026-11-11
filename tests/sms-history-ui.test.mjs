@@ -43,6 +43,11 @@ test('등록된 직원 이름 (끝 4자리) 버튼과 전체보기로 그날 문
   assert.match(staffSource, /aria-pressed=\{selected === person\.name\}/);
   assert.match(staffSource, /<span>\{person\.name\}<\/span>\s*\{person\.tail && <span>\(\{person\.tail\}\)<\/span>\}/);
   assert.match(staffCss, /\.staff-sms__who > span \{ white-space: nowrap; \}/);
+  // 2026-11-11 사장님: 줄마다 발송 날짜가 보여야 함(시각만 X) — 날짜+시각, 줄바꿈 없이
+  assert.match(staffSource, /<time dateTime=\{item\.sent_at \|\| undefined\}>\{formatSentAt\(item\.sent_at\)\}<\/time>/);
+  assert.match(staffSource, /formatProcessCompletionTime\(value\)/);
+  assert.doesNotMatch(staffSource, /hour12: false/);
+  assert.match(staffCss, /\.staff-sms__line time \{[^}]*white-space: nowrap;/);
   assert.match(staffSource, /items\.filter\(item => item\.recipient_name === selected\)/);
   assert.match(staffSource, /\[\.\.\.data\.items\]\.sort\(sentOrder\)/);
   assert.match(staffSource, /return safeLeft - safeRight/);
@@ -54,7 +59,8 @@ test('발송 본문은 접근 가능한 펼침 버튼으로 확인하고 실패�
   assert.match(staffSource, /aria-expanded=/);
   assert.match(staffSource, /aria-controls=/);
   assert.match(staffSource, /내용 저장 전 기록/);
-  assert.match(staffSource, /timeZone:\s*'Asia\/Seoul'/);
+  // 한국 시간 변환은 공용 formatProcessCompletionTime(dateUtils, timeZone Asia/Seoul)이 맡는다
+  assert.match(staffSource, /formatProcessCompletionTime/);
   assert.match(staffSource, /role="status"/);
   assert.match(staffSource, /다시 불러오기/);
   assert.match(staffSource, /className=\{`staff-sms__dot staff-sms__dot--\$\{problem\.tone\}`\}/);
@@ -88,4 +94,11 @@ test('발송내역 스타일은 공통 토큰과 모바일·태블릿·데스크
   assert.match(pageCss, /:focus-visible/);
   assert.match(pageCss, /outline:\s*3px solid var\(--blue\)/);
   assert.match(pageCss, /gap:\s*var\(--space-1\)/);
+});
+
+test('직원 문자 줄의 발송 날짜는 한국 시간 기준 월/일 시:분(자정 넘김도 날짜가 바뀐다)', async () => {
+  const { formatProcessCompletionTime } = await import('../src/utils/dateUtils.js');
+  assert.equal(formatProcessCompletionTime('2026-11-10T23:40:00Z'), '11/11 08:40');
+  assert.equal(formatProcessCompletionTime('2026-11-10T15:00:00Z'), '11/11 00:00');
+  assert.equal(formatProcessCompletionTime(''), '');
 });

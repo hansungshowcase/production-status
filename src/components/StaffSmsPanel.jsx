@@ -1,22 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchInternalNotifications } from '../api/internalNotifications';
-import { getKstToday } from '../utils/dateUtils';
+import { formatProcessCompletionTime, getKstToday } from '../utils/dateUtils';
 import { phoneTail, recipientWithPhoneTail } from '../utils/phoneTail';
 import './StaffSmsPanel.css';
 
 // 직원 문자 관리 발송내역(2026-11-11 사장님 결정): 안내 문구·요약 칸·쪽 넘김 없이 미니멀하게.
 // 문자를 받도록 등록된 직원 이름 (끝 4자리)을 누르면 그날 그 사람에게 간 문자, [전체보기]는 그날 전체를 발송 순서(먼저 보낸 것 위)로.
 
-const KST_TIME = new Intl.DateTimeFormat('ko-KR', {
-  timeZone: 'Asia/Seoul',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-
-function formatTime(value) {
-  const date = new Date(value);
-  return value && !Number.isNaN(date.getTime()) ? KST_TIME.format(date) : '--:--';
+// 2026-11-11 사장님 "발송된 날짜가 떠야" — 줄마다 시각만이 아니라 발송 날짜+시각(KST, 예: 11/11 08:40).
+function formatSentAt(value) {
+  return formatProcessCompletionTime(value) || '날짜 미확인';
 }
 
 function sentOrder(left, right) {
@@ -183,7 +176,7 @@ export default function StaffSmsPanel({ active = true }) {
               return (
                 <li className="staff-sms__item" key={item.id}>
                   <div className="staff-sms__line">
-                    <time dateTime={item.sent_at || undefined}>{formatTime(item.sent_at)}</time>
+                    <time dateTime={item.sent_at || undefined}>{formatSentAt(item.sent_at)}</time>
                     {!selected && <strong>{recipientWithPhoneTail(item.recipient_name, item.phone)}</strong>}
                     {problem && (
                       <span className={`staff-sms__flag staff-sms__flag--${problem.tone}`} title={problem.label}>
