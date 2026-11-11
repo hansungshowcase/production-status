@@ -82,7 +82,8 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const loadTemplates = useCallback(async () => {
     setTplState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const data = await fetchSmsConsole('templates');
+      // 관리 화면은 서버 캐시를 건너뛴다(등록·삭제 직후 다른 서버가 옛 목록을 주지 않게)
+      const data = await fetchSmsConsole('templates', { fresh: 1 });
       setTplState({ loading: false, loaded: true, error: null, status: 200, data });
     } catch (err) {
       setTplState((prev) => ({ ...prev, loading: false, loaded: true, error: err.message || '불러오지 못했습니다.', status: err.status || 0 }));

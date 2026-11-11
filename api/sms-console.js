@@ -92,7 +92,7 @@ async function handleGet(req, res, ctx) {
     }
     if (resource === 'templates') {
       if (!configured) return res.status(200).json({ configured: false, write, targets: [], items: [], counts: emptyCounts(), unresolved_groups: 0, checked_at });
-      const listed = await kakao.listTemplates(opts);
+      const listed = await kakao.listTemplates({ ...opts, fresh: String(queryValue(req.query?.fresh) || '') === '1' });
       return res.status(200).json({ configured: true, write, targets: listed.targets || [], items: markProgramUse(listed.items, programTemplateIds()),
         counts: listed.counts || emptyCounts(), unresolved_groups: listed.unresolved_groups || 0, checked_at });
     }

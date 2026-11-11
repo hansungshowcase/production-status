@@ -174,8 +174,10 @@ function toTemplate(raw, scope) {
   };
 }
 
-export async function listTemplates({ fetchImpl = fetch, nowMs = Date.now() } = {}) {
-  const hit = cached('templates', TEMPLATE_TTL, nowMs);
+// fresh: 캐시를 건너뛰고 쏠라피에서 새로 받는다. Vercel 은 서버가 여러 대라 다른 서버에서 등록·삭제한 뒤
+// 이 서버의 60초 캐시가 옛 목록을 줄 수 있다(2026-11-11 실서버에서 등록한 템플릿이 다음 조회에 안 보임) — 관리 화면은 항상 fresh.
+export async function listTemplates({ fetchImpl = fetch, nowMs = Date.now(), fresh = false } = {}) {
+  const hit = fresh ? null : cached('templates', TEMPLATE_TTL, nowMs);
   if (hit) return hit.value;
   const directory = await listDirectory({ fetchImpl, nowMs });
   const { items: rawList, partial } = await pagedList('kakao/v2/templates', 'templateList', { fetchImpl });

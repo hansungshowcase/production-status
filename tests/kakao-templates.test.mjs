@@ -83,6 +83,9 @@ test('템플릿 캐시 60초', async () => {
   assert.equal(count(), 1);
   await listTemplates({ fetchImpl, nowMs: 61_000 });
   assert.equal(count(), 2);
+  // fresh 면 60초 안이어도 새로 받는다(서버가 여러 대라 다른 서버에서 등록·삭제한 뒤 옛 목록을 주지 않게)
+  await listTemplates({ fetchImpl, nowMs: 62_000, fresh: true });
+  assert.equal(count(), 3);
 });
 
 test('쏠라피 500 → SolapiKakaoError 502, 4xx 는 상태 유지·문구 정리', async () => {

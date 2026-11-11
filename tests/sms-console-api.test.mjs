@@ -304,3 +304,13 @@ test('GET: 쏠라피 카카오 권한 오류(403)는 권한·허용 IP 안내와
   assert.equal(res.statusCode, 502);
   assert.match(res.body.error.message, /권한·허용 IP/);
 });
+
+test('GET templates: fresh=1 이면 캐시를 건너뛰라고 넘기고, 없으면 캐시 사용', async () => {
+  reset();
+  const seen = [];
+  const base = fakeKakao();
+  const kakao = fakeKakao({ async listTemplates(opts) { seen.push(Boolean(opts?.fresh)); return base.listTemplates(); } });
+  await run(request('GET', { query: { resource: 'templates', fresh: '1' } }), deps({ kakao }));
+  await run(request('GET', { query: { resource: 'templates' } }), deps({ kakao }));
+  assert.deepEqual(seen, [true, false]);
+});
