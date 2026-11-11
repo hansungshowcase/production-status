@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { handleSmsConsole, _resetConsoleCacheForTest, PROGRAM_TEMPLATE_ENVS, programTemplateIds } from '../api/sms-console.js';
-import { _resetGuardForTest, isLocked, noteFailure } from '../api/_lib/smsConsoleGuard.js';
-import * as realGuard from '../api/_lib/smsConsoleGuard.js';
 
 class SolapiKakaoError extends Error {
   constructor(status, publicMessage) { super(publicMessage); this.name = 'SolapiKakaoError'; this.status = status; this.publicMessage = publicMessage; }
@@ -39,8 +37,7 @@ function fakeKakao(over = {}) {
 }
 const guard = (over = {}) => ({
   writeStatus: async () => ({ enabled: true, reason: null }),
-  verifyAdminPassword: async p => p === 'good',
-  noteFailure: realGuard.noteFailure, isLocked: realGuard.isLocked, ...over,
+  ...over,
 });
 const emptyDay = async () => ({ messages: [], partial: false });
 function deps(over = {}) {
@@ -49,7 +46,7 @@ function deps(over = {}) {
 const run = async (req, d) => { const res = response(); await handleSmsConsole(req, res, d); return res; };
 const post = (body, o) => request('POST', { body, ...o });
 const validTemplate = () => ({ target: { kind: 'group', id: 'G1' }, name: '시험', content: '#{이름}님 시험입니다', categoryCode: '999999', messageType: 'BA', emphasizeType: 'NONE', securityFlag: false, buttons: [] });
-const reset = () => { _resetGuardForTest(); _resetConsoleCacheForTest(); };
+const reset = () => { _resetConsoleCacheForTest(); };
 
 function noForbiddenKeys(value) {
   const bad = ['to', 'text', 'password'];
@@ -121,37 +118,31 @@ test('POST: 다른 출처 차단', async () => {
   reset();
   let called = 0;
   const d = deps({ guard: guard({ writeStatus: async () => { called += 1; return { enabled: true }; } }) });
-  const res = await run(post({ action: 'unlock', password: 'good' }, { origin: 'https://untrusted.example' }), d);
+  const res = await run(post({ action: 'rename', id: 'KA01', name: 'x' }, { origin: 'https://untrusted.example' }), d);
   assert.equal(res.statusCode, 403);
   assert.equal(called, 0);
 });
 
-test('POST: 본문 모양 400, 쓰기 꺼짐 503, 틀린 비밀번호 401, unlock 200', async () => {
+test('POST: 본문 모양 400, 쓰기 꺼짐 503, 비밀번호 없이 바로 처리(사장님 11/11 결정), unlock 동작 없음', async () => {
   reset();
   assert.equal((await run(post({ action: 'zzz' }), deps())).statusCode, 400);
   assert.equal((await run(post('not json'), deps())).statusCode, 400);
-  const off = await run(post({ action: 'unlock', password: 'good' }), deps({ guard: guard({ writeStatus: async () => ({ enabled: false, reason: 'disabled' }) }) }));
+  assert.equal((await run(post({ action: 'unlock' }), deps())).statusCode, 400);
+  const off = await run(post({ action: 'rename', id: 'KA01', name: '새 이름' }), deps({ guard: guard({ writeStatus: async () => ({ enabled: false, reason: 'disabled' }) }) }));
   assert.equal(off.statusCode, 503);
-  assert.equal((await run(post({ action: 'unlock', password: 'bad' }), deps())).statusCode, 401);
-  const ok = await run(post({ action: 'unlock', password: 'good' }), deps());
-  assert.equal(ok.statusCode, 200); assert.deepEqual(ok.body, { ok: true });
-});
-
-test('POST: 10회 틀리면 11번째는 429(맞는 비밀번호도 잠김)', async () => {
-  reset();
   const d = deps();
-  for (let i = 0; i < 10; i += 1) assert.equal((await run(post({ action: 'unlock', password: 'bad' }), d)).statusCode, 401);
-  assert.equal((await run(post({ action: 'unlock', password: 'good' }), d)).statusCode, 429);
-  assert.equal((await run(post({ action: 'unlock', password: 'good' }, { ip: '8.8.8.8' }), d)).statusCode, 200);
+  const ok = await run(post({ action: 'rename', id: 'KA01', name: '새 이름' }), d);
+  assert.equal(ok.statusCode, 200);
+  assert.ok(d.kakao.calls.some(c => c[0] === 'rename'));
 });
 
 test('POST: 범위 밖 403, 없는 템플릿 404, 잘못된 ID 400', async () => {
   reset();
-  assert.equal((await run(post({ action: 'rename', password: 'good', id: 'OUT', name: 'x' }), deps())).statusCode, 403);
-  assert.equal((await run(post({ action: 'rename', password: 'good', id: 'NONE', name: 'x' }), deps())).statusCode, 404);
-  assert.equal((await run(post({ action: 'rename', password: 'good', id: '../x', name: 'x' }), deps())).statusCode, 400);
+  assert.equal((await run(post({ action: 'rename', id: 'OUT', name: 'x' }), deps())).statusCode, 403);
+  assert.equal((await run(post({ action: 'rename', id: 'NONE', name: 'x' }), deps())).statusCode, 404);
+  assert.equal((await run(post({ action: 'rename', id: '../x', name: 'x' }), deps())).statusCode, 400);
   const d = deps();
-  const c = await run(post({ action: 'create', password: 'good', template: { ...validTemplate(), target: { kind: 'channel', id: 'C1' } } }), d);
+  const c = await run(post({ action: 'create', template: { ...validTemplate(), target: { kind: 'channel', id: 'C1' } } }), d);
   assert.equal(c.statusCode, 403);
   assert.equal(d.kakao.calls.length, 0);
 });
@@ -160,26 +151,26 @@ test('POST delete: 사용 중 409, 사용량 실패 409, confirmName 불일치 4
   reset();
   const used = async date => ({ partial: false, messages: date === '2026-11-11' ? [{ kakaoOptions: { templateId: 'KA01' }, dateCreated: `${date}T01:00:00Z` }, { kakaoOptions: { templateId: 'KA01' }, dateCreated: `${date}T02:00:00Z` }] : [] });
   let d = deps({ fetchSolapiDay: used });
-  let res = await run(post({ action: 'delete', password: 'good', id: 'KA01', confirmName: '배송 안내' }), d);
+  let res = await run(post({ action: 'delete', id: 'KA01', confirmName: '배송 안내' }), d);
   assert.equal(res.statusCode, 409);
   assert.equal(res.body.error.message, '최근 7일 동안 2건 발송된 템플릿입니다. 이 템플릿을 쓰는 자동 발송(쏠라피 자동화·프로그램 알림)을 먼저 끄세요.');
   assert.ok(!d.kakao.calls.some(c => c[0] === 'delete'));
 
   reset();
   d = deps({ fetchSolapiDay: async () => { throw new Error('down'); } });
-  res = await run(post({ action: 'delete', password: 'good', id: 'KA01', confirmName: '배송 안내' }), d);
+  res = await run(post({ action: 'delete', id: 'KA01', confirmName: '배송 안내' }), d);
   assert.equal(res.statusCode, 409);
   assert.ok(!d.kakao.calls.some(c => c[0] === 'delete'));
 
   reset();
   d = deps();
-  res = await run(post({ action: 'delete', password: 'good', id: 'KA01', confirmName: '다른 이름' }), d);
+  res = await run(post({ action: 'delete', id: 'KA01', confirmName: '다른 이름' }), d);
   assert.equal(res.statusCode, 400);
   assert.ok(!d.kakao.calls.some(c => c[0] === 'delete'));
 
   reset();
   d = deps();
-  res = await run(post({ action: 'delete', password: 'good', id: 'KA01', confirmName: '배송 안내' }), d);
+  res = await run(post({ action: 'delete', id: 'KA01', confirmName: '배송 안내' }), d);
   assert.equal(res.statusCode, 200); assert.deepEqual(res.body, { deleted: true, id: 'KA01' });
   assert.ok(d.kakao.calls.some(c => c[0] === 'delete' && c[1] === 'KA01'));
   assert.equal(d.kakao.cleared, 1);
@@ -188,26 +179,26 @@ test('POST delete: 사용 중 409, 사용량 실패 409, confirmName 불일치 4
 test('POST create: 201 과 캐시 비움, 입력 검증 400', async () => {
   reset();
   const d = deps();
-  const res = await run(post({ action: 'create', password: 'good', template: validTemplate() }), d);
+  const res = await run(post({ action: 'create', template: validTemplate() }), d);
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.inspected, false);
   assert.equal(res.body.item.id, 'NEW1');
   assert.equal(d.kakao.cleared, 1);
   assert.equal(d.kakao.calls.filter(c => c[0] === 'inspect').length, 0);
-  const bad = await run(post({ action: 'create', password: 'good', template: { ...validTemplate(), name: '' } }), deps());
+  const bad = await run(post({ action: 'create', template: { ...validTemplate(), name: '' } }), deps());
   assert.equal(bad.statusCode, 400);
 });
 
 test('POST create: 검수 요청 성공/실패(등록은 유지)', async () => {
   reset();
   let d = deps();
-  let res = await run(post({ action: 'create', password: 'good', template: validTemplate(), requestInspection: true, comment: '참고' }), d);
+  let res = await run(post({ action: 'create', template: validTemplate(), requestInspection: true, comment: '참고' }), d);
   assert.equal(res.statusCode, 201); assert.equal(res.body.inspected, true);
   assert.deepEqual(d.kakao.calls.find(c => c[0] === 'inspect'), ['inspect', 'NEW1', '참고']);
 
   reset();
   d = deps({ kakao: fakeKakao({ requestInspection: async () => { throw new SolapiKakaoError(400, '검수 불가') ; } }) });
-  res = await run(post({ action: 'create', password: 'good', template: validTemplate(), requestInspection: true }), d);
+  res = await run(post({ action: 'create', template: validTemplate(), requestInspection: true }), d);
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.inspected, false);
   assert.match(res.body.warning, /검수 요청은 실패/);
@@ -217,22 +208,22 @@ test('POST create: 검수 요청 성공/실패(등록은 유지)', async () => {
 test('POST update·inspect·cancel 상태 조건, 쏠라피 4xx 는 409', async () => {
   reset();
   const approved = fakeKakao({ getTemplateFresh: async id => ({ raw: {}, template: tpl({ id, status: 'APPROVED' }), scope: { allowed: true } }) });
-  assert.equal((await run(post({ action: 'inspect', password: 'good', id: 'KA01' }), deps({ kakao: approved }))).statusCode, 409);
-  assert.equal((await run(post({ action: 'cancel_inspect', password: 'good', id: 'KA01' }), deps())).statusCode, 409);
+  assert.equal((await run(post({ action: 'inspect', id: 'KA01' }), deps({ kakao: approved }))).statusCode, 409);
+  assert.equal((await run(post({ action: 'cancel_inspect', id: 'KA01' }), deps())).statusCode, 409);
   let d = deps();
-  let res = await run(post({ action: 'update', password: 'good', id: 'KA01', template: { ...validTemplate(), target: undefined } }), d);
+  let res = await run(post({ action: 'update', id: 'KA01', template: { ...validTemplate(), target: undefined } }), d);
   assert.equal(res.statusCode, 200);
   assert.ok(d.kakao.calls.some(c => c[0] === 'update'));
-  res = await run(post({ action: 'update', password: 'good', id: 'KA01', template: { name: '' } }), deps());
+  res = await run(post({ action: 'update', id: 'KA01', template: { name: '' } }), deps());
   assert.equal(res.statusCode, 400);
   d = deps({ kakao: fakeKakao({ renameTemplate: async () => { throw new SolapiKakaoError(400, '이름이 중복입니다') ; } }) });
-  res = await run(post({ action: 'rename', password: 'good', id: 'KA01', name: '새 이름' }), d);
+  res = await run(post({ action: 'rename', id: 'KA01', name: '새 이름' }), d);
   assert.equal(res.statusCode, 409); assert.equal(res.body.error.message, '이름이 중복입니다');
   d = deps({ kakao: fakeKakao({ renameTemplate: async () => { throw new SolapiKakaoError(500, '서버') ; } }) });
-  assert.equal((await run(post({ action: 'rename', password: 'good', id: 'KA01', name: '새 이름' }), d)).statusCode, 502);
+  assert.equal((await run(post({ action: 'rename', id: 'KA01', name: '새 이름' }), d)).statusCode, 502);
 });
 
-test('응답 JSON 에 to/text/password 키가 없고 비밀번호 값도 로그·응답에 없음', async () => {
+test('응답 JSON 에 to/text/password 키가 없고 입력값이 로그에 새지 않음', async () => {
   reset();
   const logs = [];
   const orig = console.info; console.info = (...a) => logs.push(a.join(' '));
@@ -241,15 +232,15 @@ test('응답 JSON 에 to/text/password 키가 없고 비밀번호 값도 로그�
     const responses = [
       await run(request('GET', { query: { resource: 'templates' } }), d),
       await run(request('GET', { query: { resource: 'overview' } }), d),
-      await run(post({ action: 'create', password: 'good', template: validTemplate() }), d),
-      await run(post({ action: 'unlock', password: 'bad' }), d),
+      await run(post({ action: 'create', template: validTemplate() }), d),
+      await run(post({ action: 'rename', id: 'KA01', name: 'good 이름' }), d),
     ];
     for (const r of responses) { noForbiddenKeys(r.body); assert.ok(!JSON.stringify(r.body).includes('good')); }
     assert.ok(logs.length >= 1 && logs.every(l => l.startsWith('[sms-console]') && !l.includes('good')));
   } finally { console.info = orig; }
 });
 
-// ── Fable 점검(11/11) 뒤 추가: 프로그램 알림 템플릿 보호·POST 요청 수 제한·권한 오류 문구·전체 잠금 ──
+// ── Fable 점검(11/11) 뒤 추가: 프로그램 알림 템플릿 보호·POST 요청 수 제한·권한 오류 문구 ──
 const withEnv = async (name, value, fn) => {
   const before = process.env[name];
   process.env[name] = value;
@@ -269,14 +260,14 @@ test('POST delete: 프로그램 고객 알림에 쓰는 템플릿은 사용량 0
   await withEnv('SOLAPI_TPL_SHIPPED', 'KA01', async () => {
     assert.ok(programTemplateIds().has('KA01'));
     const d = deps();
-    const res = await run(post({ action: 'delete', password: 'good', id: 'KA01', confirmName: '배송 안내' }), d);
+    const res = await run(post({ action: 'delete', id: 'KA01', confirmName: '배송 안내' }), d);
     assert.equal(res.statusCode, 409);
     assert.match(res.body.error.message, /프로그램의 고객 알림/);
     assert.ok(!d.kakao.calls.some(c => c[0] === 'delete'));
   });
   await withEnv('SMS_CONSOLE_PROTECTED_TEMPLATE_IDS', 'X1, KA01 ,', async () => {
     const d = deps();
-    const res = await run(post({ action: 'delete', password: 'good', id: 'KA01', confirmName: '배송 안내' }), d);
+    const res = await run(post({ action: 'delete', id: 'KA01', confirmName: '배송 안내' }), d);
     assert.equal(res.statusCode, 409);
     assert.ok(!d.kakao.calls.some(c => c[0] === 'delete'));
   });
@@ -298,11 +289,11 @@ test('POST 는 분당 5회 제한으로 요청 수 검사를 부른다', async (
   reset();
   const seen = [];
   const spy = (req, res, opts) => { seen.push(opts); return true; };
-  await run(post({ action: 'unlock', password: 'good' }), deps({ rateLimitCheck: spy }));
+  await run(post({ action: 'rename', id: 'KA01', name: 'x' }), deps({ rateLimitCheck: spy }));
   assert.equal(seen.length, 1);
   assert.equal(seen[0].max, 5);
   assert.equal(seen[0].keySuffix, 'POST');
-  const blocked = await run(post({ action: 'unlock', password: 'good' }), deps({ rateLimitCheck: (req, res) => { res.status(429).json({ error: { message: 'x' } }); return false; } }));
+  const blocked = await run(post({ action: 'rename', id: 'KA01', name: 'x' }), deps({ rateLimitCheck: (req, res) => { res.status(429).json({ error: { message: 'x' } }); return false; } }));
   assert.equal(blocked.statusCode, 429);
 });
 

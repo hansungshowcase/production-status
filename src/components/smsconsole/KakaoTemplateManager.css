@@ -20,7 +20,6 @@
   padding: 8px 12px; margin-bottom: 12px; border-radius: 8px; font-size: 13px;
   background: var(--smsc-bg, #f5f6f8); border: 1px solid var(--smsc-line, #dfe3ea); color: var(--smsc-text, #1c2330);
 }
-.ktm-lockbar--open { background: #e8f5ec; border-color: #b9dfc5; color: var(--smsc-ok, #157f3c); }
 .ktm-lockbar--off { background: #fdeceb; border-color: #f2c4c1; color: var(--smsc-danger, #c62828); }
 
 .ktm-notice { padding: 9px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; overflow-wrap: anywhere; }

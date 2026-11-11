@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
-import AdminUnlockDialog from './AdminUnlockDialog.jsx';
 import {
   ACTION_LABELS, availableActions, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
   isValidRename, statusInfo, statusPills, usageBadge, usageCount,
@@ -77,11 +76,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const [notice, setNotice] = useState(null); // {kind, text}
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
-  const [unlocked, setUnlocked] = useState(false);
-  const [unlockOpen, setUnlockOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const passwordRef = useRef('');
-  const pendingRef = useRef(null);
   const startedRef = useRef(false);
 
   const loadTemplates = useCallback(async () => {
@@ -124,45 +119,12 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const formOpen = mode === 'new' || (mode === 'edit' && selected);
 
   // ----- 쓰기 -----
-  const requireUnlock = (run) => {
-    if (writeOff) { setNotice({ kind: 'error', text: '쓰기 꺼짐 — 관리자 비밀번호가 설정되지 않았습니다' }); return; }
-    if (passwordRef.current) { run(); return; }
-    pendingRef.current = run;
-    setUnlockOpen(true);
+  // 관리자 비밀번호 잠금 없음(2026-11-11 사장님 결정). 서버 스위치(SMS_CONSOLE_WRITE=off)로 꺼져 있을 때만 막는다.
+  const requireWrite = (run) => {
+    if (writeOff) { setNotice({ kind: 'error', text: '등록·삭제가 꺼져 있습니다' }); return; }
+    run();
   };
-  const verify = async (password) => {
-    try {
-      await postSmsConsole('unlock', { password });
-      return true;
-    } catch (err) {
-      if (err.status === 401) return false;
-      throw err;
-    }
-  };
-  const onUnlocked = (password) => {
-    passwordRef.current = password;
-    setUnlocked(true);
-    setUnlockOpen(false);
-    const run = pendingRef.current;
-    pendingRef.current = null;
-    if (run) run();
-  };
-  const lockAgain = () => { passwordRef.current = ''; setUnlocked(false); };
-
-  // 쓰기 1건. 성공하면 응답, 401 이면 비밀번호를 비우고 대화상자를 다시 연다(null), 그 밖 오류는 throw
-  const doWrite = async (action, body, retry) => {
-    try {
-      return await postSmsConsole(action, { password: passwordRef.current, ...body });
-    } catch (err) {
-      if (err.status === 401) {
-        lockAgain();
-        pendingRef.current = retry;
-        setUnlockOpen(true);
-        return null;
-      }
-      throw err;
-    }
-  };
+  const doWrite = (action, body) => postSmsConsole(action, body);
 
   const afterWrite = async (text, warning) => {
     setNotice({ kind: 'ok', text: warning ? `${text} ${warning}` : text });
@@ -176,8 +138,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       setBusy(true);
       setDialogError('');
       try {
-        const result = await doWrite(type, { id: item.id, ...body }, run);
-        if (!result) return;
+        await doWrite(type, { id: item.id, ...body });
         closeDialog();
         const messages = {
           rename: '이름을 바꿨습니다.', inspect: '검수를 요청했습니다.',
@@ -191,7 +152,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
         setBusy(false);
       }
     };
-    requireUnlock(run);
+    requireWrite(run);
   };
 
   const submitForm = (value, extra) => {
@@ -201,9 +162,8 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       setFormError('');
       try {
         const result = editing
-          ? await doWrite('update', { id: selected.id, template: value }, run)
-          : await doWrite('create', { template: value, requestInspection: Boolean(extra?.requestInspection), comment: extra?.comment || '' }, run);
-        if (!result) return;
+          ? await doWrite('update', { id: selected.id, template: value })
+          : await doWrite('create', { template: value, requestInspection: Boolean(extra?.requestInspection), comment: extra?.comment || '' });
         const newId = editing ? selected.id : result.item?.id;
         await afterWrite(editing ? '수정했습니다.' : '템플릿을 등록했습니다.', result.warning);
         onRoute({ mode: '', tpl: newId || '' });
@@ -213,7 +173,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
         setBusy(false);
       }
     };
-    return new Promise((resolve) => { requireUnlock(run); resolve(); });
+    return new Promise((resolve) => { requireWrite(run); resolve(); });
   };
 
   // ----- 동작 -----
@@ -231,24 +191,10 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   };
 
   // ----- 그리기 조각 -----
-  const lockBar = (() => {
-    if (!data) return null;
-    if (writeOff) return <div className="ktm-lockbar ktm-lockbar--off"><Icon name="lock" /><span>쓰기 꺼짐 — 관리자 비밀번호가 설정되지 않았습니다</span></div>;
-    if (unlocked) {
-      return (
-        <div className="ktm-lockbar ktm-lockbar--open">
-          <Icon name="lock" /><span>등록·삭제 가능(새로고침하거나 탭을 닫으면 다시 잠김)</span>
-          <button type="button" className="ktm-btn" onClick={lockAgain}>잠그기</button>
-        </div>
-      );
-    }
-    return (
-      <div className="ktm-lockbar">
-        <Icon name="lock" /><span>보기 전용 — 등록·삭제하려면</span>
-        <button type="button" className="ktm-btn" onClick={() => setUnlockOpen(true)}>관리자 잠금 해제</button>
-      </div>
-    );
-  })();
+  // 서버에서 등록·삭제를 꺼 둔 경우에만 띠를 보인다(평소에는 비밀번호 없이 바로 쓴다)
+  const lockBar = data && writeOff
+    ? <div className="ktm-lockbar ktm-lockbar--off"><Icon name="lock" /><span>등록·삭제가 꺼져 있습니다(서버 설정 SMS_CONSOLE_WRITE=off)</span></div>
+    : null;
 
   const renderDetail = () => {
     if (formOpen) {
@@ -420,7 +366,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       <div className="ktm-header">
         <div>
           <h2 className="ktm-title">알림톡 템플릿</h2>
-          <p className="ktm-sub">한성쇼케이스 채널의 알림톡 템플릿을 보고, 관리자 비밀번호로 등록·삭제합니다.</p>
+          <p className="ktm-sub">한성쇼케이스 채널의 알림톡 템플릿을 보고, 바로 등록·삭제합니다.</p>
         </div>
         <button type="button" className="ktm-btn ktm-btn--primary" disabled={!data || data.configured === false || writeOff}
           onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '' }); }}>
@@ -432,7 +378,6 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       {tplState.error && data ? <div className="ktm-notice ktm-notice--error" role="alert">{tplState.error}</div> : null}
       {body}
       {renderDialog()}
-      <AdminUnlockDialog open={unlockOpen} onClose={() => { setUnlockOpen(false); pendingRef.current = null; }} verify={verify} onUnlocked={onUnlocked} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import * as defaultGuard from './_lib/smsConsoleGuard.js';
 import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope']);
-const ACTIONS = new Set(['unlock', 'create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -28,12 +28,6 @@ const queryValue = v => (Array.isArray(v) ? v[0] : v);
 const fail = (res, status, message) => res.status(status).json({ error: { message, status } });
 const oneLine = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
 const isKakaoError = e => Boolean(e) && (e.name === 'SolapiKakaoError' || (typeof e.publicMessage === 'string' && Number.isFinite(e.status)));
-
-function clientIp(req) {
-  const fwd = req.headers?.['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd) { const first = fwd.split(',')[0].trim(); if (first) return first; }
-  return req.socket?.remoteAddress || 'unknown';
-}
 
 function kstDates(nowMs, days) {
   const out = [];
@@ -137,14 +131,9 @@ async function handlePost(req, res, ctx) {
   const action = body.action;
 
   const write = await guard.writeStatus({ db: deps.db, nowMs });
-  if (!write.enabled) return fail(res, 503, '쓰기가 꺼져 있습니다.');
-  const ip = clientIp(req);
-  if (guard.isLocked(ip, nowMs)) return fail(res, 429, '비밀번호를 여러 번 틀려 잠시 잠겼습니다. 10분 뒤 다시 시도하세요.');
-  if (!(await guard.verifyAdminPassword(body.password, { db: deps.db }))) {
-    guard.noteFailure(ip, nowMs);
-    return fail(res, 401, '관리자 비밀번호가 맞지 않습니다.');
-  }
-  if (action === 'unlock') return res.status(200).json({ ok: true });
+  // 관리자 비밀번호 잠금은 두지 않는다(2026-11-11 사장님 "비밀번호 필요없으니까 빼버려 내가 관리하는데").
+  // 실수 방지(같은 출처·분당 5회·한성 채널만·사용 중/프로그램 템플릿 삭제 막음·삭제 때 이름 입력)는 그대로.
+  if (!write.enabled) return fail(res, 503, '등록·삭제가 꺼져 있습니다.');
   if (!(deps.hasCredentials || hasSolapiCredentials)()) return fail(res, 503, '쏠라피 연결이 설정되지 않았습니다.');
 
   try {

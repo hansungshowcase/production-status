@@ -1,5 +1,5 @@
-// 문자 관리 콘솔 API. 공용 client(request)는 401 이면 로그인 토큰을 지우므로
-// (관리자 비밀번호가 틀려도 401 이 온다) 여기서는 fetch 를 직접 쓴다. POST 는 다시 보내지 않는다.
+// 문자 관리 콘솔 API. 공용 client(request)는 401 이면 로그인 토큰을 지우므로 여기서는 fetch 를 직접 쓴다.
+// 등록·삭제에 비밀번호는 없다(2026-11-11 사장님 결정). POST 는 다시 보내지 않는다.
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope']);
 const TIMEOUT_MS = 20000;
