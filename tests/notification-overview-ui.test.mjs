@@ -11,6 +11,7 @@ import {
 
 const pageSource = readFileSync(new URL('../src/pages/SmsHistoryPage.jsx', import.meta.url), 'utf8');
 const pageCss = readFileSync(new URL('../src/pages/SmsHistoryPage.css', import.meta.url), 'utf8');
+const staffSource = readFileSync(new URL('../src/components/StaffSmsPanel.jsx', import.meta.url), 'utf8');
 const componentSource = readFileSync(new URL('../src/components/NotificationOverview.jsx', import.meta.url), 'utf8');
 const componentCss = readFileSync(new URL('../src/components/NotificationOverview.css', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../src/api/notificationOverview.js', import.meta.url), 'utf8');
@@ -18,7 +19,8 @@ const overviewSource = readFileSync(new URL('../api/_lib/notificationOverview.js
 
 test('자동 알림 현황은 기존 직원 발송내역 위에 독립 컴포넌트로 표시된다', () => {
   assert.match(pageSource, /import NotificationOverview/);
-  assert.match(pageSource, /<NotificationOverview group="internal" \/>[\s\S]*직원 문자 발송내역/);
+  assert.match(pageSource, /<NotificationOverview group="internal" \/>[\s\S]*<StaffSmsPanel active=/);
+  assert.match(staffSource, /직원 문자 발송내역/);
   assert.match(componentSource, /data-notification-overview/);
   assert.match(overviewSource, /label: '고객 알림'/);
   assert.match(overviewSource, /label: '사내·관리 알림'/);
@@ -103,7 +105,7 @@ test('데스크톱은 44대56 패널과 독립 스크롤, 좁은 화면은 상�
   assert.match(pageSource, /useState\('history'\)/);
   assert.match(pageSource, /data-sms-panel="overview"/);
   assert.match(pageSource, /data-sms-panel="history"/);
-  assert.match(pageSource, /data-history-scroll/);
+  assert.match(staffSource, /data-history-scroll/);
   assert.match(pageCss, /@media \(min-width: 1100px\)[\s\S]*grid-template-columns:\s*minmax\(0, 44fr\) minmax\(0, 56fr\)/);
   assert.match(pageCss, /#root:has\(\.sms-history-page\)[\s\S]*height:\s*100%/);
   assert.match(pageCss, /\.sms-history-list-scroll\s*\{[\s\S]*overflow-y:\s*auto/);

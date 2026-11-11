@@ -28,8 +28,8 @@ test('사이드바 메뉴(현황판 기본·발송 내역·고객/직원 관리)
   assert.match(pageSource, /id="sms-history-audience-panel-customer"[\s\S]*<NotificationOverview group="customer" \/>[\s\S]*<CustomerSmsPanel \/>/);
   assert.match(pageSource, /id="sms-history-audience-panel-employee"[\s\S]*<NotificationOverview group="internal" \/>/);
   assert.doesNotMatch(pageSource, /<NotificationOverview\s*\/>/);
-  assert.match(pageSource, /id="sms-history-recipient"/);
-  assert.match(pageSource, /id="sms-history-date"/);
+  // 직원 발송내역은 미니멀 패널(이름 버튼 + 그날 문자, 2026-11-11 장부 25)
+  assert.match(pageSource, /id="sms-history-audience-panel-employee"[\s\S]*<StaffSmsPanel active=/);
 });
 
 test('고객 조회 API는 GET 필터만 구성하고 발송 POST를 만들지 않는다', () => {

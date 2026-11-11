@@ -7,6 +7,7 @@ import {
   notificationStatusPresentation,
   notificationTextPresentation,
 } from './notificationOverviewPresentation';
+import { shortenPhonesInText } from '../utils/phoneTail';
 import './NotificationOverview.css';
 
 const KST_DATE_TIME = new Intl.DateTimeFormat('ko-KR', {
@@ -67,9 +68,13 @@ function ExampleMessage({ exampleMessage }) {
   );
 }
 
-function OverviewItem({ item, days, expanded, onToggle }) {
+function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
   const detailsId = `notification-overview-details-${item.id}`;
   const state = notificationStatusPresentation(item);
+  // 직원 문자 관리에서는 번호를 끝 4자리만: 이시아 부장 (4237)
+  const text = value => (shortPhones
+    ? shortenPhonesInText(notificationTextPresentation(value))
+    : notificationTextPresentation(value));
   return (
     <article
       className={`notification-overview-item notification-overview-item--${state.key}`}
@@ -88,7 +93,7 @@ function OverviewItem({ item, days, expanded, onToggle }) {
         <dl className="notification-overview-facts">
           <div>
             <dt>받는 사람</dt>
-            <dd>{notificationTextPresentation(item.target)}</dd>
+            <dd>{text(item.target)}</dd>
           </div>
         </dl>
 
@@ -109,9 +114,9 @@ function OverviewItem({ item, days, expanded, onToggle }) {
       {expanded && (
         <div className="notification-overview-details" id={detailsId}>
           <dl>
-            <div><dt>언제 보내나</dt><dd>{notificationTextPresentation(item.trigger)}</dd></div>
+            <div><dt>언제 보내나</dt><dd>{text(item.trigger)}</dd></div>
             <div><dt>최근 결과</dt><dd>{recentSummary(item.recent, days)}</dd></div>
-            <div><dt>발송 시간</dt><dd>{notificationTextPresentation(item.timing)}</dd></div>
+            <div><dt>발송 시간</dt><dd>{text(item.timing)}</dd></div>
             <div><dt>보내는 방법</dt><dd>{notificationChannelPresentation(item.configuration.channel)}</dd></div>
             <div><dt>확인 시각</dt><dd>{formatDateTime(item.checked_at)}</dd></div>
             {item.recent?.latest && (
@@ -196,9 +201,12 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
         )}
       </div>
 
-      <p className="notification-overview__notice">
-        발송 요청 완료는 문자 서비스에 요청이 접수됐다는 뜻이며, 실제 수신 여부와는 다릅니다.
-      </p>
+      {/* 직원 문자 관리는 미니멀하게: 안내 문구 없음(2026-11-11 사장님 "이부분 직원 문자관리에서 빼줘") */}
+      {onlyGroup !== 'internal' && (
+        <p className="notification-overview__notice">
+          발송 요청 완료는 문자 서비스에 요청이 접수됐다는 뜻이며, 실제 수신 여부와는 다릅니다.
+        </p>
+      )}
 
       {status === 'loading' && (
         <div className="notification-overview-state" role="status" aria-live="polite">
@@ -286,6 +294,7 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
                       key={item.id}
                       item={item}
                       days={days}
+                      shortPhones={onlyGroup === 'internal'}
                       expanded={expandedByGroup[group.id] === item.id}
                       onToggle={() => setExpandedByGroup(current => ({
                         ...current,

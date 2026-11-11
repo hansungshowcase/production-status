@@ -3,17 +3,39 @@ import { getDb } from './_lib/db.js';
 import {
   audienceForMilestone,
   isPublicNotificationRow,
+  maskedPhoneForInternalMember,
   NOTIFICATION_RECIPIENT_NAMES,
   PUBLIC_CHONBE_RECIPIENTS,
   DELIVERY_CLASSIFICATION_SQL,
   recipientFilterForName,
   serializeInternalNotification,
 } from './_lib/internalNotificationHistory.js';
+import { INTERNAL_ALERT_CONTACTS } from './_lib/internalProductionAlerts.js';
 import { rateLimitCheck } from './_lib/rateLimit.js';
 
 const AUDIENCES = new Set(['all', 'executive', 'member', 'sales']);
 const HISTORY_START_DATE = '2026-09-01';
 const DEFAULT_PAGE_SIZE = 10;
+// 직원 문자 관리 '하루 보기'(2026-11-11 사장님 "이름 누르면 그날 발송된 문자 … 전체보기를 누르면 발송 순서대로"):
+// 그날 기록을 한 번에, 먼저 보낸 것부터. 하루 실측 20~40건이라 300건이면 넉넉하다.
+const DAY_VIEW_LIMIT = 300;
+
+function phoneTail(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length >= 4 ? digits.slice(-4) : '';
+}
+
+// 문자를 받도록 등록된 직원(수신자 필터 순서)과 번호 끝 4자리. 전체·가린 번호는 내보내지 않는다.
+export function registeredRecipients() {
+  const executivePhones = Object.fromEntries(
+    Object.values(INTERNAL_ALERT_CONTACTS).map(({ name, phone }) => [name, phone]),
+  );
+  const salesPhones = Object.fromEntries(PUBLIC_CHONBE_RECIPIENTS.map(({ name, maskedPhone }) => [name, maskedPhone]));
+  return [...NOTIFICATION_RECIPIENT_NAMES].map(name => ({
+    name,
+    phone_tail: phoneTail(executivePhones[name] || salesPhones[name] || maskedPhoneForInternalMember(name)),
+  }));
+}
 
 function queryValue(value) {
   return Array.isArray(value) ? value[0] : value;
@@ -67,6 +89,13 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
     });
   }
 
+  const dayView = String(queryValue(req.query?.view) || '') === 'day';
+  if (dayView && !date) {
+    return res.status(400).json({
+      error: { message: '하루 보기는 날짜가 필요합니다.', status: 400 },
+    });
+  }
+
   const limit = DEFAULT_PAGE_SIZE;
   const requestedPage = Number.parseInt(queryValue(req.query?.page), 10);
   const page = Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1);
@@ -101,6 +130,32 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
     args.push(date);
   }
 
+  const selectColumns = `SELECT id, milestone, to_phone, status, recipient_name,
+                 message_subject, message_text, created_at,
+                 delivery_status_code, delivery_reported_at,
+                 delivery_received_at, delivery_checked_at
+            FROM notification_log
+           WHERE ${filters.join(' AND ')}`;
+  const toItems = rows => rows
+    .filter(isPublicNotificationRow)
+    .map(serializeInternalNotification)
+    .filter(item => audience === 'all' || audienceForMilestone(item.milestone) === audience);
+
+  // 하루 보기: 건수 집계 없이 그날 기록만(먼저 보낸 것부터). 한 건 더 읽어 상한을 넘었는지 본다.
+  if (dayView) {
+    const { rows: dayRows } = await db.execute({
+      sql: `${selectColumns}
+           ORDER BY created_at ASC, id ASC
+           LIMIT ?`,
+      args: [...args, DAY_VIEW_LIMIT + 1],
+    });
+    return res.json({
+      items: toItems(dayRows.slice(0, DAY_VIEW_LIMIT)),
+      recipients: registeredRecipients(),
+      truncated: dayRows.length > DAY_VIEW_LIMIT,
+    });
+  }
+
   const { rows: countRows } = await db.execute({
     sql: `SELECT COUNT(*) AS total,
                  COUNT(*) FILTER (WHERE status = 'success') AS success,
@@ -133,21 +188,13 @@ export async function handleInternalNotifications(req, res, dependencies = {}) {
   const offset = (effectivePage - 1) * limit;
 
   const { rows } = await db.execute({
-    sql: `SELECT id, milestone, to_phone, status, recipient_name,
-                 message_subject, message_text, created_at,
-                 delivery_status_code, delivery_reported_at,
-                 delivery_received_at, delivery_checked_at
-            FROM notification_log
-           WHERE ${filters.join(' AND ')}
+    sql: `${selectColumns}
            ORDER BY created_at DESC, id DESC
            LIMIT ? OFFSET ?`,
     args: [...args, limit, offset],
   });
 
-  const items = rows
-    .filter(isPublicNotificationRow)
-    .map(serializeInternalNotification)
-    .filter(item => audience === 'all' || audienceForMilestone(item.milestone) === audience);
+  const items = toItems(rows);
 
   return res.json({
     items,

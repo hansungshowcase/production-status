@@ -1,0 +1,215 @@
+/* 직원 문자 관리 발송내역 — 미니멀(이름 버튼 + 그날 문자) */
+.staff-sms {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.staff-sms__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.staff-sms__head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  word-break: keep-all;
+}
+
+.staff-sms__date {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.staff-sms__date input {
+  min-height: var(--control-min-height);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.staff-sms__date button,
+.staff-sms__people button {
+  min-height: var(--control-min-height);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.staff-sms__date button {
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.staff-sms__date button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.staff-sms__people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.staff-sms__people button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  font-size: 14px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.staff-sms__people button.is-empty { color: var(--text-dim); }
+
+.staff-sms__who {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
+  min-width: 0;
+}
+
+.staff-sms__who > span { white-space: nowrap; }
+
+.staff-sms__people button[aria-pressed='true'] {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.staff-sms__count {
+  flex: 0 0 auto;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface2);
+  color: var(--text-mid);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.staff-sms__people button[aria-pressed='true'] .staff-sms__count {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.staff-sms__date button:focus-visible,
+.staff-sms__date input:focus-visible,
+.staff-sms__people button:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.staff-sms__note {
+  margin: 0 0 var(--space-2);
+  color: var(--text-mid);
+  font-size: 13px;
+}
+
+.staff-sms__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.staff-sms__item {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.staff-sms__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-mid);
+  font-size: 14px;
+}
+
+.staff-sms__line time {
+  color: var(--text);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-sms__line strong {
+  color: var(--text);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.staff-sms__item h3 {
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.staff-sms__dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.staff-sms__dot--test { background: var(--text-dim); }
+
+.staff-sms__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.staff-sms__flag--failed { color: var(--red); }
+.staff-sms__flag--test { color: var(--text-dim); }
+
+/* 휴대폰: 15명이 가로로 밀려 숨지 않게 두 줄 격자로 모두 보인다 */
+@media (max-width: 480px) {
+  .staff-sms__people {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .staff-sms__people button {
+    gap: 4px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+  }
+
+  .staff-sms__count { min-width: 20px; padding: 1px 5px; font-size: 11px; }
+}
