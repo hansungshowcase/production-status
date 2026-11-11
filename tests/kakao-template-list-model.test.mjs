@@ -1,0 +1,81 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  filterTemplates, statusCounts, statusPills, usageCount, usageBadge, availableActions,
+  deleteDecision, deleteConfirmed, formatDate, isValidRename, splitVariables,
+} from '../src/components/smsconsole/templateListModel.js';
+
+const items = [
+  { id: 'KA01A', name: '배송 안내', status: 'APPROVED', supported: true, editable: false },
+  { id: 'KA01B', name: '견적 Quote', status: 'PENDING', supported: true, editable: true },
+  { id: 'KA01C', name: '반려됨', status: 'REJECTED', supported: false, editable: false },
+  { id: 'KA01D', name: '검수중', status: 'INSPECTING' },
+];
+
+test('검색은 이름·ID, 대소문자 무시, 상태 거르기와 함께', () => {
+  assert.equal(filterTemplates(items, { query: 'quote' }).length, 1);
+  assert.equal(filterTemplates(items, { query: 'ka01' }).length, 4);
+  assert.equal(filterTemplates(items, { query: '', status: 'APPROVED' }).length, 1);
+  assert.equal(filterTemplates(items, { query: '배송', status: 'PENDING' }).length, 0);
+  assert.deepEqual(filterTemplates(null), []);
+});
+
+test('상태 건수와 알약', () => {
+  assert.deepEqual(statusCounts(items), { all: 4, APPROVED: 1, INSPECTING: 1, PENDING: 1, REJECTED: 1 });
+  const pills = statusPills(items);
+  assert.equal(pills[0].label, '전체');
+  assert.equal(pills[1].label, '승인');
+  assert.equal(pills.length, 5);
+});
+
+test('사용량 건수·배지', () => {
+  const usage = { partial: false, by_template: { KA01A: { count: 3 } } };
+  assert.equal(usageCount(usage, 'KA01A'), 3);
+  assert.equal(usageCount(usage, 'KA01B'), 0);
+  assert.equal(usageCount(null, 'KA01A'), null);
+  assert.equal(usageBadge(usage, 'KA01A').text, '최근 7일 3건');
+  assert.equal(usageBadge(usage, 'KA01B'), null);
+  assert.equal(usageBadge(null, 'KA01B').text, '사용 여부 확인 못 함');
+  assert.equal(usageCount({ partial: true, by_template: {} }, 'X'), null);
+});
+
+test('⋮ 동작은 상태별', () => {
+  assert.deepEqual(availableActions(items[0]), ['rename', 'today_log', 'delete']);
+  assert.deepEqual(availableActions(items[1]), ['inspect', 'edit', 'rename', 'today_log', 'delete']);
+  assert.deepEqual(availableActions(items[2]), ['inspect', 'rename', 'today_log', 'delete']);
+  assert.deepEqual(availableActions(items[3]), ['cancel_inspect', 'rename', 'today_log', 'delete']);
+  assert.deepEqual(availableActions(null), []);
+});
+
+test('삭제 판정', () => {
+  const ok = { by_template: {} };
+  assert.equal(deleteDecision(items[1], ok).allowed, true);
+  assert.equal(deleteDecision(items[1], { by_template: { KA01B: { count: 1 } } }).reason, 'in_use');
+  assert.equal(deleteDecision(items[1], null).reason, 'unknown');
+  assert.equal(deleteConfirmed(items[0], '배송 안내'), true);
+  assert.equal(deleteConfirmed(items[0], '배송안내'), false);
+  assert.equal(deleteConfirmed(null, 'x'), false);
+});
+
+test('날짜는 한국 시간 YYYY.MM.DD', () => {
+  assert.equal(formatDate('2026-11-10T16:00:00Z'), '2026.11.11');
+  assert.equal(formatDate('2026-11-10T14:00:00.000Z'), '2026.11.10');
+  assert.equal(formatDate(''), '');
+  assert.equal(formatDate('abc'), '');
+});
+
+test('이름 변경 길이와 변수 쪼개기', () => {
+  assert.equal(isValidRename(''), false);
+  assert.equal(isValidRename('a'.repeat(100)), true);
+  assert.equal(isValidRename('a'.repeat(101)), false);
+  assert.deepEqual(splitVariables('안녕 #{이름}님'), [
+    { text: '안녕 ', variable: false }, { text: '#{이름}', variable: true }, { text: '님', variable: false }]);
+  assert.deepEqual(splitVariables(''), []);
+});
+
+test('deleteDecision: 프로그램 알림에 쓰는 템플릿(program_use)은 사용량 0이어도 지울 수 없다', async () => {
+  const { deleteDecision } = await import('../src/components/smsconsole/templateListModel.js');
+  const usage = { by_template: {}, partial: false };
+  assert.deepEqual(deleteDecision({ id: 'A', program_use: true }, usage), { allowed: false, reason: 'program', count: 0 });
+  assert.equal(deleteDecision({ id: 'A' }, usage).allowed, true);
+});

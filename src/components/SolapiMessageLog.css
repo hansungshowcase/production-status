@@ -297,5 +297,7 @@
   .solapi-log-state button { min-height: var(--control-min-height); }
   .solapi-log-pager button { min-width: var(--control-min-height); }
   .solapi-log-pills--audience { width: 100%; justify-content: space-between; overflow-x: auto; }
+  .solapi-log-pills--channel { max-width: 100%; overflow-x: auto; }
+  .solapi-log-pills--channel button { min-height: 44px; }
   .solapi-log-toolbar__right { width: 100%; justify-content: space-between; }
 }

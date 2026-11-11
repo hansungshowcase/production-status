@@ -9,6 +9,7 @@ const FILTER_KEYS = [
 export function fetchSolapiMessages({
   date = '',
   audience = 'all',
+  channel = 'all',
   view = 'groups',
   page = 1,
   page_size: pageSize = 50,
@@ -18,6 +19,7 @@ export function fetchSolapiMessages({
   if (date) params.set('date', date);
   params.set('view', view);
   if (audience && audience !== 'all') params.set('audience', audience);
+  if (channel === 'sms' || channel === 'kakao') params.set('channel', channel);
   params.set('page', String(page));
   params.set('page_size', String(pageSize));
   for (const key of FILTER_KEYS) {

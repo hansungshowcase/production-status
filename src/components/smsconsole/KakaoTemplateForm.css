@@ -1,0 +1,118 @@
+.smsc-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 20px;
+  align-items: start;
+  color: var(--smsc-text, #1c2330);
+}
+
+.smsc-form__main { min-width: 0; }
+.smsc-form__side { position: sticky; top: 12px; min-width: 0; }
+.smsc-form__form { display: flex; flex-direction: column; gap: 16px; }
+
+.smsc-form__field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.smsc-form__field label,
+.smsc-form__group legend,
+.smsc-form__button label { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.smsc-form__field label b { color: var(--smsc-danger, #c62828); }
+
+.smsc-form input[type='text'],
+.smsc-form select,
+.smsc-form textarea {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--smsc-line, #dfe3ea);
+  border-radius: 8px;
+  background: var(--smsc-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+}
+
+.smsc-form textarea { resize: vertical; line-height: 1.5; }
+.smsc-form [aria-invalid='true'] { border-color: var(--smsc-danger, #c62828); }
+.smsc-form input:focus-visible,
+.smsc-form select:focus-visible,
+.smsc-form textarea:focus-visible,
+.smsc-form__btn:focus-visible { outline: 2px solid var(--smsc-accent, #2457d6); outline-offset: 1px; }
+
+.smsc-form__count { margin: 0; font-size: 13px; color: var(--smsc-muted, #667085); text-align: right; overflow-wrap: anywhere; }
+.smsc-form__error { margin: 0; font-size: 14px; color: var(--smsc-danger, #c62828); overflow-wrap: anywhere; }
+.smsc-form__server {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--smsc-danger, #c62828);
+  border-radius: 8px;
+  background: #fdecea;
+  color: var(--smsc-danger, #c62828);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.smsc-form__readonly {
+  margin: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--smsc-bg, #f5f6f8);
+  overflow-wrap: anywhere;
+}
+.smsc-form__readonly small { color: var(--smsc-muted, #667085); }
+
+.smsc-form__group { margin: 0; padding: 12px; min-width: 0; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; }
+.smsc-form__choices { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.smsc-form__choice,
+.smsc-form__check { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; font-weight: 400 !important; overflow-wrap: anywhere; }
+.smsc-form__choice input,
+.smsc-form__check input { width: 22px; height: 22px; flex: none; margin: 0; }
+.smsc-form__choice--off { color: var(--smsc-muted, #667085); }
+.smsc-form__choice--off em { font-style: normal; font-size: 12px; padding: 2px 6px; border-radius: 4px; background: var(--smsc-bg, #f5f6f8); }
+
+.smsc-form__labelrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.smsc-form__varbox { padding: 10px; border-radius: 8px; background: var(--smsc-accent-weak, #eaf0ff); display: flex; flex-direction: column; gap: 6px; }
+.smsc-form__varrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.smsc-form__varrow input { flex: 1 1 140px; min-width: 0; }
+
+.smsc-form__button { padding: 10px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; background: var(--smsc-bg, #f5f6f8); }
+.smsc-form__buttonhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.smsc-form__buttonops { display: flex; gap: 6px; }
+
+.smsc-form__btn {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--smsc-line, #dfe3ea);
+  border-radius: 8px;
+  background: var(--smsc-surface, #fff);
+  color: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.smsc-form__btn--small { padding: 0 12px; font-size: 14px; }
+.smsc-form__btn--icon { min-width: 44px; padding: 0; }
+.smsc-form__btn--primary { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent, #2457d6); color: #fff; }
+.smsc-form__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.smsc-form__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.smsc-form__actions .smsc-form__btn { min-width: 110px; }
+
+.smsc-form__mpreview { display: flex; flex-direction: column; gap: 10px; }
+.smsc-form__previewbox { min-width: 0; overflow: hidden; }
+
+@media (max-width: 1000px) and (min-width: 769px) {
+  .smsc-form { grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; }
+}
+
+@media (max-width: 768px) {
+  .smsc-form { display: block; }
+  .smsc-form__actions { flex-direction: column-reverse; }
+  .smsc-form__actions .smsc-form__btn { width: 100%; }
+  .smsc-form__varrow .smsc-form__btn { flex: 1 1 auto; }
+}

@@ -9,18 +9,20 @@ import {
   formatCustomerSmsTime,
   todayInKst,
 } from '../src/components/customerSmsPresentation.js';
+import { CONSOLE_MENUS, parseConsoleQuery } from '../shared/smsConsole.js';
 
 const pageSource = readFileSync(new URL('../src/pages/SmsHistoryPage.jsx', import.meta.url), 'utf8');
 const panelSource = readFileSync(new URL('../src/components/CustomerSmsPanel.jsx', import.meta.url), 'utf8');
 const panelCss = readFileSync(new URL('../src/components/CustomerSmsPanel.css', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../src/api/customerNotifications.js', import.meta.url), 'utf8');
 
-test('쏠라피 발송내역이 기본 상위 탭이며 고객·직원 관리 탭과 기존 패널은 함께 유지된다', () => {
-  assert.match(pageSource, /useState\('solapi'\)/);
-  assert.match(pageSource, />\s*고객 문자 관리\s*</);
-  assert.match(pageSource, />\s*직원 알림 관리\s*</);
-  assert.match(pageSource, />\s*쏠라피 발송내역\s*</);
-  assert.match(pageSource, /<SolapiMessageLog \/>/);
+test('사이드바 메뉴(현황판 기본·발송 내역·고객/직원 관리) 안에 기존 패널이 함께 유지된다', () => {
+  // 11/11 장부 20번: 가로 탭 3개 → 쏠라피식 왼쪽 사이드바. 메뉴 이름은 shared/smsConsole.js 한 곳에서 관리.
+  assert.match(pageSource, /parseConsoleQuery\(/);
+  assert.match(pageSource, /<SmsConsoleSidebar /);
+  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['현황판', '발송 내역', '알림톡 템플릿', '고객 문자 관리', '직원 알림 관리']);
+  assert.equal(parseConsoleQuery(new URLSearchParams('')).menu, 'dashboard');
+  assert.match(pageSource, /<SolapiMessageLog[\s>]/);
   assert.match(pageSource, /<CustomerSmsPanel \/>/);
   assert.match(pageSource, /<NotificationOverview \/>/);
   assert.match(pageSource, /id="sms-history-recipient"/);

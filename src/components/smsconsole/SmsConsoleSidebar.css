@@ -1,0 +1,209 @@
+/* 문자 관리 콘솔 사이드바. 색은 .sms-history-page 의 --smsc-* 토큰(없으면 fallback). */
+.smsc-side { min-width: 0; }
+
+.smsc-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.smsc-menu,
+.smsc-sub { list-style: none; margin: 0; padding: 0; }
+
+.smsc-item,
+.smsc-subitem,
+.smsc-mbar__toggle,
+.smsc-pill {
+  font: inherit;
+  cursor: pointer;
+}
+
+.smsc-item {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 8px 8px 0;
+  background: transparent;
+  color: var(--smsc-text, #1c2330);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.smsc-item:hover { background: var(--smsc-bg, #f5f6f8); }
+
+.smsc-item.is-active {
+  border-left-color: var(--smsc-accent, #2457d6);
+  background: var(--smsc-accent-weak, #eaf0ff);
+  color: var(--smsc-accent, #2457d6);
+}
+
+.smsc-sub { margin: 2px 0 6px; }
+
+.smsc-subitem {
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 12px 6px 36px;
+  display: block;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--smsc-muted, #667085);
+  font-size: 14px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.smsc-subitem:hover { background: var(--smsc-bg, #f5f6f8); }
+
+.smsc-subitem.is-active {
+  color: var(--smsc-accent, #2457d6);
+  font-weight: 800;
+}
+
+.smsc-note {
+  margin: 16px 12px 0;
+  color: var(--smsc-muted, #667085);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.smsc-item:focus-visible,
+.smsc-subitem:focus-visible,
+.smsc-mbar__toggle:focus-visible,
+.smsc-pill:focus-visible {
+  outline: 3px solid var(--smsc-accent, #2457d6);
+  outline-offset: 2px;
+}
+
+.smsc-mbar,
+.smsc-pills,
+.smsc-backdrop { display: none; }
+
+/* PC: 고정 폭 세로 메뉴 */
+@media (min-width: 769px) {
+  .smsc-side {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
+  .smsc-nav {
+    padding: 8px 0;
+    border: 1px solid var(--smsc-line, #dfe3ea);
+    border-radius: 10px;
+    background: var(--smsc-surface, #fff);
+  }
+}
+
+/* 휴대폰: 48px 막대 + 서랍 + 알약 줄 */
+@media (max-width: 768px) {
+  .smsc-mbar {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .smsc-mbar__toggle {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--smsc-line, #dfe3ea);
+    border-radius: 8px;
+    background: var(--smsc-surface, #fff);
+    color: var(--smsc-text, #1c2330);
+    font-weight: 800;
+  }
+
+  .smsc-mbar__title {
+    min-width: 0;
+    flex: 1;
+    font-size: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .smsc-pills {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 10px;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .smsc-pill {
+    min-height: 44px;
+    padding: 0 16px;
+    flex: 0 0 auto;
+    border: 1px solid var(--smsc-line, #dfe3ea);
+    border-radius: 999px;
+    background: var(--smsc-surface, #fff);
+    color: var(--smsc-text, #1c2330);
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .smsc-pill.is-active {
+    border-color: var(--smsc-accent, #2457d6);
+    background: var(--smsc-accent-weak, #eaf0ff);
+    color: var(--smsc-accent, #2457d6);
+  }
+
+  .smsc-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(16, 24, 40, 0.45);
+  }
+
+  .smsc-nav {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 61;
+    width: min(280px, 84vw);
+    padding: 12px 0;
+    overflow-y: auto;
+    background: var(--smsc-surface, #fff);
+    box-shadow: 4px 0 24px rgba(16, 24, 40, 0.18);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.18s ease, visibility 0s linear 0.18s;
+  }
+
+  .smsc-nav.is-open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.18s ease;
+  }
+
+  .smsc-subitem { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smsc-nav,
+  .smsc-nav.is-open { transition: none; }
+}

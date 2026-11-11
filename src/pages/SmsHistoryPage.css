@@ -1,4 +1,14 @@
 .sms-history-page {
+  --smsc-accent: #2457d6;
+  --smsc-accent-weak: #eaf0ff;
+  --smsc-line: #dfe3ea;
+  --smsc-bg: #f5f6f8;
+  --smsc-surface: #fff;
+  --smsc-text: #1c2330;
+  --smsc-muted: #667085;
+  --smsc-ok: #157f3c;
+  --smsc-warn: #b45309;
+  --smsc-danger: #c62828;
   --sms-white: #FFFFFF;
   --sms-ink: #172033;
   --sms-customer-bg: #EAF4FF;
@@ -677,7 +687,8 @@
     align-items: end;
   }
 
-  .sms-history-filter-controls { gap: var(--space-2); }
+  /* 왼쪽 사이드바(216px)가 생겨 목록 칸이 좁아졌다 — 칸이 좁으면 필터 두 개를 한 줄씩 쌓는다 */
+  .sms-history-filter-controls { gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
 
   .sms-history-live-status {
     max-width: 220px;
@@ -792,3 +803,78 @@
   .sms-history-disclosure[aria-expanded='true'] svg { transform: none; }
   .sms-history-spinner { animation: none; }
 }
+
+/* ---- 문자 관리 콘솔 레이아웃(사이드바 + 내용) ---- */
+.sms-console [hidden] { display: none !important; }
+
+.sms-history-main.sms-console {
+  display: block;
+  min-width: 0;
+}
+
+.sms-console-content { min-width: 0; }
+
+.sms-console-pane,
+.sms-console-campaign { min-width: 0; }
+
+.sms-console-loading {
+  margin: 0;
+  padding: 24px 0;
+  color: var(--smsc-muted);
+  font-size: 14px;
+}
+
+@media (min-width: 769px) {
+  .sms-history-main.sms-console {
+    display: grid;
+    grid-template-columns: 184px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+}
+
+@media (min-width: 1100px) {
+  .sms-history-main.sms-console {
+    grid-template-columns: 216px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .sms-console .smsc-side { max-height: 100%; }
+
+  .sms-console-content {
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sms-console-pane {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .sms-console-campaign { flex: 0 0 auto; }
+
+  .sms-console-pane--fill {
+    overflow: hidden;
+  }
+
+  .sms-console-pane--fill:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* 사이드바만큼 좁아진 PC 폭: 요청별 표의 막대·건수가 칸에 잘려 숨지 않게(자리가 모자랄 때만) 두 줄로 접는다 */
+@media (min-width: 769px) {
+  .sms-console .sgt-state { flex-wrap: wrap; row-gap: 2px; padding: 4px 0; }
+  .sms-console .sgt-bar { width: min(100px, 100%); }
+  .sms-console .sgt-counts { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
+}
+/* 직원 날짜 필터: 칸이 좁으면 '전체 날짜' 단추를 아래 줄로(넓으면 지금처럼 한 줄) */
+.sms-console .sms-history-date-label { flex-wrap: wrap; }
+.sms-console .sms-history-date-filter { display: flex; flex-wrap: wrap; align-items: flex-end; }
+.sms-console .sms-history-date-filter > label { flex: 1 1 160px; }
+.sms-console .sms-history-date-clear { flex: 0 0 auto; }

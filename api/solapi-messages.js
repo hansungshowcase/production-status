@@ -6,12 +6,40 @@ import {
   PAGE_SIZES, buildGroups, buildItems, countItems, countSenders, countTypes, fetchSolapiDay, hasSolapiCredentials, paginate,
   typeMatches,
 } from './_lib/solapiMessageLog.js';
+import { kindOfType } from '../shared/smsConsole.js';
 import { buildGroupRows, fetchSolapiGroupsDay, groupSource } from './_lib/solapiGroupLog.js';
 
 const AUDIENCES = new Set(['all', 'customer', 'staff', 'other']);
 const STATUSES = new Set(['all', 'success', 'pending', 'failed']);
 const VIEWS = new Set(['messages', 'groups']);
 const GROUP_STATUSES = new Set(['all', 'COMPLETE', 'SENDING', 'PENDING', 'SCHEDULED', 'FAILED']);
+
+const CHANNELS = new Set(['all', 'sms', 'kakao']);
+
+function buildMatrix(items) {
+  const blank = () => ({ total: 0, success: 0, pending: 0, failed: 0 });
+  const row = () => ({ sms: blank(), kakao: blank(), other: blank() });
+  const matrix = { customer: row(), staff: row(), other: row() };
+  for (const item of items) {
+    const line = matrix[item.audience === 'customer' || item.audience === 'staff' ? item.audience : 'other'];
+    const cell = line[kindOfType(item.type)];
+    cell.total += 1;
+    if (cell[item.status] !== undefined) cell[item.status] += 1;
+  }
+  return matrix;
+}
+
+function buildHourly(items) {
+  const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, total: 0, failed: 0 }));
+  for (const item of items) {
+    const ms = Date.parse(item.created_at || '');
+    if (!Number.isFinite(ms)) continue;
+    const slot = hourly[new Date(ms + 9 * 3600000).getUTCHours()];
+    slot.total += 1;
+    if (item.status === 'failed') slot.failed += 1;
+  }
+  return hourly;
+}
 
 const queryValue = value => (Array.isArray(value) ? value[0] : value);
 const emptyCounts = () => ({ total: 0, success: 0, pending: 0, failed: 0 });
@@ -54,11 +82,13 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
   const type = String(queryValue(q.type) || 'all');
   const view = String(queryValue(q.view) || 'groups');
   const groupStatus = String(queryValue(q.group_status) || 'all');
+  const channel = String(queryValue(q.channel) || 'all');
   if (!validKstDate(date)) return bad(res, '올바른 조회 날짜가 아닙니다.');
   if (!AUDIENCES.has(audience)) return bad(res, '올바른 구분이 아닙니다.');
   if (!STATUSES.has(status)) return bad(res, '올바른 상태가 아닙니다.');
   if (!VIEWS.has(view)) return bad(res, '올바른 보기가 아닙니다.');
   if (!GROUP_STATUSES.has(groupStatus)) return bad(res, '올바른 그룹 상태가 아닙니다.');
+  if (!CHANNELS.has(channel)) return bad(res, '올바른 종류가 아닙니다.');
   // BMS_CAROUSEL_FEED 같은 긴 쏠라피 타입명도 받는다(화면 '메시지종류' 칩이 원래 이름을 보냄)
   if (type !== 'all' && !/^[A-Za-z_]{2,30}$/.test(type)) return bad(res, '올바른 타입이 아닙니다.');
   const pageSizeRaw = String(queryValue(q.page_size) ?? '').trim();
@@ -78,7 +108,7 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
   const base = { date, configured: true, partial: false, groups_partial: false, checked_at: new Date(now).toISOString() };
   if (!hasSolapiCredentials()) {
     return res.json({
-      ...base, configured: false,
+      ...base, configured: false, channel, matrix: buildMatrix([]), hourly: buildHourly([]),
       counts: { all: emptyCounts(), customer: emptyCounts(), staff: emptyCounts(), other: emptyCounts() },
       group_counts: { all: 0, customer: 0, staff: 0, other: 0 },
       types: [], senders: [], pagination: { page: 1, page_size: pageSize, total_items: 0, total_pages: 0 },
@@ -111,12 +141,19 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
 
   const slimGroups = groupResult?.groups || null;
   const groupSources = new Map((slimGroups || []).filter(g => g.groupId).map(g => [g.groupId, groupSource(g.appId)]));
-  const all = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources });
+  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources });
+  const matrix = buildMatrix(everything);
+  const hourly = buildHourly(everything);
+  const all = channel === 'all' ? everything : everything.filter(item => kindOfType(item.type) === channel);
   const counts = countItems(all);
   const byAudience = audience === 'all' ? all : all.filter(item => item.audience === audience);
   const types = countTypes(byAudience);
   const senders = countSenders(byAudience);
-  const allGroups = slimGroups ? buildGroupRows(slimGroups, all) : buildGroups(all);
+  let allGroups = slimGroups ? buildGroupRows(slimGroups, everything) : buildGroups(everything);
+  if (channel !== 'all') {
+    const scopedIds = new Set(all.map(item => item.group_id).filter(Boolean));
+    allGroups = allGroups.filter(group => scopedIds.has(group.group_id));
+  }
   const group_counts = { all: allGroups.length, customer: 0, staff: 0, other: 0 };
   for (const group of allGroups) {
     if (group.audience === 'customer' || group.audience === 'mixed') group_counts.customer += 1;
@@ -147,6 +184,7 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
 
   return res.json({
     ...base, partial: solapi.partial, groups_partial: !slimGroups || groupResult.partial === true,
+    channel, matrix, hourly,
     counts, group_counts, types, senders, pagination,
     items: view === 'groups' ? [] : pageRows,
     groups: view === 'groups' ? pageRows : [],

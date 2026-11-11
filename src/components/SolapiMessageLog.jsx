@@ -3,6 +3,7 @@ import { fetchSolapiMessages } from '../api/solapiMessages';
 import SolapiGroupTable from './solapi/SolapiGroupTable';
 import SolapiMessageTable from './solapi/SolapiMessageTable';
 import SolapiMessageDetail from './solapi/SolapiMessageDetail';
+import { CHANNEL_KINDS } from '../../shared/smsConsole.js';
 import './SolapiMessageLog.css';
 
 const VIEW_TABS = [
@@ -15,6 +16,12 @@ const AUDIENCE_TABS = [
   { value: 'customer', label: '고객' },
   { value: 'staff', label: '직원' },
 ];
+
+const CHANNEL_TABS = [
+  { value: 'all', label: '전체' },
+  { value: 'sms', label: '문자' },
+  { value: 'kakao', label: '알림톡' },
+].filter((t) => CHANNEL_KINDS.includes(t.value));
 
 const PAGE_SIZES = [20, 50, 100];
 
@@ -208,13 +215,24 @@ function FilterChip({ chip, value, options, onApply, onClear }) {
   );
 }
 
-export default function SolapiMessageLog() {
+export default function SolapiMessageLog({
+  audience: audienceProp,
+  channel: channelProp,
+  onAudienceChange,
+  onChannelChange,
+  preset,
+} = {}) {
   const [view, setView] = useState('groups');
-  const [audience, setAudience] = useState('all');
+  const [audience, setAudience] = useState(audienceProp || 'all');
+  const [channel, setChannel] = useState(CHANNEL_KINDS.includes(channelProp) ? channelProp : 'all');
+  const [prevAudienceProp, setPrevAudienceProp] = useState(audienceProp);
+  const [prevChannelProp, setPrevChannelProp] = useState(channelProp);
+  const [prevPresetKey, setPrevPresetKey] = useState(undefined);
   const [date, setDate] = useState(todayKst);
   const [filters, setFilters] = useState({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -223,13 +241,40 @@ export default function SolapiMessageLog() {
   const requestIdRef = useRef(0);
   const rowRef = useRef(null);
 
+  // 바깥에서 받는 값이 바뀌면 같은 렌더에서 안쪽 상태를 맞춘다(불필요한 조회 방지)
+  if (audienceProp !== prevAudienceProp) {
+    setPrevAudienceProp(audienceProp);
+    if (audienceProp && audienceProp !== audience) {
+      setAudience(audienceProp);
+      setFilters((f) => keepFor(view, f, true));
+      setPage(1);
+    }
+  }
+  if (channelProp !== prevChannelProp) {
+    setPrevChannelProp(channelProp);
+    if (CHANNEL_KINDS.includes(channelProp) && channelProp !== channel) {
+      setChannel(channelProp);
+      setFilters((f) => keepFor(view, f, true));
+      setPage(1);
+    }
+  }
+  if (preset?.key !== prevPresetKey) {
+    setPrevPresetKey(preset?.key);
+    if (preset && preset.key !== undefined) {
+      const nextView = VIEW_TABS.some((t) => t.value === preset.view) ? preset.view : view;
+      if (nextView !== view) { setView(nextView); setSelected(null); }
+      setFilters(keepFor(nextView, preset.filters || {}, false));
+      setPage(1);
+    }
+  }
+
   const load = useCallback(async () => {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setLoading(true);
     setError('');
     try {
-      const result = await fetchSolapiMessages({ date, audience, view, page, page_size: pageSize, ...filters });
+      const result = await fetchSolapiMessages({ date, audience, channel, view, page, page_size: pageSize, ...filters });
       if (requestId !== requestIdRef.current) return;
       setData(result);
     } catch (err) {
@@ -238,7 +283,7 @@ export default function SolapiMessageLog() {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [date, audience, view, page, pageSize, filters]);
+  }, [date, audience, channel, view, page, pageSize, filters]);
 
   useEffect(() => {
     load();
@@ -272,6 +317,14 @@ export default function SolapiMessageLog() {
     setAudience(next);
     setFilters((f) => keepFor(view, f, true));
     setPage(1);
+    if (onAudienceChange) onAudienceChange(next);
+  }
+  function changeChannel(next) {
+    if (next === channel) return;
+    setChannel(next);
+    setFilters((f) => keepFor(view, f, true));
+    setPage(1);
+    if (onChannelChange) onChannelChange(next);
   }
   function changeDate(value) {
     if (!value) return;
@@ -341,6 +394,19 @@ export default function SolapiMessageLog() {
             >
               {tab.label}
               <span className="solapi-log-badge">{audienceCount(tab.value)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="solapi-log-pills solapi-log-pills--channel" role="tablist" aria-label="메시지 종류 구분">
+          {CHANNEL_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={channel === tab.value}
+              onClick={() => changeChannel(tab.value)}
+            >
+              {tab.label}
             </button>
           ))}
         </div>

@@ -8,10 +8,12 @@ const componentSource = readFileSync(new URL('../src/components/SmsCampaignManag
 const componentCss = readFileSync(new URL('../src/components/SmsCampaignManager.css', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../src/api/notificationCampaigns.js', import.meta.url), 'utf8');
 
-test('대상 탭 다음에 현재 고객 또는 직원 범위의 문자 관리 도구를 둔다', () => {
+test('사이드바 다음에 현재 고객 또는 직원 범위의 문자 관리 도구를 둔다', () => {
+  // 11/11 장부 20번: 가로 대상 탭 → 사이드바 메뉴(customer·staff). 관리 도구는 하나만 mount 하고 audience 만 바꾼다.
   assert.match(pageSource, /<SmsCampaignManager audience=\{audience\} \/>/);
-  assert.ok(pageSource.indexOf('<SmsCampaignManager') > pageSource.indexOf('sms-history-audience-tabs'));
-  assert.ok(pageSource.indexOf('<SmsCampaignManager') < pageSource.search(/<div\r?\n\s+id="sms-history-audience-panel-customer"/));
+  assert.equal(pageSource.split('<SmsCampaignManager').length - 1, 1);
+  assert.ok(pageSource.indexOf('<SmsCampaignManager') > pageSource.indexOf('<SmsConsoleSidebar'));
+  assert.ok(pageSource.indexOf('<SmsCampaignManager') < pageSource.search(/id="sms-history-audience-panel-customer"/));
   assert.match(pageCss, /grid-template-rows:\s*auto auto minmax\(0, 1fr\)/);
 });
 

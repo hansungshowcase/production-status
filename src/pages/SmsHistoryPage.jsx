@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { buildConsoleQuery, parseConsoleQuery } from '../../shared/smsConsole.js';
 import { fetchInternalNotifications } from '../api/internalNotifications';
+import SmsConsoleSidebar from '../components/smsconsole/SmsConsoleSidebar';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
 import SolapiMessageLog from '../components/SolapiMessageLog';
@@ -11,6 +13,11 @@ import {
   notificationPageNumbers,
 } from './smsHistoryFilters';
 import './SmsHistoryPage.css';
+
+const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.jsx'));
+const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
+const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode'];
+const PANE_LOADING = <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
 const STATUS_META = {
   success: { label: '발송 요청 완료', className: 'success' },
@@ -74,10 +81,43 @@ export default function SmsHistoryPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [expandedId, setExpandedId] = useState(null);
-  const [mainTab, setMainTab] = useState('solapi');
-  const audience = mainTab === 'employee' ? 'employee' : 'customer';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const state = useMemo(() => parseConsoleQuery(searchParams), [searchParams]);
+  const [visited, setVisited] = useState(() => new Set([state.menu]));
+  const [logPreset, setLogPreset] = useState(null);
+  // 문자 관리 도구는 고객·직원 메뉴가 함께 쓰는 한 개라, 다른 메뉴에 가 있는 동안에는 마지막 대상을 유지한다
+  // (직원 → 발송 내역 → 직원으로 오갈 때 숨은 도구가 고객 기준으로 다시 불러오지 않게)
+  const lastAudienceRef = useRef(state.menu === 'staff' ? 'employee' : 'customer');
+  if (state.menu === 'staff') lastAudienceRef.current = 'employee';
+  else if (state.menu === 'customer') lastAudienceRef.current = 'customer';
+  const audience = lastAudienceRef.current;
   const [activePanel, setActivePanel] = useState('history');
   const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    setVisited(prev => (prev.has(state.menu) ? prev : new Set(prev).add(state.menu)));
+  }, [state.menu]);
+  const isMounted = menu => visited.has(menu) || state.menu === menu;
+  const staffVisited = isMounted('staff');
+
+  // 콘솔 5개 키만 바꾸고 다른 쿼리 키는 그대로 둔다. 메뉴 이동은 push, 화면 안 필터는 replace.
+  const writeState = useCallback((next, replace) => {
+    const params = new URLSearchParams(searchParams);
+    CONSOLE_QUERY_KEYS.forEach(key => params.delete(key));
+    new URLSearchParams(buildConsoleQuery(next)).forEach((value, key) => params.set(key, value));
+    setSearchParams(params, { replace });
+  }, [searchParams, setSearchParams]);
+
+  const selectMenu = useCallback((menu, patch = {}) => {
+    writeState({ aud: 'all', ch: 'all', tpl: '', mode: '', ...patch, menu }, false);
+  }, [writeState]);
+  const patchState = useCallback(patch => {
+    writeState({ ...state, ...patch }, true);
+  }, [state, writeState]);
+  const openLog = useCallback(templateId => {
+    setLogPreset({ key: Date.now(), view: 'messages', filters: { template_id: templateId } });
+    writeState({ aud: 'all', ch: 'all', tpl: '', mode: '', menu: 'log' }, false);
+  }, [writeState]);
 
   const loadNotifications = useCallback(async () => {
     const requestId = requestIdRef.current + 1;
@@ -112,8 +152,8 @@ export default function SmsHistoryPage() {
   }, [date, page, recipient]);
 
   useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+    if (staffVisited) loadNotifications();
+  }, [loadNotifications, staffVisited]);
 
   const dateGroups = useMemo(() => groupNotificationsByKstDate(items), [items]);
 
@@ -144,73 +184,74 @@ export default function SmsHistoryPage() {
           </button>
           <div>
             <p className="sms-history-eyebrow">자동문자 운영 현황</p>
-            <h1>문자 발송내역</h1>
+            <h1>문자 관리</h1>
           </div>
         </div>
       </header>
 
-      <main className="sms-history-main">
-        <div className="sms-history-audience-tabs sms-history-audience-tabs--main" role="tablist" aria-label="문자 관리 대상">
-          <button
-            type="button"
-            role="tab"
-            id="sms-history-audience-solapi"
-            aria-selected={mainTab === 'solapi'}
-            aria-controls="sms-history-audience-panel-solapi"
-            onClick={() => setMainTab('solapi')}
+      <main className="sms-history-main sms-console">
+        <SmsConsoleSidebar state={state} onSelect={selectMenu} />
+
+        <div className="sms-console-content">
+        {isMounted('dashboard') && (
+          <div className="sms-console-pane" hidden={state.menu !== 'dashboard'}>
+            <Suspense fallback={PANE_LOADING}>
+              <SmsDashboard active={state.menu === 'dashboard'} onNavigate={selectMenu} />
+            </Suspense>
+          </div>
+        )}
+
+        {isMounted('log') && (
+          <div
+            className="sms-console-pane"
+            id="sms-history-audience-panel-solapi"
+            hidden={state.menu !== 'log'}
           >
-            쏠라피 발송내역
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="sms-history-audience-customer"
-            aria-selected={mainTab === 'customer'}
-            aria-controls="sms-history-audience-panel-customer"
-            onClick={() => setMainTab('customer')}
+            <SolapiMessageLog
+              audience={state.aud}
+              channel={state.ch}
+              onAudienceChange={aud => patchState({ aud })}
+              onChannelChange={ch => patchState({ ch })}
+              preset={logPreset}
+            />
+          </div>
+        )}
+
+        {isMounted('templates') && (
+          <div className="sms-console-pane" hidden={state.menu !== 'templates'}>
+            <Suspense fallback={PANE_LOADING}>
+              <KakaoTemplateManager
+                active={state.menu === 'templates'}
+                selectedId={state.tpl}
+                mode={state.mode}
+                onRoute={patchState}
+                onOpenLog={openLog}
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {(isMounted('customer') || isMounted('staff')) && (
+          <div className="sms-console-campaign" hidden={state.menu !== 'customer' && state.menu !== 'staff'}>
+            <SmsCampaignManager audience={audience} />
+          </div>
+        )}
+
+        {isMounted('customer') && (
+          <div
+            className="sms-console-pane sms-console-pane--fill"
+            id="sms-history-audience-panel-customer"
+            hidden={state.menu !== 'customer'}
           >
-            고객 문자 관리
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="sms-history-audience-employee"
-            aria-selected={mainTab === 'employee'}
-            aria-controls="sms-history-audience-panel-employee"
-            onClick={() => setMainTab('employee')}
-          >
-            직원 알림 관리
-          </button>
-        </div>
+            <CustomerSmsPanel />
+          </div>
+        )}
 
+        {isMounted('staff') && (
         <div
-          id="sms-history-audience-panel-solapi"
-          role="tabpanel"
-          aria-labelledby="sms-history-audience-solapi"
-          hidden={mainTab !== 'solapi'}
-        >
-          <SolapiMessageLog />
-        </div>
-
-        <div hidden={mainTab === 'solapi'}>
-          <SmsCampaignManager audience={audience} />
-        </div>
-
-        <div
-          id="sms-history-audience-panel-customer"
-          role="tabpanel"
-          aria-labelledby="sms-history-audience-customer"
-          hidden={mainTab !== 'customer'}
-        >
-          <CustomerSmsPanel />
-        </div>
-
-        <div
-          className="sms-history-employee-panel"
+          className="sms-console-pane sms-console-pane--fill sms-history-employee-panel"
           id="sms-history-audience-panel-employee"
-          role="tabpanel"
-          aria-labelledby="sms-history-audience-employee"
-          hidden={mainTab !== 'employee'}
+          hidden={state.menu !== 'staff'}
         >
         <div className="sms-history-view-tabs" role="tablist" aria-label="문자 현황 보기">
           <button
@@ -499,6 +540,8 @@ export default function SmsHistoryPage() {
         )}
           </section>
         </div>
+        </div>
+        )}
         </div>
       </main>
     </div>
