@@ -87,6 +87,7 @@ export const EXTERNAL_TEMPLATES = Object.freeze([
     via: MAKE, scenario: '리뷰 카톡발송 (같은 문구: 리뷰(1개월 텀) 작업일보 — 꺼짐)', trigger: '매일 11:59 · 구글시트에 리뷰 안내 대상 행이 있을 때', active: true,
     body: '안녕하세요\n\n[상호] 대표님 한성쇼케이스입니다\n\n한 달 동안만 진행되는\n\n블로그 리뷰 이벤트입니다\n\n리뷰를 남겨주실 경우\n\n현금 7만원이 바로 지급됩니다\n\n놓치지 마세요..!\n\n[버튼] 리뷰 남기고 7만원 받기 (상단에 이미지 1장)\n알림톡이 실패하면 (광고)한성쇼케이스그룹 머리말을 붙인 장문문자로 대체 발송',
     match: { review: 'blog', types: KAKAO_TYPES, words: ['블로그 리뷰 이벤트'] },
+    image: '/sms-templates/review_blog.jpg',
   },
   {
     key: 'event_free_support', name: '무료 지원 이벤트', channel: 'BMS', sender: MAKE, kind: '이벤트·혜택', ad: true, audience: '고객', who: '카페24 회원가입 고객',
@@ -105,12 +106,14 @@ export const EXTERNAL_TEMPLATES = Object.freeze([
     via: MAKE, scenario: '쓰레드 인스타 이벤트 한성', trigger: '매일 12:01 · 구글시트에 SNS 리뷰 안내 대상 행이 있을 때', active: true,
     body: '[사진 첨부] 한성쇼케이스 SNS 리뷰 4만원 지급이벤트\nhttps://cafe.naver.com/[카페아이디]/1757',
     match: { review: 'sns', types: ['MMS'], words: ['cafe.naver.com', '/1757'] },
+    image: '/sms-templates/review_sns.jpg',
   },
   {
     key: 'caution_notice', name: '주의사항 안내(이미지 문자)', channel: 'MMS', sender: MAKE, kind: '주문·출고 안내', ad: false, audience: '고객',
     via: MAKE, scenario: '한성쇼케이스 주의사항 안내문자', trigger: '매일 18:00 · 구글시트에 새 행이 올라오면', active: true,
     body: '[사진 첨부] 한성쇼케이스 주의사항 안내',
     match: { types: ['MMS'], words: ['한성쇼케이스 주의사항 안내'] },
+    image: '/sms-templates/caution_notice.jpg',
   },
   {
     key: 'ship_schedule', name: '출고일정 안내(담당자 회신 요청)', channel: 'ATA', sender: MAKE, kind: '주문·출고 안내', ad: false, audience: '고객', who: '출고 일정이 가까운 고객',

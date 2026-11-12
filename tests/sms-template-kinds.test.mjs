@@ -238,3 +238,12 @@ test('resource=sent: 미분류 ATA 묶음은 groups 에 없다(세이프마케�
   assert.equal(res.body.groups.filter(g => g.kind === '미분류' && g.channel === 'ATA').length, 0);
   assert.ok(res.body.groups.some(g => g.kind === '미분류' && g.channel === 'LMS'));
 });
+
+test('image 칸이 있는 외부 문구는 그 파일이 public 폴더에 실제로 있다', async () => {
+  const { existsSync } = await import('node:fs');
+  const withImage = EXTERNAL_TEMPLATES.filter(t => t.image);
+  assert.ok(withImage.length >= 3);
+  for (const t of withImage) {
+    assert.ok(existsSync(new URL(`../public${t.image}`, import.meta.url)), `${t.key} 이미지 없음: ${t.image}`);
+  }
+});
