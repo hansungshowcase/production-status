@@ -16,6 +16,7 @@ import {
   firstErrorKey,
   formValuesFromTemplate,
   insertVariable,
+  missingFieldsText,
   moveButton,
   previewTemplate,
   removeButton,
@@ -60,6 +61,7 @@ export default function KakaoTemplateForm({
   const fid = key => `${uid}-${String(key).replace(/\./g, '-')}`;
   const [form, setForm] = useState(() => (isEdit ? formValuesFromTemplate(initial) : emptyFormValues(targets)));
   const [submitted, setSubmitted] = useState(false);
+  const [stopText, setStopText] = useState('');
   const [pending, setPending] = useState(false);
   const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
   const [varOpen, setVarOpen] = useState(false);
@@ -141,10 +143,12 @@ export default function KakaoTemplateForm({
     event.preventDefault();
     if (locked || sendingRef.current) return;
     setSubmitted(true);
+    setStopText('');
     const result = validateTemplateInput(toValidationInput(form), { requireTarget: !isEdit });
     const all = { ...(result.ok ? {} : result.errors), ...extraErrors(form) };
     if (Object.keys(all).length || !result.ok) {
       const key = firstErrorKey(all);
+      setStopText(missingFieldsText(all));
       setTimeout(() => focusKey(key), 0);
       return;
     }
@@ -403,6 +407,8 @@ export default function KakaoTemplateForm({
         </div>
       ) : null}
 
+      {stopText ? <p className="smsc-form__error" role="alert">{stopText}</p> : null}
+      {serverError ? <p className="smsc-form__server" role="alert">{serverError}</p> : null}
       <div className="smsc-form__actions">
         <button type="button" className="smsc-form__btn" onClick={onCancel} disabled={locked}>취소</button>
         <button type="submit" className="smsc-form__btn smsc-form__btn--primary" disabled={locked}>

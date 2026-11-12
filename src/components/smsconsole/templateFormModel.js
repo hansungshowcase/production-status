@@ -128,6 +128,19 @@ export function firstErrorKey(errors) {
   return ranked[0] || keys[0];
 }
 
+// 제출이 멈춘 이유를 버튼 옆 한 줄로 보이기 위한 글. 빠진 칸 이름을 위에서 아래 순서로 쉼표로 잇는다.
+const MISSING_TEXT = {
+  target: '채널을 선택해 주세요',
+  name: '템플릿 이름을 입력해 주세요',
+  content: '내용을 입력해 주세요',
+  confirmed: '정보성 메시지 확인에 체크해 주세요',
+};
+export function missingFieldsText(errors) {
+  const keys = Object.keys(errors || {});
+  const ordered = [...FIELD_ORDER.filter(k => keys.includes(k)), ...keys.filter(k => !FIELD_ORDER.includes(k))];
+  return ordered.map(k => MISSING_TEXT[k] || String(errors[k] || '').replace(/[.。]\s*$/, '')).filter(Boolean).join(', ');
+}
+
 // 변수 이름 검사. 통과하면 '' , 아니면 안내 문구.
 export function variableNameError(name) {
   const text = String(name == null ? '' : name).trim();

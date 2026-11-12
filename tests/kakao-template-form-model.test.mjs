@@ -4,7 +4,7 @@ import { validateTemplateInput } from '../shared/smsConsole.js';
 import {
   emptyFormValues, formValuesFromTemplate, toValidationInput, insertVariable, variableNameError,
   addButton, removeButton, moveButton, updateButton, countChars, extraErrors, firstErrorKey,
-  targetKey, parseTargetKey, previewTemplate,
+  targetKey, parseTargetKey, previewTemplate, missingFieldsText,
 } from '../src/components/smsconsole/templateFormModel.js';
 
 const T1 = { kind: 'channel', id: 'KA01', name: '한성 채널' };
@@ -123,4 +123,14 @@ test('미리보기 모양', () => {
   assert.equal(p.targetName, '한성 그룹');
   assert.equal(p.emphasizeTitle, '');
   assert.deepEqual(p.buttons, [{ type: 'WL', name: '링크' }]);
+});
+
+test('빠진 칸 안내 글: 채널 없음 / 체크 없음 / 둘 다 / 모두 있음', () => {
+  assert.equal(missingFieldsText({ target: 'x' }), '채널을 선택해 주세요');
+  assert.equal(missingFieldsText({ confirmed: 'x' }), '정보성 메시지 확인에 체크해 주세요');
+  assert.equal(
+    missingFieldsText({ confirmed: 'x', name: 'x', target: 'x' }),
+    '채널을 선택해 주세요, 템플릿 이름을 입력해 주세요, 정보성 메시지 확인에 체크해 주세요',
+  );
+  assert.equal(missingFieldsText({}), '');
 });
