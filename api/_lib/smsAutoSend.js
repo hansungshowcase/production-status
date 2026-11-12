@@ -338,7 +338,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   const dryRun = body.dry_run === true;
   const key = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
   if (!dryRun && !KEY_RE.test(key)) return errorReply(400, '올바른 요청이 아닙니다.');
-  if (!inSendWindow(nowMs)) return errorReply(400, `시험 발송은 오전 ${SEND_WINDOW.from}시~오후 ${SEND_WINDOW.to - 12}시에만 할 수 있습니다.`);
+  // 시험 발송은 사장님이 직접 넣은 번호 1개로만 가므로 시간 제한을 두지 않는다(고객 자동 발송의 야간 금지는 runAutoSend 에 그대로).
   const template = await loadTemplate(db, id);
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
   const vendor = provider || getSendProvider();

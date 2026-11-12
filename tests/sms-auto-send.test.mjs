@@ -288,7 +288,7 @@ test('문구 저장: 사진 여러 장·자동 발송 칸, 켜진 문구의 본�
   assert.deepEqual((await getTextTemplate(db, { id: legacy.body.item.id })).body.item.images, [JPG]);
 });
 
-test('내 번호로 시험: 번호 1개만, 같은 키 재요청은 다시 안 보내고, 밤에는 거절', async () => {
+test('내 번호로 시험: 번호 1개만, 같은 키 재요청은 다시 안 보내고, 밤에도 된다', async () => {
   const db = setup();
   const provider = fakeProvider();
   const deps = { db, provider, env: ENV, nowMs: NOW };
@@ -302,7 +302,8 @@ test('내 번호로 시험: 번호 1개만, 같은 키 재요청은 다시 안 �
   const again = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
   assert.equal(again.body.duplicate, true);
   assert.equal(provider.calls.send.length, 2);
-  assert.equal((await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0002-bbbb' }, { ...deps, nowMs: NIGHT })).status, 400);
+  // 시험 발송은 넣은 번호 1개로만 가므로 밤에도 된다(고객 자동 발송의 야간 금지는 따로 시험한다)
+  assert.deepEqual((await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0002-bbbb' }, { ...deps, nowMs: NIGHT })).body.part_status, ['sent', 'sent']);
   assert.ok(!db.state.sql.some(s => s.startsWith('INSERT INTO sms_auto_sends')));
 });
 
