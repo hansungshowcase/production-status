@@ -1,7 +1,7 @@
 // 알림톡 템플릿 목록 화면 계산(순수 함수). 화면(KakaoTemplateManager)과 시험이 같이 쓴다.
 import { TEMPLATE_STATUS } from '../../../shared/smsConsole.js';
 import {
-  CATALOG_KINDS, EXTERNAL_TEMPLATES, KAKAO_CHANNELS, UNCLASSIFIED, templateMeta, unclassifiedName,
+  CATALOG_KINDS, EXTERNAL_TEMPLATES, KAKAO_CHANNELS, KAKAO_TEMPLATE_AUDIENCE, UNCLASSIFIED, groupByAudience, splitByAudience, templateMeta, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
 
 export const STATUS_ORDER = ['APPROVED', 'INSPECTING', 'PENDING', 'REJECTED'];
@@ -152,6 +152,27 @@ export function templateExtras(templateId, sent = null) {
   return { sender: meta.sender, kind: meta.kind, replaced7: group?.replaced7 || 0, off: meta.active === false };
 }
 
+// 알림톡 템플릿의 대상·종류: ① 보낸 묶음·외부 문구 표·제작현황 표(템플릿 ID) ② KAKAO_TEMPLATE_AUDIENCE ③ 모르면 { audience: '', kind: '' } (분류 안 됨)
+export function templateAudienceKind(templateId, sent = null) {
+  const meta = templateMeta(templateId);
+  if (meta) {
+    const group = (Array.isArray(sent) ? sent : []).find((row) => row.key === meta.key);
+    return { audience: group?.audience || meta.audience, kind: group?.kind || meta.kind };
+  }
+  const row = KAKAO_TEMPLATE_AUDIENCE[String(templateId || '')];
+  return row ? { audience: row.audience, kind: row.kind } : { audience: '', kind: '' };
+}
+
+// 알림톡 템플릿 목록을 대상 → 종류로 묶는다. [{group, count, kinds:[{kind, items}]}] — 묶음 안 순서는 입력 순서 그대로.
+export function templateAudienceSections(templates, sent = null) {
+  const cache = new Map();
+  const info = (item) => { if (!cache.has(item)) cache.set(item, templateAudienceKind(item?.id, sent)); return cache.get(item); };
+  return groupByAudience(templates, (item) => info(item).audience, (item) => info(item).kind);
+}
+
+// 읽기 전용 구역을 고객 전용 / 직원 전용으로만 나눈다(순서 유지)
+export const readOnlyAudienceSections = (items) => splitByAudience(items, (item) => item.audience);
+
 // 알림톡 화면 끝 읽기 전용 구역: 템플릿 목록에 없는 알림톡·브랜드메시지(친구톡) 발송.
 // 보낸 묶음(sent)과 외부 문구 표(EXTERNAL_TEMPLATES)를 key 로 합친다. status: 'in_use' | 'all' | 그 밖(승인 등) → 비움.
 export function readOnlyKakaoItems(templates, sent = null, { status = 'all', query = '' } = {}) {
@@ -167,9 +188,9 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
     seen.add(entry.key);
     const group = sentMap.get(entry.key);
     out.push({
-      id: entry.key, name: entry.name, sender: entry.sender, kind: entry.kind, channel: entry.channel, ad: Boolean(entry.ad || group?.ad),
+      id: entry.key, name: entry.name, sender: entry.sender, kind: entry.kind, audience: entry.audience || '고객', channel: entry.channel, ad: Boolean(entry.ad || group?.ad),
       active: entry.active !== false, count: group ? group.count7 : (sentKnown ? 0 : null), trigger: entry.trigger || '', scenario: entry.scenario || '',
-      body: entry.body || '', order: index,
+      body: entry.body || '', image: entry.image || '', order: index,
     });
   });
   let extra = 0;
@@ -178,7 +199,7 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
     const meta = EXTERNAL_TEMPLATES.find((entry) => entry.key === group.key);
     if (meta) continue; // 목록 카드에 붙는 알림톡(템플릿 ID 가 목록에 있는 것)
     out.push({
-      id: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key, sender: group.sender, kind: group.kind,
+      id: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key, sender: group.sender, kind: group.kind, audience: group.audience || '',
       channel: group.channel, ad: Boolean(group.ad), active: true, count: group.count7, trigger: '', scenario: '', body: '', order: 1000 + (extra += 1),
     });
   }

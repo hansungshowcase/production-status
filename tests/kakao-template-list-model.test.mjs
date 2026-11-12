@@ -102,3 +102,36 @@ test('주소에 tpl 이 있고 발송 중이 아니면 전체로 시작', () => 
   assert.equal(defaultStatusFilter(pills, 'KA01A', usage), 'in_use');
   assert.equal(defaultStatusFilter(pills, 'KA01B', usage), 'all');
 });
+
+// ---------- 대상(고객 전용 / 직원 전용) 묶기 ----------
+import { templateAudienceKind, templateAudienceSections, readOnlyAudienceSections } from '../src/components/smsconsole/templateListModel.js';
+import { KAKAO_TEMPLATE_AUDIENCE } from '../shared/smsTemplateKinds.js';
+
+test('알림톡 대상 묶기: 합계 = 입력 수, 모르는 템플릿은 분류 안 됨, 빈 묶음 없음', () => {
+  const tpls = [
+    { id: 'KA01TP260708084934111VLwWvP3SNic' }, // 제작현황 고객 표
+    { id: 'KA01TP260106022745294EhNvcRBVHm1' }, // EXTERNAL 직원
+    { id: Object.keys(KAKAO_TEMPLATE_AUDIENCE)[0] }, // 새 표
+    { id: 'KA01TPunknown' },
+  ];
+  const sections = templateAudienceSections(tpls);
+  assert.equal(sections.reduce((n, s) => n + s.count, 0), tpls.length);
+  assert.deepEqual(sections.map((s) => s.group), ['고객 전용', '직원 전용', '분류 안 됨']);
+  assert.ok(sections.every((s) => s.kinds.every((k) => k.items.length > 0)));
+  const unassigned = sections.find((s) => s.group === '분류 안 됨');
+  assert.deepEqual(unassigned.kinds, [{ kind: '', items: [{ id: 'KA01TPunknown' }] }]);
+  assert.deepEqual(templateAudienceSections([tpls[3]]).map((s) => s.group), ['분류 안 됨']);
+  assert.deepEqual(templateAudienceSections([]), []);
+});
+
+test('알림톡 대상·종류 순서: 보낸 묶음 > 표 > 새 표 > 없음, 출고 문의 안내는 고객', () => {
+  assert.deepEqual(templateAudienceKind('KA01TP260701025852899CSGPYIaCwGQ'), { audience: '고객', kind: '주문·출고 안내' });
+  assert.deepEqual(templateAudienceKind('KA01TP260701025852899CSGPYIaCwGQ', [{ key: 'ship_inquiry', audience: '직원', kind: '직원 작업 알림' }]), { audience: '직원', kind: '직원 작업 알림' });
+  assert.deepEqual(templateAudienceKind('nope'), { audience: '', kind: '' });
+  for (const row of Object.values(KAKAO_TEMPLATE_AUDIENCE)) assert.ok(['고객', '직원'].includes(row.audience));
+});
+
+test('읽기 전용 구역 대상 나누기: 순서 유지', () => {
+  const rows = [{ id: 'a', audience: '직원' }, { id: 'b', audience: '고객' }, { id: 'c', audience: '고객' }];
+  assert.deepEqual(readOnlyAudienceSections(rows).map((s) => [s.group, s.items.map((i) => i.id)]), [['고객 전용', ['b', 'c']], ['직원 전용', ['a']]]);
+});

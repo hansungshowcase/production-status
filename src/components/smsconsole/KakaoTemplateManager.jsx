@@ -4,7 +4,7 @@ import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
-  isValidRename, readOnlyKakaoItems, statusInfo, statusPills, templateExtras, usageBadge, usageCount,
+  isValidRename, readOnlyAudienceSections, readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras, usageBadge, usageCount,
 } from './templateListModel.js';
 import './KakaoTemplateManager.css';
 
@@ -121,6 +121,8 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const statusFilter = pickedFilter ?? defaultStatusFilter(pills, selectedId, usage);
   const visible = useMemo(() => filterTemplates(items, { query, status: statusFilter, usage }), [items, query, statusFilter, usage]);
   const readOnly = useMemo(() => readOnlyKakaoItems(items, sent, { status: statusFilter, query }), [items, sent, statusFilter, query]);
+  const listSections = useMemo(() => templateAudienceSections(visible, sent), [visible, sent]);
+  const readOnlySections = useMemo(() => readOnlyAudienceSections(readOnly), [readOnly]);
   const selected = selectedId ? items.find((item) => item.id === selectedId) || null : null;
   const formOpen = mode === 'new' || (mode === 'edit' && selected);
 
@@ -317,37 +319,43 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const renderReadOnly = () => (
     <section className="ktm-kind" aria-label="브랜드메시지·기타 발송">
       <h3 className="ktm-kind-head">브랜드메시지·기타 발송 <span className="ktm-kind-count">{readOnly.length}</span></h3>
-      <ul className="ktm-cards">
-        {readOnly.map((entry) => {
-          const expandable = Boolean(entry.body || entry.trigger || entry.scenario);
-          const opened = openRoId === entry.id;
-          return (
-            <li key={entry.id} className={`ktm-card${opened ? ' is-selected' : ''}`}>
-              <button type="button" className="ktm-card-main" aria-expanded={opened} onClick={() => setOpenRoId(opened ? '' : entry.id)}>
-                <span className="ktm-card-name">{entry.name}</span>
-                <span className="ktm-card-meta">
-                  <span className="ktm-chip ktm-chip--sender">{entry.sender}</span>
-                  <span className="ktm-chip">{entry.kind}</span>
-                  <span className="ktm-chan">{entry.channel === 'BMS' ? '브랜드메시지·친구톡' : '알림톡'}</span>
-                </span>
-                <span className="ktm-card-badges">
-                  {entry.count === null ? <span className="ktm-badge ktm-badge--muted">사용 여부 확인 못 함</span>
-                    : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
-                  {entry.ad ? <span className="ktm-badge ktm-badge--info">광고</span> : null}
-                  {entry.active === false ? <span className="ktm-badge ktm-badge--muted">꺼짐</span> : null}
-                </span>
-                {opened && expandable ? (
-                  <span className="ktm-open">
-                    {entry.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {entry.trigger}</span> : null}
-                    {entry.scenario ? <span className="ktm-open-line"><b>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {entry.scenario}</span> : null}
-                    {entry.body ? <span className="ktm-open-body">{entry.body}</span> : null}
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {readOnlySections.map((group) => (
+        <div key={group.group} className="ktm-aud-sub">
+          <h4 className="ktm-kind-head ktm-kind-head--sub">{group.group} <span className="ktm-kind-count">{group.items.length}</span></h4>
+          <ul className="ktm-cards">
+            {group.items.map((entry) => {
+              const expandable = Boolean(entry.body || entry.image || entry.trigger || entry.scenario);
+              const opened = openRoId === entry.id;
+              return (
+                <li key={entry.id} className={`ktm-card${opened ? ' is-selected' : ''}`}>
+                  <button type="button" className="ktm-card-main" aria-expanded={opened} onClick={() => setOpenRoId(opened ? '' : entry.id)}>
+                    <span className="ktm-card-name">{entry.name}</span>
+                    <span className="ktm-card-meta">
+                      <span className="ktm-chip ktm-chip--sender">{entry.sender}</span>
+                      <span className="ktm-chip">{entry.kind}</span>
+                      <span className="ktm-chan">{entry.channel === 'BMS' ? '브랜드메시지·친구톡' : '알림톡'}</span>
+                    </span>
+                    <span className="ktm-card-badges">
+                      {entry.count === null ? <span className="ktm-badge ktm-badge--muted">사용 여부 확인 못 함</span>
+                        : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
+                      {entry.ad ? <span className="ktm-badge ktm-badge--info">광고</span> : null}
+                      {entry.active === false ? <span className="ktm-badge ktm-badge--muted">꺼짐</span> : null}
+                    </span>
+                    {opened && expandable ? (
+                      <span className="ktm-open">
+                        {entry.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {entry.trigger}</span> : null}
+                        {entry.scenario ? <span className="ktm-open-line"><b>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {entry.scenario}</span> : null}
+                        {entry.image ? <img className="ktm-open-img" src={entry.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : null}
+                        {entry.body ? <span className="ktm-open-body">{entry.body}</span> : null}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
     </section>
   );
 
@@ -404,7 +412,17 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           {data.unresolved_groups > 0 ? <p className="ktm-hint">범위를 확인하지 못한 템플릿 {data.unresolved_groups}개는 숨겼습니다</p> : null}
           {visible.length === 0
             ? <div className="ktm-empty">{items.length === 0 ? '등록된 템플릿이 없습니다.' : '조건에 맞는 템플릿이 없습니다.'}</div>
-            : <ul className="ktm-cards">{visible.map(renderCard)}</ul>}
+            : listSections.map((aud) => (
+              <section key={aud.group} className="ktm-aud" aria-label={aud.group}>
+                <h3 className="ktm-kind-head ktm-kind-head--aud">{aud.group} <span className="ktm-kind-count">{aud.count}</span></h3>
+                {aud.kinds.map((section) => (
+                  <section key={section.kind || aud.group} className="ktm-kind" aria-label={section.kind || aud.group}>
+                    {section.kind ? <h3 className="ktm-kind-head">{section.kind} <span className="ktm-kind-count">{section.items.length}</span></h3> : null}
+                    <ul className="ktm-cards">{section.items.map(renderCard)}</ul>
+                  </section>
+                ))}
+              </section>
+            ))}
           {readOnly.length > 0 ? renderReadOnly() : null}
         </section>
         <section className="ktm-detail-pane" aria-label="미리보기">{renderDetail()}</section>

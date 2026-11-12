@@ -142,7 +142,13 @@
 .ktm-open { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; font-size: 13px; }
 .ktm-open-line { display: block; overflow-wrap: anywhere; color: var(--smsc-text, #1c2330); }
 .ktm-open-line b { margin-right: 6px; color: var(--smsc-muted, #667085); font-weight: 600; }
+.ktm-kind-head--sub { margin: 4px 0 8px; font-size: 13px; color: var(--smsc-muted, #667085); }
+.ktm-aud-sub + .ktm-aud-sub { margin-top: 12px; }
+.ktm-open-img { display: block; max-width: 100%; height: auto; border-radius: 8px; }
 .ktm-open-body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 8px; background: var(--smsc-bg, #f5f6f8); }
 .ktm-card-static { cursor: default; }
 .ktm-cards + .ktm-kind { margin-top: 16px; }
+/* 고객 전용 / 직원 전용 큰 머리글(종류 머리글보다 한 단계 크게) */
+.ktm-aud { margin: 0 0 20px; }
+.ktm-kind-head--aud { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--smsc-border, #e3e6ec); font-size: 16px; font-weight: 800; }
 .ktm-card.is-selected .ktm-chip--sender { background: #fff; }

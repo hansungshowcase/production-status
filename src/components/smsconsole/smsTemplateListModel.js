@@ -1,6 +1,7 @@
 import {
-  EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, kindOfCatalogId, unclassifiedName,
+  EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
+import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
 // 카탈로그 칸: groups[].id(customer|internal) / items[].{id,name,trigger,target,policy{status,label},
@@ -28,6 +29,7 @@ export function buildSmsItems(overview) {
         name: item.name || item.id,
         audience: audienceOf(group, item),
         trigger: item.trigger || '',
+        target: typeof item.target === 'string' ? item.target : '',
         count: recentCount(item),
         policy: item.policy || null,
         config: item.configuration || null,
@@ -90,7 +92,7 @@ export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEM
     seen.add(item.id);
     out.push({
       ...item, key: item.id, kind: kindOfCatalogId(item.id), sender: SENDERS.program, ad: false, active: true, channel: '',
-      body: item.example?.text || '', scenario: '', external: false,
+      body: item.example?.text || '', scenario: '', external: false, who: '', image: '',
     });
   }
   externals.forEach((entry, index) => {
@@ -100,7 +102,7 @@ export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEM
       id: entry.key, key: entry.key, name: entry.name, audience: { id: entry.audience === '직원' ? 'staff' : 'customer', label: entry.audience || '고객' },
       trigger: entry.trigger || '', count: orNull(sentMap.get(entry.key), sentKnown), policy: null, config: null, example: null,
       order: 1000 + index, kind: entry.kind, sender: entry.sender, ad: Boolean(entry.ad || sentMap.get(entry.key)?.ad), active: entry.active !== false,
-      channel: entry.channel, body: entry.body || '', scenario: entry.scenario || '', external: true,
+      channel: entry.channel, body: entry.body || '', scenario: entry.scenario || '', external: true, who: entry.who || '', image: entry.image || '',
     });
   });
   let extra = 0;
@@ -111,7 +113,7 @@ export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEM
       id: group.key, key: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key,
       audience: { id: 'customer', label: group.audience || '고객' }, trigger: '', count: group.count7, policy: null, config: null, example: null,
       order: 2000 + (extra += 1), kind: group.kind, sender: group.sender, ad: Boolean(group.ad), active: true, channel: group.channel,
-      body: '', scenario: '', external: true,
+      body: '', scenario: '', external: true, who: '', image: '',
     });
   }
   return out;
@@ -122,6 +124,44 @@ export function kindSections(items, status = 'all') {
   const visible = filterSmsItems(items, status);
   return KINDS.map((kind) => ({ kind, items: sortSmsItems(visible.filter((item) => (KINDS.includes(item.kind) ? item.kind : UNCLASSIFIED) === kind)) }))
     .filter((section) => section.items.length > 0);
+}
+
+// 대상 → 종류 두 단계 [{group, count, kinds:[{kind, items}]}] — 빈 묶음은 뺀다. 카드의 대상은 카드에 보이는 대상 칩 값 그대로.
+export function audienceSections(items, status = 'all') {
+  return groupByAudience(sortSmsItems(filterSmsItems(items, status)), (item) => item.audience?.label, (item) => item.kind);
+}
+
+// ---------- 받는 사람·조건 한 줄(2026-11-12 사장님 "고객이면 누구누구 구매 후 며칠, 직원이면 누구누구 발송 중") ----------
+// recipients = GET /api/internal-notifications?view=day 의 recipients[]({name, phone_tail}) — 직원 문자 관리 화면이 쓰는 등록 현황. 못 받았으면 null.
+const joinDot = (...parts) => parts.filter(Boolean).join(' · ');
+
+// 카탈로그 카드의 받는 사람 글(target)에 나오는 등록 직원을 나온 순서대로 [{name, tail}]
+export function staffRecipientsOf(target, recipients) {
+  const text = String(target || '');
+  return (Array.isArray(recipients) ? recipients : [])
+    .map((person) => ({ name: String(person?.name || ''), tail: String(person?.phone_tail || ''), at: text.indexOf(String(person?.name || '')) }))
+    .filter((person) => person.name && person.at >= 0)
+    .sort((a, b) => a.at - b.at)
+    .map(({ name, tail }) => ({ name, tail }));
+}
+
+// 직원 3명까지 이름(끝 4자리), 넘으면 '외 n명', 0명이면 '받는 직원 없음'
+export function staffRecipientsPhrase(people) {
+  const list = Array.isArray(people) ? people : [];
+  if (list.length === 0) return '받는 직원 없음';
+  const shown = list.slice(0, 3).map((person) => recipientWithPhoneTail(person.name, person.tail)).join(', ');
+  return list.length > 3 ? `${shown} 외 ${list.length - 3}명` : shown;
+}
+
+export function conditionLine(item, recipients = null) {
+  const trigger = item?.trigger || '';
+  if (item?.audience?.id === 'customer') return joinDot(item.external ? item.who : '제작 주문 고객', trigger);
+  if (item?.external) return joinDot(item.who ? `${item.who}에게 발송` : '', trigger);
+  if (!Array.isArray(recipients)) return trigger;
+  const people = staffRecipientsOf(item?.target, recipients);
+  if (people.length > 0) return joinDot(`${staffRecipientsPhrase(people)}에게 발송 중`, trigger);
+  if (/\d{4}/.test(String(item?.target || ''))) return joinDot(`${shortenPhonesInText(item.target)}로 발송 중`, trigger);
+  return joinDot(staffRecipientsPhrase([]), trigger);
 }
 
 // 카드 배지에 더하는 것: 광고·꺼짐(메이크에서 꺼진 시나리오). 건수 배지는 smsBadges 가 만든다.
