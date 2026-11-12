@@ -7,6 +7,7 @@ import {
   audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, smsBadges, smsPills, sortSmsItems,
 } from './smsTemplateListModel.js';
 import { imageFromItem, myTextSection } from './smsTextTemplateFormModel.js';
+import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import './KakaoTemplateManager.css';
 
 // 문자 템플릿: 자동 문자 문구 카탈로그를 카드로 보여 준다(조회만).
@@ -37,10 +38,12 @@ export default function SmsTemplateList({ active, onSendText }) {
   }, [active]);
 
   // 내 문구는 화면이 열릴 때마다 가볍게 다시 읽는다(방금 등록한 문구가 바로 보이게)
+  const loadMine = () => fetchSmsConsole('text_templates').then((res) => setMine(Array.isArray(res?.items) ? res.items : [])).catch(() => {});
   useEffect(() => {
     if (!active) return;
-    fetchSmsConsole('text_templates').then((res) => setMine(Array.isArray(res?.items) ? res.items : [])).catch(() => {});
+    loadMine();
   }, [active]);
+  const [adding, setAdding] = useState(false); // 이 화면 안에서 문자 템플릿 새로 등록
   const openMine = (entry) => {
     const next = mineOpen === entry.id ? '' : entry.id;
     setMineOpen(next); setMineConfirm(''); setMineError('');
@@ -162,8 +165,15 @@ export default function SmsTemplateList({ active, onSendText }) {
 
   return (
     <div className="ktm-root" hidden={!active}>
-      <div className="ktm-header"><h2 className="ktm-title">문자 템플릿</h2></div>
-      {body}
+      <div className="ktm-header">
+        <h2 className="ktm-title">문자 템플릿</h2>
+        {adding ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => setAdding(true)}>+ 템플릿 등록</button>}
+      </div>
+      {adding ? (
+        <div className="ktm-form-pane">
+          <SmsTextTemplateForm onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={() => setAdding(false)} />
+        </div>
+      ) : body}
     </div>
   );
 }

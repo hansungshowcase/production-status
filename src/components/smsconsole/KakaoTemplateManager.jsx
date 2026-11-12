@@ -449,10 +449,12 @@ export default function KakaoTemplateManager({ active, selectedId, mode, kind = 
           <h2 className="ktm-title">알림톡 템플릿</h2>
           <p className="ktm-sub">한성쇼케이스 채널의 알림톡 템플릿을 보고, 바로 등록·삭제합니다.</p>
         </div>
-        <button type="button" className="ktm-btn ktm-btn--primary" disabled={!data || data.configured === false || writeOff}
-          onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '', kind: KIND_KAKAO }); }}>
-          <Icon name="plus" /> 템플릿 등록
-        </button>
+        {mode === 'new' ? null : (
+          <button type="button" className="ktm-btn ktm-btn--primary" disabled={!data || data.configured === false || writeOff}
+            onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '', kind: KIND_KAKAO }); }}>
+            <Icon name="plus" /> 템플릿 등록
+          </button>
+        )}
       </div>
       {lockBar}
       {notice ? <div className={`ktm-notice ktm-notice--${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</div> : null}

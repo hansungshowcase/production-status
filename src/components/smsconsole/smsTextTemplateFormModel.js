@@ -19,6 +19,14 @@ export function validateTextForm({ name, body }) {
   return { ok: true, reason: '', info };
 }
 
+// [등록]을 눌렀는데 못 넘어갈 때 버튼 위에 보일 한 줄(버튼을 꺼 두지 않고 이유를 알려 준다)
+export function textFormStopText(reason) {
+  if (reason === 'name') return '이름을 입력해 주세요';
+  if (reason === 'body') return '내용을 입력해 주세요';
+  if (reason === 'long') return '내용이 너무 깁니다';
+  return '';
+}
+
 // 저장 요청 본문. 사진이 없으면 image 칸을 아예 넣지 않는다.
 export function buildSaveBody({ name, body, image }) {
   return { name: String(name || '').trim(), body: String(body || ''), ...(image?.data ? { image: { data: image.data } } : {}) };

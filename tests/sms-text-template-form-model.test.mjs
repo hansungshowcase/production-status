@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSaveBody, imageFromItem, myTextSection, normalizeKind, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
+import { buildSaveBody, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 test('종류: 없거나 모르는 값은 문자, kakao 만 알림톡', () => {
   assert.equal(normalizeKind(undefined), 'sms');
@@ -41,4 +41,13 @@ test('단건 사진 → 미리보기 주소', () => {
   const photo = imageFromItem({ image: 'QUJD' });
   assert.equal(photo.url, 'data:image/jpeg;base64,QUJD');
   assert.equal(photo.data, 'QUJD');
+});
+
+test('등록 막힘 안내: name·body·long 에 문구, 그 밖은 빈 글', () => {
+  assert.equal(textFormStopText('name'), '이름을 입력해 주세요');
+  assert.equal(textFormStopText('body'), '내용을 입력해 주세요');
+  assert.equal(textFormStopText('long'), '내용이 너무 깁니다');
+  assert.equal(textFormStopText(''), '');
+  assert.equal(textFormStopText(undefined), '');
+  assert.equal(textFormStopText('x'), '');
 });
