@@ -12,6 +12,7 @@
     "quantity:corrections": "node scripts/quantity-corrections.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.4.0",
     "react": "^18.3.1",

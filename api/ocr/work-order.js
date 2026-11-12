@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { cors } from '../_lib/cors.js';
 import { parseMultipart, getFilePart } from '../_lib/parseBody.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
@@ -17,6 +18,16 @@ const CURRENT_YEAR = new Date().getFullYear();
 const OPENAI_RESPONSES_URL = 'https://api.openai.com/v1/responses';
 const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+// 1순위 읽기 AI. Gemini 2.5 flash 는 낯선 상호를 흔한 말로 바꿔 읽었다
+// (눙크→농크, 달틈→달콤, 힉하우스→희하우스 — 2026-11-12 작업지시서 27장 실측).
+// 같은 27장을 Sonnet 5.5 가 평균 10초에 읽었고, Opus 5.5 는 같은 장에서 똑같이 틀리면서 더 느렸다.
+// 바꾸려면 Vercel 환경변수 ANTHROPIC_OCR_MODEL.
+const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5';
+// Vercel 함수 한도는 30초. Claude 가 못 읽으면 남은 시간으로 Gemini 를 한 번 더 부른다.
+const OCR_TOTAL_BUDGET_MS = 27_000;
+const CLAUDE_TIMEOUT_MS = 16_000;
+const GEMINI_TIMEOUT_MS = 20_000;
+const GEMINI_MIN_TIMEOUT_MS = 5_000;
 const CANONICAL_SALES_PERSONS = new Set(['신은철', '이준형', '황보민수']);
 const SALES_PERSON_ALIASES = [
   ['신은철', '신은철'],
@@ -115,6 +126,7 @@ JSON만 반환하세요. 다른 텍스트 없이 순수 JSON만 반환하세요.
 const ESSENTIAL_FIELD_PROMPT = `
 
 필수 정확도 규칙:
+- client_name은 발주처 칸에 적힌 글자를 한 글자씩 보이는 그대로 옮긴다. 낯선 상호라도 흔한 단어로 바꾸거나 맞춤법을 고치지 않는다.
 - sales_person은 신은철, 이준형 또는 황보민수만 반환한다. 김보수(김보수 팀장 포함)는 이준형으로, 신은절은 신은철로 정규화한다. 판독 불가하면 null로 둔다.
 - due_date는 납기/납기일/납기일자 라벨 바로 뒤의 날짜를 우선 읽고 반드시 실제 YYYY-MM-DD 날짜로 반환한다. 연도가 없으면 ${CURRENT_YEAR}년을 사용하며, 읽지 못하면 null로 둔다.
 - quantity는 수량 칸의 개별 제작 대수만 반환한다. "1대(급) 총6대"이면 1을 반환하고, 총수량만 보이거나 확실하지 않으면 null로 둔다.`;
@@ -209,6 +221,53 @@ export function normalizeOcrResult(parsed) {
   return parsed;
 }
 
+function isEmptyOcrValue(value) {
+  return value === undefined || value === null || String(value).trim() === '';
+}
+
+export function fillEmptyOcrFields(primary, secondary) {
+  const merged = { ...primary };
+  for (const key of Object.keys(EMPTY_OCR_DATA)) {
+    if (isEmptyOcrValue(merged[key]) && !isEmptyOcrValue(secondary?.[key])) {
+      merged[key] = secondary[key];
+    }
+  }
+  return merged;
+}
+
+async function callClaudeOcr({ apiKey, mimeType, filePart }) {
+  // 재시도 없이 한 번만 부른다. 실패하면 호출부가 남은 시간으로 Gemini 를 쓴다.
+  const client = new Anthropic({ apiKey, timeout: CLAUDE_TIMEOUT_MS, maxRetries: 0 });
+  const response = await client.beta.messages.create({
+    model: process.env.ANTHROPIC_OCR_MODEL || DEFAULT_CLAUDE_MODEL,
+    max_tokens: 6000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'low' },
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: mimeType, data: filePart.data.toString('base64') },
+        },
+        { type: 'text', text: PROMPT + ESSENTIAL_FIELD_PROMPT },
+      ],
+    }],
+  });
+
+  if (response.stop_reason === 'refusal') {
+    const err = new Error(`Claude OCR refused (${response.stop_details?.category || 'unknown'})`);
+    err.provider = 'Claude';
+    throw err;
+  }
+  const text = response.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n');
+  return parseOcrJson(text);
+}
+
 async function callOpenAiOcr({ apiKey, mimeType, filePart }) {
   const response = await fetch(OPENAI_RESPONSES_URL, {
     method: 'POST',
@@ -255,7 +314,7 @@ async function callOpenAiOcr({ apiKey, mimeType, filePart }) {
   return parseOcrJson(extractResponseText(responseData));
 }
 
-async function callGeminiOcr({ apiKey, mimeType, filePart }) {
+async function callGeminiOcr({ apiKey, mimeType, filePart, timeoutMs = GEMINI_TIMEOUT_MS }) {
   const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, {
@@ -280,7 +339,7 @@ async function callGeminiOcr({ apiKey, mimeType, filePart }) {
         maxOutputTokens: 3000,
       },
     }),
-    signal: AbortSignal.timeout(20000), // 지연 시 매달리지 않고 수동입력으로 폴백
+    signal: AbortSignal.timeout(timeoutMs), // 지연 시 매달리지 않고 수동입력으로 폴백
   });
 
   if (!response.ok) {
@@ -302,6 +361,8 @@ export default cors(async function handler(req, res) {
   }
   if (!rateLimitCheck(req, res, { windowMs: 60000, max: 120 })) return;
 
+  // 사진 업로드를 받는 시간도 30초 한도에 들어가므로 여기서부터 잰다.
+  const startedAt = Date.now();
   let parts;
   try {
     parts = await parseMultipart(req);
@@ -326,12 +387,54 @@ export default cors(async function handler(req, res) {
 
   const openAiKey = process.env.OPENAI_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
-  if ((!openAiKey || openAiKey.includes('your-key-here')) && !geminiKey) {
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if ((!openAiKey || openAiKey.includes('your-key-here')) && !geminiKey && !anthropicKey) {
     return res.status(500).json({ error: { message: 'OCR API 키가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.', status: 500 } });
   }
 
+  let claudeAttempted = false;
+  let claudePartial = null;
+
   try {
-    if (openAiKey && !openAiKey.includes('your-key-here')) {
+    if (anthropicKey) {
+      claudeAttempted = true;
+      try {
+        const parsed = await callClaudeOcr({ apiKey: anthropicKey, mimeType, filePart });
+        if (hasCompleteOcrEssentials(parsed)) {
+          return res.json({
+            success: true,
+            provider: 'claude',
+            essentials_complete: true,
+            data: parsed,
+          });
+        }
+        claudePartial = parsed;
+        console.warn('Claude OCR returned incomplete essentials, trying Gemini fallback');
+      } catch (claudeErr) {
+        if (claudeErr instanceof Anthropic.AuthenticationError) {
+          console.error('Claude OCR 인증 실패 — ANTHROPIC_API_KEY 를 확인하세요');
+        } else if (claudeErr instanceof Anthropic.RateLimitError) {
+          console.warn('Claude OCR 한도 초과, 예비 AI 로 전환');
+        } else if (claudeErr instanceof Anthropic.APIError) {
+          console.warn('Claude OCR failed, trying fallback:', claudeErr.status, claudeErr.message);
+        } else {
+          console.warn('Claude OCR failed, trying fallback:', claudeErr?.message || claudeErr);
+        }
+      }
+      // Claude 에 시간을 쓴 뒤라 OpenAI 까지 거치면 30초를 넘긴다. 남은 시간으로 Gemini 만 부른다.
+      if (!geminiKey) {
+        return res.json({
+          success: false,
+          provider: 'manual',
+          warning: claudePartial
+            ? 'OCR 핵심 항목을 모두 읽지 못해 브라우저 OCR로 다시 인식합니다.'
+            : '자동 인식이 지연되어 수동 입력으로 전환했습니다. 작업지시서 이미지는 첨부되었습니다.',
+          data: claudePartial || EMPTY_OCR_DATA,
+        });
+      }
+    }
+
+    if (!claudeAttempted && openAiKey && !openAiKey.includes('your-key-here')) {
       try {
         const parsed = await callOpenAiOcr({ apiKey: openAiKey, mimeType, filePart });
         if (hasCompleteOcrEssentials(parsed)) {
@@ -365,7 +468,21 @@ export default cors(async function handler(req, res) {
       }
     }
 
-    const parsed = await callGeminiOcr({ apiKey: geminiKey, mimeType, filePart });
+    const geminiTimeoutMs = claudeAttempted
+      ? Math.max(GEMINI_MIN_TIMEOUT_MS, Math.min(GEMINI_TIMEOUT_MS, OCR_TOTAL_BUDGET_MS - (Date.now() - startedAt)))
+      : GEMINI_TIMEOUT_MS;
+    const geminiParsed = await callGeminiOcr({ apiKey: geminiKey, mimeType, filePart, timeoutMs: geminiTimeoutMs });
+    // Claude 가 일부 칸만 못 읽었으면 Claude 가 읽은 칸은 그대로 두고 빈 칸만 Gemini 값으로 채운다.
+    if (claudePartial) {
+      const merged = fillEmptyOcrFields(claudePartial, geminiParsed);
+      return res.json({
+        success: hasCompleteOcrEssentials(merged),
+        provider: hasCompleteOcrEssentials(merged) ? 'claude+gemini' : 'manual',
+        essentials_complete: hasCompleteOcrEssentials(merged),
+        data: merged,
+      });
+    }
+    const parsed = geminiParsed;
     return res.json({
       success: hasCompleteOcrEssentials(parsed),
       provider: hasCompleteOcrEssentials(parsed) ? 'gemini' : 'manual',
@@ -373,6 +490,15 @@ export default cors(async function handler(req, res) {
       data: parsed,
     });
   } catch (err) {
+    if (claudePartial) {
+      console.warn('예비 OCR 실패 → Claude 가 읽은 칸만 전달:', err.provider || 'unknown', err.status || '', err.message || err);
+      return res.json({
+        success: false,
+        provider: 'manual',
+        warning: 'OCR 핵심 항목을 모두 읽지 못해 브라우저 OCR로 다시 인식합니다.',
+        data: claudePartial,
+      });
+    }
     // OCR 은 편의 기능 — 어떤 실패(파싱 실패·provider 오류·타임아웃)든 하드 에러(500) 대신
     // '수동입력'으로 우아하게 강등한다. 작업지시서 이미지는 이미 첨부되어 있으므로 작업 흐름은 안 끊긴다.
     console.warn('OCR 실패 → 수동입력 전환:', err.provider || 'unknown', err.status || '', err.message || err);
