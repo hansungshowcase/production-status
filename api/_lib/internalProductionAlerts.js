@@ -15,6 +15,17 @@ export const INTERNAL_ALERT_CONTACTS = {
   packing: { name: '정영호 팀장', phone: '010-9095-0577' },
 };
 
+// 사장님 지시(2026-11-12): 도면 작업 납기 알림은 이 날짜 00:00 KST 이후 등록된 신규 주문에만 보낸다.
+export const DESIGN_DUE_NEW_ORDERS_FROM = '2026-11-12';
+const DESIGN_DUE_FROM_MS = Date.parse(`${DESIGN_DUE_NEW_ORDERS_FROM}T00:00:00+09:00`);
+
+function isNewDesignOrder(order) {
+  const raw = order?.created_at;
+  if (raw === null || raw === undefined || raw === '') return false;
+  const ms = raw instanceof Date ? raw.getTime() : Date.parse(raw);
+  return Number.isFinite(ms) && ms >= DESIGN_DUE_FROM_MS;
+}
+
 const ASSEMBLY_WORKER_PHONES = {
   '카우사르': '010-8302-2576',
   '까우사르': '010-8302-2576',
@@ -118,7 +129,7 @@ export function collectInternalDailyAlerts({ orders = [], processes = [], today 
     const assembly = summary.byStep.get('조립작업');
 
     if (daysLeft >= 0) {
-      if (daysLeft <= 9 && !isCompleted(design)) {
+      if (daysLeft <= 9 && !isCompleted(design) && isNewDesignOrder(order)) {
         alerts.push(makeAlertItem({
           type: 'design_due', contact: INTERNAL_ALERT_CONTACTS.design, order, summary, daysLeft,
           stateKey: 'internal:design_due', referenceDate: today,

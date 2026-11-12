@@ -57,7 +57,7 @@ export async function handleInternalProductionDaily(req, res, dependencies = {})
   const [ordersResult, processesResult] = await Promise.all([
     db.execute({
       sql: `SELECT id, client_name, product_type, door_type, width, depth, height,
-                   due_date, ship_scheduled_date, status
+                   due_date, ship_scheduled_date, status, created_at
               FROM orders
              WHERE status = 'in_production'`,
       args: [],

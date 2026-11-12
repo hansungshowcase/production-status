@@ -96,9 +96,28 @@ function order(id, dueDate, over = {}) {
     due_date: dueDate,
     ship_scheduled_date: null,
     status: 'in_production',
+    created_at: '2026-11-12T10:00:00+09:00',
     ...over,
   };
 }
+
+test('도면 납기 알림은 2026-11-12 00:00 KST 이후 등록된 신규 주문에만 보낸다', async () => {
+  const alerts = await loadAlertsModule();
+  const items = alerts.collectInternalDailyAlerts({
+    orders: [
+      order(21, '2026-09-10', { created_at: '2026-11-11T23:59:00+09:00' }),
+      order(22, '2026-09-10', { created_at: '2026-11-12T00:00:00+09:00' }),
+      order(23, '2026-09-10', { created_at: null }),
+      order(24, '2026-09-10', { created_at: new Date('2026-11-11T15:00:00Z') }),
+    ],
+    processes: [...processes(21), ...processes(22), ...processes(23), ...processes(24)],
+    today: '2026-09-01',
+  });
+  assert.deepEqual(typesFor(items, 21), []);
+  assert.deepEqual(typesFor(items, 22), ['design_due']);
+  assert.deepEqual(typesFor(items, 23), []);
+  assert.deepEqual(typesFor(items, 24), ['design_due']);
+});
 
 function processes(orderId, statusMap = {}, starterMap = {}) {
   return STEPS.map((stepName, index) => ({

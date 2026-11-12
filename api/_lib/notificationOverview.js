@@ -232,7 +232,7 @@ export function buildNotificationCatalog(env = process.env, now = new Date()) {
     }, env),
     internalRule({
       id: 'internal_design_due', name: '도면 작업 납기 알림', milestone: 'internal_design_due',
-      trigger: '생산중 · 납기 0~9일 · 도면설계 미완료', target: contactTarget(INTERNAL_ALERT_CONTACTS.design),
+      trigger: '생산중 · 납기 0~9일 · 도면설계 미완료 · 11/12 이후 신규 주문', target: contactTarget(INTERNAL_ALERT_CONTACTS.design),
       timing: '월~금 08:40 KST', scheduled: true,
     }, env),
     internalRule({
