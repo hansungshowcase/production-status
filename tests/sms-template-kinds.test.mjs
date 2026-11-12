@@ -88,6 +88,21 @@ test('외부 문구 표: 키 중복 0·종류 6개 안·세이프마케팅 것 �
   assert.doesNotMatch(everything, /\[변수/);
 });
 
+test('외부 문구 표: 카페24 자동 알림 44개는 종류·대상·키가 맞고 빈 문구는 지어내지 않는다', () => {
+  const cafe = EXTERNAL_TEMPLATES.filter(e => e.via === SENDERS.cafe24);
+  assert.equal(cafe.length, 44);
+  assert.equal(new Set(cafe.map(e => e.key)).size, 44);
+  for (const e of cafe) {
+    assert.ok(KINDS.includes(e.kind), e.key);
+    assert.ok(['고객', '직원'].includes(e.audience), e.key);
+    assert.equal(e.sender, SENDERS.cafe24, e.key);
+    assert.ok(e.trigger, e.key);
+    assert.equal(typeof e.active, 'boolean', e.key);
+    assert.equal(typeof e.body, 'string', e.key);
+  }
+  assert.equal(cafe.filter(e => e.active).length, 44);
+});
+
 test('외부 문구 표: 메이크 항목은 시나리오·언제 나가나·켜짐 여부를 가진다', () => {
   for (const e of EXTERNAL_TEMPLATES.filter(item => item.via === SENDERS.make)) {
     assert.equal(e.sender, SENDERS.make); assert.ok(e.scenario, e.key); assert.ok(e.trigger, e.key); assert.equal(typeof e.active, 'boolean', e.key);
@@ -122,7 +137,7 @@ test('문자 목록 모델: 카탈로그 16개 유지, 같은 key 중복 0, 외�
   const ids = items.map(i => i.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(items.filter(i => !i.external).length, 16);
-  assert.equal(items.filter(i => i.external && SMS_CHANNELS.includes(i.channel)).length, 5); // 외부 문자 4 + 미분류 1
+  assert.equal(items.filter(i => i.external && SMS_CHANNELS.includes(i.channel)).length, 8); // 외부 문자 4 + 카페24 운영자 문자 3 + 미분류 1
   assert.equal(items.find(i => i.id === 'customer_ordered').count, 0); // 카탈로그 카드 건수는 카탈로그 값 그대로
   assert.equal(items.find(i => i.id === 'review_sns').count, 7);
   assert.equal(items.find(i => i.id === 'caution_notice').count, 0);

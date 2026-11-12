@@ -6,6 +6,7 @@
 export const KINDS = Object.freeze(['주문·출고 안내', '이벤트·혜택', '상담·문의', '직원 작업 알림', '관리자·시스템', '미분류']);
 export const SENDERS = Object.freeze({
   program: '제작현황', make: '메이크', auto: '쏠라피 자동화', commerce: '스마트스토어 연동', app: '쏠라피 앱', unknown: '확인 안 됨',
+  cafe24: '카페24',
 });
 export const SMS_CHANNELS = Object.freeze(['SMS', 'LMS', 'MMS']);
 export const KAKAO_CHANNELS = Object.freeze(['ATA', 'BMS']);
@@ -78,6 +79,7 @@ const PROGRAM_STAFF = [
 const MAKE = SENDERS.make;
 const COMMERCE = SENDERS.commerce;
 const APP = SENDERS.app;
+const CAFE24 = SENDERS.cafe24;
 const KAKAO_TYPES = ['BMS', 'CTA', 'CTI'];
 
 export const EXTERNAL_TEMPLATES = Object.freeze([
@@ -173,7 +175,7 @@ export const EXTERNAL_TEMPLATES = Object.freeze([
   },
   {
     key: 'cafe24_welcome', name: '카페24 신규회원 무료 지원 이벤트 안내', channel: 'BMS', sender: MAKE, kind: '이벤트·혜택', ad: false, audience: '고객', who: '카페24 신규 회원',
-    via: MAKE, scenario: '카페24 신규회원', trigger: '웹훅으로 가입 알림이 올 때(실시간)', active: false,
+    via: MAKE, scenario: '카페24 신규회원', trigger: '웹훅으로 가입 알림이 올 때(실시간)', active: true,
     body: '안녕하세요!\n한성쇼케이스 그룹 입니다.\n\n날이 갈수록 어려워지는 경제 침체 속에서\n저희 한성이 자영업자분들을 응원하기 위해 특별한 이벤트를 준비했습니다 ✨\n\n자영업자분들의 부담을 덜고, 사업에 활력을 불어넣어드리고자\n쇼케이스 무료 지원 이벤트를 진행합니다 !\n\n해당 이벤트는 이번 한 달간 한시적으로 진행될 예정입니다.\n많은 관심 부탁드립니다.\n\n저희 한성은 자영업자분들의 든든한 파트너로서 항상 함께하겠습니다.\n한성쇼케이스는 여러분의 성장을 응원합니다.\n\n✅ 당첨자 발표 : 25년 03월 10일\n\n✅ 당첨자 유튜브 발표 링크\n✅ 당첨자 후기 링크 : 당첨자 후기\n\n✅ 본사 사무실 : 031-****-2458\n(문의량 폭주로 인해 통화 문의가 어려울 수 있다는 점 양해부탁드립니다.)\n\n✅ 1200 사이즈 아래로 용도에 관계없이 당첨 시 원하시는 제품으로 배송됩니다.\n(설치 및 운임비 만 부담해주시면 됩니다)\n\n★★★ 홈페이지 회원 가입 후 정확한 회원 가입 아이디를 남겨주셔야 추후 원활한 배송이 가능합니다 ★★★\n\n★★★ 허위 작성 발견 시 추후 진행되는 모든 이벤트에서 자격이 박탈됩니다 ★★★\n\n★★★ 당첨자는 대표님의 하루 일상 또는 당첨 후기 영상을 촬영하고 있습니다 ★★★\n\n★★★ 촬영 후 인터뷰는 추후 유튜브를 통해 업로드 됩니다. (얼굴 공개) ★★★\n\n이벤트 참여를 원하시면 아래의 폼을 제출 부탁드립니다 ^^\n\nhttps://forms.gle/7HbbBZGwZnU464yo6',
     match: { types: KAKAO_TYPES, words: ['당첨자 발표', '허위 작성 발견 시'] },
   },
@@ -230,6 +232,272 @@ export const EXTERNAL_TEMPLATES = Object.freeze([
     via: MAKE, scenario: '납기 3일내 담당자 문자 발송 · Integration SOLAPI', trigger: '15분 간격 · 구글시트 조건에 맞는 행이 있을 때', active: false,
     body: '출고문의는 꼭 아래 링크를 통해 문의 바랍니다.\n\n출고일정 안내\n\n안녕하세요 [업체명] 대표님\n한성쇼케이스입니다.\n\n구매하신 제품의 출고일자가 가까워져 안내문자 발송 드립니다\n\n아래 출고문의 카카오톡 링크로 연결후\n업체명/연락처를 남겨주시면\n빠른시간내로 출고팀에서\n연락 드릴 예정 입니다 감사합니다\n\n[버튼] 출고 문의하기',
     match: { templateId: 'KA01TP260701025852899CSGPYIaCwGQ' },
+  },
+  // ---- 카페24 쇼핑몰 자동 알림(쏠라피를 거치지 않고 카페24 가 직접 보냄 · 2026-11-12 밤 전수 대조로 더함) ----
+  {
+    key: 'cafe24_admin_member_join', name: '신규 회원 가입 알림(운영자용)', channel: 'SMS', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '직원', who: '쇼핑몰 운영자',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '쇼핑몰 신규 회원 가입 때마다 · 최근 1개월 484건', active: true,
+    body: '한성쇼케이스 운영자님, [고객명] 님이 [아이디] ID로 신규 회원 가입하셨어요.',
+    match: {},
+  },
+  {
+    key: 'cafe24_admin_inquiry_post', name: '견적문의 새 글 알림(운영자용)', channel: 'SMS', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '직원', who: '쇼핑몰 운영자',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '견적문의 게시판에 새 글이 등록될 때 · 최근 1개월 약 55건', active: true,
+    body: '한성쇼케이스 운영자님, 견적문의에 \'[제목]\' 신규 글이 등록되었어요.',
+    match: {},
+  },
+  {
+    key: 'cafe24_admin_order', name: '주문 처리 알림(운영자용)', channel: 'SMS', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '직원', who: '쇼핑몰 운영자',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '주문 결제·발송조치·송장 발송·자체배송 처리 때 · 최근 1개월 약 18건', active: true,
+    body: '한성쇼케이스 운영자님, [주문번호] 주문 상품이 발송되었어요.\n한성쇼케이스 운영자님, [날짜]에 [금액]원 [주문번호] 주문이…\n한성쇼케이스 운영자님, …주문을 자체배송 …',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_order_done', name: '주문 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '쇼핑몰 주문 고객',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '쇼핑몰 주문이 완료될 때 · 최근 30일 2건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_order_paid', name: '주문 결제 완료', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_deposit_guide', name: '입금 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '최근 30일 2건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_deposit_cancel', name: '입금 전 취소 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '쇼핑몰 주문 고객',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '입금 전에 주문이 취소될 때 · 최근 30일 1건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_deposit_done', name: '무통장 입금 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '무통장 입금이 확인될 때 · 최근 30일 1건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_shipped', name: '발송 조치 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '쇼핑몰 주문 고객',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '주문이 발송 조치될 때 · 최근 30일 1건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_shipped_invoice', name: '송장 포함 발송 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '쇼핑몰 주문 고객',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '송장이 입력되어 발송될 때 · 최근 30일 1건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_password_guide', name: '비밀번호 안내', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '쇼핑몰 회원',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '비밀번호 안내를 요청할 때 · 최근 30일 4건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_password_changed', name: '비밀번호 변경 안내', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '쇼핑몰 회원',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '비밀번호가 변경될 때 · 최근 30일 2건', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_points_given', name: '주문 적립금 지급 안내', channel: 'ATA', sender: CAFE24, kind: '이벤트·혜택', ad: false, audience: '고객', who: '쇼핑몰 주문 고객',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '주문 적립금이 지급될 때 · 최근 30일 2건', active: true,
+    body: '',
+    match: {},
+  },
+  // ---- 카페24 에서 켜져 있지만 최근 30일 발송이 없는 자동 알림(전체 보기에서만 보임 · 수신 대상·채널은 카페24 설정에서 확인 필요) ----
+  {
+    key: 'cafe24_ata_order_deposit_request', name: '입금 요청', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '주문 후 입금을 요청할 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_order_deposit_expiring', name: '입금 만료 예정 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '입금 기한이 다가올 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_order_preparing', name: '배송 준비중 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '주문이 배송 준비 상태가 될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_purchase_confirm_request', name: '구매 확정 요청', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '구매 확정을 요청할 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_purchase_confirmed', name: '구매 확정 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '구매가 확정될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_cancel_received', name: 'CS 취소·반품·교환 접수 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '취소·반품·교환이 접수될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_cancel_requested', name: 'CS 취소·반품·교환 신청 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '취소·반품·교환이 신청될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_cancel_withdrawn', name: 'CS 취소·반품·교환 철회 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '취소·반품·교환이 철회될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_cancel_done', name: 'CS 취소·반품·교환 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '취소·반품·교환이 완료될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_cancel_rejected', name: 'CS 취소·반품·교환 접수 거부 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '취소·반품·교환 접수가 거부될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_extra_deposit', name: 'CS 추가 입금 요청', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_pickup_done', name: 'CS 수거 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_cs_refund', name: 'CS 환불 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '환불이 처리될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_card_cancel_all', name: '카드결제 전체취소 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '카드결제가 전체 취소될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_card_cancel_part', name: '카드결제 부분취소 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '카드결제가 부분 취소될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_reserve_pay_done', name: '예약 결제 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '예약 주문의 결제가 완료될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_reserve_deposit_guide', name: '예약 입금 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '예약 주문의 입금 안내가 나갈 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_reserve_deposit_request', name: '예약 입금 요청', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '예약 주문의 입금을 요청할 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_reserve_deposit_done', name: '예약 무통장 입금 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '예약 주문의 무통장 입금이 확인될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_reserve_deposit_expiring', name: '예약 입금 만료 예정 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '예약 주문의 입금 기한이 다가올 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_reserve_deposit_cancel', name: '예약 입금 전 취소 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '예약 주문이 입금 전에 취소될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_auth_code', name: '본인확인 인증번호 발송', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '본인확인 인증번호를 보낼 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_member_auth_request', name: '회원인증 요청', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '회원인증을 요청할 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_member_auth_guide', name: '회원인증 안내', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_restock_done', name: '재입고 완료 안내', channel: 'ATA', sender: CAFE24, kind: '주문·출고 안내', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_points_expiring', name: '적립금 소멸 안내', channel: 'ATA', sender: CAFE24, kind: '이벤트·혜택', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '적립금이 소멸 예정일 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_coupon_download_expiring', name: '다운로드 쿠폰 만료 예정 안내', channel: 'ATA', sender: CAFE24, kind: '이벤트·혜택', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '내려받은 쿠폰이 만료 예정일 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_dormant_before', name: '휴면 일반회원 전환 사전 안내', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '휴면 회원으로 전환되기 전 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_dormant_after', name: '휴면 일반회원 전환 사후 안내', channel: 'ATA', sender: CAFE24, kind: '관리자·시스템', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '휴면 회원으로 전환된 뒤 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_board_comment', name: '게시판 댓글 등록 안내', channel: 'ATA', sender: CAFE24, kind: '상담·문의', ad: false, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '게시판에 댓글이 등록될 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
+  },
+  {
+    key: 'cafe24_ata_coupon_expiring_ad', name: '쿠폰 만료 예정 안내(광고)', channel: 'ATA', sender: CAFE24, kind: '이벤트·혜택', ad: true, audience: '고객', who: '',
+    via: CAFE24, scenario: '카페24 자동 알림(쏠라피를 거치지 않음)', trigger: '쿠폰이 만료 예정일 때 · 최근 30일 발송 없음', active: true,
+    body: '',
+    match: {},
   },
 ]);
 
