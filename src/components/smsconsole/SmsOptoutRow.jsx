@@ -39,7 +39,7 @@ export default function SmsOptoutRow({ active }) {
           <ul className="sac-optout-list">
             {items.map((item) => (
               <li key={item.id}>
-                <span>***{item.last4 || item.phone_last4} · {String(item.created_at || '').slice(0, 10)}</span>
+                <span>***{item.last4 || item.phone_last4} · {item.created_at ? new Date(item.created_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) : ''}</span>
                 <button type="button" className="ktm-btn" onClick={() => remove(item)}>{confirmId === item.id ? '삭제 확인' : '삭제'}</button>
               </li>
             ))}

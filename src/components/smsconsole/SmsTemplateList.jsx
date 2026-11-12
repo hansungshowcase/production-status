@@ -83,7 +83,7 @@ export default function SmsTemplateList({ active, onSendText }) {
         {entry.hasImage ? <span className="ktm-card-badges"><span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span></span> : null}
         {mineOpen === entry.id ? (
           <span className="ktm-open">
-            {(minePhoto[entry.id] || []).map((url, index) => <img key={index} className="ktm-open-img" src={url} alt="" />)}
+            {(minePhoto[entry.id] || []).map((url, index, all) => <img key={index} className={all.length > 1 ? 'ktm-open-img sac-thumb' : 'ktm-open-img'} src={url} alt="" />)}
             <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>
           </span>
         ) : null}

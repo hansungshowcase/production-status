@@ -7,3 +7,6 @@
 .sac-optout { margin-top: 12px; }
 .sac-optout-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
 .sac-optout-list li { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+
+/* 사진이 여러 장인 문구는 카드 안에서 작게 나란히 보인다 */
+.ktm-open-img.sac-thumb { display: inline-block; width: 180px; max-width: 45%; height: auto; margin-right: 8px; vertical-align: top; }
