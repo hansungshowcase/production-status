@@ -207,25 +207,25 @@ export const EXTERNAL_TEMPLATES = Object.freeze([
   {
     key: 'laser_team_alert', name: '레이저 작업 팀장 알림', channel: 'ATA', sender: MAKE, kind: '직원 작업 알림', ad: false, audience: '직원',
     via: MAKE, scenario: '레이저 팀장님(10일) (오류 상태)', trigger: '240분 간격(시간대 제한) · 구글시트에서 납기 10일 이내 레이저 작업 행이 있을 때', active: false,
-    body: '',
+    body: '안녕하세요,\n\n레이저 부서 [담당자] 팀장님.\n\n납기일이 10일 앞으로 다가온 업체 중 레이저 가공이 되지 않은 제품 목록입니다.\n\n확인 뒤 작업 바랍니다.\n\n납기 10일 남은 업체\n\n[업체 목록]',
     match: { templateId: 'KA01TP260106022315894hsJZuJnaNGM' },
   },
   {
     key: 'drawing_request', name: '도면 작업 요청 안내(캐드 담당자)', channel: 'ATA', sender: MAKE, kind: '직원 작업 알림', ad: false, audience: '직원',
     via: MAKE, scenario: '레이저 작업현황 14일전 확인 (오류 상태)', trigger: '240분 간격(시간대 제한) · 구글시트에서 납기 14일 전 작업 행이 있을 때', active: false,
-    body: '',
+    body: '[도면 작업 요청 안내]\n\n안녕하세요, 캐드 담당자님.\n[상호]의 납기일이 14일 앞으로 다가왔습니다.\n\n도면(레이저) 작업이 필요하니 확인 부탁드립니다.\n\n감사합니다.\n\n[업체 목록]',
     match: { templateId: 'KA01TP2601060225185026a5ruLDA6Um' },
   },
   {
     key: 'foreman_ship_3d', name: '공장장 출고 3일 전 알림', channel: 'ATA', sender: MAKE, kind: '직원 작업 알림', ad: false, audience: '직원',
     via: MAKE, scenario: '설비부서 공장장(3일전) (오류 상태)', trigger: '180분 간격(시간대 제한) · 구글시트에서 출고 3일 전 작업 행이 있을 때', active: false,
-    body: '',
+    body: '안녕하세요,\n\n[담당자] 공장장님.\n\n납기일이 3일 앞으로 다가온 업체 중 조립이되지 않은 제품 목록입니다.\n\n확인 뒤 작업 바랍니다.\n\n납기 3일 남은 업체\n\n[업체 목록]\n\n감사합니다.',
     match: { templateId: 'KA01TP260106022745294EhNvcRBVHm1' },
   },
   {
     key: 'ship_inquiry', name: '출고 문의 안내(담당자용)', channel: 'ATA', sender: MAKE, kind: '직원 작업 알림', ad: false, audience: '직원',
     via: MAKE, scenario: '납기 3일내 담당자 문자 발송 · Integration SOLAPI', trigger: '15분 간격 · 구글시트 조건에 맞는 행이 있을 때', active: false,
-    body: '',
+    body: '출고문의는 꼭 아래 링크를 통해 문의 바랍니다.\n\n출고일정 안내\n\n안녕하세요 [업체명] 대표님\n한성쇼케이스입니다.\n\n구매하신 제품의 출고일자가 가까워져 안내문자 발송 드립니다\n\n아래 출고문의 카카오톡 링크로 연결후\n업체명/연락처를 남겨주시면\n빠른시간내로 출고팀에서\n연락 드릴 예정 입니다 감사합니다\n\n[버튼] 출고 문의하기',
     match: { templateId: 'KA01TP260701025852899CSGPYIaCwGQ' },
   },
 ]);
