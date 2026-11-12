@@ -1,3 +1,7 @@
+import {
+  EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, kindOfCatalogId, unclassifiedName,
+} from '../../../shared/smsTemplateKinds.js';
+
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
 // 카탈로그 칸: groups[].id(customer|internal) / items[].{id,name,trigger,target,policy{status,label},
 // configuration{status,label},example_message{subject,text},recent{state,counts{total}}}
@@ -67,5 +71,63 @@ export function smsBadges(item) {
   else badges.push({ tone: 'muted', text: '최근 7일 0건' });
   if (item.policy?.status === 'paused') badges.push({ tone: 'muted', text: item.policy.label || '정책 중단' });
   if (item.config?.status === 'incomplete') badges.push({ tone: 'danger', text: item.config.label || '설정 미완료' });
+  return badges;
+}
+
+// ---------- 종류별 보기(제작현황 밖에서 나가는 문구 포함) ----------
+// sent = GET /api/sms-console?resource=sent 의 groups[] (없으면 null — 건수는 모르는 것으로 둔다)
+
+const sentMapOf = (sent) => new Map((Array.isArray(sent) ? sent : []).map((group) => [group.key, group]));
+const orNull = (group, sentKnown) => (group ? group.count7 : (sentKnown ? 0 : null));
+
+// 카탈로그 카드에 종류·보내는 곳을 더하고, 보낸 묶음·외부 문구 표의 문자 항목을 같은 모양의 카드로 합친다. 같은 key 는 한 카드.
+export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEMPLATES) {
+  const sentKnown = Array.isArray(sent);
+  const sentMap = sentMapOf(sent);
+  const seen = new Set();
+  const out = [];
+  for (const item of buildSmsItems(overview)) {
+    seen.add(item.id);
+    out.push({
+      ...item, key: item.id, kind: kindOfCatalogId(item.id), sender: SENDERS.program, ad: false, active: true, channel: '',
+      body: item.example?.text || '', scenario: '', external: false,
+    });
+  }
+  externals.forEach((entry, index) => {
+    if (!SMS_CHANNELS.includes(entry.channel) || seen.has(entry.key)) return;
+    seen.add(entry.key);
+    out.push({
+      id: entry.key, key: entry.key, name: entry.name, audience: { id: entry.audience === '직원' ? 'staff' : 'customer', label: entry.audience || '고객' },
+      trigger: entry.trigger || '', count: orNull(sentMap.get(entry.key), sentKnown), policy: null, config: null, example: null,
+      order: 1000 + index, kind: entry.kind, sender: entry.sender, ad: Boolean(entry.ad || sentMap.get(entry.key)?.ad), active: entry.active !== false,
+      channel: entry.channel, body: entry.body || '', scenario: entry.scenario || '', external: true,
+    });
+  });
+  let extra = 0;
+  for (const group of sentMap.values()) {
+    if (seen.has(group.key) || !SMS_CHANNELS.includes(group.channel)) continue;
+    seen.add(group.key);
+    out.push({
+      id: group.key, key: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key,
+      audience: { id: 'customer', label: group.audience || '고객' }, trigger: '', count: group.count7, policy: null, config: null, example: null,
+      order: 2000 + (extra += 1), kind: group.kind, sender: group.sender, ad: Boolean(group.ad), active: true, channel: group.channel,
+      body: '', scenario: '', external: true,
+    });
+  }
+  return out;
+}
+
+// 종류 순서대로 [{kind, items}] — 빈 종류는 뺀다. 종류 안은 7일 건수 많은 순(같으면 처음 순서).
+export function kindSections(items, status = 'all') {
+  const visible = filterSmsItems(items, status);
+  return KINDS.map((kind) => ({ kind, items: sortSmsItems(visible.filter((item) => (KINDS.includes(item.kind) ? item.kind : UNCLASSIFIED) === kind)) }))
+    .filter((section) => section.items.length > 0);
+}
+
+// 카드 배지에 더하는 것: 광고·꺼짐(메이크에서 꺼진 시나리오). 건수 배지는 smsBadges 가 만든다.
+export function kindBadges(item) {
+  const badges = [];
+  if (item?.ad) badges.push({ tone: 'info', text: '광고' });
+  if (item?.active === false) badges.push({ tone: 'muted', text: '꺼짐' });
   return badges;
 }

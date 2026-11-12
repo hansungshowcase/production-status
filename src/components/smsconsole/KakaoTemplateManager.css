@@ -132,3 +132,17 @@
   .ktm-back { display: inline-flex; }
   .ktm-info { grid-template-columns: 80px minmax(0, 1fr); }
 }
+
+/* 종류별 묶음 머리글·보내는 곳 칩·펼친 문구(문자·알림톡 템플릿 공용) */
+.ktm-kind { margin: 0 0 14px; }
+.ktm-kind-head { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--smsc-text, #1c2330); }
+.ktm-kind-count { margin-left: 4px; font-weight: 400; color: var(--smsc-muted, #667085); }
+.ktm-chip--sender { background: var(--smsc-accent-weak, #eaf0ff); border-color: transparent; color: var(--smsc-accent, #2457d6); }
+.ktm-chan { font-size: 11px; color: var(--smsc-muted, #667085); }
+.ktm-open { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; font-size: 13px; }
+.ktm-open-line { display: block; overflow-wrap: anywhere; color: var(--smsc-text, #1c2330); }
+.ktm-open-line b { margin-right: 6px; color: var(--smsc-muted, #667085); font-weight: 600; }
+.ktm-open-body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 8px; background: var(--smsc-bg, #f5f6f8); }
+.ktm-card-static { cursor: default; }
+.ktm-cards + .ktm-kind { margin-top: 16px; }
+.ktm-card.is-selected .ktm-chip--sender { background: #fff; }

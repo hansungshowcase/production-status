@@ -1,11 +1,13 @@
 import { cors } from './_lib/cors.js';
 import { enforceSameOriginWrite } from './_lib/accessPolicy.js';
 import { rateLimitCheck } from './_lib/rateLimit.js';
-import { fetchSolapiDay, hasSolapiCredentials } from './_lib/solapiMessageLog.js';
+import { classifyStatus, collapseReplacements, fetchSolapiDay, hasSolapiCredentials } from './_lib/solapiMessageLog.js';
+import { matchReviewCampaign } from './_lib/customerReviewCampaigns.js';
 import * as defaultGuard from './_lib/smsConsoleGuard.js';
 import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
+import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
@@ -35,16 +37,49 @@ function kstDates(nowMs, days) {
   return out;
 }
 
+// 발송 묶음(종류별 보기용): 같은 7일 훑기에서 문구 묶음을 함께 센다. 본문·이름·전화번호는 남기지 않는다.
+function addSent(sent, entry, nowMs) {
+  const { orig, final } = entry;
+  const review = matchReviewCampaign(orig) || matchReviewCampaign(final);
+  const text = [orig.text, final.text].filter((t, i, a) => t != null && a.indexOf(t) === i).join('\n');
+  const result = classify({
+    type: orig.type, templateId: orig.kakaoOptions?.templateId || final.kakaoOptions?.templateId || '',
+    subject: orig.subject ?? final.subject, text, reviewId: review?.id, customFields: orig.customFields,
+  });
+  const group = sent.get(result.key) || { key: result.key, kind: result.kind, sender: result.sender, channels: {}, ad: false, count7: 0, fail7: 0, replaced7: 0, last_ms: 0, audience: result.audience };
+  const channel = normalizeChannel(orig.type);
+  group.channels[channel] = (group.channels[channel] || 0) + 1;
+  if (result.ad) group.ad = true;
+  group.count7 += 1;
+  if (entry.replaced) group.replaced7 += 1;
+  else if (classifyStatus(final, { nowMs }).status === 'failed') group.fail7 += 1;
+  const at = Date.parse(orig.dateCreated || '');
+  if (Number.isFinite(at) && at > group.last_ms) group.last_ms = at;
+  sent.set(result.key, group);
+}
+
+function sentGroupList(sent) {
+  return [...(sent?.values() || [])].filter(group => !(group.kind === '미분류' && Object.keys(group.channels).some(c => c === 'ATA' || c.startsWith('BMS')))).map(group => {
+    const channel = Object.entries(group.channels).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    return {
+      key: group.key, kind: group.kind, sender: group.sender, channel, ad: group.ad, count7: group.count7,
+      fail7: group.fail7, replaced7: group.replaced7, last_sent: group.last_ms ? new Date(group.last_ms).toISOString() : null, audience: group.audience,
+    };
+  }).sort((a, b) => b.count7 - a.count7 || a.key.localeCompare(b.key));
+}
+
 async function computeUsage(fetchDay, nowMs, { fresh = false } = {}) {
   if (!fresh && usageCache && nowMs - usageCache.at >= 0 && nowMs - usageCache.at < USAGE_TTL_MS) return usageCache.value;
   const dates = kstDates(nowMs, USAGE_DAYS);
   const byTemplate = {};
+  const sent = new Map();
   let partial = false;
   const lastMs = {};
   const readDay = async date => {
     try {
       const day = await fetchDay(date, { nowMs });
       if (day?.partial) partial = true;
+      try { for (const entry of collapseReplacements(day?.messages || [])) addSent(sent, entry, nowMs); } catch { /* 묶음 판정 실패가 7일 사용량 셈을 막지 않게 한다 */ }
       for (const message of day?.messages || []) {
         if (message?.replacement === true) continue;
         const id = message?.kakaoOptions?.templateId;
@@ -58,6 +93,8 @@ async function computeUsage(fetchDay, nowMs, { fresh = false } = {}) {
   };
   for (let i = 0; i < dates.length; i += 2) await Promise.all(dates.slice(i, i + 2).map(readDay));
   const value = { days: USAGE_DAYS, partial, by_template: byTemplate, checked_at: new Date(nowMs).toISOString() };
+  // 'sent' 는 usage 응답 모양을 바꾸지 않도록 열거되지 않는 칸으로만 붙인다(resource=sent 가 같은 훑기 결과를 재사용).
+  Object.defineProperty(value, 'sent', { value: sent, enumerable: false });
   if (!fresh) usageCache = { at: nowMs, value };
   return value;
 }
@@ -78,6 +115,11 @@ async function handleGet(req, res, ctx) {
     if (resource === 'usage') {
       if (!configured) return res.status(200).json({ configured: false, days: USAGE_DAYS, partial: false, by_template: {}, checked_at });
       return res.status(200).json({ configured: true, ...(await computeUsage(ctx.fetchDay, nowMs)) });
+    }
+    if (resource === 'sent') {
+      if (!configured) return res.status(200).json({ configured: false, days: USAGE_DAYS, partial: false, groups: [], checked_at });
+      const usage = await computeUsage(ctx.fetchDay, nowMs);
+      return res.status(200).json({ configured: true, days: USAGE_DAYS, partial: usage.partial, groups: sentGroupList(usage.sent), checked_at: usage.checked_at });
     }
     if (resource === 'categories') {
       if (!configured) return res.status(200).json({ configured: false, items: [] });

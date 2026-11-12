@@ -4,7 +4,7 @@ import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
-  isValidRename, statusInfo, statusPills, usageBadge, usageCount,
+  isValidRename, readOnlyKakaoItems, statusInfo, statusPills, templateExtras, usageBadge, usageCount,
 } from './templateListModel.js';
 import './KakaoTemplateManager.css';
 
@@ -68,6 +68,8 @@ function messageLabel(type) {
 export default function KakaoTemplateManager({ active, selectedId, mode, onRoute, onOpenLog }) {
   const [tplState, setTplState] = useState({ loading: false, loaded: false, error: null, status: 0, data: null });
   const [usage, setUsage] = useState(null);
+  const [sent, setSent] = useState(null); // 종류·보내는 곳·문자 대체 건수(읽기 전용). 못 불러와도 목록은 그대로
+  const [openRoId, setOpenRoId] = useState('');
   const [query, setQuery] = useState('');
   const [pickedFilter, setPickedFilter] = useState(null); // null = 아직 안 고름(발송 중이 있으면 그것, 없으면 전체)
   const [menuId, setMenuId] = useState('');
@@ -95,6 +97,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     startedRef.current = true;
     loadTemplates();
     fetchSmsConsole('usage').then(setUsage).catch(() => setUsage(null));
+    fetchSmsConsole('sent').then((res) => setSent(Array.isArray(res?.groups) ? res.groups : null)).catch(() => setSent(null));
   }, [active, loadTemplates]);
 
   // 메뉴 바깥 누름·Esc 로 ⋮ 메뉴 닫기
@@ -117,6 +120,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const pills = useMemo(() => statusPills(items, usage), [items, usage]);
   const statusFilter = pickedFilter ?? defaultStatusFilter(pills, selectedId, usage);
   const visible = useMemo(() => filterTemplates(items, { query, status: statusFilter, usage }), [items, query, statusFilter, usage]);
+  const readOnly = useMemo(() => readOnlyKakaoItems(items, sent, { status: statusFilter, query }), [items, sent, statusFilter, query]);
   const selected = selectedId ? items.find((item) => item.id === selectedId) || null : null;
   const formOpen = mode === 'new' || (mode === 'edit' && selected);
 
@@ -272,6 +276,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     const badge = usageBadge(usage, item.id);
     const actions = availableActions(item);
     const isOpen = menuId === item.id;
+    const extras = templateExtras(item.id, sent);
     return (
       <li key={item.id} className={`ktm-card${item.id === selectedId ? ' is-selected' : ''}`}>
         <button type="button" className="ktm-card-main" onClick={() => { setNotice(null); onRoute({ tpl: item.id, mode: '' }); }} aria-current={item.id === selectedId ? 'true' : undefined}>
@@ -279,11 +284,15 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <span className="ktm-card-meta">
             <span className="ktm-chip">{item.target?.name || '채널'}{item.target?.kind === 'group' ? ' · 그룹' : ''}</span>
             <span className="ktm-date">{formatDate(item.dateCreated)}</span>
+            {extras ? <span className="ktm-chip ktm-chip--sender">{extras.sender}</span> : null}
+            {extras ? <span className="ktm-chip">{extras.kind}</span> : null}
           </span>
           <span className="ktm-card-badges">
             <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
             {badge ? <span className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span> : null}
             {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림에 사용</span> : null}
+            {extras && extras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {extras.replaced7}건</span> : null}
+            {extras && extras.off ? <span className="ktm-badge ktm-badge--muted">꺼짐</span> : null}
           </span>
         </button>
         <div className="ktm-menu-wrap">
@@ -303,6 +312,44 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       </li>
     );
   };
+
+  // 템플릿 목록에 없는 브랜드메시지(친구톡)·기타 발송 — 읽기 전용(⋮ 메뉴·삭제 없음)
+  const renderReadOnly = () => (
+    <section className="ktm-kind" aria-label="브랜드메시지·기타 발송">
+      <h3 className="ktm-kind-head">브랜드메시지·기타 발송 <span className="ktm-kind-count">{readOnly.length}</span></h3>
+      <ul className="ktm-cards">
+        {readOnly.map((entry) => {
+          const expandable = Boolean(entry.body || entry.trigger || entry.scenario);
+          const opened = openRoId === entry.id;
+          return (
+            <li key={entry.id} className={`ktm-card${opened ? ' is-selected' : ''}`}>
+              <button type="button" className="ktm-card-main" aria-expanded={opened} onClick={() => setOpenRoId(opened ? '' : entry.id)}>
+                <span className="ktm-card-name">{entry.name}</span>
+                <span className="ktm-card-meta">
+                  <span className="ktm-chip ktm-chip--sender">{entry.sender}</span>
+                  <span className="ktm-chip">{entry.kind}</span>
+                  <span className="ktm-chan">{entry.channel === 'BMS' ? '브랜드메시지·친구톡' : '알림톡'}</span>
+                </span>
+                <span className="ktm-card-badges">
+                  {entry.count === null ? <span className="ktm-badge ktm-badge--muted">사용 여부 확인 못 함</span>
+                    : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
+                  {entry.ad ? <span className="ktm-badge ktm-badge--info">광고</span> : null}
+                  {entry.active === false ? <span className="ktm-badge ktm-badge--muted">꺼짐</span> : null}
+                </span>
+                {opened && expandable ? (
+                  <span className="ktm-open">
+                    {entry.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {entry.trigger}</span> : null}
+                    {entry.scenario ? <span className="ktm-open-line"><b>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {entry.scenario}</span> : null}
+                    {entry.body ? <span className="ktm-open-body">{entry.body}</span> : null}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 
   const renderDialog = () => {
     if (!dialog) return null;
@@ -358,6 +405,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           {visible.length === 0
             ? <div className="ktm-empty">{items.length === 0 ? '등록된 템플릿이 없습니다.' : '조건에 맞는 템플릿이 없습니다.'}</div>
             : <ul className="ktm-cards">{visible.map(renderCard)}</ul>}
+          {readOnly.length > 0 ? renderReadOnly() : null}
         </section>
         <section className="ktm-detail-pane" aria-label="미리보기">{renderDetail()}</section>
       </div>

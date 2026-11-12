@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchNotificationOverview } from '../../api/notificationOverview.js';
+import { fetchSmsConsole } from '../../api/smsConsole.js';
 import {
-  buildSmsItems, defaultSmsFilter, filterSmsItems, smsBadges, smsPills, sortSmsItems,
+  buildKindedItems, defaultSmsFilter, kindBadges, kindSections, smsBadges, smsPills, sortSmsItems,
 } from './smsTemplateListModel.js';
 import './KakaoTemplateManager.css';
 
@@ -14,8 +15,9 @@ export default function SmsTemplateList({ active }) {
 
   const load = () => {
     setState((prev) => ({ ...prev, error: '' }));
-    fetchNotificationOverview()
-      .then((data) => setState({ loaded: true, error: '', items: sortSmsItems(buildSmsItems(data)) }))
+    // 보낸 묶음(sent)은 못 불러와도 카탈로그 카드는 그대로 보인다
+    Promise.all([fetchNotificationOverview(), fetchSmsConsole('sent').catch(() => null)])
+      .then(([data, sent]) => setState({ loaded: true, error: '', items: sortSmsItems(buildKindedItems(data, sent && Array.isArray(sent.groups) ? sent.groups : null)) }))
       .catch((err) => setState({ loaded: true, error: err.message || '불러오지 못했습니다.', items: [] }));
   };
   useEffect(() => {
@@ -27,7 +29,7 @@ export default function SmsTemplateList({ active }) {
   const { items } = state;
   const pills = useMemo(() => smsPills(items), [items]);
   const filter = picked ?? defaultSmsFilter(items);
-  const visible = useMemo(() => filterSmsItems(items, filter), [items, filter]);
+  const sections = useMemo(() => kindSections(items, filter), [items, filter]);
 
   let body;
   if (!state.loaded) body = <div className="ktm-empty">불러오는 중…</div>;
@@ -49,27 +51,39 @@ export default function SmsTemplateList({ active }) {
             </button>
           ))}
         </div>
-        {visible.length === 0 ? <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div> : (
-          <ul className="ktm-cards">
-            {visible.map((item) => (
-              <li key={item.id} className={`ktm-card${openId === item.id ? ' is-selected' : ''}`}>
-                <button type="button" className="ktm-card-main" aria-expanded={openId === item.id} onClick={() => setOpenId(openId === item.id ? '' : item.id)}>
-                  <span className="ktm-card-name">{item.name}</span>
-                  <span className="ktm-card-meta">
-                    <span className="ktm-chip">{item.audience.label}</span>
-                    <span>{item.trigger}</span>
-                  </span>
-                  <span className="ktm-card-badges">
-                    {smsBadges(item).map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
-                  </span>
-                  {openId === item.id && item.example ? (
-                    <span style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 13, paddingTop: 6 }}>{item.example.text}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {sections.length === 0 ? <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div> : sections.map((section) => (
+          <section key={section.kind} className="ktm-kind" aria-label={section.kind}>
+            <h3 className="ktm-kind-head">{section.kind} <span className="ktm-kind-count">{section.items.length}</span></h3>
+            <ul className="ktm-cards">
+              {section.items.map((item) => {
+                const expandable = Boolean(item.body || (item.external && (item.trigger || item.scenario)));
+                return (
+                  <li key={item.id} className={`ktm-card${openId === item.id ? ' is-selected' : ''}`}>
+                    <button type="button" className="ktm-card-main" aria-expanded={openId === item.id} onClick={() => setOpenId(openId === item.id ? '' : item.id)}>
+                      <span className="ktm-card-name">{item.name}</span>
+                      <span className="ktm-card-meta">
+                        <span className="ktm-chip">{item.audience.label}</span>
+                        <span className="ktm-chip ktm-chip--sender">{item.sender}</span>
+                        {item.channel ? <span className="ktm-chan">{item.channel}</span> : null}
+                        {item.external ? null : <span>{item.trigger}</span>}
+                      </span>
+                      <span className="ktm-card-badges">
+                        {[...smsBadges(item), ...kindBadges(item)].map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
+                      </span>
+                      {openId === item.id && expandable ? (
+                        <span className="ktm-open">
+                          {item.external && item.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {item.trigger}</span> : null}
+                          {item.scenario ? <span className="ktm-open-line"><b>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {item.scenario}</span> : null}
+                          {item.body ? <span className="ktm-open-body">{item.body}</span> : null}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
       </>
     );
   }
