@@ -46,6 +46,31 @@ export function makeIdempotencyKey() {
   return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }
 
+// ---- 알림톡 템플릿으로 보내기 ----
+// 템플릿의 변수 이름 목록(쏠라피 variables 의 '#{이름}' 과 본문의 #{이름} 을 합침). 서버 smsManualSend.js templateVariableNames 와 같은 규칙.
+export function templateVariableNames(template) {
+  const names = [];
+  const add = value => {
+    const raw = String(value ?? '').trim();
+    const match = /^#\{(.+)\}$/.exec(raw);
+    const name = (match ? match[1] : raw).trim();
+    if (name && !names.includes(name)) names.push(name);
+  };
+  for (const item of template?.variables || []) add(item);
+  for (const match of String(template?.content || '').matchAll(/#\{([^{}]+)\}/g)) add(match[1]);
+  return names;
+}
+
+// 본문의 #{이름} 을 입력값으로 바꾼다(비어 있으면 그대로 둔다)
+export function fillTemplateContent(content, values) {
+  return String(content || '').replace(/#\{([^{}]+)\}/g, (all, name) => {
+    const value = String(values?.[name.trim()] ?? '').trim();
+    return value || all;
+  });
+}
+
+export const allVariablesFilled = (names, values) => names.every(name => String(values?.[name] ?? '').trim() !== '');
+
 // 미리보기와 보내기가 같은 내용인지 비교하는 서명(번호는 화면 상태 안에서만 쓰고 저장하지 않는다)
 export function payloadSignature(recipients, text) {
   return JSON.stringify([recipients, String(text || '').trim()]);

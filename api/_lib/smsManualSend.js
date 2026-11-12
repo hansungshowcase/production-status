@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { assemblyWorkerPhone, INTERNAL_ALERT_CONTACTS } from './internalProductionAlerts.js';
 import { classifyText, getSendProvider, LMS_MAX_BYTES } from './sendProvider.js';
+import { TEMPLATE_ID_RE } from '../../shared/smsConsole.js';
 
 const DEFAULT_MAX_RECIPIENTS = 50;
 const DEFAULT_DAILY_LIMIT = 300;
@@ -181,6 +182,129 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
   } catch { /* 기록 실패가 이미 끝난 발송 결과 응답을 막지 않게 한다 */ }
   console.info('[sms-send]', status, phones.length, kind.type);
   const out = { sent: status === 'sent' || status === 'partial', status, type: kind.type, count: phones.length, success: result.accepted || 0, fail: result.failed || 0, cost: estimate.total };
+  if (result.uncertain) out.uncertain = true;
+  if (result.error) out.message = String(result.error).slice(0, 200);
+  return reply(200, out);
+}
+
+// ---- 승인된 알림톡 템플릿으로 보내기 (action 'send' 에 kakao:{templateId, variables} 가 있을 때) ----
+// 문자 발송(runSend)은 건드리지 않고, 같은 상한·멱등·기록 표·1회 인원 규칙을 따로 한 번 더 지난다.
+// 채널(pfId)은 요청에서 받지 않고 서버가 다시 읽은 템플릿의 것만 쓴다. 변수 값·본문·번호 전체는 저장하지 않는다.
+const VARIABLE_VALUE_MAX = 1000;
+const variableName = key => { const m = /^#\{(.+)\}$/.exec(String(key ?? '').trim()); return (m ? m[1] : String(key ?? '')).trim(); };
+
+// 템플릿의 변수 이름 목록(쏠라피 variables 의 '#{이름}' 과 본문의 #{이름} 을 합침, 중복 제거)
+export function templateVariableNames(template) {
+  const names = [];
+  const add = value => { const name = variableName(value); if (name && !names.includes(name)) names.push(name); };
+  for (const item of template?.variables || []) add(item);
+  for (const match of String(template?.content || '').matchAll(/#\{([^{}]+)\}/g)) add(match[1]);
+  return names;
+}
+
+export async function runKakaoSend(body, { env = process.env, db, provider, fetchImpl, nowMs = Date.now(), staff, writeEnabled = true, kakao, kakaoOpts } = {}) {
+  const settings = sendSettings(env, writeEnabled);
+  if (!settings.enabled) return errorReply(403, '발송이 꺼져 있습니다.');
+
+  const dryRun = body.dry_run === true;
+  const request = body.kakao && typeof body.kakao === 'object' && !Array.isArray(body.kakao) ? body.kakao : null;
+  const templateId = typeof request?.templateId === 'string' ? request.templateId : '';
+  if (!TEMPLATE_ID_RE.test(templateId)) return errorReply(400, '올바른 템플릿이 아닙니다.');
+  const given = request.variables && typeof request.variables === 'object' && !Array.isArray(request.variables) ? request.variables : {};
+  const resolved = resolveRecipients(body.recipients, staff || staffDirectory());
+  if (resolved.error) return errorReply(400, resolved.error);
+  const phones = resolved.phones;
+  const key = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+  if (!dryRun && !KEY_RE.test(key)) return errorReply(400, '올바른 요청이 아닙니다.');
+  if (phones.length > settings.max) return errorReply(400, `한 번에 ${settings.max}명까지 보낼 수 있습니다.`);
+
+  // 템플릿은 쏠라피에서 다시 읽어 확인한다(한성 채널·승인 상태). 하나라도 아니면 업체 발송 호출 0.
+  let found;
+  try {
+    found = await kakao.getTemplateFresh(templateId, kakaoOpts);
+  } catch {
+    return errorReply(502, '템플릿을 쏠라피에서 불러오지 못했습니다.');
+  }
+  if (!found) return errorReply(404, '템플릿을 찾을 수 없습니다.');
+  if (!found.scope?.allowed) return errorReply(403, '이 템플릿은 보낼 수 없는 채널의 템플릿입니다.');
+  const template = found.template || {};
+  if (template.status !== 'APPROVED') return errorReply(409, '승인된 템플릿만 보낼 수 있습니다.');
+  let pfId = typeof found.raw?.channelId === 'string' ? found.raw.channelId : '';
+  // 그룹 템플릿은 채널 id 가 비어 있다. 한성 것으로 허용된 그룹 템플릿이면 자동 알림과 같은 서버 환경값을 쓴다.
+  if (!pfId && found.scope?.kind === 'group' && typeof env.KAKAO_PF_ID === 'string') pfId = env.KAKAO_PF_ID;
+  if (!pfId) return errorReply(409, '이 템플릿은 보낼 채널이 정해져 있지 않아 여기서 보낼 수 없습니다.');
+
+  const variables = {};
+  const missing = [];
+  const byName = new Map(Object.entries(given).map(([name, value]) => [variableName(name), value]));
+  for (const name of templateVariableNames(template)) {
+    const value = byName.get(name);
+    const text = typeof value === 'string' ? value.replace(/\r\n?/g, '\n').trim() : '';
+    if (!text) { missing.push(name); continue; }
+    if ([...text].length > VARIABLE_VALUE_MAX) return errorReply(400, `변수 값은 ${VARIABLE_VALUE_MAX}자 이하로 적어 주세요.`);
+    variables[name] = text;
+  }
+  if (missing.length) return errorReply(400, `변수를 채워 주세요: ${missing.join(', ')}`);
+
+  await ensureManualSendSchema(db);
+  const { rows: usedRows } = await db.execute({
+    sql: 'SELECT COALESCE(SUM(recipient_count), 0)::int AS n FROM sms_manual_sends WHERE sent_at >= ?',
+    args: [kstDayStartIso(nowMs)],
+  });
+  const used = Number(usedRows?.[0]?.n) || 0;
+  if (used + phones.length > settings.daily) return errorReply(429, `하루 ${settings.daily}건까지 보낼 수 있습니다. 오늘 ${used}건 보냈습니다.`);
+
+  const vendor = provider || getSendProvider();
+  if (!vendor || typeof vendor.sendKakao !== 'function' || typeof vendor.estimateKakao !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
+  const estimate = vendor.estimateKakao({ count: phones.length }, env);
+  if (dryRun) return reply(200, { dry_run: true, count: phones.length, type: 'ATA', cost: estimate.total, unit: estimate.unit });
+
+  const from = digits(env.SMS_SENDER);
+  if (!from) return errorReply(503, '발신번호가 설정되지 않았습니다.');
+  if (!provider && !hasSolapiCredentials()) return errorReply(503, '쏠라피 연결이 설정되지 않았습니다.');
+
+  const tails = phones.map(phone => phone.slice(-4)).join(',');
+  const hash = crypto.createHmac('sha256', String(env.SOLAPI_API_SECRET || 'sms-manual-send')).update([...phones].sort().join(',')).digest('hex');
+  const inserted = await db.execute({
+    sql: `INSERT INTO sms_manual_sends (idem_key, msg_type, recipient_count, text_length, tails, recipients_hash, status)
+          VALUES (?, ?, ?, ?, ?, ?, 'sending') ON CONFLICT (idem_key) DO NOTHING RETURNING id`,
+    args: [key, 'ATA', phones.length, 0, tails, hash],
+  });
+  if (!inserted.rows?.length) {
+    const { rows } = await db.execute({
+      sql: 'SELECT status, msg_type, recipient_count, success_count, fail_count FROM sms_manual_sends WHERE idem_key = ?',
+      args: [key],
+    });
+    const row = rows?.[0] || {};
+    return reply(200, { sent: row.status === 'sent' || row.status === 'partial', duplicate: true, status: row.status || 'sending', type: row.msg_type || 'ATA',
+      count: Number(row.recipient_count) || phones.length, success: Number(row.success_count) || 0, fail: Number(row.fail_count) || 0 });
+  }
+
+  const { rows: afterRows } = await db.execute({
+    sql: 'SELECT COALESCE(SUM(recipient_count), 0)::int AS n FROM sms_manual_sends WHERE sent_at >= ?',
+    args: [kstDayStartIso(nowMs)],
+  });
+  const usedAfter = Number(afterRows?.[0]?.n) || 0;
+  if (usedAfter > settings.daily) {
+    await db.execute({ sql: "UPDATE sms_manual_sends SET status = 'rejected', recipient_count = 0 WHERE idem_key = ?", args: [key] });
+    return errorReply(429, `하루 ${settings.daily}건까지 보낼 수 있습니다. 오늘 ${Math.max(0, usedAfter - phones.length)}건 보냈습니다.`);
+  }
+
+  let result;
+  try {
+    result = await vendor.sendKakao({ from, recipients: phones, pfId, templateId, variables }, { fetchImpl });
+  } catch {
+    result = { accepted: 0, failed: 0, groupId: null, uncertain: true, error: '보냈는지 확인하지 못했습니다. 발송 내역을 확인해 주세요' };
+  }
+  const status = result.uncertain ? 'uncertain' : result.failed === 0 ? 'sent' : result.accepted === 0 ? 'failed' : 'partial';
+  try {
+    await db.execute({
+      sql: 'UPDATE sms_manual_sends SET status = ?, success_count = ?, fail_count = ?, group_id = ?, error = ? WHERE idem_key = ?',
+      args: [status, result.accepted || 0, result.failed || 0, result.groupId || null, result.error ? String(result.error).slice(0, 200) : null, key],
+    });
+  } catch { /* 기록 실패가 이미 끝난 발송 결과 응답을 막지 않게 한다 */ }
+  console.info('[sms-send]', status, phones.length, 'ATA');
+  const out = { sent: status === 'sent' || status === 'partial', status, type: 'ATA', count: phones.length, success: result.accepted || 0, fail: result.failed || 0, cost: estimate.total };
   if (result.uncertain) out.uncertain = true;
   if (result.error) out.message = String(result.error).slice(0, 200);
   return reply(200, out);

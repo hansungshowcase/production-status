@@ -13,7 +13,7 @@ const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.js
 const SendPanel = lazy(() => import('../components/smsconsole/SendPanel.jsx'));
 const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
 const SmsTemplateList = lazy(() => import('../components/smsconsole/SmsTemplateList.jsx'));
-const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode'];
+const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode', 'template'];
 const PANE_LOADING = <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
 export default function SmsHistoryPage() {
@@ -99,7 +99,7 @@ export default function SmsHistoryPage() {
         {isMounted('send') && (
           <div className="sms-console-pane" hidden={state.menu !== 'send'}>
             <Suspense fallback={PANE_LOADING}>
-              <SendPanel active={state.menu === 'send'} />
+              <SendPanel active={state.menu === 'send'} template={state.template || ''} />
             </Suspense>
           </div>
         )}
@@ -135,6 +135,7 @@ export default function SmsHistoryPage() {
                     selectedId={tplKind === 'kakao' ? state.tpl : ''}
                     mode={tplKind === 'kakao' ? state.mode : ''}
                     onRoute={patchState}
+                    onSend={id => selectMenu('send', { template: id })}
                     onOpenLog={openLog}
                   />
                 </div>

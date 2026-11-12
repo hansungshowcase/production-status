@@ -24,3 +24,5 @@
   .smsc-send__actions { flex-direction: column-reverse; }
   .smsc-send__btn { width: 100%; }
 }
+.smsc-send__tpl { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.smsc-send__tplbody { margin: 0; padding: 10px 12px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-bg, #f5f6f8); font: inherit; font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }

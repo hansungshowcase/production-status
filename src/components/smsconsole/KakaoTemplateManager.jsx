@@ -65,7 +65,7 @@ function messageLabel(type) {
   return type;
 }
 
-export default function KakaoTemplateManager({ active, selectedId, mode, onRoute, onOpenLog }) {
+export default function KakaoTemplateManager({ active, selectedId, mode, onRoute, onOpenLog, onSend }) {
   const [tplState, setTplState] = useState({ loading: false, loaded: false, error: null, status: 0, data: null });
   const [usage, setUsage] = useState(null);
   const [sent, setSent] = useState(null); // 종류·보내는 곳·문자 대체 건수(읽기 전용). 못 불러와도 목록은 그대로
@@ -190,6 +190,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     setMenuId('');
     setNotice(null);
     if (action === 'today_log') { onOpenLog?.(item.id); return; }
+    if (action === 'send') { onSend?.(item.id); return; }
     if (action === 'edit') { setFormError(''); onRoute({ tpl: item.id, mode: 'edit' }); return; }
     setDialogError('');
     setDialog({ type: action, item });
@@ -276,7 +277,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const renderCard = (item) => {
     const info = statusInfo(item.status);
     const badge = usageBadge(usage, item.id);
-    const actions = availableActions(item);
+    const actions = [...(item.status === 'APPROVED' && onSend ? ['send'] : []), ...availableActions(item)];
     const isOpen = menuId === item.id;
     const extras = templateExtras(item.id, sent);
     return (

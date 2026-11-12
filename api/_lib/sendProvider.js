@@ -63,6 +63,46 @@ const solapi = {
   },
 };
 
+// ---- 알림톡(승인된 템플릿) ----
+// 확인한 규격(2026-11-12): solapi-nodejs SDK 6.1.0 의 타입 정의(dist/index.d.ts)·소스(dist/index.js)
+// - 메시지 { to, from, type:'ATA', kakaoOptions:{ pfId, templateId, variables, disableSms } }
+// - disableSms:true 가 문자 대체 발송 끄기. variables 의 키는 '#{이름}' 모양(SDK formatVariableKey 가 '이름' 도 '#{이름}' 으로 바꿔 보냄).
+// - 단가: https://solapi.com/pricing — 알림톡 1건 13원(VAT 미포함, 유형 무관). 환경값 SMS_PRICE_ATA 로 바꿀 수 있다. 값이 숫자가 아니면 단가를 모름(null)으로 돌려준다.
+const DEFAULT_ATA_PRICE = 13;
+function kakaoUnitPrice(env = process.env) {
+  const raw = env.SMS_PRICE_ATA;
+  if (raw === undefined || raw === '') return DEFAULT_ATA_PRICE;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+solapi.estimateKakao = function estimateKakao({ count }, env = process.env) {
+  const unit = kakaoUnitPrice(env);
+  return { unit, total: unit === null ? null : unit * toInt(count), currency: 'KRW' };
+};
+// → send 와 같은 모양 { accepted, failed, groupId, uncertain, error }. 문자 대체는 끈다(실패 사유를 그대로 보인다).
+solapi.sendKakao = async function sendKakao({ from, recipients, pfId, templateId, variables }, { fetchImpl } = {}) {
+  const kakaoVariables = {};
+  for (const [name, value] of Object.entries(variables || {})) kakaoVariables[`#{${name}}`] = String(value ?? '');
+  const messages = recipients.map(to => ({
+    to, from, type: 'ATA',
+    kakaoOptions: { pfId, templateId, variables: kakaoVariables, disableSms: true },
+  }));
+  let payload;
+  try {
+    payload = await call('messages/v4/send-many/detail', {
+      method: 'POST', body: { messages, allowDuplicates: false, showMessageList: false },
+    }, { fetchImpl });
+  } catch (error) {
+    const status = Number(error?.status);
+    if (status >= 400 && status < 500) return { accepted: 0, failed: recipients.length, groupId: null, uncertain: false, error: String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) };
+    return { accepted: 0, failed: 0, groupId: null, uncertain: true, error: '보냈는지 확인하지 못했습니다. 발송 내역을 확인해 주세요' };
+  }
+  const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
+  const failed = Math.min(recipients.length, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
+  const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
+  return { accepted: recipients.length - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
+};
+
 const PROVIDERS = { solapi };
 
 export function getSendProvider(name = process.env.SMS_SEND_PROVIDER || 'solapi') {

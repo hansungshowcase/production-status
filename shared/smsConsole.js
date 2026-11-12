@@ -228,6 +228,8 @@ export function parseConsoleQuery(searchParams) {
     mode: TEMPLATE_MODES.includes(mode) ? mode : '',
   };
   if (state.mode === 'edit' && !state.tpl) state.mode = '';
+  // 보내기 메뉴에서 승인된 알림톡 템플릿으로 보낼 때만 붙는 칸(다른 메뉴·없을 때는 키가 없다)
+  if (state.menu === 'send' && TEMPLATE_ID_RE.test(getParam(searchParams, 'template'))) state.template = getParam(searchParams, 'template');
   if (state.menu === 'templates' && state.mode === 'new') state.ch = 'kakao'; // 등록 화면은 알림톡
   return state;
 }
@@ -237,6 +239,7 @@ export function buildConsoleQuery(state = {}) {
   const clean = parseConsoleQuery(state);
   const params = new URLSearchParams();
   if (clean.menu !== 'dashboard') params.set('menu', clean.menu);
+  if (clean.menu === 'send' && clean.template) params.set('template', clean.template);
   if (clean.menu === 'log') {
     if (clean.aud !== 'all') params.set('aud', clean.aud);
     if (clean.ch !== 'all') params.set('ch', clean.ch);

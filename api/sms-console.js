@@ -7,7 +7,7 @@ import * as defaultGuard from './_lib/smsConsoleGuard.js';
 import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
-import { runSend, sendOptions } from './_lib/smsManualSend.js';
+import { runKakaoSend, runSend, sendOptions } from './_lib/smsManualSend.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send']);
@@ -243,6 +243,11 @@ async function doSend(body, res, ctx) {
   const { deps, opts, guard } = ctx;
   try {
     const write = await guard.writeStatus({ db: deps.db, nowMs: ctx.nowMs });
+    if (body.kakao !== undefined) {
+      // 승인된 알림톡 템플릿으로 보내기(문자 발송 경로와 별도 함수)
+      const kakaoOut = await runKakaoSend(body, { writeEnabled: write.enabled, env: deps.env || process.env, db: deps.db || getDb(), provider: deps.sendProvider, fetchImpl: opts.fetchImpl, nowMs: ctx.nowMs, staff: deps.staff, kakao: ctx.kakao, kakaoOpts: opts });
+      return res.status(kakaoOut.status).json(kakaoOut.body);
+    }
     const out = await runSend(body, { writeEnabled: write.enabled, env: deps.env || process.env, db: deps.db || getDb(), provider: deps.sendProvider, fetchImpl: opts.fetchImpl, nowMs: ctx.nowMs, staff: deps.staff });
     return res.status(out.status).json(out.body);
   } catch {

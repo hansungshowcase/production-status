@@ -93,6 +93,7 @@ export const ACTION_LABELS = {
   edit: '내용 수정',
   rename: '이름 변경',
   today_log: '오늘 발송 보기',
+  send: '이 템플릿으로 보내기',
   delete: '삭제',
 };
 
