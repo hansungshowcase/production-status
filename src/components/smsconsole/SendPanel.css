@@ -31,3 +31,8 @@
 .smsc-send__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .smsc-send__row .smsc-send__input { flex: 1 1 160px; width: auto; }
 .smsc-send__btn--small { min-width: 0; }
+
+.smsc-send__thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--smsc-line, #dfe3ea); flex: none; }
+.smsc-send__scheduled { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.smsc-send__scheduled li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 15px; }
+.smsc-send__scheduled li span { min-width: 0; overflow-wrap: anywhere; }

@@ -75,3 +75,65 @@ export const allVariablesFilled = (names, values) => names.every(name => String(
 export function payloadSignature(recipients, text) {
   return JSON.stringify([recipients, String(text || '').trim()]);
 }
+
+// ---- 예약·사진 문자 ----
+export const IMAGE_MAX_BYTES = 200 * 1024; // 쏠라피 MMS 사진 용량 상한(SDK 6.1.0 문서 주석)
+export const IMAGE_MAX_EDGE = 1500; // 가로·세로 상한은 확인하지 못해 보수적으로 잡은 값
+export const SCHEDULE_MIN_MS = 5 * 60 * 1000;
+
+// <input type="datetime-local"> 값(KST 로 입력) → { ok, text, error }. 서버 parseKstSchedule 과 같은 형식('YYYY-MM-DDTHH:mm').
+export function scheduleInfo(value, nowMs = Date.now()) {
+  const text = String(value || '').trim();
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(text);
+  if (!m) return { ok: false, text: '', error: '' };
+  const ms = Date.parse(`${text}:00+09:00`);
+  if (!Number.isFinite(ms)) return { ok: false, text: '', error: '시각 형식이 올바르지 않습니다.' };
+  if (ms < nowMs + SCHEDULE_MIN_MS) return { ok: false, text, error: '지금부터 5분 뒤 이후로 정해 주세요.' };
+  return { ok: true, text, error: '' };
+}
+
+// 예약 목록·미리보기에 보일 짧은 시각(KST) '11/13 09:30'
+export function shortKst(value) {
+  const ms = typeof value === 'number' ? value : Date.parse(value);
+  if (!Number.isFinite(ms)) return '';
+  const t = new Date(ms + 9 * 3600000).toISOString();
+  return `${t.slice(5, 7)}/${t.slice(8, 10)} ${t.slice(11, 16)}`;
+}
+
+// 긴 변이 max 를 넘으면 비율을 지켜 줄인 크기(자르지 않는다)
+export function fitDimensions(width, height, max = IMAGE_MAX_EDGE) {
+  const long = Math.max(width, height);
+  if (!(long > 0)) return { width: 0, height: 0 };
+  const scale = long > max ? max / long : 1;
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
+// 브라우저에서 사진을 JPG 로 줄여 규격(200KB·긴 변 1500px) 안에 맞춘다. 안 되면 Error('사진이 너무 큽니다').
+// → { data(base64), bytes, url(미리보기용 object URL) }
+export async function shrinkImage(file) {
+  if (!file || !/^image\//.test(file.type || '')) throw new Error('사진 파일을 골라 주세요.');
+  let bitmap;
+  try { bitmap = await createImageBitmap(file); } catch { throw new Error('사진 파일을 골라 주세요.'); }
+  let { width, height } = fitDimensions(bitmap.width, bitmap.height);
+  for (let round = 0; round < 6; round += 1) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (blob && blob.size <= IMAGE_MAX_BYTES) {
+        const buffer = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < buffer.length; i += 0x8000) binary += String.fromCharCode(...buffer.subarray(i, i + 0x8000));
+        if (bitmap.close) bitmap.close();
+        return { data: btoa(binary), bytes: blob.size, url: URL.createObjectURL(blob) };
+      }
+    }
+    width = Math.max(1, Math.round(width * 0.8)); height = Math.max(1, Math.round(height * 0.8));
+  }
+  if (bitmap.close) bitmap.close();
+  throw new Error('사진이 너무 큽니다');
+}

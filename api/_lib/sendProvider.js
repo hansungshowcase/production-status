@@ -9,7 +9,8 @@ import { call } from './kakaoTemplates.js';
 //   1회 최대 건수는 SDK 문서에 10,000건(공식 개발 문서 본문은 확인하지 못함). 이 프로그램은 SMS_SEND_MAX_RECIPIENTS(기본 50)로 훨씬 작게 제한한다.
 export const SMS_MAX_BYTES = 90;
 export const LMS_MAX_BYTES = 2000;
-const DEFAULT_PRICE = Object.freeze({ SMS: 18, LMS: 45 });
+// - 사진 문자(MMS): https://solapi.com/pricing 의 '사진 MMS' 110원(VAT 미포함, 2026-11-12 확인). 환경값 SMS_PRICE_MMS 로 바꿀 수 있다.
+const DEFAULT_PRICE = Object.freeze({ SMS: 18, LMS: 45, MMS: 110 });
 
 // 한글(비 ASCII) 2바이트, 그 밖 1바이트
 export function byteLength(text) {
@@ -26,7 +27,7 @@ export function classifyText(text, subject = '') {
 }
 
 function unitPrice(type, env = process.env) {
-  const raw = Number(env[type === 'LMS' ? 'SMS_PRICE_LMS' : 'SMS_PRICE_SMS']);
+  const raw = Number(env[type === 'MMS' ? 'SMS_PRICE_MMS' : type === 'LMS' ? 'SMS_PRICE_LMS' : 'SMS_PRICE_SMS']);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_PRICE[type];
 }
 
@@ -40,17 +41,18 @@ const solapi = {
   },
   // → { accepted, failed, groupId, uncertain, error }
   //   accepted+failed = 보낸 건수. uncertain=true 면 업체가 받았는지 알 수 없다(다시 보내지 말고 발송 내역에서 확인).
-  async send({ type, from, recipients, text, subject }, { fetchImpl } = {}) {
+  async send({ type, from, recipients, text, subject, fileId, scheduledAt }, { fetchImpl } = {}) {
     const messages = recipients.map(to => {
       const message = { to, from, text, type };
-      if (type === 'LMS' && subject) message.subject = subject;
+      if ((type === 'LMS' || type === 'MMS') && subject) message.subject = subject;
+      if (fileId) message.imageId = fileId;
       return message;
     });
+    const body = { messages, allowDuplicates: false, showMessageList: false };
+    if (scheduledAt) body.scheduledDate = scheduledAt; // ISO 8601(UTC). SDK 6.1.0 도 Date 를 JSON 으로 같은 모양으로 보낸다.
     let payload;
     try {
-      payload = await call('messages/v4/send-many/detail', {
-        method: 'POST', body: { messages, allowDuplicates: false, showMessageList: false },
-      }, { fetchImpl });
+      payload = await call('messages/v4/send-many/detail', { method: 'POST', body }, { fetchImpl });
     } catch (error) {
       const status = Number(error?.status);
       if (status >= 400 && status < 500) return { accepted: 0, failed: recipients.length, groupId: null, uncertain: false, error: String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) };
@@ -101,6 +103,30 @@ solapi.sendKakao = async function sendKakao({ from, recipients, pfId, templateId
   const failed = Math.min(recipients.length, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
   const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
   return { accepted: recipients.length - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
+};
+
+// ---- 사진 문자·예약 취소 (2026-11-12, solapi-nodejs SDK 6.1.0 dist/index.js·index.d.ts 에서 확인) ----
+// - 파일 올리기: POST storage/v1/files { file:<base64>, type:'MMS', name } → { fileId }. SDK 주석: MMS 사진은 200KB 제한.
+// - 사진 문자: 메시지 { type:'MMS', imageId:<fileId>, text, subject? }. (SDK messageSchema 의 imageId)
+// - 예약 발송: 발송 본문 scheduledDate(ISO). 응답 groupInfo.groupId 가 그룹 id.
+// - 예약 취소: DELETE messages/v4/groups/{groupId}/schedule (SDK removeReservationToGroup, 그룹 안 메시지는 실패 처리됨)
+export const MMS_MAX_BYTES = 200 * 1024;
+solapi.uploadImage = async function uploadImage({ base64, name }, { fetchImpl } = {}) {
+  const payload = await call('storage/v1/files', { method: 'POST', body: { file: base64, type: 'MMS', name: String(name || 'photo.jpg').slice(0, 60) } }, { fetchImpl });
+  const fileId = payload?.fileId;
+  if (!fileId) throw new Error('fileId 없음');
+  return { fileId: String(fileId).slice(0, 80) };
+};
+// → { ok, error }
+solapi.cancelSchedule = async function cancelSchedule({ groupId }, { fetchImpl } = {}) {
+  if (!/^[\w-]{4,64}$/.test(String(groupId || ''))) return { ok: false, error: '예약 번호가 올바르지 않습니다.' };
+  try {
+    await call(`messages/v4/groups/${groupId}/schedule`, { method: 'DELETE' }, { fetchImpl });
+    return { ok: true, error: '' };
+  } catch (error) {
+    const status = Number(error?.status);
+    return { ok: false, error: status >= 400 && status < 500 ? String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) : '취소했는지 확인하지 못했습니다.' };
+  }
 };
 
 const PROVIDERS = { solapi };

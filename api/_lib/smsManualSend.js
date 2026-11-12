@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { assemblyWorkerPhone, INTERNAL_ALERT_CONTACTS } from './internalProductionAlerts.js';
-import { classifyText, getSendProvider, LMS_MAX_BYTES } from './sendProvider.js';
+import { classifyText, getSendProvider, LMS_MAX_BYTES, MMS_MAX_BYTES } from './sendProvider.js';
 import { TEMPLATE_ID_RE } from '../../shared/smsConsole.js';
 
 const DEFAULT_MAX_RECIPIENTS = 50;
@@ -122,7 +122,13 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
 
   if (phones.length > settings.max) return errorReply(400, `한 번에 ${settings.max}명까지 보낼 수 있습니다.`);
 
+  // 예약·사진(둘 다 없으면 아래 값은 모두 비어 있고 지금과 같은 경로를 탄다)
+  const extra = parseSendExtras(body, { env, nowMs });
+  if (extra.error) return errorReply(400, extra.error);
+  const msgType = extra.image ? 'MMS' : kind.type;
+
   await ensureManualSendSchema(db);
+  if (extra.scheduled) await ensureScheduleColumn(db);
   const { rows: usedRows } = await db.execute({
     sql: 'SELECT COALESCE(SUM(recipient_count), 0)::int AS n FROM sms_manual_sends WHERE sent_at >= ?',
     args: [kstDayStartIso(nowMs)],
@@ -132,8 +138,13 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
 
   const vendor = provider || getSendProvider();
   if (!vendor) return errorReply(503, '발송 업체가 설정되지 않았습니다.');
-  const estimate = vendor.estimate({ type: kind.type, count: phones.length }, env);
-  if (dryRun) return reply(200, { dry_run: true, count: phones.length, type: kind.type, bytes: kind.bytes, cost: estimate.total, unit: estimate.unit });
+  if (extra.image && typeof vendor.uploadImage !== 'function') return errorReply(503, '이 발송 업체는 사진 문자를 지원하지 않습니다.');
+  const estimate = vendor.estimate({ type: msgType, count: phones.length }, env);
+  if (dryRun) {
+    const preview = { dry_run: true, count: phones.length, type: msgType, bytes: kind.bytes, cost: estimate.total, unit: estimate.unit };
+    if (extra.scheduled) preview.scheduled_at = extra.scheduled.text;
+    return reply(200, preview);
+  }
 
   const from = digits(env.SMS_SENDER);
   if (!from) return errorReply(503, '발신번호가 설정되지 않았습니다.');
@@ -144,7 +155,7 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
   const inserted = await db.execute({
     sql: `INSERT INTO sms_manual_sends (idem_key, msg_type, recipient_count, text_length, tails, recipients_hash, status)
           VALUES (?, ?, ?, ?, ?, ?, 'sending') ON CONFLICT (idem_key) DO NOTHING RETURNING id`,
-    args: [key, kind.type, phones.length, [...text].length, tails, hash],
+    args: [key, msgType, phones.length, [...text].length, tails, hash],
   });
   if (!inserted.rows?.length) {
     const { rows } = await db.execute({
@@ -152,7 +163,7 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
       args: [key],
     });
     const row = rows?.[0] || {};
-    return reply(200, { sent: row.status === 'sent' || row.status === 'partial', duplicate: true, status: row.status || 'sending', type: row.msg_type || kind.type,
+    return reply(200, { sent: row.status === 'sent' || row.status === 'partial', duplicate: true, status: row.status || 'sending', type: row.msg_type || msgType,
       count: Number(row.recipient_count) || phones.length, success: Number(row.success_count) || 0, fail: Number(row.fail_count) || 0 });
   }
 
@@ -167,9 +178,23 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
     return errorReply(429, `하루 ${settings.daily}건까지 보낼 수 있습니다. 오늘 ${Math.max(0, usedAfter - phones.length)}건 보냈습니다.`);
   }
 
+  let fileId = '';
+  if (extra.image) {
+    // 올리기는 멱등 확인(위 중복 응답) 뒤에 1번만 한다. 올리기가 실패하면 아무것도 안 나갔으므로 같은 키로 다시 보낼 수 있게 기록을 지운다.
+    try {
+      fileId = (await vendor.uploadImage({ base64: extra.image.base64, name: extra.image.name }, { fetchImpl }))?.fileId || '';
+    } catch { fileId = ''; }
+    if (!fileId) {
+      try { await db.execute({ sql: 'DELETE FROM sms_manual_sends WHERE idem_key = ?', args: [key] }); } catch { /* 기록 정리 실패는 무시 */ }
+      return errorReply(502, '사진을 올리지 못했습니다. 다시 시도해 주세요.');
+    }
+  }
+  const sendInput = { type: msgType, from, recipients: phones, text, subject };
+  if (fileId) sendInput.fileId = fileId;
+  if (extra.scheduled) sendInput.scheduledAt = extra.scheduled.iso;
   let result;
   try {
-    result = await vendor.send({ type: kind.type, from, recipients: phones, text, subject }, { fetchImpl });
+    result = await vendor.send(sendInput, { fetchImpl });
   } catch {
     result = { accepted: 0, failed: 0, groupId: null, uncertain: true, error: '보냈는지 확인하지 못했습니다. 발송 내역을 확인해 주세요' };
   }
@@ -180,8 +205,12 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
       args: [status, result.accepted || 0, result.failed || 0, result.groupId || null, result.error ? String(result.error).slice(0, 200) : null, key],
     });
   } catch { /* 기록 실패가 이미 끝난 발송 결과 응답을 막지 않게 한다 */ }
-  console.info('[sms-send]', status, phones.length, kind.type);
-  const out = { sent: status === 'sent' || status === 'partial', status, type: kind.type, count: phones.length, success: result.accepted || 0, fail: result.failed || 0, cost: estimate.total };
+  if (extra.scheduled && status !== 'failed') {
+    try { await db.execute({ sql: 'UPDATE sms_manual_sends SET scheduled_at = ? WHERE idem_key = ?', args: [extra.scheduled.iso, key] }); } catch { /* 기록 실패가 이미 끝난 예약 응답을 막지 않게 한다 */ }
+  }
+  console.info('[sms-send]', status, phones.length, msgType);
+  const out = { sent: status === 'sent' || status === 'partial', status, type: msgType, count: phones.length, success: result.accepted || 0, fail: result.failed || 0, cost: estimate.total };
+  if (extra.scheduled) out.scheduled_at = extra.scheduled.text;
   if (result.uncertain) out.uncertain = true;
   if (result.error) out.message = String(result.error).slice(0, 200);
   return reply(200, out);
@@ -308,4 +337,89 @@ export async function runKakaoSend(body, { env = process.env, db, provider, fetc
   if (result.uncertain) out.uncertain = true;
   if (result.error) out.message = String(result.error).slice(0, 200);
   return reply(200, out);
+}
+
+// ---- 예약 발송·사진 문자 (5단계) ----
+// 쏠라피 규격(solapi-nodejs SDK 6.1.0): 예약은 발송 본문 scheduledDate, 취소는 DELETE groups/{groupId}/schedule, 사진은 storage/v1/files(type MMS, 200KB) 의 fileId 를 메시지 imageId 로.
+// 예약 최대 기간은 공식 문서에서 확인하지 못해 SMS_SCHEDULE_MAX_DAYS(기본 30일)로 자체 제한한다.
+const MIN_SCHEDULE_MS = 5 * 60 * 1000;
+const SCHEDULED_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+const IMAGE_BASE64_MAX = Math.ceil(MMS_MAX_BYTES / 3) * 4 + 8;
+
+// KST 'YYYY-MM-DDTHH:mm' → { text, iso, ms } | null
+export function parseKstSchedule(value) {
+  const m = SCHEDULED_RE.exec(String(value ?? '').trim());
+  if (!m) return null;
+  const ms = Date.parse(`${m[0]}:00+09:00`);
+  if (!Number.isFinite(ms)) return null;
+  const back = new Date(ms + 9 * 3600000).toISOString().slice(0, 16);
+  if (back !== m[0]) return null; // 2월 31일 같은 날짜
+  return { text: m[0], iso: new Date(ms).toISOString(), ms };
+}
+
+// body.scheduled_at · body.image({ data }) 검증 → { scheduled, image } | { error }
+export function parseSendExtras(body, { env = process.env, nowMs = Date.now() } = {}) {
+  const out = { scheduled: null, image: null };
+  if (body.scheduled_at !== undefined && body.scheduled_at !== null && body.scheduled_at !== '') {
+    const parsed = parseKstSchedule(body.scheduled_at);
+    if (!parsed) return { error: '예약 시각 형식이 올바르지 않습니다.' };
+    const maxDays = intEnv(env.SMS_SCHEDULE_MAX_DAYS, 30);
+    if (parsed.ms < nowMs + MIN_SCHEDULE_MS) return { error: '예약은 지금부터 5분 뒤 이후로만 걸 수 있습니다.' };
+    if (parsed.ms > nowMs + maxDays * 86400000) return { error: `예약은 ${maxDays}일 안으로만 걸 수 있습니다.` };
+    out.scheduled = parsed;
+  }
+  if (body.image !== undefined && body.image !== null) {
+    const raw = typeof body.image === 'object' && !Array.isArray(body.image) ? body.image.data : '';
+    const base64 = typeof raw === 'string' ? raw.replace(/^data:image\/jpe?g;base64,/i, '').replace(/\s+/g, '') : '';
+    if (!base64 || base64.length > IMAGE_BASE64_MAX || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return { error: '사진이 너무 크거나 올바르지 않습니다.' };
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > MMS_MAX_BYTES) return { error: '사진이 너무 큽니다.' };
+    if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) return { error: '사진은 JPG 형식만 보낼 수 있습니다.' };
+    out.image = { base64, bytes: buffer.length, name: 'photo.jpg' };
+  }
+  return out;
+}
+
+export async function ensureScheduleColumn(db) {
+  if (schemaFlags.get('sms.manualSends.scheduled')) return;
+  await db.execute({ sql: 'ALTER TABLE sms_manual_sends ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ', args: [] });
+  schemaFlags.set('sms.manualSends.scheduled', true);
+}
+
+// 아직 안 나간 예약(시각·인원·종류·끝 4자리). 번호 전체는 기록에 없다.
+export async function listScheduledSends(db, nowMs = Date.now()) {
+  await ensureManualSendSchema(db);
+  await ensureScheduleColumn(db);
+  const { rows } = await db.execute({
+    sql: `SELECT id, scheduled_at, recipient_count, msg_type, tails FROM sms_manual_sends
+          WHERE scheduled_at > ? AND status IN ('sent', 'partial') AND group_id IS NOT NULL ORDER BY scheduled_at ASC LIMIT 50`,
+    args: [new Date(nowMs).toISOString()],
+  });
+  return (rows || []).map(row => ({
+    id: Number(row.id), at: new Date(row.scheduled_at).toISOString(), count: Number(row.recipient_count) || 0,
+    type: row.msg_type || '', tails: String(row.tails || '').split(',').filter(Boolean).slice(0, 10),
+  }));
+}
+
+// action 'send_cancel' {id}: 아직 안 나간 예약만 쏠라피에서 취소한다.
+export async function runSendCancel(body, { env = process.env, db, provider, fetchImpl, nowMs = Date.now(), writeEnabled = true } = {}) {
+  const settings = sendSettings(env, writeEnabled);
+  if (!settings.enabled) return errorReply(403, '발송이 꺼져 있습니다.');
+  const id = Number(body.id);
+  if (!Number.isInteger(id) || id <= 0) return errorReply(400, '올바른 요청이 아닙니다.');
+  const vendor = provider || getSendProvider();
+  if (!vendor || typeof vendor.cancelSchedule !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
+  await ensureManualSendSchema(db);
+  await ensureScheduleColumn(db);
+  const { rows } = await db.execute({ sql: 'SELECT id, status, scheduled_at, group_id FROM sms_manual_sends WHERE id = ?', args: [id] });
+  const row = rows?.[0];
+  if (!row) return errorReply(404, '예약을 찾을 수 없습니다.');
+  if (row.status === 'cancelled') return errorReply(409, '이미 취소된 예약입니다.');
+  const at = row.scheduled_at ? Date.parse(row.scheduled_at) : NaN;
+  if (!Number.isFinite(at) || at <= nowMs || !row.group_id || !['sent', 'partial'].includes(row.status)) return errorReply(409, '이미 나갔거나 취소할 수 없는 문자입니다.');
+  const out = await vendor.cancelSchedule({ groupId: row.group_id }, { fetchImpl });
+  if (!out?.ok) return errorReply(502, out?.error || '예약을 취소하지 못했습니다.');
+  try { await db.execute({ sql: "UPDATE sms_manual_sends SET status = 'cancelled' WHERE id = ?", args: [id] }); } catch { /* 취소는 이미 끝났다 */ }
+  console.info('[sms-send]', 'cancelled', id);
+  return reply(200, { cancelled: true, id });
 }

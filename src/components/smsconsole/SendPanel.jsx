@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
-import { allVariablesFilled, buildRecipients, fillTemplateContent, lockedLine, makeIdempotencyKey, payloadSignature, templateVariableNames, textInfo } from './sendPanelModel.js';
+import { allVariablesFilled, buildRecipients, fillTemplateContent, lockedLine, makeIdempotencyKey, payloadSignature, scheduleInfo, shortKst, shrinkImage, templateVariableNames, textInfo } from './sendPanelModel.js';
 import './SendPanel.css';
 
 const wonText = value => (value === null || value === undefined ? '모름' : `${Number(value || 0).toLocaleString('ko-KR')}원`);
-const typeText = type => (type === 'ATA' ? '알림톡' : type);
+const typeText = type => (type === 'ATA' ? '알림톡' : type === 'MMS' ? '사진 문자' : type);
 
 // 문자 직접 보내기. 화면이 처음 열릴 때 설정을 1번만 읽고, 이후 요청은 미리보기·보내기를 누를 때뿐이다.
 export default function SendPanel({ active = true, template = '' }) {
@@ -30,11 +30,18 @@ export default function SendPanel({ active = true, template = '' }) {
   const [saving, setSaving] = useState(false);
   const [textError, setTextError] = useState('');
   const textsLoadedRef = useRef(false);
+  const [image, setImage] = useState(null); // { data, bytes, url } 사진 1장(문자 보내기에서만)
+  const [imageError, setImageError] = useState('');
+  const [scheduleOn, setScheduleOn] = useState(false);
+  const [scheduleValue, setScheduleValue] = useState('');
+  const [scheduled, setScheduled] = useState([]); // 아직 안 나간 예약 목록
+  const [cancelError, setCancelError] = useState('');
+  const fileRef = useRef(null);
 
   useEffect(() => {
     if (!active || loadedRef.current) return;
     loadedRef.current = true;
-    fetchSmsConsole('send').then(setOptions).catch(err => { loadedRef.current = false; setLoadError(err.message || '불러오지 못했습니다.'); });
+    fetchSmsConsole('send').then(data => { setOptions(data); setScheduled(data?.scheduled || []); }).catch(err => { loadedRef.current = false; setLoadError(err.message || '불러오지 못했습니다.'); });
   }, [active]);
 
   // 내 문구: 문자 보내기 화면이 열릴 때 1번만 읽는다.
@@ -61,11 +68,14 @@ export default function SendPanel({ active = true, template = '' }) {
   const varNames = tplItem ? templateVariableNames(tplItem) : [];
   const { recipients, invalid } = buildRecipients(phoneText, staffIds);
   const info = textInfo(text);
-  const sig = payloadSignature(recipients, template ? JSON.stringify([template, values]) : text);
+  const schedule = !template && scheduleOn ? scheduleInfo(scheduleValue) : { ok: false, text: '', error: '' };
+  const photo = !template ? image : null;
+  const extraSig = photo || schedule.text ? JSON.stringify([text, photo ? `${photo.bytes}:${photo.data.slice(-24)}` : '', schedule.text]) : text;
+  const sig = payloadSignature(recipients, template ? JSON.stringify([template, values]) : extraSig);
   const locked = lockedLine(options);
   const previewOk = preview && preview.sig === sig;
   const contentReady = template ? Boolean(tplItem) && allVariablesFilled(varNames, values) : Boolean(info.type) && !info.tooLong;
-  const canPreview = !locked && !busy && recipients.length > 0 && invalid === 0 && contentReady;
+  const canPreview = !locked && !busy && recipients.length > 0 && invalid === 0 && contentReady && (!scheduleOn || Boolean(template) || schedule.ok);
 
   const selectedText = texts.find(item => String(item.id) === String(textId)) || null;
   const pickText = value => {
@@ -94,17 +104,39 @@ export default function SendPanel({ active = true, template = '' }) {
       setTextId(''); setConfirmDelete(false);
     } catch (err) { setTextError(err.message || '지우지 못했습니다.'); }
   };
+  const pickImage = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImageError('');
+    try {
+      const next = await shrinkImage(file);
+      if (image?.url) URL.revokeObjectURL(image.url);
+      setImage(next); setResult(null);
+    } catch (err) { setImageError(err.message || '사진이 너무 큽니다'); }
+  };
+  const removeImage = () => { if (image?.url) URL.revokeObjectURL(image.url); setImage(null); setImageError(''); setResult(null); };
+  const cancelSchedule = async id => {
+    setCancelError('');
+    try {
+      await postSmsConsole('send_cancel', { id });
+      setScheduled(prev => prev.filter(item => item.id !== id));
+    } catch (err) { setCancelError(err.message || '취소하지 못했습니다.'); }
+  };
   const toggleStaff = id => { setStaffIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])); setResult(null); };
   const request = async dryRun => {
     setBusy(dryRun ? 'preview' : 'send');
     setError('');
     if (keyRef.current.sig !== sig) keyRef.current = { sig, key: makeIdempotencyKey() };
     try {
-      const body = template ? { recipients, kakao: { templateId: template, variables: values }, dry_run: dryRun, idempotencyKey: keyRef.current.key } : { recipients, text, dry_run: dryRun, idempotencyKey: keyRef.current.key };
+      const body = template ? { recipients, kakao: { templateId: template, variables: values }, dry_run: dryRun, idempotencyKey: keyRef.current.key } : { recipients, text, dry_run: dryRun, idempotencyKey: keyRef.current.key, ...(photo ? { image: { data: photo.data } } : {}), ...(schedule.ok ? { scheduled_at: schedule.text } : {}) };
       const out = await postSmsConsole('send', body);
-      if (dryRun) { setPreview({ sig, count: out.count, type: out.type, cost: out.cost }); setResult(null); return; }
+      if (dryRun) { setPreview({ sig, count: out.count, type: out.type, cost: out.cost, at: out.scheduled_at || '' }); setResult(null); return; }
       setResult(out);
       setPhoneText(''); setStaffIds([]); setPreview(null);
+      if (out.scheduled_at) fetchSmsConsole('send').then(data => setScheduled(data?.scheduled || [])).catch(() => {});
+      if (photo) { if (photo.url) URL.revokeObjectURL(photo.url); setImage(null); setImageError(''); }
+      setScheduleOn(false); setScheduleValue('');
       keyRef.current = { sig: '', key: '' };
     } catch (err) {
       setError(err.message || '요청에 실패했습니다.');
@@ -171,6 +203,15 @@ export default function SendPanel({ active = true, template = '' }) {
         <label htmlFor="smsc-send-text">내용</label>
         <textarea id="smsc-send-text" rows={6} value={text} onChange={event => { setText(event.target.value); setResult(null); }} />
         <p className="smsc-send__count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}</p>
+        {!template ? (
+          <div className="smsc-send__row">
+            <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
+            <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={() => fileRef.current?.click()}>사진</button>
+            {image ? <img className="smsc-send__thumb" src={image.url} alt="" /> : null}
+            {image ? <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={removeImage}>빼기</button> : null}
+          </div>
+        ) : null}
+        {imageError ? <p className="smsc-send__error" role="alert">{imageError}</p> : null}
       </div>
       {!template ? (
         <div className="smsc-send__field">
@@ -189,14 +230,32 @@ export default function SendPanel({ active = true, template = '' }) {
         </div>
       ) : null}
       {error ? <p className="smsc-send__server" role="alert">{error}</p> : null}
-      {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}</p> : null}
+      {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}{preview.at ? ` · 예약 ${shortKst(Date.parse(`${preview.at}:00+09:00`))}` : ''}</p> : null}
       {result ? <p className="smsc-send__result" role="status">성공 {result.success}건 · 실패 {result.fail}건{result.message ? ` · ${result.message}` : ''}</p> : null}
+      {!template && !locked ? (
+        <div className="smsc-send__row">
+          <label className="smsc-send__choice"><input type="checkbox" checked={scheduleOn} onChange={event => { setScheduleOn(event.target.checked); setResult(null); }} /><span>예약</span></label>
+          {scheduleOn ? <input className="smsc-send__input" type="datetime-local" aria-label="예약 시각" value={scheduleValue} onChange={event => { setScheduleValue(event.target.value); setResult(null); }} aria-invalid={Boolean(schedule.error)} /> : null}
+        </div>
+      ) : null}
+      {scheduleOn && schedule.error ? <p className="smsc-send__error">{schedule.error}</p> : null}
       {locked ? <p className="smsc-send__locked">{locked}</p> : (
         <div className="smsc-send__actions">
           <button type="button" className="smsc-send__btn" disabled={!canPreview} onClick={() => request(true)}>{busy === 'preview' ? '확인 중…' : '미리보기'}</button>
           <button type="button" className="smsc-send__btn smsc-send__btn--primary" disabled={!canPreview || !previewOk} onClick={() => request(false)}>{busy === 'send' ? '보내는 중…' : '보내기'}</button>
         </div>
       )}
+      {!template && scheduled.length ? (
+        <ul className="smsc-send__scheduled">
+          {scheduled.map(item => (
+            <li key={item.id}>
+              <span>{shortKst(item.at)} · {item.count}명 · {typeText(item.type)}</span>
+              <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={() => cancelSchedule(item.id)}>취소</button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {cancelError ? <p className="smsc-send__error" role="alert">{cancelError}</p> : null}
     </form>
   );
 }

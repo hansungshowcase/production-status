@@ -7,11 +7,11 @@ import * as defaultGuard from './_lib/smsConsoleGuard.js';
 import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
-import { runKakaoSend, runSend, sendOptions } from './_lib/smsManualSend.js';
+import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions } from './_lib/smsManualSend.js';
 import { deleteTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates']);
-const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -114,7 +114,13 @@ async function handleGet(req, res, ctx) {
   if (!RESOURCES.has(resource)) return fail(res, 400, '올바른 조회가 아닙니다.');
   if (resource === 'send') {
     const write = await guard.writeStatus({ db: deps.db, nowMs });
-    return res.status(200).json(sendOptions(deps.env || process.env, deps.staff, write.enabled));
+    const options = sendOptions(deps.env || process.env, deps.staff, write.enabled);
+    // 아직 안 나간 예약이 있을 때만 'scheduled' 칸을 더한다(없으면 응답은 예전과 같다). 조회 실패는 화면을 막지 않는다.
+    try {
+      const scheduled = await listScheduledSends(deps.db || getDb(), nowMs);
+      if (scheduled.length) options.scheduled = scheduled;
+    } catch { /* 예약 목록은 덤이다 */ }
+    return res.status(200).json(options);
   }
   if (resource === 'text_templates') {
     try {
@@ -182,10 +188,11 @@ async function handlePost(req, res, ctx) {
   if (!enforceSameOriginWrite(req, res)) return;
   const body = parseBody(req.body);
   // 보내기는 템플릿 작업과 요청 수 제한 통을 나눈다.
-  const isSend = body?.action === 'send';
+  const isSend = body?.action === 'send' || body?.action === 'send_cancel';
   if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: isSend ? 10 : 5, keySuffix: isSend ? 'SEND' : 'POST' })) return;
   if (!body || !ACTIONS.has(body.action)) return fail(res, 400, '올바른 요청이 아닙니다.');
   const action = body.action;
+  if (action === 'send_cancel') return doSendCancel(body, res, ctx);
   if (isSend) return doSend(body, res, ctx);
 
   const write = await guard.writeStatus({ db: deps.db, nowMs });
@@ -266,6 +273,18 @@ async function doSend(body, res, ctx) {
     return res.status(out.status).json(out.body);
   } catch {
     return fail(res, 500, '문자를 보내지 못했습니다.');
+  }
+}
+
+// 아직 안 나간 예약 취소(문자 보내기 화면의 예약 목록)
+async function doSendCancel(body, res, ctx) {
+  const { deps, opts, guard } = ctx;
+  try {
+    const write = await guard.writeStatus({ db: deps.db, nowMs: ctx.nowMs });
+    const out = await runSendCancel(body, { writeEnabled: write.enabled, env: deps.env || process.env, db: deps.db || getDb(), provider: deps.sendProvider, fetchImpl: opts.fetchImpl, nowMs: ctx.nowMs });
+    return res.status(out.status).json(out.body);
+  } catch {
+    return fail(res, 500, '예약을 취소하지 못했습니다.');
   }
 }
 
