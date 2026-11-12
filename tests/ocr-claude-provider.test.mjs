@@ -26,11 +26,11 @@ const COMPLETE = {
   notes: '',
 };
 
-function buildRequest() {
+function buildRequest(image = PNG_1X1, type = 'image/png') {
   const boundary = 'testboundary123';
   const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="w.png"\r\nContent-Type: image/png\r\n\r\n`),
-    PNG_1X1,
+    Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="w.png"\r\nContent-Type: ${type}\r\n\r\n`),
+    image,
     Buffer.from(`\r\n--${boundary}--\r\n`),
   ]);
   const req = Readable.from([body]);
@@ -84,7 +84,7 @@ function geminiMessage(data) {
   return { candidates: [{ content: { parts: [{ text: JSON.stringify(data) }] } }] };
 }
 
-async function run({ env, fetchImpl }) {
+async function run({ env, fetchImpl, image, type }) {
   const saved = {
     fetch: globalThis.fetch,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
@@ -103,7 +103,7 @@ async function run({ env, fetchImpl }) {
   };
   try {
     const res = buildResponse();
-    await handler(buildRequest(), res);
+    await handler(buildRequest(image, type), res);
     return { res, calls };
   } finally {
     globalThis.fetch = saved.fetch;
@@ -129,7 +129,7 @@ test('Claude 키가 있으면 Claude 가 먼저 읽고, 읽은 값을 그대로 
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /\/v1\/messages/);
   const sent = JSON.parse(calls[0].body);
-  assert.equal(sent.model, 'claude-sonnet-5-5');
+  assert.equal(sent.model, 'claude-opus-5-5');
   assert.equal(sent.messages[0].content[0].type, 'image');
   assert.equal(sent.messages[0].content[0].source.media_type, 'image/png');
   assert.equal(sent.messages[0].content[1].type, 'text');
@@ -240,4 +240,57 @@ test('Claude 와 Gemini 가 모두 실패하면 빈 값으로 수동 입력에 �
   assert.equal(res.body.provider, 'manual');
   assert.equal(res.body.success, false);
   assert.equal(res.body.data.client_name, '');
+});
+
+test('작은 사진은 Claude 에 보내기 전에 키우고, 큰 사진은 그대로 둔다', async () => {
+  const { enlargeImageForClaude } = await import('../api/ocr/work-order.js');
+  const { default: sharp } = await import('sharp');
+  const small = await sharp({ create: { width: 650, height: 900, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  const enlarged = await enlargeImageForClaude(small, 'image/png');
+  const meta = await sharp(enlarged.data).metadata();
+  assert.equal(enlarged.mimeType, 'image/jpeg');
+  assert.equal(Math.max(meta.width, meta.height), 1900);
+  const big = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  const untouched = await enlargeImageForClaude(big, 'image/png');
+  assert.equal(untouched.data, big);
+  assert.equal(untouched.mimeType, 'image/png');
+});
+
+test('보통 크기 사진은 전체 확대와 윗부분 확대 두 장을 글보다 먼저 보낸다', async () => {
+  const { default: sharp } = await import('sharp');
+  const shot = await sharp({ create: { width: 650, height: 900, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  const { res, calls } = await run({
+    env: { ANTHROPIC_API_KEY: 'sk-ant-test' },
+    fetchImpl: () => jsonResponse(claudeMessage(COMPLETE)),
+    image: shot,
+    type: 'image/png',
+  });
+  assert.equal(res.body.provider, 'claude', JSON.stringify([res.statusCode, res.body]));
+  const content = JSON.parse(calls[0].body).messages[0].content;
+  assert.deepEqual(content.map((block) => block.type), ['image', 'image', 'text']);
+  const zoom = await sharp(Buffer.from(content[1].source.data, 'base64')).metadata();
+  assert.equal(zoom.width, 1900);
+  assert.ok(zoom.width > zoom.height);
+  assert.match(content[2].text, /두 번째 사진/);
+});
+
+test('회전 정보가 있는 휴대폰 사진은 바로 세운 뒤 윗부분을 자른다', async () => {
+  const { buildHeaderZoomForClaude, enlargeImageForClaude } = await import('../api/ocr/work-order.js');
+  const { default: sharp } = await import('sharp');
+  // 저장은 가로 1200×세로 900 이지만 회전 정보 6 이라 바로 세우면 900×1200 세로 문서다.
+  const phone = await sharp({ create: { width: 1200, height: 900, channels: 3, background: '#ffffff' } }).withMetadata({ orientation: 6 }).jpeg().toBuffer();
+  const zoom = await sharp((await buildHeaderZoomForClaude(phone)).data).metadata();
+  assert.ok(zoom.width > zoom.height, '윗부분 확대는 가로로 긴 띠여야 한다');
+  assert.equal(zoom.width, 1900);
+  const full = await sharp((await enlargeImageForClaude(phone, 'image/jpeg')).data).metadata();
+  assert.ok(full.height > full.width, '전체 확대는 세로 문서여야 한다');
+});
+
+test('깨진 사진 파일은 확대하지 않고 원본으로 읽는다', async () => {
+  const { buildHeaderZoomForClaude, enlargeImageForClaude } = await import('../api/ocr/work-order.js');
+  const broken = Buffer.from('not an image');
+  const kept = await enlargeImageForClaude(broken, 'image/png');
+  assert.equal(kept.data, broken);
+  assert.equal(kept.mimeType, 'image/png');
+  assert.equal(await buildHeaderZoomForClaude(broken), null);
 });

@@ -20,9 +20,23 @@ const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
 const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 // 1순위 읽기 AI. Gemini 2.5 flash 는 낯선 상호를 흔한 말로 바꿔 읽었다
 // (눙크→농크, 달틈→달콤, 힉하우스→희하우스 — 2026-11-12 작업지시서 27장 실측).
-// 같은 27장을 Sonnet 5.5 가 평균 10초에 읽었고, Opus 5.5 는 같은 장에서 똑같이 틀리면서 더 느렸다.
+// 작업지시서 사진은 가로 650픽셀 안팎의 작은 화면 캡처라 글자가 14픽셀쯤이다.
+// 전체를 키운 사진과 윗부분만 더 키운 사진을 함께 Opus 5.5 로 읽히면 틀리던 상호 8건을
+// 3회 모두 맞혔다(평균 6.0초, 81회 중 1회 16초 초과). 전체 확대만으로는 값진→갑진이 남았고,
+// Sonnet 5.5 는 키워도 눙크→농크, 숯토리→숫토리가 남았다(2026-11-12 같은 27장 실측).
 // 바꾸려면 Vercel 환경변수 ANTHROPIC_OCR_MODEL.
-const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5';
+const DEFAULT_CLAUDE_MODEL = 'claude-opus-5-5';
+const CLAUDE_IMAGE_TARGET_EDGE = 1900;
+const CLAUDE_IMAGE_ENLARGE_BELOW = 1500;
+const CLAUDE_IMAGE_MIN_EDGE = 200;
+const CLAUDE_IMAGE_MAX_SCALE = 3;
+const CLAUDE_HEADER_ZOOM_PORTION = 0.3;
+const CLAUDE_HEADER_ZOOM_MAX_SCALE = 4;
+const CLAUDE_HEADER_ZOOM_PROMPT = `
+- 두 번째 사진은 첫 번째 사진의 윗부분을 크게 확대한 것이다. 발주처, 발주일, 연락처, 담당자, 품명, 규격, 수량은 두 번째 사진의 글자를 기준으로 읽는다. 두 번째 사진에 없는 칸과 아래쪽 내용은 첫 번째 사진에서 읽는다.`;
+// Claude 는 품명이 목록에 없으면 정직하게 null 을 돌려줘 수동 입력으로 빠졌다(27장 중 6장).
+const CLAUDE_EXTRA_PROMPT = `
+- product_type은 null로 두지 않는다. 품명에 목록의 용도가 적혀 있지 않은 일반 냉장 쇼케이스("앞문 냉장", "냉장쇼케이스" 등)는 "진열"로 한다. 냉동 제품처럼 목록 어디에도 가깝지 않을 때만 품명 칸의 제품 종류 낱말을 적힌 그대로 쓴다(예: "냉동고").`;
 // Vercel 함수 한도는 30초. Claude 가 못 읽으면 남은 시간으로 Gemini 를 한 번 더 부른다.
 const OCR_TOTAL_BUDGET_MS = 27_000;
 const CLAUDE_TIMEOUT_MS = 16_000;
@@ -235,7 +249,61 @@ export function fillEmptyOcrFields(primary, secondary) {
   return merged;
 }
 
+// sharp 는 쓸 때만 불러온다. 서버에서 못 불러와도 원본 사진으로 읽고, 키 없는 경로·Gemini 경로는 그대로 돈다.
+// 휴대폰 사진은 회전 정보(EXIF)가 있어 바로 세운 뒤의 가로·세로를 쓴다.
+async function readUprightImageSize(data) {
+  const { default: sharp } = await import('sharp');
+  const meta = await sharp(data).metadata();
+  return {
+    sharp,
+    width: meta.autoOrient?.width || meta.width || 0,
+    height: meta.autoOrient?.height || meta.height || 0,
+  };
+}
+
+// 작은 사진만 키운다. 실패하면 원본 그대로 보낸다.
+export async function enlargeImageForClaude(data, mimeType) {
+  try {
+    const { sharp, width, height } = await readUprightImageSize(data);
+    const longEdge = Math.max(width, height);
+    if (longEdge < CLAUDE_IMAGE_MIN_EDGE || longEdge >= CLAUDE_IMAGE_ENLARGE_BELOW) return { data, mimeType };
+    const scale = Math.min(CLAUDE_IMAGE_MAX_SCALE, CLAUDE_IMAGE_TARGET_EDGE / longEdge);
+    const enlarged = await sharp(data)
+      .rotate()
+      .resize({ width: Math.round(width * scale), kernel: 'lanczos3' })
+      .jpeg({ quality: 92 })
+      .toBuffer();
+    return { data: enlarged, mimeType: 'image/jpeg' };
+  } catch (err) {
+    console.warn('Claude OCR 사진 확대 실패, 원본으로 읽음:', err.message || err);
+    return { data, mimeType };
+  }
+}
+
+// 발주처·연락처·품명·규격이 있는 윗부분만 잘라 크게 만든다. 실패하면 null.
+export async function buildHeaderZoomForClaude(data) {
+  try {
+    const { sharp, width, height } = await readUprightImageSize(data);
+    if (!width || !height || Math.max(width, height) < CLAUDE_IMAGE_MIN_EDGE) return null;
+    const scale = Math.max(1, Math.min(CLAUDE_HEADER_ZOOM_MAX_SCALE, CLAUDE_IMAGE_TARGET_EDGE / width));
+    const zoomed = await sharp(data)
+      .rotate()
+      .extract({ left: 0, top: 0, width, height: Math.round(height * CLAUDE_HEADER_ZOOM_PORTION) })
+      .resize({ width: Math.round(width * scale), kernel: 'lanczos3' })
+      .jpeg({ quality: 92 })
+      .toBuffer();
+    return { data: zoomed, mimeType: 'image/jpeg' };
+  } catch (err) {
+    console.warn('Claude OCR 윗부분 확대 실패, 전체 사진만 읽음:', err.message || err);
+    return null;
+  }
+}
+
 async function callClaudeOcr({ apiKey, mimeType, filePart }) {
+  const [image, headerZoom] = await Promise.all([
+    enlargeImageForClaude(filePart.data, mimeType),
+    buildHeaderZoomForClaude(filePart.data),
+  ]);
   // 재시도 없이 한 번만 부른다. 실패하면 호출부가 남은 시간으로 Gemini 를 쓴다.
   const client = new Anthropic({ apiKey, timeout: CLAUDE_TIMEOUT_MS, maxRetries: 0 });
   const response = await client.beta.messages.create({
@@ -249,9 +317,13 @@ async function callClaudeOcr({ apiKey, mimeType, filePart }) {
       content: [
         {
           type: 'image',
-          source: { type: 'base64', media_type: mimeType, data: filePart.data.toString('base64') },
+          source: { type: 'base64', media_type: image.mimeType, data: image.data.toString('base64') },
         },
-        { type: 'text', text: PROMPT + ESSENTIAL_FIELD_PROMPT },
+        ...(headerZoom ? [{
+          type: 'image',
+          source: { type: 'base64', media_type: headerZoom.mimeType, data: headerZoom.data.toString('base64') },
+        }] : []),
+        { type: 'text', text: PROMPT + ESSENTIAL_FIELD_PROMPT + CLAUDE_EXTRA_PROMPT + (headerZoom ? CLAUDE_HEADER_ZOOM_PROMPT : '') },
       ],
     }],
   });
