@@ -8,9 +8,10 @@ import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../share
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
 import { runKakaoSend, runSend, sendOptions } from './_lib/smsManualSend.js';
+import { deleteTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send']);
-const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -115,6 +116,12 @@ async function handleGet(req, res, ctx) {
     const write = await guard.writeStatus({ db: deps.db, nowMs });
     return res.status(200).json(sendOptions(deps.env || process.env, deps.staff, write.enabled));
   }
+  if (resource === 'text_templates') {
+    try {
+      const out = await listTextTemplates(deps.db || getDb());
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '문구를 불러오지 못했습니다.'); }
+  }
   const configured = (deps.hasCredentials || hasSolapiCredentials)();
   const checked_at = new Date(nowMs).toISOString();
   try {
@@ -185,6 +192,13 @@ async function handlePost(req, res, ctx) {
   // 관리자 비밀번호 잠금은 두지 않는다(2026-11-11 사장님 "비밀번호 필요없으니까 빼버려 내가 관리하는데").
   // 실수 방지(같은 출처·분당 5회·한성 채널만·사용 중/프로그램 템플릿 삭제 막음·삭제 때 이름 입력)는 그대로.
   if (!write.enabled) return fail(res, 503, '등록·삭제가 꺼져 있습니다.');
+  if (action === 'text_template_save' || action === 'text_template_delete') {
+    try {
+      const db = deps.db || getDb();
+      const out = action === 'text_template_save' ? await saveTextTemplate(db, body) : await deleteTextTemplate(db, body);
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '문구를 저장하지 못했습니다.'); }
+  }
   if (!(deps.hasCredentials || hasSolapiCredentials)()) return fail(res, 503, '쏠라피 연결이 설정되지 않았습니다.');
 
   try {

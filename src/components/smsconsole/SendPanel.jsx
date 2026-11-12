@@ -22,12 +22,27 @@ export default function SendPanel({ active = true, template = '' }) {
   const [tplItem, setTplItem] = useState(null); // 알림톡으로 보낼 때만: 승인된 템플릿
   const [tplError, setTplError] = useState('');
   const [values, setValues] = useState({});
+  const [texts, setTexts] = useState([]); // 내 문구(저장된 문자 문구)
+  const [textId, setTextId] = useState('');
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [textError, setTextError] = useState('');
+  const textsLoadedRef = useRef(false);
 
   useEffect(() => {
     if (!active || loadedRef.current) return;
     loadedRef.current = true;
     fetchSmsConsole('send').then(setOptions).catch(err => { loadedRef.current = false; setLoadError(err.message || '불러오지 못했습니다.'); });
   }, [active]);
+
+  // 내 문구: 문자 보내기 화면이 열릴 때 1번만 읽는다.
+  useEffect(() => {
+    if (!active || template || textsLoadedRef.current) return;
+    textsLoadedRef.current = true;
+    fetchSmsConsole('text_templates').then(data => setTexts(data?.items || [])).catch(() => { textsLoadedRef.current = false; });
+  }, [active, template]);
 
   // 템플릿 모드: 템플릿 목록(서버 60초 캐시)을 1번 읽어 그 템플릿을 찾는다. 템플릿이 없으면 이 칸은 아무것도 하지 않는다.
   useEffect(() => {
@@ -52,6 +67,33 @@ export default function SendPanel({ active = true, template = '' }) {
   const contentReady = template ? Boolean(tplItem) && allVariablesFilled(varNames, values) : Boolean(info.type) && !info.tooLong;
   const canPreview = !locked && !busy && recipients.length > 0 && invalid === 0 && contentReady;
 
+  const selectedText = texts.find(item => String(item.id) === String(textId)) || null;
+  const pickText = value => {
+    setTextId(value); setConfirmDelete(false); setSaveOpen(false); setTextError('');
+    const found = texts.find(item => String(item.id) === String(value));
+    if (found) { setText(found.body); setResult(null); }
+  };
+  const saveText = async () => {
+    if (saving) return;
+    setSaving(true);
+    setTextError('');
+    const name = saveName.trim();
+    try {
+      const out = await postSmsConsole('text_template_save', { id: selectedText && selectedText.name === name ? selectedText.id : undefined, name, body: text });
+      const item = out.item;
+      setTexts(prev => [...prev.filter(x => x.id !== item.id), item].sort((a, b) => a.name.localeCompare(b.name, 'ko')));
+      setTextId(String(item.id)); setSaveOpen(false); setConfirmDelete(false);
+    } catch (err) { setTextError(err.message || '저장하지 못했습니다.'); } finally { setSaving(false); }
+  };
+  const deleteText = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    setTextError('');
+    try {
+      await postSmsConsole('text_template_delete', { id: selectedText.id });
+      setTexts(prev => prev.filter(x => x.id !== selectedText.id));
+      setTextId(''); setConfirmDelete(false);
+    } catch (err) { setTextError(err.message || '지우지 못했습니다.'); }
+  };
   const toggleStaff = id => { setStaffIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])); setResult(null); };
   const request = async dryRun => {
     setBusy(dryRun ? 'preview' : 'send');
@@ -116,11 +158,36 @@ export default function SendPanel({ active = true, template = '' }) {
           ) : null}
         </div>
       ) : null}
+      {!template && texts.length ? (
+        <div className="smsc-send__field">
+          <label htmlFor="smsc-send-mytext">내 문구</label>
+          <select id="smsc-send-mytext" className="smsc-send__select" value={textId} onChange={event => pickText(event.target.value)}>
+            <option value="" />
+            {texts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </div>
+      ) : null}
       <div className="smsc-send__field" hidden={Boolean(template)}>
         <label htmlFor="smsc-send-text">내용</label>
         <textarea id="smsc-send-text" rows={6} value={text} onChange={event => { setText(event.target.value); setResult(null); }} />
         <p className="smsc-send__count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}</p>
       </div>
+      {!template ? (
+        <div className="smsc-send__field">
+          {saveOpen ? (
+            <div className="smsc-send__row">
+              <input className="smsc-send__input" aria-label="문구 이름" maxLength={40} value={saveName} onChange={event => setSaveName(event.target.value)} />
+              <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={saving || !saveName.trim() || !info.type} onClick={saveText}>저장</button>
+            </div>
+          ) : (
+            <div className="smsc-send__row">
+              <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={!info.type} onClick={() => { setSaveName(selectedText ? selectedText.name : ''); setSaveOpen(true); setTextError(''); setConfirmDelete(false); }}>문구 저장</button>
+              {selectedText ? <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={deleteText}>{confirmDelete ? '삭제 확인' : '삭제'}</button> : null}
+            </div>
+          )}
+          {textError ? <p className="smsc-send__error" role="alert">{textError}</p> : null}
+        </div>
+      ) : null}
       {error ? <p className="smsc-send__server" role="alert">{error}</p> : null}
       {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}</p> : null}
       {result ? <p className="smsc-send__result" role="status">성공 {result.success}건 · 실패 {result.fail}건{result.message ? ` · ${result.message}` : ''}</p> : null}

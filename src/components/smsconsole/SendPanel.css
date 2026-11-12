@@ -26,3 +26,8 @@
 }
 .smsc-send__tpl { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .smsc-send__tplbody { margin: 0; padding: 10px 12px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-bg, #f5f6f8); font: inherit; font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+
+.smsc-send__select, .smsc-send__input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 8px 12px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-surface, #fff); color: inherit; font: inherit; font-size: 16px; min-width: 0; }
+.smsc-send__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.smsc-send__row .smsc-send__input { flex: 1 1 160px; width: auto; }
+.smsc-send__btn--small { min-width: 0; }
