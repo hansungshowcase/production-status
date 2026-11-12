@@ -12,8 +12,9 @@ export const CONSOLE_MENUS = Object.freeze([
     ],
   },
   {
-    id: 'templates', label: '알림톡 템플릿', subs: [
-      { id: 'list', label: '템플릿 목록' },
+    id: 'templates', label: '템플릿', subs: [
+      { id: 'sms', label: '문자 템플릿', ch: 'sms' },
+      { id: 'kakao', label: '알림톡 템플릿', ch: 'kakao' },
       { id: 'new', label: '새 템플릿 등록', mode: 'new' },
     ],
   },
@@ -220,11 +221,13 @@ export function parseConsoleQuery(searchParams) {
   const state = {
     menu: MENU_IDS.includes(menu) ? menu : 'dashboard',
     aud: AUDIENCES.includes(aud) ? aud : 'all',
-    ch: CHANNEL_KINDS.includes(ch) ? ch : 'all',
+    // 템플릿 메뉴는 문자(sms) 아니면 알림톡(kakao)이 기본
+    ch: menu === 'templates' ? (ch === 'sms' ? 'sms' : 'kakao') : (CHANNEL_KINDS.includes(ch) ? ch : 'all'),
     tpl: TEMPLATE_ID_RE.test(tpl) ? tpl : '',
     mode: TEMPLATE_MODES.includes(mode) ? mode : '',
   };
   if (state.mode === 'edit' && !state.tpl) state.mode = '';
+  if (state.menu === 'templates' && state.mode === 'new') state.ch = 'kakao'; // 등록 화면은 알림톡
   return state;
 }
 
@@ -238,6 +241,7 @@ export function buildConsoleQuery(state = {}) {
     if (clean.ch !== 'all') params.set('ch', clean.ch);
   }
   if (clean.menu === 'templates') {
+    if (clean.ch === 'sms') params.set('ch', 'sms');
     if (clean.tpl) params.set('tpl', clean.tpl);
     if (clean.mode) params.set('mode', clean.mode);
   }
@@ -251,6 +255,6 @@ export function activeSubId(state = {}) {
     const sub = CONSOLE_MENUS.find(menu => menu.id === 'log').subs.find(item => item.aud === clean.aud && item.ch === clean.ch);
     return sub ? sub.id : null;
   }
-  if (clean.menu === 'templates') return clean.mode === 'new' ? 'new' : 'list';
+  if (clean.menu === 'templates') return clean.mode === 'new' ? 'new' : (clean.ch === 'sms' ? 'sms' : 'kakao');
   return null;
 }

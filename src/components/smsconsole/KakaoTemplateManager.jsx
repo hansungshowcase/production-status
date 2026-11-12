@@ -3,7 +3,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
 import {
-  ACTION_LABELS, availableActions, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
+  ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
   isValidRename, statusInfo, statusPills, usageBadge, usageCount,
 } from './templateListModel.js';
 import './KakaoTemplateManager.css';
@@ -69,7 +69,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const [tplState, setTplState] = useState({ loading: false, loaded: false, error: null, status: 0, data: null });
   const [usage, setUsage] = useState(null);
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [pickedFilter, setPickedFilter] = useState(null); // null = 아직 안 고름(발송 중이 있으면 그것, 없으면 전체)
   const [menuId, setMenuId] = useState('');
   const [dialog, setDialog] = useState(null); // {type, item}
   const [dialogError, setDialogError] = useState('');
@@ -114,8 +114,9 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const items = useMemo(() => (Array.isArray(data?.items) ? data.items : []), [data]);
   const write = data?.write || null;
   const writeOff = Boolean(write && write.enabled === false);
-  const pills = useMemo(() => statusPills(items), [items]);
-  const visible = useMemo(() => filterTemplates(items, { query, status: statusFilter }), [items, query, statusFilter]);
+  const pills = useMemo(() => statusPills(items, usage), [items, usage]);
+  const statusFilter = pickedFilter ?? defaultStatusFilter(pills, selectedId, usage);
+  const visible = useMemo(() => filterTemplates(items, { query, status: statusFilter, usage }), [items, query, statusFilter, usage]);
   const selected = selectedId ? items.find((item) => item.id === selectedId) || null : null;
   const formOpen = mode === 'new' || (mode === 'edit' && selected);
 
@@ -167,6 +168,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           : await doWrite('create', { template: value, requestInspection: Boolean(extra?.requestInspection), comment: extra?.comment || '' });
         const newId = editing ? selected.id : result.item?.id;
         await afterWrite(editing ? '수정했습니다.' : '템플릿을 등록했습니다.', result.warning);
+        setPickedFilter('all'); // 방금 등록·수정한 템플릿이 발송 중 밖이어도 보이게
         onRoute({ mode: '', tpl: newId || '' });
       } catch (err) {
         setFormError(err.message || '실패했습니다.');
@@ -347,7 +349,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           </div>
           <div className="ktm-pills" role="group" aria-label="상태 거르기">
             {pills.map((pill) => (
-              <button type="button" key={pill.id} className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`} aria-pressed={statusFilter === pill.id} onClick={() => setStatusFilter(pill.id)}>
+              <button type="button" key={pill.id} className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`} aria-pressed={statusFilter === pill.id} onClick={() => setPickedFilter(pill.id)}>
                 {pill.label} {pill.count}
               </button>
             ))}

@@ -11,6 +11,7 @@ import './SmsHistoryPage.css';
 
 const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.jsx'));
 const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
+const SmsTemplateList = lazy(() => import('../components/smsconsole/SmsTemplateList.jsx'));
 const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode'];
 const PANE_LOADING = <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
@@ -28,6 +29,14 @@ export default function SmsHistoryPage() {
   const audience = lastAudienceRef.current;
   const [activePanel, setActivePanel] = useState('history');
   const [customerPanel, setCustomerPanel] = useState('history');
+
+  // 템플릿 메뉴의 문자·알림톡 화면은 처음 열 때 한 번만 그리고, 오갈 때는 숨기기만 한다(재조회 방지)
+  const [tplSeen, setTplSeen] = useState({ sms: false, kakao: false });
+  const tplKind = state.ch === 'sms' ? 'sms' : 'kakao';
+  useEffect(() => {
+    if (state.menu !== 'templates') return;
+    setTplSeen(prev => (prev[tplKind] ? prev : { ...prev, [tplKind]: true }));
+  }, [state.menu, tplKind]);
 
   useEffect(() => {
     setVisited(prev => (prev.has(state.menu) ? prev : new Set(prev).add(state.menu)));
@@ -105,13 +114,22 @@ export default function SmsHistoryPage() {
         {isMounted('templates') && (
           <div className="sms-console-pane" hidden={state.menu !== 'templates'}>
             <Suspense fallback={PANE_LOADING}>
-              <KakaoTemplateManager
-                active={state.menu === 'templates'}
-                selectedId={state.tpl}
-                mode={state.mode}
-                onRoute={patchState}
-                onOpenLog={openLog}
-              />
+              {(tplSeen.sms || tplKind === 'sms') && (
+                <div hidden={tplKind !== 'sms'}>
+                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} />
+                </div>
+              )}
+              {(tplSeen.kakao || tplKind === 'kakao') && (
+                <div hidden={tplKind !== 'kakao'}>
+                  <KakaoTemplateManager
+                    active={state.menu === 'templates' && tplKind === 'kakao'}
+                    selectedId={tplKind === 'kakao' ? state.tpl : ''}
+                    mode={tplKind === 'kakao' ? state.mode : ''}
+                    onRoute={patchState}
+                    onOpenLog={openLog}
+                  />
+                </div>
+              )}
             </Suspense>
           </div>
         )}

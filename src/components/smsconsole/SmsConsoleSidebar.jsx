@@ -63,6 +63,7 @@ export default function SmsConsoleSidebar({ state, onSelect }) {
   const subPatch = sub => {
     if (current.id === 'log') return { aud: sub.aud, ch: sub.ch };
     if (sub.mode) return { mode: sub.mode, tpl: '' };
+    if (current.id === 'templates') return { ch: sub.ch, tpl: '', mode: '' };
     return { tpl: '', mode: '' };
   };
 

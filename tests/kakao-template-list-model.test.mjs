@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  filterTemplates, statusCounts, statusPills, usageCount, usageBadge, availableActions,
+  defaultStatusFilter, filterTemplates, statusCounts, statusPills, usageCount, usageBadge, availableActions,
   deleteDecision, deleteConfirmed, formatDate, isValidRename, splitVariables,
 } from '../src/components/smsconsole/templateListModel.js';
 
@@ -78,4 +78,27 @@ test('deleteDecision: 프로그램 알림에 쓰는 템플릿(program_use)은 �
   const usage = { by_template: {}, partial: false };
   assert.deepEqual(deleteDecision({ id: 'A', program_use: true }, usage), { allowed: false, reason: 'program', count: 0 });
   assert.equal(deleteDecision({ id: 'A' }, usage).allowed, true);
+});
+
+test('발송 중 알약·필터(최근 7일 1건 이상)', () => {
+  const usage = { partial: false, by_template: { KA01A: { count: 3 }, KA01B: { count: 0 } } };
+  const pills = statusPills(items, usage);
+  assert.equal(pills[0].id, 'in_use');
+  assert.equal(pills[0].label, '발송 중');
+  assert.equal(pills[0].count, 1);
+  assert.equal(pills[1].id, 'all');
+  assert.deepEqual(filterTemplates(items, { status: 'in_use', usage }).map((i) => i.id), ['KA01A']);
+  assert.equal(defaultStatusFilter(pills), 'in_use');
+  // 사용량을 모르면 알약이 없고, 발송 중이 0개면 전체가 처음 선택
+  assert.equal(statusPills(items, null)[0].id, 'all');
+  assert.equal(defaultStatusFilter(statusPills(items, null)), 'all');
+  assert.equal(defaultStatusFilter(statusPills(items, { by_template: {} })), 'all');
+});
+
+test('주소에 tpl 이 있고 발송 중이 아니면 전체로 시작', () => {
+  const usage = { partial: false, by_template: { KA01A: { count: 3 } } };
+  const pills = statusPills(items, usage);
+  assert.equal(defaultStatusFilter(pills, '', usage), 'in_use');
+  assert.equal(defaultStatusFilter(pills, 'KA01A', usage), 'in_use');
+  assert.equal(defaultStatusFilter(pills, 'KA01B', usage), 'all');
 });

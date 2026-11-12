@@ -8,11 +8,14 @@ export function statusInfo(status) {
 }
 
 // 이름·템플릿 ID 포함 검색(대소문자 무시) + 상태 거르기. 서버 호출 없음.
-export function filterTemplates(items, { query = '', status = 'all' } = {}) {
+// status 'in_use' = 발송 중(최근 7일 사용 1건 이상, usage 필요)
+export function filterTemplates(items, { query = '', status = 'all', usage = null } = {}) {
   const list = Array.isArray(items) ? items : [];
   const q = String(query || '').trim().toLowerCase();
   return list.filter((item) => {
-    if (status && status !== 'all' && item.status !== status) return false;
+    if (status === 'in_use') {
+      if (!(usageCount(usage, item.id) > 0)) return false;
+    } else if (status && status !== 'all' && item.status !== status) return false;
     if (!q) return true;
     return String(item.name || '').toLowerCase().includes(q) || String(item.id || '').toLowerCase().includes(q);
   });
@@ -28,10 +31,23 @@ export function statusCounts(items) {
 }
 
 // 상태 알약 목록: [{id,label,count}]
-export function statusPills(items) {
+// usage 를 알면 맨 앞에 '발송 중' 알약을 더한다.
+export function statusPills(items, usage = null) {
   const counts = statusCounts(items);
-  return [{ id: 'all', label: '전체', count: counts.all },
+  const inUse = usageKnown(usage)
+    ? [{ id: 'in_use', label: '발송 중', count: (Array.isArray(items) ? items : []).filter((item) => usageCount(usage, item?.id) > 0).length }]
+    : [];
+  return [...inUse, { id: 'all', label: '전체', count: counts.all },
     ...STATUS_ORDER.map((id) => ({ id, label: TEMPLATE_STATUS[id].label, count: counts[id] }))];
+}
+
+// 처음 선택할 알약: 발송 중이 1개 이상이면 발송 중, 아니면 전체
+// 주소에 tpl 로 특정 템플릿이 들어와 있고 그것이 발송 중이 아니면 전체로 시작한다(그 템플릿이 보이게).
+export function defaultStatusFilter(pills, selectedId = '', usage = null) {
+  const inUse = (Array.isArray(pills) ? pills : []).find((pill) => pill.id === 'in_use');
+  if (!(inUse && inUse.count > 0)) return 'all';
+  if (selectedId && !(usageCount(usage, selectedId) > 0)) return 'all';
+  return 'in_use';
 }
 
 // usage = { by_template, partial } 또는 null(조회 실패·아직 없음)
