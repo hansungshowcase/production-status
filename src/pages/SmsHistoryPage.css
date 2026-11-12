@@ -885,7 +885,7 @@
 body:has(.sms-history-page) .install-prompt { display: none; }
 
 /* 휴대폰: 페이지 전환 애니메이션의 transform 을 풀어 fixed 하단 버튼 줄이 화면 기준이 되게 한다 */
-@media (max-width: 768px) {
+@media (max-width: 1099px) {
   .page-transition-enter-active:has(> .sms-history-page) {
     animation: none !important; transform: none !important; will-change: auto !important;
   }

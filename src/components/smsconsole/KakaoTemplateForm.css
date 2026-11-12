@@ -135,3 +135,12 @@
   }
   .smsc-form__form { padding-bottom: 120px; }
 }
+
+/* 데스크톱 창을 좁게 쓸 때(769~1099px): 사이드바(16px 여백 + 184px 폭) 오른쪽부터 화면 아래에 고정 */
+@media (min-width: 769px) and (max-width: 1099px) {
+  .smsc-form__footer {
+    position: fixed; left: 200px; right: 0; bottom: 0; z-index: 20;
+    margin: 0; padding: 10px 16px;
+  }
+  .smsc-form__form { padding-bottom: 120px; }
+}
