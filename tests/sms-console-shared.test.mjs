@@ -53,7 +53,22 @@ test('validateTemplateInput: 대상·유형 오류', () => {
   assert.ok(validateTemplateInput({ ...base(), target: { kind: 'group', id: 'a b' } }).errors.target);
   assert.equal(validateTemplateInput({ ...base(), target: null }, { requireTarget: false }).ok, true);
   assert.ok(validateTemplateInput({ ...base(), messageType: 'AD' }).errors.messageType);
-  assert.ok(validateTemplateInput({ ...base(), emphasizeType: 'IMAGE' }).errors.emphasizeType);
+  assert.ok(validateTemplateInput({ ...base(), emphasizeType: 'ITEM_LIST' }).errors.emphasizeType);
+  assert.ok(validateTemplateInput({ ...base(), emphasizeType: 'IMAGE' }).errors.imageId);
+  assert.ok(validateTemplateInput({ ...base(), emphasizeType: 'IMAGE', imageId: 'a b' }).errors.imageId);
+});
+
+test('이미지형: imageId 가 있으면 통과하고 쏠라피 본문에 imageId 가 실린다(강조 제목은 안 실림)', () => {
+  const ok = validateTemplateInput({ ...base(), emphasizeType: 'IMAGE', imageId: 'ST01FZ-1', emphasizeTitle: '무시' });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.imageId, 'ST01FZ-1');
+  assert.equal('emphasizeTitle' in ok.value, false);
+  const body = toSolapiTemplateBody(ok.value);
+  assert.equal(body.emphasizeType, 'IMAGE');
+  assert.equal(body.imageId, 'ST01FZ-1');
+  assert.equal('emphasizeTitle' in body, false);
+  const plain = toSolapiTemplateBody(validateTemplateInput(base()).value);
+  assert.equal('imageId' in plain, false);
 });
 
 test('validateTemplateInput: 강조표기형·부가정보형', () => {

@@ -11,7 +11,7 @@ import {
 // 오류 칸 순서(첫 오류 칸 초점용). 화면 위에서 아래 순서와 같다.
 export const FIELD_ORDER = [
   'target', 'categoryCode', 'emphasizeType', 'messageType', 'name',
-  'emphasizeTitle', 'emphasizeSubtitle', 'content', 'extra', 'buttons',
+  'imageId', 'emphasizeTitle', 'emphasizeSubtitle', 'content', 'extra', 'buttons',
   'buttons.0', 'buttons.1', 'buttons.2', 'buttons.3', 'buttons.4',
   'comment', 'confirmed',
 ];
@@ -48,6 +48,8 @@ export function emptyFormValues(targets = []) {
     messageType: 'BA',
     emphasizeTitle: '',
     emphasizeSubtitle: '',
+    imageId: '',
+    imageUrl: '',
     content: '',
     extra: '',
     securityFlag: false,
@@ -70,6 +72,8 @@ export function formValuesFromTemplate(template) {
     messageType: SUPPORTED_MESSAGE.includes(template.messageType) ? template.messageType : 'BA',
     emphasizeTitle: str(template.emphasizeTitle),
     emphasizeSubtitle: str(template.emphasizeSubtitle),
+    imageId: str(template.imageId),
+    imageUrl: str(template.imageUrl),
     content: str(template.content),
     extra: str(template.extra),
     securityFlag: template.securityFlag === true,
@@ -101,6 +105,7 @@ export function toValidationInput(form) {
     emphasizeType: f.emphasizeType,
     emphasizeTitle: isText ? f.emphasizeTitle : '',
     emphasizeSubtitle: isText ? f.emphasizeSubtitle : '',
+    imageId: f.emphasizeType === 'IMAGE' ? f.imageId : '',
     extra: isEx ? f.extra : '',
     securityFlag: f.securityFlag === true,
     buttons: (f.buttons || []).map(b => (
@@ -132,6 +137,7 @@ export function firstErrorKey(errors) {
 const MISSING_TEXT = {
   target: '채널을 선택해 주세요',
   name: '템플릿 이름을 입력해 주세요',
+  imageId: '이미지를 넣어 주세요',
   content: '내용을 입력해 주세요',
   confirmed: '정보성 메시지 확인에 체크해 주세요',
 };
@@ -204,7 +210,8 @@ export function previewTemplate(form, targets = []) {
   return {
     name: f.name || '',
     content: f.content || '',
-    emphasizeType: f.emphasizeType === 'TEXT' ? 'TEXT' : 'NONE',
+    emphasizeType: f.emphasizeType === 'TEXT' ? 'TEXT' : (f.emphasizeType === 'IMAGE' ? 'IMAGE' : 'NONE'),
+    imageUrl: f.emphasizeType === 'IMAGE' ? f.imageUrl || '' : '',
     emphasizeTitle: isText ? f.emphasizeTitle || '' : '',
     emphasizeSubtitle: isText ? f.emphasizeSubtitle || '' : '',
     extra: f.messageType === 'EX' ? f.extra || '' : '',
@@ -225,6 +232,50 @@ export function afterCreate(result) {
   const id = result?.item?.id || null;
   if (!id) return { createdId: null, inspect: false };
   return { createdId: id, inspect: result.inspected === false };
+}
+
+// 알림톡 이미지형: 가운데 기준으로 가로:세로 2:1 로 자를 영역(원본 픽셀). 이미 2:1 이면 그대로.
+export function bannerCrop(width, height) {
+  if (!(width > 0) || !(height > 0)) return { sx: 0, sy: 0, sw: 0, sh: 0 };
+  if (width >= height * 2) {
+    const sw = Math.floor(height * 2);
+    return { sx: Math.floor((width - sw) / 2), sy: 0, sw, sh: height };
+  }
+  const sh = Math.floor(width / 2);
+  return { sx: 0, sy: Math.floor((height - sh) / 2), sw: width, sh };
+}
+
+export const BANNER_WIDTH = 800;
+export const BANNER_HEIGHT = 400;
+const BANNER_MAX_BYTES = 500 * 1024;
+
+// 브라우저에서 사진을 2:1 로 자르고 800×400 JPG(500KB 이하)로 줄인다(원본이 더 작으면 원본 크기 유지, 가로 500 미만이면 거절).
+// → { data(base64), bytes, url(미리보기 object URL) }
+export async function cropToBanner(file) {
+  if (!file || !/^image\//.test(file.type || '')) throw new Error('이미지 파일을 골라 주세요.');
+  let bitmap;
+  try { bitmap = await createImageBitmap(file); } catch { throw new Error('이미지 파일을 골라 주세요.'); }
+  const { sx, sy, sw, sh } = bannerCrop(bitmap.width, bitmap.height);
+  if (sw < 500) { if (bitmap.close) bitmap.close(); throw new Error('이미지 가로가 500px 이상이어야 합니다.'); }
+  const width = Math.min(BANNER_WIDTH, sw);
+  const height = Math.round(width / 2);
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, width, height);
+  if (bitmap.close) bitmap.close();
+  for (const quality of [0.9, 0.8, 0.7, 0.55, 0.4]) {
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (blob && blob.size <= BANNER_MAX_BYTES) {
+      const buffer = new Uint8Array(await blob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < buffer.length; i += 0x8000) binary += String.fromCharCode(...buffer.subarray(i, i + 0x8000));
+      return { data: btoa(binary), bytes: blob.size, url: URL.createObjectURL(blob) };
+    }
+  }
+  throw new Error('이미지가 너무 큽니다');
 }
 
 // 검수 요청 실패 사유 한 줄(버튼 위에 보인다).

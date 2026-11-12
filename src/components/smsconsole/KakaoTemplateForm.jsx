@@ -12,6 +12,7 @@ import {
   afterCreate,
   canAddButton,
   countChars,
+  cropToBanner,
   emptyFormValues,
   extraErrors,
   firstErrorKey,
@@ -73,6 +74,8 @@ export default function KakaoTemplateForm({
   const [varName, setVarName] = useState('');
   const [varError, setVarError] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState('');
   const narrow = useNarrow();
   const contentRef = useRef(null);
   const selectionRef = useRef({ start: null, end: null });
@@ -118,6 +121,7 @@ export default function KakaoTemplateForm({
   const locked = busy || pending;
   const set = patch => setForm(prev => ({ ...prev, ...patch }));
   const isText = form.emphasizeType === 'TEXT';
+  const isImage = form.emphasizeType === 'IMAGE';
   const isEx = form.messageType === 'EX';
   const editTarget = isEdit ? (initial?.target || targets.find(t => targetKey(t) === form.targetKey)) : null;
   const preview = useMemo(() => {
@@ -187,6 +191,24 @@ export default function KakaoTemplateForm({
     }
   }
 
+  async function pickImage(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || imageBusy) return;
+    setImageError('');
+    setImageBusy(true);
+    try {
+      const shrunk = await cropToBanner(file);
+      const out = await postSmsConsole('kakao_image_upload', { image: { data: shrunk.data } });
+      if (!out?.imageId) throw new Error('이미지를 올리지 못했습니다.');
+      if (aliveRef.current) setForm(prev => ({ ...prev, imageId: String(out.imageId), imageUrl: shrunk.url }));
+    } catch (error) {
+      if (aliveRef.current) setImageError(String(error?.message || '이미지를 올리지 못했습니다.'));
+    } finally {
+      if (aliveRef.current) setImageBusy(false);
+    }
+  }
+
   function openVariable() {
     const area = contentRef.current;
     selectionRef.current = area ? { start: area.selectionStart, end: area.selectionEnd } : { start: null, end: null };
@@ -219,9 +241,9 @@ export default function KakaoTemplateForm({
           <input type="radio" name={`${uid}-emp`} checked={isText} onChange={() => set({ emphasizeType: 'TEXT' })} disabled={locked} />
           <span>강조표기형</span>
         </label>
-        <label className="smsc-form__choice smsc-form__choice--off">
-          <input type="radio" disabled name={`${uid}-emp`} />
-          <span>이미지첨부형 <em>쏠라피에서 등록</em></span>
+        <label className="smsc-form__choice">
+          <input type="radio" name={`${uid}-emp`} checked={isImage} onChange={() => set({ emphasizeType: 'IMAGE' })} disabled={locked} />
+          <span>이미지형</span>
         </label>
         <label className="smsc-form__choice smsc-form__choice--off">
           <input type="radio" disabled name={`${uid}-emp`} />
@@ -280,6 +302,19 @@ export default function KakaoTemplateForm({
         <p className="smsc-form__count">{countChars(form.name)} / {TEMPLATE_LIMITS.name}</p>
         {errNode('name')}
       </div>
+
+      {isImage ? (
+        <div className="smsc-form__field">
+          <label htmlFor={fid('imageId')}>이미지 <b aria-hidden="true">*</b></label>
+          {imageError ? <p className="smsc-form__error" role="alert">{imageError}</p> : null}
+          <div className="smsc-form__imagerow">
+            <input id={fid('imageId')} type="file" accept="image/jpeg,image/png" onChange={pickImage} disabled={locked || imageBusy} {...errProps('imageId')} />
+            {form.imageId ? <button type="button" className="smsc-form__btn smsc-form__btn--small" disabled={locked || imageBusy} onClick={() => set({ imageId: '', imageUrl: '' })}>빼기</button> : null}
+          </div>
+          {form.imageId && form.imageUrl ? <img className="smsc-form__imagethumb" src={form.imageUrl} alt="올린 이미지" /> : null}
+          {errNode('imageId')}
+        </div>
+      ) : null}
 
       {isText ? (
         <>

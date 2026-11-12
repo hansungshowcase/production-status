@@ -28,7 +28,7 @@ test('targetKey 왕복', () => {
 
 test('Template → 양식 값: 지원 밖 유형은 기본으로, 버튼 5개 제한', () => {
   const form = formValuesFromTemplate({
-    name: 'a', content: 'b', target: T1, emphasizeType: 'IMAGE', messageType: 'AD', securityFlag: true,
+    name: 'a', content: 'b', target: T1, emphasizeType: 'ITEM_LIST', messageType: 'AD', securityFlag: true,
     buttons: Array.from({ length: 7 }, (_, i) => ({ type: 'WL', name: `b${i}`, linkMo: 'https://x.kr' })),
   });
   assert.equal(form.emphasizeType, 'NONE');

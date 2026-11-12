@@ -12,6 +12,7 @@ export default function KakaoTemplatePreview({ template }) {
     <div className="ktp-board">
       <div className="ktp-bubble">
         <div className="ktp-banner">알림톡 도착</div>
+        {t.emphasizeType === 'IMAGE' && t.imageUrl ? <img className="ktp-image" src={t.imageUrl} alt="" /> : null}
         <div className="ktp-body">
           {t.targetName ? <div className="ktp-sender">{t.targetName}</div> : null}
           {emphasized && t.emphasizeSubtitle ? <div className="ktp-subtitle">{t.emphasizeSubtitle}</div> : null}

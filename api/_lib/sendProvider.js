@@ -111,8 +111,9 @@ solapi.sendKakao = async function sendKakao({ from, recipients, pfId, templateId
 // - 예약 발송: 발송 본문 scheduledDate(ISO). 응답 groupInfo.groupId 가 그룹 id.
 // - 예약 취소: DELETE messages/v4/groups/{groupId}/schedule (SDK removeReservationToGroup, 그룹 안 메시지는 실패 처리됨)
 export const MMS_MAX_BYTES = 200 * 1024;
-solapi.uploadImage = async function uploadImage({ base64, name }, { fetchImpl } = {}) {
-  const payload = await call('storage/v1/files', { method: 'POST', body: { file: base64, type: 'MMS', name: String(name || 'photo.jpg').slice(0, 60) } }, { fetchImpl });
+// type 을 안 주면 'MMS'(기존 호출 그대로). 알림톡 템플릿 이미지는 type 'KAKAO'(SDK 규격, 500KB).
+solapi.uploadImage = async function uploadImage({ base64, name, type = 'MMS' }, { fetchImpl } = {}) {
+  const payload = await call('storage/v1/files', { method: 'POST', body: { file: base64, type, name: String(name || 'photo.jpg').slice(0, 60) } }, { fetchImpl });
   const fileId = payload?.fileId;
   if (!fileId) throw new Error('fileId 없음');
   return { fileId: String(fileId).slice(0, 80) };

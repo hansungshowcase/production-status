@@ -52,7 +52,8 @@ export const TEMPLATE_LIMITS = Object.freeze({
 });
 
 export const BUTTON_TYPES = Object.freeze({ WL: '웹링크', DS: '배송조회', BK: '봇키워드', MD: '메시지전달' });
-export const SUPPORTED_EMPHASIZE = Object.freeze(['NONE', 'TEXT']);
+export const SUPPORTED_EMPHASIZE = Object.freeze(['NONE', 'TEXT', 'IMAGE']);
+export const KAKAO_IMAGE_MAX_BYTES = 500 * 1024; // 알림톡 템플릿 이미지: JPG·PNG 500KB 이하, 가로 500px 이상, 가로:세로 2:1(쏠라피·카카오 규격)
 export const SUPPORTED_MESSAGE = Object.freeze(['BA', 'EX']);
 export const DEFAULT_CATEGORY = '999999';
 
@@ -120,8 +121,14 @@ export function validateTemplateInput(input, { requireTarget = true } = {}) {
   else value.messageType = messageType;
 
   const emphasizeType = text(src.emphasizeType) || 'NONE';
-  if (!SUPPORTED_EMPHASIZE.includes(emphasizeType)) errors.emphasizeType = '템플릿 유형은 기본형·강조표기형만 쓸 수 있습니다.';
+  if (!SUPPORTED_EMPHASIZE.includes(emphasizeType)) errors.emphasizeType = '템플릿 유형은 기본형·강조표기형·이미지형만 쓸 수 있습니다.';
   else value.emphasizeType = emphasizeType;
+
+  if (emphasizeType === 'IMAGE') {
+    const imageId = text(src.imageId);
+    if (!imageId || !/^[\w-]{1,80}$/.test(imageId)) errors.imageId = '이미지를 넣어 주세요.';
+    else value.imageId = imageId;
+  }
 
   if (emphasizeType === 'TEXT') {
     const title = text(src.emphasizeTitle);
@@ -197,6 +204,7 @@ export function toSolapiTemplateBody(value, { forUpdate = false } = {}) {
     body.emphasizeTitle = value.emphasizeTitle;
     body.emphasizeSubTitle = value.emphasizeSubtitle;
   }
+  if (body.emphasizeType === 'IMAGE') body.imageId = value.imageId;
   if (body.messageType === 'EX') body.extra = value.extra;
   if (!forUpdate && value.target) {
     if (value.target.kind === 'group') body.channelGroupId = value.target.id;

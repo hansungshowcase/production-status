@@ -162,6 +162,8 @@ function toTemplate(raw, scope) {
     emphasizeTitle: raw.emphasizeTitle || '',
     emphasizeSubtitle: raw.emphasizeSubtitle || raw.emphasizeSubTitle || '',
     extra: raw.extra || '',
+    imageId: raw.imageId ? String(raw.imageId) : '',
+    imageUrl: /^https?:\/\//i.test(String(raw.imageUrl || raw.imageLink || '')) ? String(raw.imageUrl || raw.imageLink) : '',
     securityFlag: raw.securityFlag === true,
     categoryCode: raw.categoryCode || '',
     buttons,

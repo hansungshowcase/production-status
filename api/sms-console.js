@@ -4,14 +4,15 @@ import { rateLimitCheck } from './_lib/rateLimit.js';
 import { classifyStatus, collapseReplacements, fetchSolapiDay, hasSolapiCredentials } from './_lib/solapiMessageLog.js';
 import { matchReviewCampaign } from './_lib/customerReviewCampaigns.js';
 import * as defaultGuard from './_lib/smsConsoleGuard.js';
-import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
+import { KAKAO_IMAGE_MAX_BYTES, TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
+import { getSendProvider } from './_lib/sendProvider.js';
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
 import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions } from './_lib/smsManualSend.js';
 import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template']);
-const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -216,6 +217,7 @@ async function handlePost(req, res, ctx) {
 
   try {
     if (action === 'create') return await doCreate(body, res, ctx);
+    if (action === 'kakao_image_upload') return await doKakaoImageUpload(body, res, ctx);
     const id = String(body.id || '');
     if (!TEMPLATE_ID_RE.test(id)) return fail(res, 400, '올바른 템플릿이 아닙니다.');
     const found = await kakao.getTemplateFresh(id, opts);
@@ -299,6 +301,48 @@ function writeError(res, error) {
     if (error.status >= 400 && error.status < 500) return fail(res, 409, oneLine(error.publicMessage) || '쏠라피에서 거절했습니다.');
   }
   return fail(res, 502, '쏠라피에서 처리하지 못했습니다');
+}
+
+// JPG(SOF)·PNG(IHDR) 머리에서 가로·세로를 읽는다. 못 읽으면 null(그때는 크기 검사를 서버에서 하지 않는다).
+export function imageSize(buffer) {
+  if (buffer.length >= 24 && buffer.readUInt32BE(0) === 0x89504e47) return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20), type: 'png' };
+  if (buffer.length > 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let at = 2;
+    while (at + 9 < buffer.length) {
+      if (buffer[at] !== 0xff) { at += 1; continue; }
+      const marker = buffer[at + 1];
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0xff) { at += marker === 0xff ? 1 : 2; continue; }
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { width: buffer.readUInt16BE(at + 7), height: buffer.readUInt16BE(at + 5), type: 'jpg' };
+      }
+      at += 2 + buffer.readUInt16BE(at + 2);
+    }
+    return { width: 0, height: 0, type: 'jpg' };
+  }
+  return null;
+}
+
+// 알림톡 이미지형 템플릿에 쓸 이미지를 쏠라피 저장소(type KAKAO)에 올리고 imageId 를 돌려준다. 템플릿은 건드리지 않는다.
+async function doKakaoImageUpload(body, res, ctx) {
+  const { deps, opts } = ctx;
+  const raw = body.image && typeof body.image === 'object' && !Array.isArray(body.image) ? body.image.data : '';
+  const base64 = typeof raw === 'string' ? raw.replace(/^data:image\/(?:jpe?g|png);base64,/i, '').replace(/\s+/g, '') : '';
+  const maxBase64 = Math.ceil(KAKAO_IMAGE_MAX_BYTES / 3) * 4 + 8;
+  if (!base64 || base64.length > maxBase64 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return fail(res, 400, '이미지가 너무 크거나 올바르지 않습니다(JPG·PNG 500KB 이하).');
+  const buffer = Buffer.from(base64, 'base64');
+  if (buffer.length > KAKAO_IMAGE_MAX_BYTES) return fail(res, 400, '이미지가 너무 큽니다(500KB 이하).');
+  const size = imageSize(buffer);
+  if (!size) return fail(res, 400, '이미지는 JPG 또는 PNG 형식만 쓸 수 있습니다.');
+  if (size.width < 500 || size.height <= 0 || Math.abs(size.width / size.height - 2) > 0.04) return fail(res, 400, '이미지는 가로가 500px 이상이고 가로:세로가 2:1 이어야 합니다.');
+  const provider = deps.sendProvider || getSendProvider();
+  if (!provider || typeof provider.uploadImage !== 'function') return fail(res, 503, '이미지를 올릴 수 없습니다.');
+  try {
+    const up = await provider.uploadImage({ base64, name: size.type === 'png' ? 'template.png' : 'template.jpg', type: 'KAKAO' }, { fetchImpl: opts.fetchImpl });
+    console.info('[sms-console]', 'kakao_image_upload');
+    return res.status(200).json({ imageId: up.fileId });
+  } catch (error) {
+    return writeError(res, error);
+  }
 }
 
 async function doCreate(body, res, ctx) {

@@ -79,6 +79,9 @@
 .smsc-form__varbox { padding: 10px; border-radius: 8px; background: var(--smsc-accent-weak, #eaf0ff); display: flex; flex-direction: column; gap: 6px; }
 .smsc-form__varrow { display: flex; gap: 6px; flex-wrap: wrap; }
 .smsc-form__varrow input { flex: 1 1 140px; min-width: 0; }
+.smsc-form__imagerow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.smsc-form__imagerow input { flex: 1 1 200px; min-width: 0; }
+.smsc-form__imagethumb { display: block; width: 100%; max-width: 240px; aspect-ratio: 2 / 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--smsc-line, #dfe3ea); }
 
 .smsc-form__button { padding: 10px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; display: flex; flex-direction: column; gap: 6px; background: var(--smsc-bg, #f5f6f8); }
 .smsc-form__buttonhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }

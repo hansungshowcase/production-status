@@ -18,6 +18,7 @@
   font-weight: 700;
   padding: 7px 12px;
 }
+.ktp-image { display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: cover; background: #eceff3; }
 .ktp-body { padding: 12px; }
 .ktp-sender { font-size: 12px; color: var(--smsc-muted, #667085); margin-bottom: 6px; overflow-wrap: anywhere; }
 .ktp-subtitle { font-size: 12px; color: var(--smsc-muted, #667085); overflow-wrap: anywhere; }
