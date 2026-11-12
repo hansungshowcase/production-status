@@ -36,13 +36,13 @@ test('imageSize: PNG 머리에서 가로·세로를 읽는다', () => {
   assert.equal(imageSize(Buffer.from('hello world, not an image at all')), null);
 });
 
-test('kakao_image_upload: 2:1 이미지는 type KAKAO 로 올려 imageId 를 돌려준다', async () => {
+test('kakao_image_upload: 2:1 이미지는 type ATA 로 올려 imageId 를 돌려준다', async () => {
   const uploads = [];
   const res = await run({ action: 'kakao_image_upload', image: { data: png(800, 400, 1000).toString('base64') } }, deps(uploads));
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, { imageId: 'FILE-K1' });
   assert.equal(uploads.length, 1);
-  assert.equal(uploads[0].type, 'KAKAO');
+  assert.equal(uploads[0].type, 'ATA');
 });
 
 test('kakao_image_upload: 용량·비율·가로·형식 거절은 올리지 않는다', async () => {
@@ -70,7 +70,7 @@ test('kakao_image_upload: 쓰기 꺼짐이면 거절', async () => {
   assert.equal(uploads.length, 0);
 });
 
-test('uploadImage: type 을 안 주면 MMS(기존 그대로), KAKAO 를 주면 KAKAO', async () => {
+test('uploadImage: type 을 안 주면 MMS(기존 그대로), ATA 를 주면 ATA', async () => {
   const prev = { k: process.env.SOLAPI_API_KEY, s: process.env.SOLAPI_API_SECRET };
   process.env.SOLAPI_API_KEY = 'k'; process.env.SOLAPI_API_SECRET = 's';
   try {
@@ -78,9 +78,9 @@ test('uploadImage: type 을 안 주면 MMS(기존 그대로), KAKAO 를 주면 K
     const fetchImpl = async (url, init) => { seen.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ fileId: 'F1' }) }; };
     const provider = getSendProvider('solapi');
     await provider.uploadImage({ base64: 'AAAA', name: 'a.jpg' }, { fetchImpl });
-    await provider.uploadImage({ base64: 'AAAA', name: 'a.jpg', type: 'KAKAO' }, { fetchImpl });
+    await provider.uploadImage({ base64: 'AAAA', name: 'a.jpg', type: 'ATA' }, { fetchImpl });
     assert.equal(seen[0].type, 'MMS');
-    assert.equal(seen[1].type, 'KAKAO');
+    assert.equal(seen[1].type, 'ATA');
   } finally {
     if (prev.k === undefined) delete process.env.SOLAPI_API_KEY; else process.env.SOLAPI_API_KEY = prev.k;
     if (prev.s === undefined) delete process.env.SOLAPI_API_SECRET; else process.env.SOLAPI_API_SECRET = prev.s;

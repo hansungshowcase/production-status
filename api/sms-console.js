@@ -10,9 +10,10 @@ import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
 import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions } from './_lib/smsManualSend.js';
 import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
+import { autoStatus, autoTest, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template']);
-const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'optouts']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -135,6 +136,18 @@ async function handleGet(req, res, ctx) {
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 불러오지 못했습니다.'); }
   }
+  if (resource === 'auto_status') {
+    try {
+      const out = await autoStatus(deps.db || getDb(), { id: queryValue(req.query?.id), nowMs, env: deps.env || process.env });
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '자동 발송 현황을 불러오지 못했습니다.'); }
+  }
+  if (resource === 'optouts') {
+    try {
+      const out = await optoutList(deps.db || getDb());
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '수신거부 번호를 불러오지 못했습니다.'); }
+  }
   const configured = (deps.hasCredentials || hasSolapiCredentials)();
   const checked_at = new Date(nowMs).toISOString();
   try {
@@ -196,7 +209,8 @@ async function handlePost(req, res, ctx) {
   const body = parseBody(req.body);
   // 보내기는 템플릿 작업과 요청 수 제한 통을 나눈다.
   const isSend = body?.action === 'send' || body?.action === 'send_cancel';
-  if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: isSend ? 10 : 5, keySuffix: isSend ? 'SEND' : 'POST' })) return;
+  const sendBucket = isSend || body?.action === 'auto_test'; // 시험 발송은 보내기와 같은 요청 수 제한 통
+  if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: sendBucket ? 10 : 5, keySuffix: sendBucket ? 'SEND' : 'POST' })) return;
   if (!body || !ACTIONS.has(body.action)) return fail(res, 400, '올바른 요청이 아닙니다.');
   const action = body.action;
   if (action === 'send_cancel') return doSendCancel(body, res, ctx);
@@ -212,6 +226,16 @@ async function handlePost(req, res, ctx) {
       const out = action === 'text_template_save' ? await saveTextTemplate(db, body) : await deleteTextTemplate(db, body);
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 저장하지 못했습니다.'); }
+  }
+  if (action === 'auto_toggle' || action === 'auto_test' || action === 'optout_add' || action === 'optout_delete') {
+    try {
+      const db = deps.db || getDb();
+      const env = deps.env || process.env;
+      const out = action === 'auto_toggle' ? await autoToggle(body, { db, provider: deps.sendProvider, env, nowMs })
+        : action === 'auto_test' ? await autoTest(body, { db, provider: deps.sendProvider, env, nowMs, fetchImpl: opts.fetchImpl, writeEnabled: write.enabled })
+        : action === 'optout_add' ? await optoutAdd(body, { db }) : await optoutDelete(body, { db });
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '처리하지 못했습니다.'); }
   }
   if (!(deps.hasCredentials || hasSolapiCredentials)()) return fail(res, 503, '쏠라피 연결이 설정되지 않았습니다.');
 
@@ -322,7 +346,7 @@ export function imageSize(buffer) {
   return null;
 }
 
-// 알림톡 이미지형 템플릿에 쓸 이미지를 쏠라피 저장소(type KAKAO)에 올리고 imageId 를 돌려준다. 템플릿은 건드리지 않는다.
+// 알림톡 이미지형 템플릿에 쓸 이미지를 쏠라피 저장소(type ATA — 쏠라피 문서, KAKAO 로 올리면 검수가 '알림톡 템플릿용 이미지가 아닙니다'로 거절)에 올리고 imageId 를 돌려준다. 템플릿은 건드리지 않는다.
 async function doKakaoImageUpload(body, res, ctx) {
   const { deps, opts } = ctx;
   const raw = body.image && typeof body.image === 'object' && !Array.isArray(body.image) ? body.image.data : '';
@@ -337,7 +361,7 @@ async function doKakaoImageUpload(body, res, ctx) {
   const provider = deps.sendProvider || getSendProvider();
   if (!provider || typeof provider.uploadImage !== 'function') return fail(res, 503, '이미지를 올릴 수 없습니다.');
   try {
-    const up = await provider.uploadImage({ base64, name: size.type === 'png' ? 'template.png' : 'template.jpg', type: 'KAKAO' }, { fetchImpl: opts.fetchImpl });
+    const up = await provider.uploadImage({ base64, name: size.type === 'png' ? 'template.png' : 'template.jpg', type: 'ATA' }, { fetchImpl: opts.fetchImpl });
     console.info('[sms-console]', 'kakao_image_upload');
     return res.status(200).json({ imageId: up.fileId });
   } catch (error) {

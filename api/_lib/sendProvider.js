@@ -111,7 +111,7 @@ solapi.sendKakao = async function sendKakao({ from, recipients, pfId, templateId
 // - 예약 발송: 발송 본문 scheduledDate(ISO). 응답 groupInfo.groupId 가 그룹 id.
 // - 예약 취소: DELETE messages/v4/groups/{groupId}/schedule (SDK removeReservationToGroup, 그룹 안 메시지는 실패 처리됨)
 export const MMS_MAX_BYTES = 200 * 1024;
-// type 을 안 주면 'MMS'(기존 호출 그대로). 알림톡 템플릿 이미지는 type 'KAKAO'(SDK 규격, 500KB).
+// type 을 안 주면 'MMS'(기존 호출 그대로). 알림톡 템플릿 이미지는 type 'ATA'(쏠라피 문서, 500KB).
 solapi.uploadImage = async function uploadImage({ base64, name, type = 'MMS' }, { fetchImpl } = {}) {
   const payload = await call('storage/v1/files', { method: 'POST', body: { file: base64, type, name: String(name || 'photo.jpg').slice(0, 60) } }, { fetchImpl });
   const fileId = payload?.fileId;
@@ -128,6 +128,32 @@ solapi.cancelSchedule = async function cancelSchedule({ groupId }, { fetchImpl }
     const status = Number(error?.status);
     return { ok: false, error: status >= 400 && status < 500 ? String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) : '취소했는지 확인하지 못했습니다.' };
   }
+};
+
+// ---- 받는 사람마다 본문·사진이 다른 발송(자동 발송용, 2026-11-13) ----
+// send-many 1회. messages:[{to,text,fileId?,subject?}]. 사진이 있으면 MMS, 없으면 글자 수로 SMS·LMS. 응답은 send 와 같은 모양
+// { accepted, failed, groupId, uncertain, error }. 기존 send 는 바꾸지 않는다.
+solapi.sendEach = async function sendEach({ from, messages }, { fetchImpl } = {}) {
+  const list = (Array.isArray(messages) ? messages : []).map(item => {
+    const type = item.fileId ? 'MMS' : (classifyText(item.text, item.subject).type || 'LMS');
+    const message = { to: item.to, from, text: item.text, type };
+    if ((type === 'LMS' || type === 'MMS') && item.subject) message.subject = item.subject;
+    if (item.fileId) message.imageId = item.fileId;
+    return message;
+  });
+  const total = list.length;
+  let payload;
+  try {
+    payload = await call('messages/v4/send-many/detail', { method: 'POST', body: { messages: list, allowDuplicates: false, showMessageList: false } }, { fetchImpl });
+  } catch (error) {
+    const status = Number(error?.status);
+    if (status >= 400 && status < 500) return { accepted: 0, failed: total, groupId: null, uncertain: false, error: String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) };
+    return { accepted: 0, failed: 0, groupId: null, uncertain: true, error: '보냈는지 확인하지 못했습니다. 발송 내역을 확인해 주세요' };
+  }
+  const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
+  const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
+  const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
+  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
 };
 
 const PROVIDERS = { solapi };

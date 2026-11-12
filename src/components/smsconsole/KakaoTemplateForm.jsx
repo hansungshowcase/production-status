@@ -201,7 +201,7 @@ export default function KakaoTemplateForm({
       const shrunk = await cropToBanner(file);
       const out = await postSmsConsole('kakao_image_upload', { image: { data: shrunk.data } });
       if (!out?.imageId) throw new Error('이미지를 올리지 못했습니다.');
-      if (aliveRef.current) setForm(prev => ({ ...prev, imageId: String(out.imageId), imageUrl: shrunk.url }));
+      if (aliveRef.current) setForm(prev => ({ ...prev, imageId: String(out.imageId), imageUrl: `data:image/jpeg;base64,${shrunk.data}` }));
     } catch (error) {
       if (aliveRef.current) setImageError(String(error?.message || '이미지를 올리지 못했습니다.'));
     } finally {

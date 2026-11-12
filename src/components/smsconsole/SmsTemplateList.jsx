@@ -6,9 +6,12 @@ import { getKstToday } from '../../utils/dateUtils.js';
 import {
   audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, smsBadges, smsPills, sortSmsItems,
 } from './smsTemplateListModel.js';
-import { imageFromItem, myTextSection } from './smsTextTemplateFormModel.js';
+import { autoConditionLine, autoStatusLine, ensureAutoSection, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
+import SmsAutoControls from './SmsAutoControls.jsx';
+import SmsOptoutRow from './SmsOptoutRow.jsx';
 import './KakaoTemplateManager.css';
+import './SmsAutoControls.css';
 
 // 문자 템플릿: 자동 문자 문구 카탈로그를 카드로 보여 준다(조회만).
 export default function SmsTemplateList({ active, onSendText }) {
@@ -38,7 +41,13 @@ export default function SmsTemplateList({ active, onSendText }) {
   }, [active]);
 
   // 내 문구는 화면이 열릴 때마다 가볍게 다시 읽는다(방금 등록한 문구가 바로 보이게)
-  const loadMine = () => fetchSmsConsole('text_templates').then((res) => setMine(Array.isArray(res?.items) ? res.items : [])).catch(() => {});
+  const [autoStatus, setAutoStatus] = useState({}); // 자동 발송 문구별 현황(resource=auto_status)
+  const loadStatus = (id) => fetchSmsConsole('auto_status', { id }).then((res) => setAutoStatus((prev) => ({ ...prev, [id]: res }))).catch(() => {});
+  const loadMine = () => fetchSmsConsole('text_templates').then((res) => {
+    const items = Array.isArray(res?.items) ? res.items : [];
+    setMine(items);
+    items.filter((item) => item.auto_kind).forEach((item) => loadStatus(item.id));
+  }).catch(() => {});
   useEffect(() => {
     if (!active) return;
     loadMine();
@@ -49,8 +58,8 @@ export default function SmsTemplateList({ active, onSendText }) {
     setMineOpen(next); setMineConfirm(''); setMineError('');
     if (next && entry.hasImage && !minePhoto[entry.id]) {
       fetchSmsConsole('text_template', { id: entry.id }).then((res) => {
-        const photo = imageFromItem(res?.item);
-        if (photo) setMinePhoto((prev) => ({ ...prev, [entry.id]: photo.url }));
+        const urls = imageUrlsFromItem(res?.item);
+        if (urls.length) setMinePhoto((prev) => ({ ...prev, [entry.id]: urls }));
       }).catch(() => {});
     }
   };
@@ -64,11 +73,37 @@ export default function SmsTemplateList({ active, onSendText }) {
     } catch (err) { setMineError(err.message || '지우지 못했습니다.'); }
   };
   const mySection = useMemo(() => myTextSection(mine), [mine]);
+  // 내 문구 카드. 켜진 자동 문구는 '발송 중' 묶음에도 같은 카드로 보인다(그래서 함수로 둔다)
+  const renderMine = (entry, prefix = '') => (
+    <li key={`${prefix}${entry.id}`} className={`ktm-card${mineOpen === entry.id ? ' is-selected' : ''}`}>
+      <button type="button" className="ktm-card-main" aria-expanded={mineOpen === entry.id} onClick={() => openMine(entry)}>
+        <span className="ktm-card-name">{entry.name}</span>
+        <span className="ktm-card-meta"><span>{entry.autoKind ? autoConditionLine(entry) : entry.preview}</span></span>
+        {entry.autoKind && autoStatus[entry.id] ? <span className="sac-status">{autoStatusLine(autoStatus[entry.id])}</span> : null}
+        {entry.hasImage ? <span className="ktm-card-badges"><span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span></span> : null}
+        {mineOpen === entry.id ? (
+          <span className="ktm-open">
+            {(minePhoto[entry.id] || []).map((url, index) => <img key={index} className="ktm-open-img" src={url} alt="" />)}
+            <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>
+          </span>
+        ) : null}
+      </button>
+      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} onChanged={() => { loadMine(); }} /> : null}
+      {mineOpen === entry.id ? (
+        <div className="ktm-modal-actions">
+          {entry.autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>}
+          <button type="button" className="ktm-btn" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+        </div>
+      ) : null}
+    </li>
+  );
 
   const { items } = state;
   const pills = useMemo(() => smsPills(items), [items]);
   const filter = picked ?? defaultSmsFilter(items);
-  const sections = useMemo(() => audienceSections(items, filter), [items, filter]);
+  const runningAutos = useMemo(() => (mySection ? mySection.items.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)) : []), [mySection, autoStatus]);
+  const shownAutos = filter === 'in_use' ? runningAutos : [];
+  const sections = useMemo(() => ensureAutoSection(audienceSections(items, filter), shownAutos.length), [items, filter, shownAutos.length]);
 
   let body;
   if (!state.loaded) body = <div className="ktm-empty">불러오는 중…</div>;
@@ -87,27 +122,7 @@ export default function SmsTemplateList({ active, onSendText }) {
           <section className="ktm-aud" aria-label="내 문구">
             <h3 className="ktm-kind-head ktm-kind-head--aud">내 문구 <span className="ktm-kind-count">{mySection.count}</span></h3>
             <ul className="ktm-cards">
-              {mySection.items.map((entry) => (
-                <li key={entry.id} className={`ktm-card${mineOpen === entry.id ? ' is-selected' : ''}`}>
-                  <button type="button" className="ktm-card-main" aria-expanded={mineOpen === entry.id} onClick={() => openMine(entry)}>
-                    <span className="ktm-card-name">{entry.name}</span>
-                    <span className="ktm-card-meta"><span>{entry.preview}</span></span>
-                    {entry.hasImage ? <span className="ktm-card-badges"><span className="ktm-badge ktm-badge--muted">사진</span></span> : null}
-                    {mineOpen === entry.id ? (
-                      <span className="ktm-open">
-                        {minePhoto[entry.id] ? <img className="ktm-open-img" src={minePhoto[entry.id]} alt="" /> : null}
-                        <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>
-                      </span>
-                    ) : null}
-                  </button>
-                  {mineOpen === entry.id ? (
-                    <div className="ktm-modal-actions">
-                      <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>
-                      <button type="button" className="ktm-btn" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
-                    </div>
-                  ) : null}
-                </li>
-              ))}
+              {mySection.items.map((entry) => renderMine(entry))}
             </ul>
             {mineError ? <p className="ktm-alert" role="alert">{mineError}</p> : null}
           </section>
@@ -124,8 +139,9 @@ export default function SmsTemplateList({ active, onSendText }) {
             <h3 className="ktm-kind-head ktm-kind-head--aud">{aud.group} <span className="ktm-kind-count">{aud.count}</span></h3>
             {aud.kinds.map((section) => (
               <section key={section.kind || aud.group} className="ktm-kind" aria-label={section.kind || aud.group}>
-                {section.kind ? <h3 className="ktm-kind-head">{section.kind} <span className="ktm-kind-count">{section.items.length}</span></h3> : null}
+                {section.kind ? <h3 className="ktm-kind-head">{section.kind} <span className="ktm-kind-count">{section.items.length + (aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0)}</span></h3> : null}
                 <ul className="ktm-cards">
+                  {aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.map((entry) => renderMine(entry, 'run-')) : null}
                   {section.items.map((item) => {
                     const expandable = Boolean(item.body || item.image || (item.external && (item.trigger || item.scenario)));
                     const line = conditionLine(item, recipients);
@@ -159,6 +175,7 @@ export default function SmsTemplateList({ active, onSendText }) {
             ))}
           </section>
         ))}
+        <SmsOptoutRow active={active} />
       </>
     );
   }

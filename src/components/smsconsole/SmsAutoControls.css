@@ -1,0 +1,9 @@
+.sac { min-width: 0; }
+.sac-row { margin-top: 8px; }
+.sac-line { margin: 6px 0 0; font-size: 13px; color: var(--smsc-text, #1c2330); overflow-wrap: anywhere; }
+.sac-test { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.sac-test input[type='text'] { width: 160px; box-sizing: border-box; min-height: 40px; padding: 0 10px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 15px; }
+.sac-status { display: block; font-size: 12px; color: var(--smsc-muted, #667085); overflow-wrap: anywhere; }
+.sac-optout { margin-top: 12px; }
+.sac-optout-list { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.sac-optout-list li { display: flex; gap: 8px; align-items: center; justify-content: space-between; }

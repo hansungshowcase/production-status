@@ -15,7 +15,8 @@
     { "path": "/api/cron/ship-day-reminders-daily", "schedule": "42 23 * * *" },
     { "path": "/api/cron/sms-delivery-monitor", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/sheet-sync", "schedule": "* * * * *" },
-    { "path": "/api/cron/external-cleanup", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/external-cleanup", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/sms-auto", "schedule": "0 1 * * *" }
   ],
   "rewrites": [
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
