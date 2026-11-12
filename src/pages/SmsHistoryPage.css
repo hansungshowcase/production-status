@@ -880,3 +880,10 @@
 .sms-console .sms-history-date-filter { display: flex; flex-wrap: wrap; align-items: flex-end; }
 .sms-console .sms-history-date-filter > label { flex: 1 1 160px; }
 .sms-console .sms-history-date-clear { flex: 0 0 auto; }
+
+/* 휴대폰: 페이지 전환 애니메이션의 transform 을 풀어 fixed 하단 버튼 줄이 화면 기준이 되게 한다 */
+@media (max-width: 768px) {
+  .page-transition-enter-active:has(> .sms-history-page) {
+    animation: none !important; transform: none !important; will-change: auto !important;
+  }
+}

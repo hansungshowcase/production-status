@@ -123,3 +123,12 @@
   .smsc-form__actions .smsc-form__btn { width: 100%; }
   .smsc-form__varrow .smsc-form__btn { flex: 1 1 auto; }
 }
+
+/* 휴대폰: 등록 버튼 줄을 화면 아래에 고정(조상 transform 이 없어야 fixed 가 화면 기준이 된다 — SmsHistoryPage.css 참고) */
+@media (max-width: 768px) {
+  .smsc-form__footer {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    margin: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .smsc-form__form { padding-bottom: 120px; }
+}
