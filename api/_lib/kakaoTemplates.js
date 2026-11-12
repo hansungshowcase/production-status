@@ -37,7 +37,7 @@ function cleanMessage(value) {
   return text || '쏠라피에서 요청을 받아들이지 않았습니다';
 }
 
-async function call(path, { method = 'GET', body, query } = {}, { fetchImpl = fetch } = {}) {
+export async function call(path, { method = 'GET', body, query } = {}, { fetchImpl = fetch } = {}) {
   const url = new URL(path, BASE);
   for (const [key, value] of Object.entries(query || {})) {
     if (value != null && value !== '') url.searchParams.set(key, String(value));

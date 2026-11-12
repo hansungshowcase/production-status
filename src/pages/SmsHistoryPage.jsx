@@ -10,6 +10,7 @@ import StaffSmsPanel from '../components/StaffSmsPanel';
 import './SmsHistoryPage.css';
 
 const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.jsx'));
+const SendPanel = lazy(() => import('../components/smsconsole/SendPanel.jsx'));
 const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
 const SmsTemplateList = lazy(() => import('../components/smsconsole/SmsTemplateList.jsx'));
 const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode'];
@@ -91,6 +92,14 @@ export default function SmsHistoryPage() {
           <div className="sms-console-pane" hidden={state.menu !== 'dashboard'}>
             <Suspense fallback={PANE_LOADING}>
               <SmsDashboard active={state.menu === 'dashboard'} onNavigate={selectMenu} />
+            </Suspense>
+          </div>
+        )}
+
+        {isMounted('send') && (
+          <div className="sms-console-pane" hidden={state.menu !== 'send'}>
+            <Suspense fallback={PANE_LOADING}>
+              <SendPanel active={state.menu === 'send'} />
             </Suspense>
           </div>
         )}

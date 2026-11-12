@@ -5,6 +5,7 @@ import './SmsConsoleSidebar.css';
 // 아이콘은 직접 그린 인라인 SVG(24x24, stroke).
 const ICONS = {
   dashboard: <path d="M5 20V10M12 20V4M19 20v-7" />,
+  send: <path d="M4 12 20 4l-4 16-4-6z" />,
   log: <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />,
   templates: <path d="M4 5h16v11H9l-5 4z" />,
   customer: (

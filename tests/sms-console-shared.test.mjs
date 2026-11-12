@@ -6,8 +6,8 @@ import {
 } from '../shared/smsConsole.js';
 
 test('메뉴 순서는 설계 그대로 5개', () => {
-  assert.deepEqual(CONSOLE_MENUS.map(m => m.id), ['dashboard', 'log', 'templates', 'customer', 'staff']);
-  assert.equal(CONSOLE_MENUS[1].subs.length, 5);
+  assert.deepEqual(CONSOLE_MENUS.map(m => m.id), ['dashboard', 'send', 'log', 'templates', 'customer', 'staff']);
+  assert.equal(CONSOLE_MENUS.find(m => m.id === 'log').subs.length, 5);
 });
 
 test('kindOfType: 문자·알림톡·기타', () => {

@@ -1,0 +1,26 @@
+.smsc-send { display: flex; flex-direction: column; gap: 16px; max-width: 560px; min-width: 0; color: var(--smsc-text, #1c2330); }
+.smsc-send__field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.smsc-send__field label, .smsc-send__group legend { font-size: 14px; font-weight: 600; }
+.smsc-send textarea {
+  width: 100%; box-sizing: border-box; min-height: 44px; padding: 8px 12px; border: 1px solid var(--smsc-line, #dfe3ea);
+  border-radius: 8px; background: var(--smsc-surface, #fff); color: inherit; font: inherit; font-size: 16px; line-height: 1.5;
+}
+.smsc-send textarea { resize: vertical; }
+.smsc-send [aria-invalid='true'] { border-color: var(--smsc-danger, #c62828); }
+.smsc-send__group { margin: 0; padding: 12px; min-width: 0; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; }
+.smsc-send__choices { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.smsc-send__choice { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; overflow-wrap: anywhere; }
+.smsc-send__choice input { width: 22px; height: 22px; flex: none; margin: 0; }
+.smsc-send__count { margin: 0; font-size: 13px; color: var(--smsc-muted, #667085); text-align: right; }
+.smsc-send__error, .smsc-send__server { margin: 0; font-size: 14px; color: var(--smsc-danger, #c62828); overflow-wrap: anywhere; }
+.smsc-send__server { padding: 10px 12px; border: 1px solid var(--smsc-danger, #c62828); border-radius: 8px; background: #fdecea; }
+.smsc-send__preview, .smsc-send__result, .smsc-send__locked { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--smsc-accent-weak, #eaf0ff); font-size: 15px; overflow-wrap: anywhere; }
+.smsc-send__locked { background: var(--smsc-bg, #f5f6f8); color: var(--smsc-muted, #667085); }
+.smsc-send__actions { display: flex; gap: 8px; }
+.smsc-send__btn { min-height: 44px; padding: 0 14px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-surface, #fff); color: inherit; font: inherit; font-size: 15px; cursor: pointer; overflow-wrap: anywhere; min-width: 110px; }
+.smsc-send__btn--primary { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent, #2457d6); color: #fff; }
+.smsc-send__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+@media (max-width: 640px) {
+  .smsc-send__actions { flex-direction: column-reverse; }
+  .smsc-send__btn { width: 100%; }
+}

@@ -6,9 +6,11 @@ import { matchReviewCampaign } from './_lib/customerReviewCampaigns.js';
 import * as defaultGuard from './_lib/smsConsoleGuard.js';
 import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../shared/smsConsole.js';
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
+import { getDb } from './_lib/db.js';
+import { runSend, sendOptions } from './_lib/smsManualSend.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent']);
-const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -109,6 +111,10 @@ async function handleGet(req, res, ctx) {
   const { deps, kakao, guard, nowMs, opts } = ctx;
   const resource = String(queryValue(req.query?.resource) || '');
   if (!RESOURCES.has(resource)) return fail(res, 400, '올바른 조회가 아닙니다.');
+  if (resource === 'send') {
+    const write = await guard.writeStatus({ db: deps.db, nowMs });
+    return res.status(200).json(sendOptions(deps.env || process.env, deps.staff, write.enabled));
+  }
   const configured = (deps.hasCredentials || hasSolapiCredentials)();
   const checked_at = new Date(nowMs).toISOString();
   try {
@@ -167,10 +173,13 @@ function parseBody(body) {
 async function handlePost(req, res, ctx) {
   const { deps, kakao, guard, nowMs, opts } = ctx;
   if (!enforceSameOriginWrite(req, res)) return;
-  if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: 5, keySuffix: 'POST' })) return;
   const body = parseBody(req.body);
+  // 보내기는 템플릿 작업과 요청 수 제한 통을 나눈다.
+  const isSend = body?.action === 'send';
+  if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: isSend ? 10 : 5, keySuffix: isSend ? 'SEND' : 'POST' })) return;
   if (!body || !ACTIONS.has(body.action)) return fail(res, 400, '올바른 요청이 아닙니다.');
   const action = body.action;
+  if (isSend) return doSend(body, res, ctx);
 
   const write = await guard.writeStatus({ db: deps.db, nowMs });
   // 관리자 비밀번호 잠금은 두지 않는다(2026-11-11 사장님 "비밀번호 필요없으니까 빼버려 내가 관리하는데").
@@ -226,6 +235,18 @@ async function handlePost(req, res, ctx) {
     return res.status(200).json({ item: fresh?.template || { id } });
   } catch (error) {
     return writeError(res, error);
+  }
+}
+
+// 문자 직접 보내기: 등록·삭제 스위치(SMS_CONSOLE_WRITE)와 별개로 SMS_SEND 스위치·발송 비밀번호로 막는다.
+async function doSend(body, res, ctx) {
+  const { deps, opts, guard } = ctx;
+  try {
+    const write = await guard.writeStatus({ db: deps.db, nowMs: ctx.nowMs });
+    const out = await runSend(body, { writeEnabled: write.enabled, env: deps.env || process.env, db: deps.db || getDb(), provider: deps.sendProvider, fetchImpl: opts.fetchImpl, nowMs: ctx.nowMs, staff: deps.staff });
+    return res.status(out.status).json(out.body);
+  } catch {
+    return fail(res, 500, '문자를 보내지 못했습니다.');
   }
 }
 

@@ -2,6 +2,7 @@
 
 export const CONSOLE_MENUS = Object.freeze([
   { id: 'dashboard', label: '현황판' },
+  { id: 'send', label: '보내기' },
   {
     id: 'log', label: '발송 내역', subs: [
       { id: 'all', label: '전체', aud: 'all', ch: 'all' },
