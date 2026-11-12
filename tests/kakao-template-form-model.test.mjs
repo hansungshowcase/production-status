@@ -4,7 +4,7 @@ import { validateTemplateInput } from '../shared/smsConsole.js';
 import {
   emptyFormValues, formValuesFromTemplate, toValidationInput, insertVariable, variableNameError,
   addButton, removeButton, moveButton, updateButton, countChars, extraErrors, firstErrorKey,
-  targetKey, parseTargetKey, previewTemplate, missingFieldsText,
+  targetKey, parseTargetKey, previewTemplate, missingFieldsText, submitSteps, afterCreate, inspectFailText,
 } from '../src/components/smsconsole/templateFormModel.js';
 
 const T1 = { kind: 'channel', id: 'KA01', name: '한성 채널' };
@@ -133,4 +133,17 @@ test('빠진 칸 안내 글: 채널 없음 / 체크 없음 / 둘 다 / 모두 �
     '채널을 선택해 주세요, 템플릿 이름을 입력해 주세요, 정보성 메시지 확인에 체크해 주세요',
   );
   assert.equal(missingFieldsText({}), '');
+});
+
+test('등록 성공 뒤 검수 요청 1회: 등록 응답이 검수 실패면 inspect 이어서, 성공이면 더 부르지 않는다', () => {
+  assert.deepEqual(submitSteps({ isEdit: false, createdId: null }), ['create']);
+  assert.deepEqual(afterCreate({ item: { id: 'T1' }, inspected: false }), { createdId: 'T1', inspect: true });
+  assert.deepEqual(afterCreate({ item: { id: 'T1' }, inspected: true }), { createdId: 'T1', inspect: false });
+  assert.deepEqual(afterCreate(undefined), { createdId: null, inspect: false });
+});
+
+test('검수 요청 실패 뒤 다시 누르면 create 0회, inspect 1회. 수정 화면은 update', () => {
+  assert.deepEqual(submitSteps({ isEdit: false, createdId: 'T1' }), ['inspect']);
+  assert.deepEqual(submitSteps({ isEdit: true, createdId: null }), ['update']);
+  assert.match(inspectFailText(new Error('시간 초과')), /등록됐지만 검수 요청은 실패했습니다\. 시간 초과/);
 });

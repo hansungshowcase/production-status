@@ -212,3 +212,23 @@ export function previewTemplate(form, targets = []) {
     targetName: picked?.name || '',
   };
 }
+
+// 등록 뒤 검수 요청 순서 판단. createdId 가 이미 있으면(검수 요청만 실패한 경우) 템플릿을 다시 만들지 않는다.
+// 반환: ['create'] | ['inspect'] — 등록 성공 직후의 검수 요청은 등록 응답(inspected)을 보고 따로 판단한다.
+export function submitSteps({ isEdit, createdId } = {}) {
+  if (isEdit) return ['update'];
+  return createdId ? ['inspect'] : ['create'];
+}
+
+// 등록 응답({ item, inspected, warning }) → 다음 동작. 등록은 됐는데 검수 요청이 안 됐으면 검수만 이어서 한다.
+export function afterCreate(result) {
+  const id = result?.item?.id || null;
+  if (!id) return { createdId: null, inspect: false };
+  return { createdId: id, inspect: result.inspected === false };
+}
+
+// 검수 요청 실패 사유 한 줄(버튼 위에 보인다).
+export function inspectFailText(error) {
+  const reason = String(error?.message || '').trim();
+  return `템플릿은 등록됐지만 검수 요청은 실패했습니다.${reason ? ` ${reason}` : ''}`;
+}

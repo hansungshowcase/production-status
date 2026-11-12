@@ -5,10 +5,11 @@ import {
   DEFAULT_CATEGORY,
   validateTemplateInput,
 } from '../../../shared/smsConsole.js';
-import { fetchSmsConsole } from '../../api/smsConsole.js';
+import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import {
   addButton,
+  afterCreate,
   canAddButton,
   countChars,
   emptyFormValues,
@@ -16,10 +17,12 @@ import {
   firstErrorKey,
   formValuesFromTemplate,
   insertVariable,
+  inspectFailText,
   missingFieldsText,
   moveButton,
   previewTemplate,
   removeButton,
+  submitSteps,
   targetKey,
   toValidationInput,
   updateButton,
@@ -59,9 +62,11 @@ export default function KakaoTemplateForm({
   const isEdit = mode === 'edit';
   const uid = useId();
   const fid = key => `${uid}-${String(key).replace(/\./g, '-')}`;
-  const [form, setForm] = useState(() => (isEdit ? formValuesFromTemplate(initial) : emptyFormValues(targets)));
+  const [form, setForm] = useState(() => (isEdit ? formValuesFromTemplate(initial) : { ...emptyFormValues(targets), requestInspection: true }));
   const [submitted, setSubmitted] = useState(false);
   const [stopText, setStopText] = useState('');
+  const [createdId, setCreatedId] = useState(null);
+  const [inspectError, setInspectError] = useState('');
   const [pending, setPending] = useState(false);
   const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
   const [varOpen, setVarOpen] = useState(false);
@@ -154,16 +159,31 @@ export default function KakaoTemplateForm({
     }
     sendingRef.current = true;
     setPending(true);
+    setInspectError('');
+    const comment = !isEdit ? String(form.comment || '').trim() : '';
     try {
-      await onSubmit?.(result.value, {
-        requestInspection: !isEdit && form.requestInspection === true,
-        comment: !isEdit && form.requestInspection ? String(form.comment || '').trim() : '',
-      });
+      const [step] = submitSteps({ isEdit, createdId });
+      if (step === 'inspect') {
+        await runInspect(createdId, comment);
+      } else {
+        const created = await onSubmit?.(result.value, { requestInspection: !isEdit, comment });
+        const next = afterCreate(created);
+        if (next.createdId && aliveRef.current) setCreatedId(next.createdId);
+        if (next.createdId && next.inspect) await runInspect(next.createdId, comment);
+      }
     } catch {
       // 오류 문구는 부모가 serverError 로 보여 준다
     } finally {
       sendingRef.current = false;
       if (aliveRef.current) setPending(false);
+    }
+  }
+
+  async function runInspect(id, comment) {
+    try {
+      await postSmsConsole('inspect', { id, comment });
+    } catch (error) {
+      if (aliveRef.current) setInspectError(inspectFailText(error));
     }
   }
 
@@ -214,8 +234,6 @@ export default function KakaoTemplateForm({
 
   const formBody = (
     <form className="smsc-form__form" onSubmit={submit} noValidate>
-      {serverError ? <p className="smsc-form__server" role="alert">{serverError}</p> : null}
-
       <div className="smsc-form__field">
         <label htmlFor={fid('target')}>채널 / 그룹 <b aria-hidden="true">*</b></label>
         {isEdit ? (
@@ -375,18 +393,10 @@ export default function KakaoTemplateForm({
 
       {!isEdit ? (
         <div className="smsc-form__field">
-          <label className="smsc-form__check">
-            <input type="checkbox" checked={form.requestInspection} onChange={e => set({ requestInspection: e.target.checked })} disabled={locked} />
-            <span>등록 후 바로 검수 요청</span>
-          </label>
-          {form.requestInspection ? (
-            <>
-              <label htmlFor={fid('comment')}>검수자 참고 의견 (선택)</label>
-              <textarea id={fid('comment')} rows={3} value={form.comment} onChange={e => set({ comment: e.target.value })} disabled={locked} {...errProps('comment')} />
-              <p className="smsc-form__count">{countChars(form.comment)} / {TEMPLATE_LIMITS.comment}</p>
-              {errNode('comment')}
-            </>
-          ) : null}
+          <label htmlFor={fid('comment')}>검수자 참고 의견 (선택)</label>
+          <textarea id={fid('comment')} rows={3} value={form.comment} onChange={e => set({ comment: e.target.value })} disabled={locked} {...errProps('comment')} />
+          <p className="smsc-form__count">{countChars(form.comment)} / {TEMPLATE_LIMITS.comment}</p>
+          {errNode('comment')}
         </div>
       ) : null}
 
@@ -407,13 +417,16 @@ export default function KakaoTemplateForm({
         </div>
       ) : null}
 
-      {stopText ? <p className="smsc-form__error" role="alert">{stopText}</p> : null}
-      {serverError ? <p className="smsc-form__server" role="alert">{serverError}</p> : null}
-      <div className="smsc-form__actions">
-        <button type="button" className="smsc-form__btn" onClick={onCancel} disabled={locked}>취소</button>
-        <button type="submit" className="smsc-form__btn smsc-form__btn--primary" disabled={locked}>
-          {locked ? '처리 중…' : (isEdit ? '수정 저장' : '템플릿 등록')}
-        </button>
+      <div className="smsc-form__footer">
+        {stopText ? <p className="smsc-form__error" role="alert">{stopText}</p> : null}
+        {inspectError ? <p className="smsc-form__error" role="alert">{inspectError}</p> : null}
+        {serverError ? <p className="smsc-form__server" role="alert">{serverError}</p> : null}
+        <div className="smsc-form__actions">
+          <button type="button" className="smsc-form__btn" onClick={onCancel} disabled={locked}>취소</button>
+          <button type="submit" className="smsc-form__btn smsc-form__btn--primary" disabled={locked}>
+            {locked ? '처리 중…' : (isEdit ? '수정 저장' : (createdId ? '검수 요청' : '등록하고 검수 요청'))}
+          </button>
+        </div>
       </div>
     </form>
   );

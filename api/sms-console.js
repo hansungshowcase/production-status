@@ -8,9 +8,9 @@ import { TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplateInput } from '../share
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
 import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions } from './_lib/smsManualSend.js';
-import { deleteTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
+import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
@@ -125,6 +125,12 @@ async function handleGet(req, res, ctx) {
   if (resource === 'text_templates') {
     try {
       const out = await listTextTemplates(deps.db || getDb());
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '문구를 불러오지 못했습니다.'); }
+  }
+  if (resource === 'text_template') {
+    try {
+      const out = await getTextTemplate(deps.db || getDb(), { id: queryValue(req.query?.id) });
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 불러오지 못했습니다.'); }
   }

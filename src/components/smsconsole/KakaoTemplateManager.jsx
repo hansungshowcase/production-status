@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
+import SmsTextTemplateForm, { TemplateKindChooser } from './SmsTextTemplateForm.jsx';
+import { KIND_KAKAO, KIND_SMS } from './smsTextTemplateFormModel.js';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
   isValidRename, readOnlyAudienceSections, readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras, usageBadge, usageCount,
@@ -65,7 +67,7 @@ function messageLabel(type) {
   return type;
 }
 
-export default function KakaoTemplateManager({ active, selectedId, mode, onRoute, onOpenLog, onSend }) {
+export default function KakaoTemplateManager({ active, selectedId, mode, kind = KIND_SMS, onRoute, onOpenLog, onSend, onSendText }) {
   const [tplState, setTplState] = useState({ loading: false, loaded: false, error: null, status: 0, data: null });
   const [usage, setUsage] = useState(null);
   const [sent, setSent] = useState(null); // 종류·보내는 곳·문자 대체 건수(읽기 전용). 못 불러와도 목록은 그대로
@@ -210,6 +212,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     if (formOpen) {
       return (
         <div className="ktm-form-pane">
+          {mode === 'new' ? <TemplateKindChooser kind={KIND_KAKAO} onPick={(next) => onRoute({ mode: 'new', tpl: '', kind: next })} /> : null}
           <KakaoTemplateForm
             key={mode === 'edit' ? selected.id : 'new'}
             mode={mode === 'edit' ? 'edit' : 'create'}
@@ -383,7 +386,15 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
 
   // ----- 본문 -----
   let body;
-  if (!tplState.loaded && tplState.loading) body = <div className="ktm-empty">불러오는 중…</div>;
+  if (mode === 'new' && kind === KIND_SMS) {
+    // 문자 템플릿 등록: 알림톡 목록을 못 불러와도 쓸 수 있게 목록 조회 결과와 상관없이 그린다
+    body = (
+      <div className="ktm-form-pane">
+        <TemplateKindChooser kind={KIND_SMS} onPick={(next) => onRoute({ mode: 'new', tpl: '', kind: next })} />
+        <SmsTextTemplateForm onSend={(id) => onSendText?.(id)} onCancel={() => onRoute({ mode: '' })} />
+      </div>
+    );
+  } else if (!tplState.loaded && tplState.loading) body = <div className="ktm-empty">불러오는 중…</div>;
   else if (tplState.error && !data) {
     const noPermission = tplState.status === 401 || tplState.status === 403;
     body = (
@@ -439,7 +450,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <p className="ktm-sub">한성쇼케이스 채널의 알림톡 템플릿을 보고, 바로 등록·삭제합니다.</p>
         </div>
         <button type="button" className="ktm-btn ktm-btn--primary" disabled={!data || data.configured === false || writeOff}
-          onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '' }); }}>
+          onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '', kind: KIND_KAKAO }); }}>
           <Icon name="plus" /> 템플릿 등록
         </button>
       </div>

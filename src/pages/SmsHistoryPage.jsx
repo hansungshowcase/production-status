@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { buildConsoleQuery, parseConsoleQuery } from '../../shared/smsConsole.js';
+import { normalizeKind } from '../components/smsconsole/smsTextTemplateFormModel.js';
 import SmsConsoleSidebar from '../components/smsconsole/SmsConsoleSidebar';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
@@ -13,7 +14,7 @@ const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.js
 const SendPanel = lazy(() => import('../components/smsconsole/SendPanel.jsx'));
 const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
 const SmsTemplateList = lazy(() => import('../components/smsconsole/SmsTemplateList.jsx'));
-const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode', 'template'];
+const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode', 'template', 'kind', 'text'];
 const PANE_LOADING = <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
 export default function SmsHistoryPage() {
@@ -49,15 +50,21 @@ export default function SmsHistoryPage() {
     const params = new URLSearchParams(searchParams);
     CONSOLE_QUERY_KEYS.forEach(key => params.delete(key));
     new URLSearchParams(buildConsoleQuery(next)).forEach((value, key) => params.set(key, value));
+    // 문자 템플릿 등록의 종류(kind)와 보내기에 채울 내 문구(text)는 콘솔 상태 밖의 칸이라 여기서 따로 붙인다
+    if (next.menu === 'templates' && next.mode === 'new' && next.kind) params.set('kind', normalizeKind(next.kind));
+    if (next.menu === 'send' && /^\d{1,12}$/.test(String(next.text || ''))) params.set('text', String(next.text));
     setSearchParams(params, { replace });
   }, [searchParams, setSearchParams]);
 
   const selectMenu = useCallback((menu, patch = {}) => {
     writeState({ aud: 'all', ch: 'all', tpl: '', mode: '', ...patch, menu }, false);
   }, [writeState]);
+  const kind = normalizeKind(searchParams.get('kind'));
+  const textId = state.menu === 'send' && /^\d{1,12}$/.test(searchParams.get('text') || '') ? searchParams.get('text') : '';
   const patchState = useCallback(patch => {
-    writeState({ ...state, ...patch }, true);
-  }, [state, writeState]);
+    // 종류 고르기를 바꾸는 요청이 아닌 동안(새 등록 화면 안에서 다른 칸이 바뀔 때)에는 지금 종류를 유지한다
+    writeState({ ...state, ...(state.mode === 'new' && patch.mode !== '' ? { kind } : {}), ...patch }, true);
+  }, [state, kind, writeState]);
   const openLog = useCallback(templateId => {
     setLogPreset({ key: Date.now(), view: 'messages', filters: { template_id: templateId } });
     writeState({ aud: 'all', ch: 'all', tpl: '', mode: '', menu: 'log' }, false);
@@ -99,7 +106,7 @@ export default function SmsHistoryPage() {
         {isMounted('send') && (
           <div className="sms-console-pane" hidden={state.menu !== 'send'}>
             <Suspense fallback={PANE_LOADING}>
-              <SendPanel active={state.menu === 'send'} template={state.template || ''} />
+              <SendPanel active={state.menu === 'send'} template={state.template || ''} text={textId} />
             </Suspense>
           </div>
         )}
@@ -125,7 +132,7 @@ export default function SmsHistoryPage() {
             <Suspense fallback={PANE_LOADING}>
               {(tplSeen.sms || tplKind === 'sms') && (
                 <div hidden={tplKind !== 'sms'}>
-                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} />
+                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} onSendText={id => selectMenu('send', { text: id })} />
                 </div>
               )}
               {(tplSeen.kakao || tplKind === 'kakao') && (
@@ -134,6 +141,8 @@ export default function SmsHistoryPage() {
                     active={state.menu === 'templates' && tplKind === 'kakao'}
                     selectedId={tplKind === 'kakao' ? state.tpl : ''}
                     mode={tplKind === 'kakao' ? state.mode : ''}
+                    kind={kind}
+                    onSendText={id => selectMenu('send', { text: id })}
                     onRoute={patchState}
                     onSend={id => selectMenu('send', { template: id })}
                     onOpenLog={openLog}

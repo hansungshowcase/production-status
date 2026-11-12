@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { allVariablesFilled, buildRecipients, fillTemplateContent, lockedLine, makeIdempotencyKey, payloadSignature, scheduleInfo, shortKst, shrinkImage, templateVariableNames, textInfo } from './sendPanelModel.js';
+import { buildSaveBody, imageFromItem } from './smsTextTemplateFormModel.js';
 import './SendPanel.css';
 
 const wonText = value => (value === null || value === undefined ? '모름' : `${Number(value || 0).toLocaleString('ko-KR')}원`);
 const typeText = type => (type === 'ATA' ? '알림톡' : type === 'MMS' ? '사진 문자' : type);
 
 // 문자 직접 보내기. 화면이 처음 열릴 때 설정을 1번만 읽고, 이후 요청은 미리보기·보내기를 누를 때뿐이다.
-export default function SendPanel({ active = true, template = '' }) {
+export default function SendPanel({ active = true, template = '', text: textParam = '' }) {
   const [options, setOptions] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [phoneText, setPhoneText] = useState('');
@@ -51,6 +52,21 @@ export default function SendPanel({ active = true, template = '' }) {
     fetchSmsConsole('text_templates').then(data => setTexts(data?.items || [])).catch(() => { textsLoadedRef.current = false; });
   }, [active, template]);
 
+  // 내 문구 한 개를 단건 조회해 내용과 사진을 채운다(사진 본문은 목록에 없고 단건에만 있다)
+  const fillFromText = id => fetchSmsConsole('text_template', { id }).then(data => {
+    const item = data?.item;
+    if (!item) return;
+    setText(item.body || ''); setResult(null); setPreview(null);
+    const photo = imageFromItem(item);
+    setImage(prev => { if (prev?.url && prev.url.startsWith('blob:')) URL.revokeObjectURL(prev.url); return photo; });
+    setImageError('');
+  });
+  // ?menu=send&text=<id> 로 오면 그 문구를 채운다. 알림톡 템플릿(template)이 함께 오면 template 이 우선이다.
+  useEffect(() => {
+    if (!active || template || !textParam) return;
+    fillFromText(textParam).then(() => setTextId(String(textParam))).catch(err => setTextError(err.message || '문구를 불러오지 못했습니다.'));
+  }, [textParam, active, template]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 템플릿 모드: 템플릿 목록(서버 60초 캐시)을 1번 읽어 그 템플릿을 찾는다. 템플릿이 없으면 이 칸은 아무것도 하지 않는다.
   useEffect(() => {
     if (!template) { setTplItem(null); setTplError(''); return undefined; }
@@ -81,7 +97,10 @@ export default function SendPanel({ active = true, template = '' }) {
   const pickText = value => {
     setTextId(value); setConfirmDelete(false); setSaveOpen(false); setTextError('');
     const found = texts.find(item => String(item.id) === String(value));
-    if (found) { setText(found.body); setResult(null); }
+    if (found) {
+      setText(found.body); setResult(null);
+      if (found.has_image) fillFromText(found.id).catch(() => {}); // 사진 있는 문구는 사진도 같이 채운다
+    }
   };
   const saveText = async () => {
     if (saving) return;
@@ -89,7 +108,7 @@ export default function SendPanel({ active = true, template = '' }) {
     setTextError('');
     const name = saveName.trim();
     try {
-      const out = await postSmsConsole('text_template_save', { id: selectedText && selectedText.name === name ? selectedText.id : undefined, name, body: text });
+      const out = await postSmsConsole('text_template_save', { id: selectedText && selectedText.name === name ? selectedText.id : undefined, ...buildSaveBody({ name, body: text, image: photo }) });
       const item = out.item;
       setTexts(prev => [...prev.filter(x => x.id !== item.id), item].sort((a, b) => a.name.localeCompare(b.name, 'ko')));
       setTextId(String(item.id)); setSaveOpen(false); setConfirmDelete(false);
