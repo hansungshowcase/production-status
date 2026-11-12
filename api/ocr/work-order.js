@@ -243,7 +243,7 @@ async function callClaudeOcr({ apiKey, mimeType, filePart }) {
     max_tokens: 6000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    output_config: { effort: 'low' },
+    output_config: { effort: 'medium' },
     messages: [{
       role: 'user',
       content: [

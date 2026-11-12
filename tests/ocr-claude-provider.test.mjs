@@ -134,7 +134,7 @@ test('Claude 키가 있으면 Claude 가 먼저 읽고, 읽은 값을 그대로 
   assert.equal(sent.messages[0].content[0].source.media_type, 'image/png');
   assert.equal(sent.messages[0].content[1].type, 'text');
   assert.equal(sent.fallbacks, 'default');
-  assert.equal(sent.output_config.effort, 'low');
+  assert.equal(sent.output_config.effort, 'medium');
 });
 
 test('Claude 가 실패하면 OpenAI 를 거치지 않고 Gemini 로 넘어간다', async () => {
