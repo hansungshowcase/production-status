@@ -115,12 +115,13 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
 
   const { items } = state;
   const sortedMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
-  const pills = useMemo(() => [...smsPills(items), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection]);
+  const runningAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
+  // '발송 중' 숫자에는 켜진 내 자동 문구도 센다(표의 총 건수와 같게)
+  const pills = useMemo(() => [...smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAutos.length } : pill)), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection, runningAutos]);
   const rawTab = picked ?? defaultSmsFilter(items);
   const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
   const isMineTab = tab === 'mine';
   const filter = isMineTab ? 'all' : tab;
-  const runningAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
   const shownAutos = filter === 'in_use' ? runningAutos : [];
   const sections = useMemo(() => ensureAutoSection(audienceSections(items, filter), shownAutos.length), [items, filter, shownAutos.length]);
 
