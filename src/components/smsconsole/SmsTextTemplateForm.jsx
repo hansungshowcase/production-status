@@ -1,9 +1,36 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
-import { shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { IMAGE_MAX_BYTES, shrinkImage } from './sendPanelModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
+
+// 사진 여러 장을 mergeLayout 배치대로 한 장(JPEG, 200KB 이하)으로 그린다. 안 되면 Error('사진이 너무 큽니다').
+async function mergeImages(list) {
+  const imgs = await Promise.all(list.map(item => new Promise((resolve, reject) => { const el = new Image(); el.onload = () => resolve(el); el.onerror = () => reject(new Error('사진이 너무 큽니다')); el.src = item.url; })));
+  const sizes = imgs.map(el => ({ width: el.naturalWidth, height: el.naturalHeight }));
+  let edge = undefined;
+  for (let round = 0; round < 6; round += 1) {
+    const lay = mergeLayout(sizes, edge ? { maxEdge: edge } : undefined);
+    const canvas = document.createElement('canvas');
+    canvas.width = lay.width; canvas.height = lay.height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, lay.width, lay.height);
+    imgs.forEach((el, i) => ctx.drawImage(el, lay.rects[i].x, lay.rects[i].y, lay.rects[i].w, lay.rects[i].h));
+    for (const quality of [0.85, 0.7, 0.55, 0.4]) {
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (blob && blob.size <= IMAGE_MAX_BYTES) {
+        const buffer = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < buffer.length; i += 0x8000) binary += String.fromCharCode(...buffer.subarray(i, i + 0x8000));
+        return { data: btoa(binary), bytes: blob.size, url: URL.createObjectURL(blob) };
+      }
+    }
+    edge = Math.round(Math.max(lay.width, lay.height) * 0.8);
+  }
+  throw new Error('사진이 너무 큽니다');
+}
 
 // 문자 템플릿 등록: 이름·내용·사진 1장. 검수가 없어 등록하면 바로 쓸 수 있다.
 export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial }) {
@@ -28,6 +55,9 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
   const [adMark, setAdMark] = useState(true);
+  const [merge, setMerge] = useState(true);
+  const [merged, setMerged] = useState(null);
+  const [mergeFailed, setMergeFailed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(null);
@@ -54,6 +84,16 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setBody(prev => `${prev.slice(0, at[0])}${text}${prev.slice(at[1])}`);
     setTimeout(() => { if (el) { el.focus(); el.setSelectionRange(at[0] + text.length, at[0] + text.length); } }, 0);
   };
+  const wantMerge = merge && images.length >= 2;
+  useEffect(() => {
+    setMerged(null); setMergeFailed(false);
+    if (!wantMerge) return undefined;
+    let alive = true; let made = null;
+    mergeImages(images).then(out => { made = out; if (alive) setMerged(out); else URL.revokeObjectURL(out.url); }).catch(err => { if (alive) { setMergeFailed(true); setImageError(err.message || '사진이 너무 큽니다'); } });
+    return () => { alive = false; if (made) URL.revokeObjectURL(made.url); };
+  }, [images, wantMerge]);
+  const outImages = wantMerge && !mergeFailed ? (merged ? [merged] : []) : images;
+  const mergePending = wantMerge && !mergeFailed && !merged;
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const { info } = check;
 
@@ -72,12 +112,12 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setImageError('');
   };
   const submit = async () => {
-    if (busy) return;
+    if (busy || mergePending) return;
     if (!check.ok) { setError(textFormStopText(check.reason)); return; }
     setBusy(true);
     setError('');
     try {
-      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body: outBody, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff, ataTemplate } }));
+      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body: outBody, images: outImages, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff, ataTemplate } }));
       setSaved(out.item);
       onSaved?.(out.item);
     } catch (err) { setError(textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.'); } finally { setBusy(false); }
@@ -110,6 +150,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       <div className="stf-row">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
         <button type="button" className="ktm-btn" disabled={images.length >= IMAGE_MAX} onClick={() => fileRef.current?.click()}>사진</button>
+        {images.length >= 2 ? <label><input type="checkbox" className="stf-check" checked={merge} onChange={event => setMerge(event.target.checked)} />한 장으로 합치기</label> : null}
         {images.map((item, index) => (
           <span key={item.url || index} className="stf-photo">
             <img className="stf-thumb" src={item.url} alt="" />
@@ -132,8 +173,10 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <option value={AUTO_KIND_SHIP_OR_DUE}>출고·납기일 기준</option>
           </select>
           {isAdKind(autoKind) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
+          {dayKind || leadKind ? <span className="stf-tag">언제</span> : null}
           {dayKind || leadKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
           {dayKind || leadKind ? <span>일 뒤</span> : null}
+          {leadKind ? <span className="stf-tag">알림톡</span> : null}
           {leadKind ? (
             <select value={ataTemplate} aria-label="알림톡" onChange={event => setAtaTemplate(event.target.value)}>
               <option value="">문자로</option>
@@ -141,11 +184,14 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           ) : null}
+          {dayKind ? <span className="stf-tag">시작일</span> : null}
           {dayKind ? <input type="date" className="stf-from" value={sendFrom} aria-label="시작일" onChange={event => setSendFrom(event.target.value)} /> : null}
+          {dayKind ? <span className="stf-tag">반복</span> : null}
           {dayKind ? <input type="text" inputMode="numeric" className="stf-days" value={repeat} maxLength={2} aria-label="횟수" onChange={event => setRepeat(event.target.value)} /> : null}
           {dayKind ? <span>번</span> : null}
           {dayKind && Number(repeat) >= 2 ? <input type="text" inputMode="numeric" className="stf-days" value={interval} maxLength={3} aria-label="간격" onChange={event => setInterval(event.target.value)} /> : null}
           {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
+          {dateKind ? <span className="stf-tag">언제</span> : null}
           {dateKind && offsetDir !== 'same' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
           {dateKind ? (
             <select value={offsetDir} aria-label="기준 방향" onChange={event => setOffsetDir(event.target.value)}>
@@ -154,6 +200,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               <option value="after">일 지남</option>
             </select>
           ) : null}
+          {dateKind ? <span className="stf-tag">공정</span> : null}
           {dateKind ? (
             <select value={unlessStep} aria-label="미완료 공정" onChange={event => setUnlessStep(event.target.value)}>
               <option value="">공정 조건 없음</option>
@@ -167,8 +214,10 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               <option value="started">미착수</option>
             </select>
           ) : null}
+          {dateKind ? <span className="stf-tag">요일</span> : null}
           {dateKind ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
           {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
+          {immKind && autoKind !== AUTO_KIND_ORDER_CREATED ? <span className="stf-tag">공정</span> : null}
           {immKind && autoKind !== AUTO_KIND_ORDER_CREATED ? (
             <select value={step} aria-label="공정" onChange={event => setStep(event.target.value)}>
               <option value="">공정 선택</option>
@@ -176,6 +225,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               {meta.steps.map(item => <option key={item} value={item}>{item}</option>)}
             </select>
           ) : null}
+          {dateKind || immKind ? <span className="stf-tag">받는 사람</span> : null}
           {dateKind || immKind ? (
             <select value={audience} aria-label="받는 사람" onChange={event => setAudience(event.target.value)}>
               <option value="customer">고객</option>
@@ -193,14 +243,14 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       <ModalFoot>
         <div className="stf-actions">
           {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>취소</button> : null}
-          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy}>{busy ? (initial ? '저장 중…' : '등록 중…') : (initial ? '저장' : '등록')}</button>
+          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy || mergePending}>{busy ? (initial ? '저장 중…' : '등록 중…') : (initial ? '저장' : '등록')}</button>
         </div>
       </ModalFoot>
     </form>
     <aside className="stf-preview" aria-label="미리보기">
       <div className="stf-phone">
-        {outBody || images.length ? <div className="stf-bubble">
-          {images.map((item, index) => <img key={item.url || index} className="stf-pimg" src={item.url} alt="" />)}
+        {outBody || outImages.length ? <div className="stf-bubble">
+          {outImages.map((item, index) => <img key={item.url || index} className="stf-pimg" src={item.url} alt="" />)}
           <span className="stf-ptext">{outBody}</span>
         </div> : null}
       </div>

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { handleSmsConsole } from '../api/sms-console.js';
 import { _resetManualSendSchemaForTest, sendOptions } from '../api/_lib/smsManualSend.js';
 import { classifyText, getSendProvider } from '../api/_lib/sendProvider.js';
-import { allVariablesFilled, buildRecipients, fillTemplateContent, lockedLine, parsePhoneInput, templateVariableNames, textInfo } from '../src/components/smsconsole/sendPanelModel.js';
+import { allVariablesFilled, buildRecipients, fillTemplateContent, groupTexts, lockedLine, parsePhoneInput, sendButtonLabel, templateVariableNames, textInfo } from '../src/components/smsconsole/sendPanelModel.js';
 import { CONSOLE_MENUS, buildConsoleQuery, parseConsoleQuery } from '../shared/smsConsole.js';
 
 const NOW = Date.parse('2026-11-12T03:00:00Z');
@@ -361,4 +361,13 @@ test('알림톡 1-2. 그룹 템플릿 채널 없음 + 환경값 있음 → 환�
   assert.equal(res.statusCode, 200);
   assert.equal(ctx.sendProvider.calls.length, 1);
   assert.equal(ctx.sendProvider.calls[0].pfId, 'KA01PFenv');
+});
+
+test('보내기 1-3. 내 문구 두 묶음과 한 버튼 두 단계 글자', () => {
+  const groups = groupTexts([{ id: 1, name: 'a' }, { id: 2, name: 'b', auto_kind: 'x' }]);
+  assert.deepEqual(groups.map(g => [g.label, g.items.length]), [['내 문구', 1], ['자동 발송 문구', 1]]);
+  assert.equal(groupTexts([{ id: 1 }]).length, 1);
+  assert.equal(sendButtonLabel('', null), '보내기');
+  assert.equal(sendButtonLabel('', { count: 3 }), '3명에게 보내기 확인');
+  assert.equal(sendButtonLabel('', { count: 3, at: '2026-11-14T09:00' }), '예약 확인');
 });

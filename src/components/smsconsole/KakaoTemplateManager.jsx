@@ -241,7 +241,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <dt>카테고리</dt><dd>{selected.categoryCode || '-'}</dd>
           <dt>등록일</dt><dd>{formatDate(selected.dateCreated) || '-'}</dd>
           <dt>수정일</dt><dd>{formatDate(selected.dateUpdated) || '-'}</dd>
-          <dt>변수</dt><dd>{variables.length ? variables.map((v) => `#{${v}}`).join(', ') : '없음'}</dd>
+          <dt>변수</dt><dd>{variables.length ? variables.map((v) => (/^#\{.*\}$/.test(String(v)) ? String(v) : `#{${v}}`)).join(', ') : '없음'}</dd>
           <dt>검수 의견</dt>
           <dd>
             {comments.length === 0 ? '없음' : (

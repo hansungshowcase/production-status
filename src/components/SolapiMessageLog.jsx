@@ -90,6 +90,11 @@ function todayKst() {
   return kstDateFormat.format(new Date());
 }
 
+function dayBeforeKst(offset) {
+  const [y, m, d] = todayKst().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - offset)).toISOString().slice(0, 10);
+}
+
 function clock(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -442,6 +447,9 @@ export default function SolapiMessageLog({
             />
           );
         })}
+        {[['오늘', 0], ['어제', 1]].map(([label, back]) => (
+          <button key={label} type="button" className={`solapi-log-day${date === dayBeforeKst(back) ? ' is-active' : ''}`} onClick={() => changeDate(dayBeforeKst(back))}>{label}</button>
+        ))}
       </div>
 
       {view === 'messages' ? (

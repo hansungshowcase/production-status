@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
-import { allVariablesFilled, buildRecipients, fillTemplateContent, lockedLine, makeIdempotencyKey, payloadSignature, scheduleInfo, shortKst, shrinkImage, templateVariableNames, textInfo } from './sendPanelModel.js';
+import { allVariablesFilled, buildRecipients, fillTemplateContent, groupTexts, sendButtonLabel, lockedLine, makeIdempotencyKey, payloadSignature, scheduleInfo, shortKst, shrinkImage, templateVariableNames, textInfo } from './sendPanelModel.js';
 import { buildSaveBody, imageFromItem } from './smsTextTemplateFormModel.js';
 import './SendPanel.css';
 
@@ -18,6 +18,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const previewAtRef = useRef(0);
   const keyRef = useRef({ sig: '', key: '' });
   const loadedRef = useRef(false);
   const [tplItem, setTplItem] = useState(null); // 알림톡으로 보낼 때만: 승인된 템플릿
@@ -142,15 +143,18 @@ export default function SendPanel({ active = true, template = '', text: textPara
       setScheduled(prev => prev.filter(item => item.id !== id));
     } catch (err) { setCancelError(err.message || '취소하지 못했습니다.'); }
   };
+  const allStaffOn = Boolean(options?.staff?.length) && options.staff.every(person => staffIds.includes(person.id));
+  const toggleAllStaff = () => { setStaffIds(allStaffOn ? [] : options.staff.map(person => person.id)); setResult(null); };
   const toggleStaff = id => { setStaffIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])); setResult(null); };
   const request = async dryRun => {
+    if (!dryRun && Date.now() - previewAtRef.current < 800) return; // 요약이 뜨자마자 들어온 두 번째 클릭은 확인으로 치지 않는다
     setBusy(dryRun ? 'preview' : 'send');
     setError('');
     if (keyRef.current.sig !== sig) keyRef.current = { sig, key: makeIdempotencyKey() };
     try {
       const body = template ? { recipients, kakao: { templateId: template, variables: values }, dry_run: dryRun, idempotencyKey: keyRef.current.key } : { recipients, text, dry_run: dryRun, idempotencyKey: keyRef.current.key, ...(photo ? { image: { data: photo.data } } : {}), ...(schedule.ok ? { scheduled_at: schedule.text } : {}) };
       const out = await postSmsConsole('send', body);
-      if (dryRun) { setPreview({ sig, count: out.count, type: out.type, cost: out.cost, at: out.scheduled_at || '' }); setResult(null); return; }
+      if (dryRun) { previewAtRef.current = Date.now(); setPreview({ sig, count: out.count, type: out.type, cost: out.cost, at: out.scheduled_at || '' }); setResult(null); return; }
       setResult(out);
       setPhoneText(''); setStaffIds([]); setPreview(null);
       if (out.scheduled_at) fetchSmsConsole('send').then(data => setScheduled(data?.scheduled || [])).catch(() => {});
@@ -179,6 +183,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
         <fieldset className="smsc-send__group">
           <legend>직원</legend>
           <div className="smsc-send__choices">
+            <button type="button" className="smsc-send__btn smsc-send__btn--small" aria-pressed={allStaffOn} onClick={toggleAllStaff}>전체</button>
             {options.staff.map(person => (
               <label key={person.id} className="smsc-send__choice">
                 <input type="checkbox" checked={staffIds.includes(person.id)} onChange={() => toggleStaff(person.id)} />
@@ -214,7 +219,11 @@ export default function SendPanel({ active = true, template = '', text: textPara
           <label htmlFor="smsc-send-mytext">내 문구</label>
           <select id="smsc-send-mytext" className="smsc-send__select" value={textId} onChange={event => pickText(event.target.value)}>
             <option value="" />
-            {texts.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {groupTexts(texts).map(group => (
+              <optgroup key={group.label} label={group.label}>
+                {group.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </optgroup>
+            ))}
           </select>
         </div>
       ) : null}
@@ -249,7 +258,6 @@ export default function SendPanel({ active = true, template = '', text: textPara
         </div>
       ) : null}
       {error ? <p className="smsc-send__server" role="alert">{error}</p> : null}
-      {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}{preview.at ? ` · 예약 ${shortKst(Date.parse(`${preview.at}:00+09:00`))}` : ''}</p> : null}
       {result ? <p className="smsc-send__result" role="status">성공 {result.success}건 · 실패 {result.fail}건{result.message ? ` · ${result.message}` : ''}</p> : null}
       {!template && !locked ? (
         <div className="smsc-send__row">
@@ -260,8 +268,8 @@ export default function SendPanel({ active = true, template = '', text: textPara
       {scheduleOn && schedule.error ? <p className="smsc-send__error">{schedule.error}</p> : null}
       {locked ? <p className="smsc-send__locked">{locked}</p> : (
         <div className="smsc-send__actions">
-          <button type="button" className="smsc-send__btn" disabled={!canPreview} onClick={() => request(true)}>{busy === 'preview' ? '확인 중…' : '미리보기'}</button>
-          <button type="button" className="smsc-send__btn smsc-send__btn--primary" disabled={!canPreview || !previewOk} onClick={() => request(false)}>{busy === 'send' ? '보내는 중…' : '보내기'}</button>
+          {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}{preview.at ? ` · 예약 ${shortKst(Date.parse(`${preview.at}:00+09:00`))}` : ''}</p> : null}
+          <button type="button" className="smsc-send__btn smsc-send__btn--primary" disabled={!canPreview} onClick={() => request(!previewOk)}>{sendButtonLabel(busy, previewOk ? preview : null)}</button>
         </div>
       )}
       {!template && scheduled.length ? (

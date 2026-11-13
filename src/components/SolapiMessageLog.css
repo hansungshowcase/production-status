@@ -109,6 +109,8 @@
   background: var(--sl-white);
 }
 
+.solapi-log-day { min-height: var(--sl-ctl); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: var(--sl-white); color: inherit; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap; }
+.solapi-log-day.is-active { border-color: var(--sl-active); color: var(--sl-active); }
 .solapi-log-chip.is-active { border-color: var(--sl-active); color: var(--sl-active); }
 
 .solapi-log-chip button {

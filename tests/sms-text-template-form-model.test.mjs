@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSaveBody, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
+import { buildSaveBody, mergeLayout, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 test('종류: 없거나 모르는 값은 문자, kakao 만 알림톡', () => {
   assert.equal(normalizeKind(undefined), 'sms');
@@ -68,4 +68,17 @@ test('광고 표기: (광고)·080 수신거부 줄이 없을 때만 붙이고 �
   assert.deepEqual(moveImageEarlier([a, b, c], 0), [a, b, c]);
   const body = buildSaveBody({ name: 'n', body: 'x', images: moveImageEarlier([a, b], 1) });
   assert.deepEqual(body.images, [{ data: 'b' }, { data: 'a' }]);
+});
+
+test('사진 합치기 배치: 세로 사진은 가로 나란히·높이 같음, 가로 사진이 있으면 세로 쌓기, 한도 안', () => {
+  const row = mergeLayout([{ width: 1000, height: 1414 }, { width: 1000, height: 1414 }], { maxEdge: 1500 });
+  assert.equal(row.mode, 'row');
+  assert.equal(row.rects[0].h, row.rects[1].h);
+  assert.equal(row.rects[1].x, row.rects[0].w);
+  assert.ok(row.width <= 1500 && row.height <= 1500);
+  const col = mergeLayout([{ width: 1000, height: 1414 }, { width: 1500, height: 800 }], { maxEdge: 1500 });
+  assert.equal(col.mode, 'column');
+  assert.equal(col.rects[0].w, col.rects[1].w);
+  assert.equal(col.rects[1].y, col.rects[0].h);
+  assert.ok(col.width <= 1500 && col.height <= 1500);
 });

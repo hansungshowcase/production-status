@@ -46,6 +46,23 @@ export function makeIdempotencyKey() {
   return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
 }
 
+// 내 문구 선택 칸 묶음: 내 문구 / 자동 발송 문구(auto_kind 있음). 빈 묶음은 뺀다.
+export function groupTexts(items) {
+  const list = items || [];
+  return [
+    { label: '내 문구', items: list.filter(item => !item.auto_kind) },
+    { label: '자동 발송 문구', items: list.filter(item => item.auto_kind) },
+  ].filter(group => group.items.length);
+}
+
+// 보내기 한 버튼의 글자: 처음 '보내기' → 요약 확인 뒤 'N명에게 보내기 확인'(예약이면 '예약 확인')
+export function sendButtonLabel(busy, preview) {
+  if (busy === 'preview') return '확인 중…';
+  if (busy === 'send') return '보내는 중…';
+  if (!preview) return '보내기';
+  return preview.at ? '예약 확인' : `${preview.count}명에게 보내기 확인`;
+}
+
 // ---- 알림톡 템플릿으로 보내기 ----
 // 템플릿의 변수 이름 목록(쏠라피 variables 의 '#{이름}' 과 본문의 #{이름} 을 합침). 서버 smsManualSend.js templateVariableNames 와 같은 규칙.
 export function templateVariableNames(template) {

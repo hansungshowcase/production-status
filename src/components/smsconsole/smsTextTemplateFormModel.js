@@ -1,5 +1,5 @@
 // 문자 템플릿 등록 양식·내 문구 묶음의 순수 계산(화면 없음).
-import { textInfo } from './sendPanelModel.js';
+import { IMAGE_MAX_EDGE, textInfo } from './sendPanelModel.js';
 
 export const TEXT_NAME_MAX = 40;
 export const KIND_SMS = 'sms';
@@ -34,6 +34,26 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     if (times >= 2 && normalizeInterval(interval ?? '30') === null) return { ok: false, reason: 'interval', info };
   }
   return { ok: true, reason: '', info };
+}
+
+// 사진 여러 장을 한 장으로 합칠 때의 배치 계산(순수). sizes=[{width,height}], 가로로 긴 사진이 하나라도 있으면 위→아래, 아니면 왼쪽→오른쪽.
+// 이어 붙인 크기를 긴 변 maxEdge 안으로 줄인다. → { mode, width, height, rects:[{x,y,w,h}] }
+export function mergeLayout(sizes, { maxEdge = IMAGE_MAX_EDGE } = {}) {
+  const list = (Array.isArray(sizes) ? sizes : []).filter((s) => s && s.width > 0 && s.height > 0);
+  if (!list.length) return { mode: 'row', width: 0, height: 0, rects: [] };
+  const stack = list.some((s) => s.width / s.height > 1.1);
+  const base = stack ? Math.min(...list.map((s) => s.width)) : Math.min(...list.map((s) => s.height));
+  const raw = list.map((s) => (stack ? { w: base, h: (s.height * base) / s.width } : { w: (s.width * base) / s.height, h: base }));
+  const total = stack ? { w: base, h: raw.reduce((a, r) => a + r.h, 0) } : { w: raw.reduce((a, r) => a + r.w, 0), h: base };
+  const k = Math.max(total.w, total.h) > maxEdge ? maxEdge / Math.max(total.w, total.h) : 1;
+  let at = 0;
+  const rects = raw.map((r) => {
+    const w = Math.max(1, Math.round(r.w * k)); const h = Math.max(1, Math.round(r.h * k));
+    const rect = stack ? { x: 0, y: at, w, h } : { x: at, y: 0, w, h };
+    at += stack ? h : w;
+    return rect;
+  });
+  return { mode: stack ? 'column' : 'row', width: stack ? Math.max(...rects.map((r) => r.w)) : at, height: stack ? at : Math.max(...rects.map((r) => r.h)), rects };
 }
 
 export const IMAGE_MAX = 3;

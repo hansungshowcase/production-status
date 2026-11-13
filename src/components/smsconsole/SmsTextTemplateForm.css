@@ -18,6 +18,7 @@
 .stf-auto select { min-height: 44px; padding: 0 2px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; background: var(--smsc-surface, #fff); }
 .stf-form input.stf-days { width: 40px; padding: 8px 4px; text-align: center; }
 .stf-auto label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.stf-auto .stf-tag { font-size: 11px; color: var(--smsc-muted, #667085); margin-left: 6px; white-space: nowrap; }
 .stf-form input.stf-check { width: 16px; height: 16px; margin: 0; }
 .stf-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: -6px; }
 .stf-vars { display: inline-flex; gap: 4px; flex-wrap: wrap; }
