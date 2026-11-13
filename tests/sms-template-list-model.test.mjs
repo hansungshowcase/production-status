@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildSmsItems, defaultSmsFilter, filterSmsItems, smsBadges, smsPills, sortSmsItems,
+  buildSmsItems, defaultSmsFilter, filterSmsItems, paginateRows, smsBadges, smsPills, sortSmsItems,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -96,4 +96,14 @@ test('조건 한 줄: 고객 who·trigger 조합, 직원 등록 현황', () => {
   assert.equal(conditionLine(staff('관리자 지정 번호 (010****4237)'), registry), '관리자 지정 번호 (4237)로 발송 중 · V-커팅 완료 시');
   assert.equal(conditionLine(staff('이시아 부장 (010****4237)'), null), 'V-커팅 완료 시');
   assert.equal(conditionLine({ audience: { id: 'staff' }, external: true, who: '공장장', trigger: '3일 전' }), '공장장에게 발송 · 3일 전');
+});
+
+test('paginateRows: 10행씩 쪽 나누기, 쪽 번호는 범위로 고정', () => {
+  const rows = Array.from({ length: 11 }, (_, i) => i);
+  assert.deepEqual(paginateRows(rows, 1), { page: 1, pages: 2, rows: rows.slice(0, 10) });
+  assert.deepEqual(paginateRows(rows, 2), { page: 2, pages: 2, rows: [10] });
+  assert.equal(paginateRows(rows, 0).page, 1);
+  assert.equal(paginateRows(rows, 9).page, 2);
+  assert.deepEqual(paginateRows(rows.slice(0, 10), 5), { page: 1, pages: 1, rows: rows.slice(0, 10) });
+  assert.deepEqual(paginateRows([], 3), { page: 1, pages: 1, rows: [] });
 });

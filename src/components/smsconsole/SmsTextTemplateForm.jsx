@@ -97,8 +97,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   return (
     <div className="stf-split">
     <form id={formId} className="stf-form" onSubmit={event => { event.preventDefault(); submit(); }} noValidate>
-      <label className="stf-field">이름
-        <input type="text" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => setName(event.target.value)} />
+      <label className="stf-field">템플릿 이름
+        <input type="text" placeholder="목록에서 찾을 이름 (고객에게는 안 보임)" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => setName(event.target.value)} />
       </label>
       <label className="stf-field">내용
         <textarea ref={bodyRef} rows={6} value={body} onChange={event => setBody(event.target.value)} />

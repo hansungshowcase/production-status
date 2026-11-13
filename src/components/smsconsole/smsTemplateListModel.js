@@ -171,3 +171,11 @@ export function kindBadges(item) {
   if (item?.active === false) badges.push({ tone: 'muted', text: '꺼짐' });
   return badges;
 }
+
+// 목록을 size 행씩 쪽으로 나눈다. page 는 1~pages 로 고정(행이 없으면 1쪽). 머리글은 세지 않는다.
+export function paginateRows(rows, page, size = 10) {
+  const list = Array.isArray(rows) ? rows : [];
+  const pages = Math.max(1, Math.ceil(list.length / size));
+  const at = Math.min(pages, Math.max(1, Math.floor(Number(page)) || 1));
+  return { page: at, pages, rows: list.slice((at - 1) * size, at * size) };
+}
