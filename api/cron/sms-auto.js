@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 
 import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
-import { runAutoSendAll } from '../_lib/smsAutoSend.js';
+import { AUTO_TIME_BUDGET_MS, runAutoSendAll } from '../_lib/smsAutoSend.js';
+import { runEventSendAll } from '../_lib/smsEventSend.js';
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -25,11 +26,14 @@ export async function handleSmsAuto(req, res, dependencies = {}) {
   const nowMs = dependencies.nowMs ?? Date.now();
   const db = dependencies.db || getDb();
   const run = dependencies.run || runAutoSendAll;
+  const runEvent = dependencies.runEvent || runEventSendAll;
   const logger = dependencies.logger || console;
   try {
-    const result = await run({ db, nowMs, env: dependencies.env || process.env, provider: dependencies.provider, fetchImpl: dependencies.fetchImpl, tick: dependencies.tick });
-    logger.info?.('[sms-auto]', result);
-    return res.json({ ok: true, ...result });
+    const deps = { db, nowMs, env: dependencies.env || process.env, provider: dependencies.provider, fetchImpl: dependencies.fetchImpl, tick: dependencies.tick, deadline: (dependencies.tick || Date.now)() + AUTO_TIME_BUDGET_MS };
+    const result = await run(deps);
+    const info = await runEvent(deps); // 광고 실행 뒤 안내 실행(같은 전체 마감 시각)
+    logger.info?.('[sms-auto]', result, info);
+    return res.json({ ok: true, ...result, info });
   } catch {
     logger.error?.('[sms-auto] 실행 실패');
     return res.status(500).json({ error: { message: '자동 발송을 실행하지 못했습니다.', status: 500 } });

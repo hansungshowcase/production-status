@@ -13,6 +13,11 @@
 .stf-form .stf-from { box-sizing: border-box; min-height: 44px; padding: 0 8px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; }
 .stf-auto select { min-height: 44px; padding: 0 8px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; background: var(--smsc-surface, #fff); }
 .stf-form input.stf-days { width: 52px; padding: 8px 4px; text-align: center; }
+.stf-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stf-vars { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.stf-form .stf-var { min-height: 28px; padding: 0 8px; font-size: 12px; font-weight: 400; }
+.stf-form .stf-staff { min-height: 36px; padding: 0 10px; font-size: 13px; }
+.stf-form .stf-staff.is-active { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent-weak, #eaf0ff); font-weight: 600; }
 .stf-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .stf-done { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--smsc-accent-weak, #eaf0ff); font-size: 15px; }
 @media (max-width: 640px) { .stf-actions { flex-direction: column-reverse; } .stf-actions .ktm-btn { width: 100%; } }

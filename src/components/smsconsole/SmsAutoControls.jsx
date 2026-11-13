@@ -58,7 +58,7 @@ export default function SmsAutoControls({ id, enabled, onChanged }) {
         {confirm ? <button type="button" className="ktm-btn" onClick={() => setConfirm(null)}>취소</button> : null}
         <button type="button" className="ktm-btn" onClick={() => { setTestOpen((v) => !v); setPreview(null); setResult(''); setError(''); }}>내 번호로 시험</button>
       </div>
-      {confirm ? <p className="sac-line">{autoConfirmLine(confirm)}</p> : null}
+      {confirm ? <p className="sac-line">{autoConfirmLine(confirm)}{confirm.overlap === true ? ' · 기존 알림과 겹칠 수 있음' : ''}</p> : null}
       {testOpen ? (
         <div className="sac-test">
           <input type="text" inputMode="tel" value={phone} maxLength={13} autoComplete="off" aria-label="시험 받을 번호" onChange={(event) => { setPhone(event.target.value); setPreview(null); }} />

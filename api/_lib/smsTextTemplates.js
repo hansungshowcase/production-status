@@ -1,12 +1,41 @@
 // 내 문자 문구 저장소(보내기 화면에서 불러 쓰는 문구). 번호·이름은 다루지 않는다.
 import { byteLength } from './sendProvider.js';
-import { parseSendExtras } from './smsManualSend.js';
+import { parseSendExtras, staffDirectory } from './smsManualSend.js';
+import { STEPS } from './steps.js';
 
 export const TEXT_TEMPLATE_LIMITS = Object.freeze({ name: 40, bodyBytes: 2000, count: 100, images: 3, autoDaysMax: 365 });
 export const AUTO_KIND = 'ship_plus_days';
 // 기준 사건: 출고 완료 후 / 주문 등록 후(2026-11-13 더함)
 export const AUTO_KINDS = Object.freeze(['ship_plus_days', 'order_plus_days']);
 export const isAutoKind = kind => AUTO_KINDS.includes(kind);
+// 2단계-가(2026-11-13): 기준일형(납기일·출고예정일 기준) — 항상 안내(info) 문구
+export const EVENT_KINDS = Object.freeze(['due_date', 'ship_scheduled']);
+export const isEventKind = kind => EVENT_KINDS.includes(kind);
+export const isAnyAutoKind = kind => isAutoKind(kind) || isEventKind(kind);
+export const OFFSET_MAX = 365;
+const STAFF_CAP = 30;
+// 고객 대상 안내 문구 검사: 주문 변수가 하나 이상 있어야 하고 광고 낱말이 없어야 한다. '' 이면 통과.
+const ORDER_VAR_RE = /#\{(주문번호|규격|수량|예상출고일|조회링크)\}/;
+const AD_WORD_RE = /할인|이벤트|혜택|쿠폰|특가|소개|세일|무료|증정|사은품|\(광고\)/;
+// 쓸 수 있는 변수(고객 / 직원). 이 밖의 #{…} 는 치환되지 않고 글자 그대로 나가므로 저장·켜기·실행에서 막는다.
+const INFO_VARS = Object.freeze({ customer: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'], staff: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크', '제품'] });
+const hasUnknownVar = (text, audience) => [...text.matchAll(/#\{([^}]*)\}/g)].some(match => !INFO_VARS[audience].includes(match[1]));
+export function infoCheck(body, audience = 'customer') {
+  const text = String(body ?? '');
+  if (hasUnknownVar(text, audience === 'staff' ? 'staff' : 'customer')) return 'info_unknown_var';
+  if (audience === 'staff') return '';
+  if (AD_WORD_RE.test(text)) return 'info_has_ad_words';
+  if (!ORDER_VAR_RE.test(text)) return 'info_needs_order_var';
+  return '';
+}
+export const INFO_CHECK_MESSAGE = Object.freeze({
+  info_has_ad_words: '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.',
+  info_needs_order_var: '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.',
+  info_unknown_var: '이 문구에서 쓸 수 없는 변수가 들어 있습니다.',
+});
+export const parseStaffIds = value => {
+  try { const list = JSON.parse(String(value || '')); return Array.isArray(list) ? list.filter(item => typeof item === 'string' && item) : []; } catch { return []; }
+};
 export const AUTO_LIMITS = Object.freeze({ repeatMax: 10, intervalMax: 365, defaultRepeat: 1, defaultInterval: 30 });
 const flags = new Map();
 export function _resetTextTemplateSchemaForTest() { flags.clear(); }
@@ -27,14 +56,15 @@ export async function ensureTextTemplateSchema(db) {
   // 사진 1장(base64 JPG). 목록 응답에는 싣지 않고 단건 조회에서만 준다.
   await db.execute({ sql: 'ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS image TEXT', args: [] });
   // 출고 후 자동 발송(2026-11-13): 사진 최대 3장(JSON 배열)과 자동 발송 조건·켜짐 상태. 기존 image 칸은 그대로 둔다.
-  for (const column of ['images TEXT', 'auto_kind TEXT', 'auto_days INT', 'auto_enabled BOOLEAN NOT NULL DEFAULT false', 'auto_start_date TEXT', 'auto_send_from TEXT', 'auto_repeat INT NOT NULL DEFAULT 1', 'auto_interval INT NOT NULL DEFAULT 30']) {
+  for (const column of ['images TEXT', 'auto_kind TEXT', 'auto_days INT', 'auto_enabled BOOLEAN NOT NULL DEFAULT false', 'auto_start_date TEXT', 'auto_send_from TEXT', 'auto_repeat INT NOT NULL DEFAULT 1', 'auto_interval INT NOT NULL DEFAULT 30',
+    'auto_offset INT NOT NULL DEFAULT 0', 'auto_unless_step TEXT', "auto_audience TEXT NOT NULL DEFAULT 'customer'", 'auto_staff TEXT', "auto_msg_type TEXT NOT NULL DEFAULT 'ad'"]) {
     await db.execute({ sql: `ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS ${column}`, args: [] });
   }
   flags.set('sms.textTemplates', true);
 }
 
 const ok = (body, status = 200) => ({ status, body });
-const bad = (message, status = 400) => ({ status, body: { error: { message, status } } });
+const bad = (message, status = 400, extra = {}) => ({ status, body: { error: { message, status }, ...extra } });
 const imageCountOf = row => Math.max(0, Number(row.image_count) || 0);
 const toItem = row => ({
   id: Number(row.id), name: row.name, body: row.body, ...(row.has_image ? { has_image: true } : {}),
@@ -47,6 +77,8 @@ function autoFields(row) {
     auto_kind: String(row.auto_kind), auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true,
     ...(row.auto_send_from ? { auto_send_from: String(row.auto_send_from) } : {}),
     auto_repeat: Number(row.auto_repeat) || AUTO_LIMITS.defaultRepeat, auto_interval: Number(row.auto_interval) || AUTO_LIMITS.defaultInterval,
+    auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step ? String(row.auto_unless_step) : '',
+    auto_audience: row.auto_audience === 'staff' ? 'staff' : 'customer', auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
   };
 }
 
@@ -76,9 +108,11 @@ function readImages(input) {
 }
 
 // 입력 auto → { skip } | { kind:'', days:null, … 기본값 } | { kind, days, send_from, repeat, interval } | { error }
-function readAuto(input) {
+const AD_EXTRA = Object.freeze({ offset: 0, unless_step: null, audience: 'customer', staff: null, msg_type: 'ad' });
+function readAuto(input, staff = staffDirectory()) {
   if (input?.auto === undefined) return { skip: true };
-  if (input.auto === null || !input.auto?.kind) return { kind: '', days: null, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval };
+  if (input.auto === null || !input.auto?.kind) return { kind: '', days: null, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA };
+  if (isEventKind(input.auto.kind)) return readEventAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '');
   if (!isAutoKind(input.auto.kind)) return { error: '자동 발송 종류가 올바르지 않습니다.' };
   const days = Number(input.auto.days);
   const when = input.auto.kind === AUTO_KIND ? '출고' : '주문';
@@ -95,7 +129,27 @@ function readAuto(input) {
   if (!(Number.isInteger(repeat) && repeat >= 1 && repeat <= AUTO_LIMITS.repeatMax)) return { error: `반복 횟수는 1~${AUTO_LIMITS.repeatMax}번으로 입력해 주세요.` };
   const interval = input.auto.interval === undefined || input.auto.interval === null || input.auto.interval === '' ? AUTO_LIMITS.defaultInterval : Number(input.auto.interval);
   if (!(Number.isInteger(interval) && interval >= 1 && interval <= AUTO_LIMITS.intervalMax)) return { error: `반복 간격은 1~${AUTO_LIMITS.intervalMax}일로 입력해 주세요.` };
-  return { kind: input.auto.kind, days, send_from: sendFrom, repeat, interval };
+  return { kind: input.auto.kind, days, send_from: sendFrom, repeat, interval, ...AD_EXTRA };
+}
+
+// 기준일형(납기일·출고예정일 기준): 항상 안내 문구. 일수·시작일·반복은 쓰지 않는다(days 0, repeat 1 고정).
+function readEventAuto(auto, staff, body) {
+  const offset = auto.offset === undefined || auto.offset === null || auto.offset === '' ? 0 : Number(auto.offset);
+  if (!(Number.isInteger(offset) && offset >= -OFFSET_MAX && offset <= OFFSET_MAX)) return { error: `기준일 대비 일수는 -${OFFSET_MAX}~${OFFSET_MAX}일로 입력해 주세요.` };
+  const unless = typeof auto.unless_step === 'string' ? auto.unless_step.trim() : '';
+  if (unless && !STEPS.includes(unless)) return { error: '미완료 조건의 공정 이름이 올바르지 않습니다.' };
+  const audience = auto.audience === undefined || auto.audience === null || auto.audience === '' ? 'customer' : auto.audience;
+  if (audience !== 'customer' && audience !== 'staff') return { error: '받는 사람은 고객 또는 직원이어야 합니다.' };
+  let ids = null;
+  if (audience === 'staff') {
+    const list = Array.isArray(auto.staff) ? [...new Set(auto.staff.filter(item => typeof item === 'string' && item))] : [];
+    if (!list.length) return { error: '받는 직원을 1명 이상 골라 주세요.' };
+    if (list.length > STAFF_CAP || list.some(item => !staff.some(person => person.id === item))) return { error: '받는 직원이 올바르지 않습니다.' };
+    ids = list.sort();
+  }
+  const blocked = infoCheck(body, audience);
+  if (blocked) return { error: INFO_CHECK_MESSAGE[blocked], reason: blocked };
+  return { kind: auto.kind, days: 0, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, offset, unless_step: unless || null, audience, staff: ids ? JSON.stringify(ids) : null, msg_type: 'info' };
 }
 
 // 입력 image → { skip } 건드리지 않음 | { clear } 지움 | { base64 } 저장 | { error }. 형식·용량 검사는 보내기와 같은 함수.
@@ -108,13 +162,17 @@ function readImage(input) {
   return { base64: parsed.image.base64 };
 }
 
+// 저장한 새 칸 값 → 응답(auto_*) / DB 행 모양. 저장 직후 응답은 방금 검증한 값을 그대로 쓴다.
+const newAutoColumns = auto => ({ auto_offset: auto.offset, auto_unless_step: auto.unless_step, auto_audience: auto.audience, auto_staff: auto.staff, auto_msg_type: auto.msg_type });
+const newAutoFields = auto => ({ auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type });
+
 export async function listTextTemplates(db) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
     sql: `SELECT id, name, body,
       ((image IS NOT NULL AND image <> '') OR COALESCE(images, '') NOT IN ('', '[]')) AS has_image,
       CASE WHEN COALESCE(images, '') NOT IN ('', '[]') THEN jsonb_array_length(images::jsonb) WHEN image IS NOT NULL AND image <> '' THEN 1 ELSE 0 END AS image_count,
-      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval
+      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type
       FROM sms_text_templates ORDER BY name ASC`,
     args: [],
   });
@@ -125,7 +183,7 @@ export async function getTextTemplate(db, input) {
   const id = Number(input?.id);
   if (!(Number.isInteger(id) && id > 0)) return bad('올바른 문구가 아닙니다.');
   await ensureTextTemplateSchema(db);
-  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval FROM sms_text_templates WHERE id = ?', args: [id] });
+  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type FROM sms_text_templates WHERE id = ?', args: [id] });
   const row = out.rows?.[0];
   if (!row) return bad('문구를 찾을 수 없습니다.', 404);
   const images = storedImages(row);
@@ -135,7 +193,7 @@ export async function getTextTemplate(db, input) {
   return ok({ item });
 }
 
-export async function saveTextTemplate(db, input) {
+export async function saveTextTemplate(db, input, { staff } = {}) {
   const name = typeof input?.name === 'string' ? input.name.trim() : '';
   const body = typeof input?.body === 'string' ? input.body : '';
   if (!name || [...name].length > TEXT_TEMPLATE_LIMITS.name) return bad(`문구 이름은 1~${TEXT_TEMPLATE_LIMITS.name}자로 입력해 주세요.`);
@@ -148,8 +206,8 @@ export async function saveTextTemplate(db, input) {
   if (photo.error) return bad(photo.error);
   const photos = readImages(input);
   if (photos.error) return bad(photos.error);
-  const auto = readAuto(input);
-  if (auto.error) return bad(auto.error);
+  const auto = readAuto(input, staff || staffDirectory());
+  if (auto.error) return bad(auto.error, 400, auto.reason ? { reason: auto.reason } : {});
   const hasNew = !photos.skip || !auto.skip;
   const imagesJson = photos.list?.length ? JSON.stringify(photos.list) : null;
   const photoCount = photos.skip ? (photo.base64 ? 1 : 0) : photos.list.length;
@@ -168,7 +226,7 @@ export async function saveTextTemplate(db, input) {
         const cols = ['name', 'body']; const args = [name, body.trim()];
         if (photo.base64 && photos.skip) { cols.push('image'); args.push(photo.base64); }
         if (imagesJson) { cols.push('images'); args.push(imagesJson); }
-        if (!auto.skip) { cols.push('auto_kind', 'auto_days', 'auto_send_from', 'auto_repeat', 'auto_interval'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval); }
+        if (!auto.skip) { cols.push('auto_kind', 'auto_days', 'auto_send_from', 'auto_repeat', 'auto_interval', 'auto_offset', 'auto_unless_step', 'auto_audience', 'auto_staff', 'auto_msg_type'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval, auto.offset, auto.unless_step, auto.audience, auto.staff, auto.msg_type); }
         out = await db.execute({ sql: `INSERT INTO sms_text_templates (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING id`, args });
       } else {
         out = photo.base64
@@ -176,7 +234,7 @@ export async function saveTextTemplate(db, input) {
           : await db.execute({ sql: 'INSERT INTO sms_text_templates (name, body) VALUES (?, ?) RETURNING id', args: [name, body.trim()] });
       }
       const item = { id: Number(out.rows?.[0]?.id), ...itemBase };
-      if (auto.kind) { item.auto_kind = auto.kind; item.auto_days = auto.days; item.auto_enabled = false; if (auto.send_from) item.auto_send_from = auto.send_from; item.auto_repeat = auto.repeat; item.auto_interval = auto.interval; }
+      if (auto.kind) { item.auto_kind = auto.kind; item.auto_days = auto.days; item.auto_enabled = false; if (auto.send_from) item.auto_send_from = auto.send_from; item.auto_repeat = auto.repeat; item.auto_interval = auto.interval; Object.assign(item, newAutoFields(auto)); }
       return ok({ item }, 201);
     } catch (error) {
       if (error?.code === '23505') return bad('같은 이름의 문구가 있습니다.', 409);
@@ -193,6 +251,8 @@ export async function saveTextTemplate(db, input) {
     if (!auto.skip) {
       changed.push('auto_kind IS DISTINCT FROM ?', 'auto_days IS DISTINCT FROM ?', 'auto_send_from IS DISTINCT FROM ?', 'auto_repeat IS DISTINCT FROM ?', 'auto_interval IS DISTINCT FROM ?');
       guardArgs.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval);
+      changed.push('auto_offset IS DISTINCT FROM ?', 'auto_unless_step IS DISTINCT FROM ?', 'auto_audience IS DISTINCT FROM ?', 'auto_staff IS DISTINCT FROM ?');
+      guardArgs.push(auto.offset, auto.unless_step, auto.audience, auto.staff);
     }
     if (!photos.skip) { changed.push("COALESCE(images, '') IS DISTINCT FROM ?"); guardArgs.push(imagesJson || ''); }
     else if (!photo.skip) { changed.push("COALESCE(image, '') IS DISTINCT FROM ?"); guardArgs.push(photo.base64 || ''); }
@@ -205,9 +265,9 @@ export async function saveTextTemplate(db, input) {
       const sets = ['name = ?', 'body = ?']; const args = [name, body.trim()];
       if (!photos.skip) { sets.push('images = ?', 'image = NULL'); args.push(imagesJson); }
       else if (!photo.skip) { sets.push('image = ?'); args.push(photo.base64 || null); }
-      if (!auto.skip) { sets.push('auto_kind = ?', 'auto_days = ?', 'auto_send_from = ?', 'auto_repeat = ?', 'auto_interval = ?'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval); if (!auto.kind) sets.push('auto_enabled = false'); }
+      if (!auto.skip) { sets.push('auto_kind = ?', 'auto_days = ?', 'auto_send_from = ?', 'auto_repeat = ?', 'auto_interval = ?', 'auto_offset = ?', 'auto_unless_step = ?', 'auto_audience = ?', 'auto_staff = ?', 'auto_msg_type = ?'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval, auto.offset, auto.unless_step, auto.audience, auto.staff, auto.msg_type); if (!auto.kind) sets.push('auto_enabled = false'); }
       args.push(id);
-      const out = await db.execute({ sql: `UPDATE sms_text_templates SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval`, args });
+      const out = await db.execute({ sql: `UPDATE sms_text_templates SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type`, args });
       returned = out.rows?.[0] || null;
     } else if (photo.skip) await db.execute({ sql: 'UPDATE sms_text_templates SET name = ?, body = ?, updated_at = NOW() WHERE id = ? RETURNING id', args: [name, body.trim(), id] });
     else await db.execute({ sql: 'UPDATE sms_text_templates SET name = ?, body = ?, image = ?, updated_at = NOW() WHERE id = ? RETURNING id', args: [name, body.trim(), photo.base64 || null, id] });
@@ -216,7 +276,7 @@ export async function saveTextTemplate(db, input) {
     throw error;
   }
   const item = { id, ...itemBase };
-  if (returned?.auto_kind) Object.assign(item, autoFields(returned));
+  if (returned?.auto_kind) Object.assign(item, autoFields(auto.skip ? returned : { ...returned, ...newAutoColumns(auto) }));
   if (disabled) { item.auto_enabled = false; item.auto_disabled = true; }
   return ok({ item });
 }

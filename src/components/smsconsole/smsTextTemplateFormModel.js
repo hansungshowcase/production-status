@@ -9,14 +9,17 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, audience, staff }) {
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
   if (!trimmed) return { ok: false, reason: 'name', info };
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
-  if (AUTO_KINDS.includes(autoKind)) {
+  if (isDateKind(autoKind)) {
+    if (normalizeOffset(offsetDir, offsetDays) === null) return { ok: false, reason: 'offset', info };
+    if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
+  } else if (AUTO_KINDS.includes(autoKind)) {
     if (normalizeDays(days) === null) return { ok: false, reason: 'days', info };
     if (normalizeSendFrom(sendFrom) === null) return { ok: false, reason: 'sendFrom', info };
     const times = normalizeRepeat(repeat ?? '1');
@@ -29,11 +32,39 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
 export const IMAGE_MAX = 3;
 export const AUTO_KIND = 'ship_plus_days';
 export const AUTO_KIND_ORDER = 'order_plus_days';
-export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER];
+export const AUTO_KIND_DUE = 'due_date';
+export const AUTO_KIND_SHIP_PLAN = 'ship_scheduled';
+export const DATE_KINDS = [AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN];
+export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS];
+export const AUDIENCE_STAFF = 'staff';
+export const isDateKind = (kind) => DATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
 export const AUTO_DEFAULT_REPEAT = 1;
 export const AUTO_DEFAULT_INTERVAL = 30;
-const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후' };
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일' };
+
+// 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null
+export function normalizeOffset(dir, value) {
+  if (dir === 'same') return 0;
+  const text = String(value ?? '').trim();
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const n = Number(text);
+  if (n > 365 || (dir !== 'before' && dir !== 'after')) return null;
+  return dir === 'before' ? -n : n;
+}
+// 부호 있는 정수 → { dir, days }
+export const offsetParts = (offset) => {
+  const n = Number(offset) || 0;
+  return { dir: n < 0 ? 'before' : (n > 0 ? 'after' : 'same'), days: String(Math.abs(n)) };
+};
+const offsetText = (offset) => { const n = Number(offset) || 0; return n === 0 ? '당일' : (n < 0 ? `${-n}일 전` : `${n}일 지남`); };
+
+// 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
+export function autoVariables(kind, audience) {
+  if (!isDateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
+  const list = ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'];
+  return audience === AUDIENCE_STAFF ? [...list, '제품'] : list;
+}
 
 // 반복 횟수 1~10, 간격 1~365 정수, 아니면 null
 export function normalizeRepeat(value) {
@@ -75,6 +106,11 @@ export function textFormStopText(reason) {
   if (reason === 'sendFrom') return '시작일은 날짜로 넣어 주세요';
   if (reason === 'repeat') return '횟수는 1부터 10 사이로 넣어 주세요';
   if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
+  if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
+  if (reason === 'staff') return '받을 직원을 한 명 이상 골라 주세요';
+  if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
+  if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
+  if (reason === 'info_unknown_var') return '이 문구에서 쓸 수 없는 변수가 들어 있습니다';
   return '';
 }
 
@@ -83,6 +119,10 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
+    if (isDateKind(a.kind)) {
+      const staffAudience = a.audience === AUDIENCE_STAFF;
+      return { kind: a.kind, offset: normalizeOffset(a.offsetDir, a.offsetDays), unless_step: String(a.unlessStep || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
+    }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
     if (a.repeat !== undefined) out.repeat = normalizeRepeat(a.repeat) ?? AUTO_DEFAULT_REPEAT;
@@ -105,7 +145,12 @@ const won = (value) => `${Number(value || 0).toLocaleString('ko-KR')}원`;
 const shortDate = (value) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${Number(m[1])}/${Number(m[2])}` : ''; };
 
 // 발송 조건 한 줄
-export const autoConditionLine = (entry) => (AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
+export const autoConditionLine = (entry) => (isDateKind(entry?.autoKind) ? joinDot(
+  `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset)}`,
+  '오전 10시',
+  entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
+  entry.autoUnlessStep ? `${entry.autoUnlessStep} 미완료만` : '',
+) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
   '오전 10시',
   '고객',
@@ -187,6 +232,10 @@ export function myTextSection(items) {
       autoSendFrom: String(item.auto_send_from || '').slice(0, 10),
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
+      autoOffset: Number(item.auto_offset) || 0,
+      autoUnlessStep: String(item.auto_unless_step || ''),
+      autoAudience: item.auto_audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer',
+      autoStaffCount: Array.isArray(item.auto_staff) ? item.auto_staff.length : 0,
       autoEnabled: Boolean(item.auto_enabled),
     })),
   };
@@ -213,6 +262,11 @@ export function formInitialFromItem(item) {
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
     repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),
     interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),
+    offsetDir: offsetParts(item?.auto_offset).dir,
+    offsetDays: offsetParts(item?.auto_offset).days,
+    unlessStep: String(item?.auto_unless_step || ''),
+    audience: item?.auto_audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer',
+    staff: Array.isArray(item?.auto_staff) ? item.auto_staff : [],
   };
 }
 

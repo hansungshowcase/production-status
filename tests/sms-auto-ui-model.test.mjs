@@ -57,3 +57,23 @@ test('발송 조건 확장: 기본값 카드 글자 유지, 반복·시작일 �
   assert.equal(validateTextForm({ ...ok, sendFrom: '2026-13-40' }).reason, 'sendFrom');
   assert.equal(formInitialFromItem({ id: 7, name: 'n', body: 'b', images: ['A'], auto_kind: 'ship_plus_days', auto_days: 20 }).images[0].url, 'data:image/jpeg;base64,A');
 });
+
+test('기준일형: 카드 줄·offset 부호·직원 0명 거절·변수 목록·1단계 줄 불변', async () => {
+  const m = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const staffCard = m.myTextSection([{ id: 1, name: 'A', body: 'x', auto_kind: 'due_date', auto_offset: -3, auto_unless_step: '용접작업', auto_audience: 'staff', auto_staff: [1, 2] }]).items[0];
+  assert.equal(autoConditionLine(staffCard), '납기일 3일 전 · 오전 10시 · 직원 2명 · 용접작업 미완료만');
+  assert.equal(autoConditionLine(m.myTextSection([{ id: 2, name: 'B', body: 'x', auto_kind: 'ship_scheduled', auto_offset: 0 }]).items[0]), '출고예정일 당일 · 오전 10시 · 고객');
+  assert.equal(autoConditionLine(m.myTextSection([{ id: 3, name: 'C', body: 'x', auto_kind: 'due_date', auto_offset: 2 }]).items[0]), '납기일 2일 지남 · 오전 10시 · 고객');
+  const sent = buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'due_date', offsetDir: 'before', offsetDays: '3', unlessStep: '용접작업', audience: 'staff', staff: [1, 2] } });
+  assert.deepEqual(sent.auto, { kind: 'due_date', offset: -3, unless_step: '용접작업', audience: 'staff', staff: [1, 2] });
+  assert.equal(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'ship_scheduled', offsetDir: 'same', offsetDays: '9' } }).auto.offset, 0);
+  const base = { name: 'a', body: '가', autoKind: 'due_date', offsetDir: 'before', offsetDays: '3', audience: 'staff', staff: [] };
+  assert.equal(validateTextForm(base).reason, 'staff');
+  assert.equal(validateTextForm({ ...base, staff: [1] }).ok, true);
+  assert.equal(validateTextForm({ ...base, audience: 'customer', offsetDays: '366' }).reason, 'offset');
+  assert.deepEqual(m.autoVariables('due_date', 'customer'), ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크']);
+  assert.equal(m.autoVariables('due_date', 'staff').at(-1), '제품');
+  assert.deepEqual(m.autoVariables('ship_plus_days', 'customer'), ['고객명']);
+  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: 4, auto_audience: 'staff', auto_staff: [3] }).offsetDir, 'after');
+  assert.match(m.textFormStopText('info_has_ad_words'), /광고 낱말/);
+});

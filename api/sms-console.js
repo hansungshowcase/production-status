@@ -8,11 +8,12 @@ import { KAKAO_IMAGE_MAX_BYTES, TEMPLATE_ID_RE, TEMPLATE_LIMITS, validateTemplat
 import { getSendProvider } from './_lib/sendProvider.js';
 import { classify, normalizeChannel } from '../shared/smsTemplateKinds.js';
 import { getDb } from './_lib/db.js';
-import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions } from './_lib/smsManualSend.js';
+import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions, staffDirectory } from './_lib/smsManualSend.js';
 import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
+import { STEPS } from './_lib/steps.js';
 import { autoStatus, autoTest, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'optouts']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
@@ -142,6 +143,9 @@ async function handleGet(req, res, ctx) {
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '자동 발송 현황을 불러오지 못했습니다.'); }
   }
+  if (resource === 'auto_meta') { // 번호 없이 공정 이름·직원 이름만
+    return res.status(200).json({ steps: [...STEPS], staff: (deps.staff || staffDirectory()).map(item => ({ id: item.id, name: item.name })) });
+  }
   if (resource === 'optouts') {
     try {
       const out = await optoutList(deps.db || getDb());
@@ -223,7 +227,7 @@ async function handlePost(req, res, ctx) {
   if (action === 'text_template_save' || action === 'text_template_delete') {
     try {
       const db = deps.db || getDb();
-      const out = action === 'text_template_save' ? await saveTextTemplate(db, body) : await deleteTextTemplate(db, body);
+      const out = action === 'text_template_save' ? await saveTextTemplate(db, body, { staff: deps.staff }) : await deleteTextTemplate(db, body);
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 저장하지 못했습니다.'); }
   }
