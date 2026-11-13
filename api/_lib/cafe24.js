@@ -127,6 +127,17 @@ async function claimRefresh(db, nowMs) {
   });
   return Boolean(out.rows?.[0]);
 }
+// 선점 성공 뒤 행을 다시 읽는다(선점 전에 읽은 행은 그 사이 다른 실행이 갱신해 옛 리프레시 토큰일 수 있다)
+const readTokenRow = async db => (await db.execute({ sql: 'SELECT access_enc, refresh_enc, access_expires_at, refresh_expires_at FROM cafe24_tokens WHERE id = 1', args: [] })).rows?.[0];
+const releaseClaim = db => db.execute({ sql: 'UPDATE cafe24_tokens SET refreshing_until = NULL WHERE id = 1', args: [] });
+// 연결돼 있고 리프레시 토큰 만료가 5일보다 많이 남았는지(콜백이 반복 요청을 막는 데 쓴다)
+export async function cafe24LinkFresh(db, nowMs = Date.now()) {
+  try {
+    await ensureCafe24Schema(db);
+    const row = await readTokenRow(db);
+    return Boolean(row && row.refresh_expires_at && new Date(row.refresh_expires_at).getTime() > nowMs + REFRESH_LEAD_MS);
+  } catch { return false; }
+}
 // 호출 직전 액세스 토큰(만료일 때만 갱신). 없거나 못 얻으면 null.
 export async function getAccessToken(db, { env = process.env, fetchImpl = fetch, nowMs = Date.now() } = {}) {
   const config = cafe24Env(env);
@@ -136,7 +147,10 @@ export async function getAccessToken(db, { env = process.env, fetchImpl = fetch,
   if (!row) return null;
   if (row.access_expires_at && new Date(row.access_expires_at).getTime() > nowMs + 60000) return openValue(ACCESS_KEY, row.access_enc);
   if (!(await claimRefresh(db, nowMs))) return null;
-  return refreshNow(db, config, fetchImpl, nowMs, row);
+  const fresh = await readTokenRow(db);
+  if (!fresh) return null;
+  if (fresh.access_expires_at && new Date(fresh.access_expires_at).getTime() > nowMs + 60000) { await releaseClaim(db); return openValue(ACCESS_KEY, fresh.access_enc); }
+  return refreshNow(db, config, fetchImpl, nowMs, fresh);
 }
 // 매일 크론: 리프레시 토큰 만료 5일 이내면 갱신 1번
 export async function refreshIfNearExpiry(db, { env = process.env, fetchImpl = fetch, nowMs = Date.now() } = {}) {
@@ -146,7 +160,9 @@ export async function refreshIfNearExpiry(db, { env = process.env, fetchImpl = f
   const row = (await db.execute({ sql: 'SELECT access_enc, refresh_enc, refresh_expires_at FROM cafe24_tokens WHERE id = 1', args: [] })).rows?.[0];
   if (!row || !row.refresh_expires_at || new Date(row.refresh_expires_at).getTime() > nowMs + REFRESH_LEAD_MS) return false;
   if (!(await claimRefresh(db, nowMs))) return false;
-  await refreshNow(db, config, fetchImpl, nowMs, row);
+  const fresh = await readTokenRow(db);
+  if (!fresh || !fresh.refresh_expires_at || new Date(fresh.refresh_expires_at).getTime() > nowMs + REFRESH_LEAD_MS) { await releaseClaim(db); return false; }
+  await refreshNow(db, config, fetchImpl, nowMs, fresh);
   return true;
 }
 
@@ -156,6 +172,7 @@ export function makeState(config, nowMs = Date.now()) {
   const payload = `${nowMs}.${crypto.randomBytes(8).toString('hex')}`;
   return `${payload}.${stateSignature(config, payload)}`;
 }
+export const stateNonce = state => String(state || '').split('.')[1] || '';
 export function checkState(config, state, nowMs = Date.now()) {
   const parts = String(state || '').split('.');
   if (parts.length !== 3) return false;

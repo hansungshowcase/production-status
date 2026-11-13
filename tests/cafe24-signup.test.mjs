@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { handleCafe24Webhook } from '../api/cafe24/webhook.js';
 import { handleCafe24Callback } from '../api/cafe24/callback.js';
-import { _resetCafe24SchemaForTest, cafe24Connected, checkState, makeState, pollSignups, purgeStalePhones, sealValue } from '../api/_lib/cafe24.js';
+import { _resetCafe24SchemaForTest, cafe24Connected, checkState, getAccessToken, makeState, pollSignups, purgeStalePhones, sealValue } from '../api/_lib/cafe24.js';
 import { _resetTextTemplateSchemaForTest, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
 import { _resetEventSchemaForTest, eventToggleOn, runEventSend } from '../api/_lib/smsEventSend.js';
 
@@ -58,7 +58,7 @@ function fakeDb({ templates = [], tokens = null } = {}) {
         state.tokens.last_poll_at = args[0];
         return { rows: [{ id: 1 }] };
       }
-      if (t.startsWith('SELECT access_enc, refresh_enc, access_expires_at FROM cafe24_tokens')) return { rows: state.tokens ? [state.tokens] : [] };
+      if (t.startsWith('SELECT access_enc, refresh_enc, access_expires_at')) return { rows: state.tokens ? [state.tokens] : [] };
       if (t.startsWith('UPDATE cafe24_tokens SET refreshing_until')) { state.tokens.refreshing_until = args[0]; return { rows: [{ id: 1 }] }; }
       if (t.startsWith('INSERT INTO cafe24_tokens')) { state.tokens = { ...(state.tokens || {}), access_enc: args[0], refresh_enc: args[1], access_expires_at: args[2], refresh_expires_at: args[3] }; return { rows: [] }; }
       throw new Error(`예상 못 한 SQL ${t}`);
@@ -198,10 +198,37 @@ test('가입 ⑤ 보충 조회: 만료된 액세스 토큰은 선점 갱신 뒤 
   assert.equal(checkState(config, `${state}x`, NOW), false);
   assert.equal(checkState(config, state, NOW + 11 * 60000), false);
   const redirect = mkRes();
-  await handleCafe24Callback({ method: 'GET', query: {} }, redirect, { env: ENV, nowMs: NOW });
+  await handleCafe24Callback({ method: 'GET', query: {} }, redirect, { env: ENV, nowMs: NOW, db: fakeDb() });
   assert.equal(redirect.code, 302);
   assert.ok(redirect.headers.Location.startsWith('https://mymall.cafe24api.com/api/v2/oauth/authorize?'));
   const bad = mkRes();
   await handleCafe24Callback({ method: 'GET', query: { code: 'c', state: 'nope' } }, bad, { env: ENV, nowMs: NOW });
   assert.equal(bad.code, 400);
+});
+
+test('가입 ⑥ 선점 뒤 다시 읽은 행이 이미 갱신됐으면 갱신 요청 0번', async () => {
+  const stale = { access_enc: sealValue('cafe24.access', 'old-access'), refresh_enc: sealValue('cafe24.refresh', 'old-refresh'), access_expires_at: '2026-11-20T00:00:00.000Z', refresh_expires_at: '2026-12-01T00:00:00.000Z' };
+  const renewed = { ...stale, access_enc: sealValue('cafe24.access', 'renewed-access'), refresh_enc: sealValue('cafe24.refresh', 'renewed-refresh'), access_expires_at: '2026-11-20T02:30:00.000Z' };
+  const db = fakeDb({ tokens: stale });
+  const base = db.execute.bind(db);
+  let reads = 0;
+  db.execute = async q => { if (/^\s*SELECT access_enc/.test(q.sql) && ++reads === 2) db.state.tokens = renewed; return base(q); }; // 첫 읽기 뒤 다른 실행이 갱신을 끝낸 상황
+  let calls = 0;
+  _resetCafe24SchemaForTest();
+  const token = await getAccessToken(db, { env: ENV, fetchImpl: async () => { calls += 1; throw new Error('호출되면 안 됨'); }, nowMs: NOW });
+  assert.equal(calls, 0);
+  assert.equal(token, 'renewed-access');
+});
+
+test('가입 ⑦ 콜백: 쿠키 난수가 없거나 state 와 다르면 토큰 교환 0번 · 400, 같으면 교환', async () => {
+  const state = makeState({ clientSecret: 'csecret' }, NOW);
+  const nonce = state.split('.')[1];
+  let calls = 0;
+  const fetchImpl = async () => { calls += 1; return { ok: true, json: async () => ({ access_token: 'a', refresh_token: 'r' }) }; };
+  const run = async cookie => { const res = mkRes(); await handleCafe24Callback({ method: 'GET', query: { code: 'c', state }, headers: cookie === null ? {} : { cookie } }, res, { env: ENV, nowMs: NOW, db: fakeDb(), fetchImpl, warn() {} }); return res; };
+  assert.equal((await run(null)).code, 400);
+  assert.equal((await run('cafe24_oauth=0000000000000000')).code, 400);
+  assert.equal(calls, 0);
+  assert.equal((await run(`cafe24_oauth=${nonce}`)).code, 200);
+  assert.equal(calls, 1);
 });
