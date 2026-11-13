@@ -1,5 +1,5 @@
 .smsm-wrap { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(16, 24, 40, 0.45); }
-.smsm { display: flex; flex-direction: column; width: min(960px, 96vw); max-height: 90vh; box-sizing: border-box; border-radius: 12px; background: var(--smsc-surface, #fff); color: var(--smsc-text, #1c2330); box-shadow: 0 12px 40px rgba(16, 24, 40, 0.3); overflow: hidden; }
+.smsm { display: flex; flex-direction: column; width: min(960px, 96vw); max-height: min(90vh, calc(100% - 32px)); box-sizing: border-box; border-radius: 12px; background: var(--smsc-surface, #fff); color: var(--smsc-text, #1c2330); box-shadow: 0 12px 40px rgba(16, 24, 40, 0.3); overflow: hidden; }
 .smsm-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--smsc-line, #e4e7ec); }
 .smsm-title { margin: 0; font-size: 18px; }
 .smsm-x { min-width: 36px; padding: 0; font-size: 22px; line-height: 1; }

@@ -100,11 +100,11 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           </span>
         ) : null}
       </button>
-      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} onChanged={() => { loadMine(); }} /> : null}
+      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button></SmsAutoControls> : null}
       {mineOpen === entry.id ? (
         <div className="ktm-modal-actions">
           {entry.autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>}
-          <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>
+          {entry.autoKind ? null : <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>}
           <button type="button" className="ktm-btn" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
         </div>
       ) : null}

@@ -6,7 +6,7 @@ const newKey = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUU
 const reasonOf = (err) => err?.data?.reason || err?.data?.error?.reason || '';
 
 // 자동 발송 문구 카드의 [켜기/끄기] · [내 번호로 시험]. 켜기와 시험 발송은 dry_run 확인 줄을 보인 뒤 한 번 더 눌러 확정한다.
-export default function SmsAutoControls({ id, enabled, onChanged }) {
+export default function SmsAutoControls({ id, enabled, photos = 0, onChanged, children }) {
   const [confirm, setConfirm] = useState(null); // 켜기 확인 줄
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -57,13 +57,14 @@ export default function SmsAutoControls({ id, enabled, onChanged }) {
         <button type="button" className="ktm-btn" disabled={busy} onClick={toggle}>{enabled ? '끄기' : (confirm ? '켜기 확인' : '켜기')}</button>
         {confirm ? <button type="button" className="ktm-btn" onClick={() => setConfirm(null)}>취소</button> : null}
         <button type="button" className="ktm-btn" onClick={() => { setTestOpen((v) => !v); setPreview(null); setResult(''); setError(''); }}>내 번호로 시험</button>
+        {children}
       </div>
-      {confirm ? <p className="sac-line">{autoConfirmLine(confirm)}{confirm.overlap === true ? ' · 기존 알림과 겹칠 수 있음' : ''}</p> : null}
+      {confirm ? <p className="sac-line">{autoConfirmLine(confirm, photos)}{confirm.overlap === true ? ' · 기존 알림과 겹칠 수 있음' : ''}</p> : null}
       {testOpen ? (
         <div className="sac-test">
           <input type="text" inputMode="tel" value={phone} maxLength={13} autoComplete="off" aria-label="시험 받을 번호" onChange={(event) => { setPhone(event.target.value); setPreview(null); }} />
           <button type="button" className="ktm-btn ktm-btn--primary" disabled={busy} onClick={test}>{preview ? '발송' : '확인'}</button>
-          {preview ? <span className="sac-line">{autoConfirmLine({ parts: preview.parts, cost: preview.cost })}</span> : null}
+          {preview ? <span className="sac-line">{autoConfirmLine({ parts: preview.parts, cost: preview.cost }, photos)}</span> : null}
           {result ? <span className="sac-line" role="status">{result}</span> : null}
         </div>
       ) : null}

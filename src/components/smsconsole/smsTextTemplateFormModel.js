@@ -52,6 +52,27 @@ export const AUTO_KIND_LEAD_PLUS = 'lead_plus_days';
 export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS];
 export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
+// 광고 문구로 저장되는 종류(서버 auto_msg_type 'ad' = 출고 완료 후·주문 등록 후)
+export const isAdKind = (kind) => kind === AUTO_KIND || kind === AUTO_KIND_ORDER;
+const AD_OPTOUT_LINE = '무료수신거부 080-500-4233';
+const AD_OPTOUT_RE = /무료\s*수신\s*거부[^\n]*080[-\d]{7,}/;
+// 광고 표기: 맨 앞 "(광고)"와 080 무료수신거부 줄이 없으면 붙인 본문을 돌려준다(있으면 그대로). 서버 adCheck 를 통과하는 모양.
+export function withAdFormat(body) {
+  const raw = String(body ?? '');
+  if (!raw.trim()) return raw;
+  let text = raw;
+  if (!text.replace(/\r\n?/g, '\n').trim().startsWith('(광고)')) text = `(광고) ${text.trimStart()}`;
+  if (!AD_OPTOUT_RE.test(text)) text = `${text.replace(/\s+$/, '')}\n\n${AD_OPTOUT_LINE}`;
+  return text;
+}
+// 사진 순서: index 번째를 바로 앞 사진과 자리 바꾼 새 배열(첫 사진·범위 밖이면 그대로)
+export function moveImageEarlier(images, index) {
+  const list = Array.isArray(images) ? images : [];
+  if (!(index > 0 && index < list.length)) return list;
+  const next = list.slice();
+  [next[index - 1], next[index]] = [next[index], next[index - 1]];
+  return next;
+}
 export const isDateKind = (kind) => DATE_KINDS.includes(kind);
 export const isImmediateKind = (kind) => IMMEDIATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
@@ -247,9 +268,9 @@ export function toggleRejectText(reason) {
 }
 
 // 켜기·시험 dry_run 응답 → 확인 줄
-export const autoConfirmLine = (out) => joinDot(
+export const autoConfirmLine = (out, photos = 0) => joinDot(
   out?.targets === undefined ? '' : `오늘 대상 ${Number(out.targets) || 0}명`,
-  `1명당 ${Number(out?.parts) || 0}통`,
+  `1명당 ${Number(out?.parts) || 0}통${Number(photos) > 1 ? `(사진 ${Number(photos)}장)` : ''}`,
   `예상 비용 ${won(out?.cost)}`,
 );
 

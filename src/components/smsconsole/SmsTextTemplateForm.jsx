@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -27,6 +27,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [ataTemplate, setAtaTemplate] = useState(initial?.ataTemplate || '');
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
+  const [adMark, setAdMark] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(null);
@@ -42,7 +43,10 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const immKind = isImmediateKind(autoKind);
   const dayKind = Boolean(autoKind) && !dateKind && !immKind && autoKind !== AUTO_KIND_MEMBER_JOINED && autoKind !== AUTO_KIND_LEAD_PLUS;
   const leadKind = autoKind === AUTO_KIND_LEAD_PLUS;
-  const check = validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
+  const adOn = isAdKind(autoKind) && adMark;
+  const outBody = adOn ? withAdFormat(body) : body;
+  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
+  useEffect(() => { setError(''); }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark]);
   const insertVar = varName => {
     const el = bodyRef.current;
     const at = el ? [el.selectionStart, el.selectionEnd] : [body.length, body.length];
@@ -73,7 +77,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setBusy(true);
     setError('');
     try {
-      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff, ataTemplate } }));
+      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body: outBody, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff, ataTemplate } }));
       setSaved(out.item);
       onSaved?.(out.item);
     } catch (err) { setError(textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.'); } finally { setBusy(false); }
@@ -109,6 +113,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         {images.map((item, index) => (
           <span key={item.url || index} className="stf-photo">
             <img className="stf-thumb" src={item.url} alt="" />
+            {index > 0 ? <button type="button" className="ktm-btn" onClick={() => setImages(prev => moveImageEarlier(prev, index))}>앞으로</button> : null}
             <button type="button" className="ktm-btn" onClick={() => removeImage(index)}>빼기</button>
           </span>
         ))}
@@ -126,6 +131,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <option value={AUTO_KIND_SHIP_PLAN}>출고예정일 기준</option>
             <option value={AUTO_KIND_SHIP_OR_DUE}>출고·납기일 기준</option>
           </select>
+          {isAdKind(autoKind) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
           {dayKind || leadKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
           {dayKind || leadKind ? <span>일 뒤</span> : null}
           {leadKind ? (
@@ -193,9 +199,9 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     </form>
     <aside className="stf-preview" aria-label="미리보기">
       <div className="stf-phone">
-        {body || images.length ? <div className="stf-bubble">
+        {outBody || images.length ? <div className="stf-bubble">
           {images.map((item, index) => <img key={item.url || index} className="stf-pimg" src={item.url} alt="" />)}
-          <span className="stf-ptext">{body}</span>
+          <span className="stf-ptext">{outBody}</span>
         </div> : null}
       </div>
     </aside>

@@ -51,3 +51,21 @@ test('등록 막힘 안내: name·body·long 에 문구, 그 밖은 빈 글', ()
   assert.equal(textFormStopText(undefined), '');
   assert.equal(textFormStopText('x'), '');
 });
+
+test('광고 표기: (광고)·080 수신거부 줄이 없을 때만 붙이고 서버 광고 검사 모양을 맞춘다', async () => {
+  const { withAdFormat, moveImageEarlier, isAdKind, autoConfirmLine } = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const out = withAdFormat('안녕하세요 #{고객명}님');
+  assert.equal(out, '(광고) 안녕하세요 #{고객명}님\n\n무료수신거부 080-500-4233');
+  assert.equal(withAdFormat(out), out);
+  assert.equal(withAdFormat('(광고) 본문\n무료 수신거부 080-123-4567'), '(광고) 본문\n무료 수신거부 080-123-4567');
+  assert.equal(withAdFormat('  '), '  ');
+  assert.equal(isAdKind('ship_plus_days'), true);
+  assert.equal(isAdKind('due_date'), false);
+  assert.match(autoConfirmLine({ parts: 2, cost: 220 }, 2), /1명당 2통\(사진 2장\)/);
+  assert.match(autoConfirmLine({ parts: 1, cost: 110 }, 1), /1명당 1통 ·/);
+  const a = { data: 'a' }; const b = { data: 'b' }; const c = { data: 'c' };
+  assert.deepEqual(moveImageEarlier([a, b, c], 2), [a, c, b]);
+  assert.deepEqual(moveImageEarlier([a, b, c], 0), [a, b, c]);
+  const body = buildSaveBody({ name: 'n', body: 'x', images: moveImageEarlier([a, b], 1) });
+  assert.deepEqual(body.images, [{ data: 'b' }, { data: 'a' }]);
+});
