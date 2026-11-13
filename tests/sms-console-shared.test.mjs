@@ -142,8 +142,8 @@ test('activeSubId', () => {
   assert.equal(activeSubId({ menu: 'log', aud: 'other' }), null);
   assert.equal(activeSubId({ menu: 'log', aud: 'customer' }), null);
   assert.equal(activeSubId({ menu: 'templates' }), 'kakao');
-  assert.equal(activeSubId({ menu: 'templates', mode: 'new' }), 'new');
-  assert.equal(activeSubId({ menu: 'templates', ch: 'sms', mode: 'new' }), 'new');
+  assert.equal(activeSubId({ menu: 'templates', mode: 'new' }), 'kakao');
+  assert.equal(activeSubId({ menu: 'templates', ch: 'sms', mode: 'new' }), 'kakao');
   assert.equal(activeSubId({ menu: 'templates', ch: 'sms' }), 'sms');
   assert.equal(activeSubId({ menu: 'dashboard' }), null);
 });
@@ -159,5 +159,5 @@ test('템플릿 메뉴 ch 기본값은 kakao, sms 만 주소에 남는다', () =
   assert.equal(parseConsoleQuery({ menu: 'templates', ch: 'sms', mode: 'new' }).ch, 'kakao');
   assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'sms', mode: 'new' }), 'menu=templates&mode=new');
   const subs = CONSOLE_MENUS.find(m => m.id === 'templates').subs;
-  assert.deepEqual(subs.map(s => s.label), ['문자 템플릿', '알림톡 템플릿', '새 템플릿 등록']);
+  assert.deepEqual(subs.map(s => s.label), ['문자 템플릿', '알림톡 템플릿']);
 });

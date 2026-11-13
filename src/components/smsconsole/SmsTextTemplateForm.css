@@ -1,6 +1,10 @@
-.stf-kinds { display: flex; gap: 8px; margin-bottom: 12px; }
-.stf-kind { flex: 1 1 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-surface, #fff); color: inherit; font: inherit; font-size: 15px; cursor: pointer; }
-.stf-kind.is-active { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent-weak, #eaf0ff); font-weight: 600; }
+.stf-split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.stf-split .stf-form { max-width: none; }
+.stf-preview { position: sticky; top: 0; min-width: 0; }
+.stf-phone { box-sizing: border-box; padding: 28px 14px 24px; border: 8px solid #1c2330; border-radius: 28px; background: var(--smsc-bg, #f5f6f8); min-height: 320px; }
+.stf-bubble { display: flex; flex-direction: column; gap: 6px; max-width: 100%; padding: 10px 12px; border-radius: 4px 14px 14px 14px; background: var(--smsc-surface, #fff); border: 1px solid var(--smsc-line, #dfe3ea); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stf-pimg { width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; }
+@media (max-width: 768px) { .stf-split { display: block; } .stf-preview { display: none; } }
 .stf-form { display: flex; flex-direction: column; gap: 12px; max-width: 560px; min-width: 0; }
 .stf-form textarea, .stf-form input[type='text'] { width: 100%; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 16px; min-height: 44px; }
 .stf-form textarea { resize: vertical; line-height: 1.5; }

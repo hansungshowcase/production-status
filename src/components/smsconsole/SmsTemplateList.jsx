@@ -7,6 +7,7 @@ import {
   audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, smsBadges, smsPills, sortSmsItems,
 } from './smsTemplateListModel.js';
 import { autoConditionLine, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
+import SmsModal from './SmsModal.jsx';
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsAutoControls from './SmsAutoControls.jsx';
 import SmsOptoutRow from './SmsOptoutRow.jsx';
@@ -14,7 +15,7 @@ import './KakaoTemplateManager.css';
 import './SmsAutoControls.css';
 
 // 문자 템플릿: 자동 문자 문구 카탈로그를 카드로 보여 준다(조회만).
-export default function SmsTemplateList({ active, onSendText }) {
+export default function SmsTemplateList({ active, onSendText, openNew, onNewHandled }) {
   const [state, setState] = useState({ loaded: false, error: '', items: [] });
   const [recipients, setRecipients] = useState(null); // 직원 문자 관리의 등록 직원(못 받으면 null — 조건만 보임)
   const [picked, setPicked] = useState(null);
@@ -63,6 +64,8 @@ export default function SmsTemplateList({ active, onSendText }) {
       }).catch(() => {});
     }
   };
+  // 옛 주소(mode=new&kind=sms)로 들어오면 등록 팝업을 연 채로 보여 준다
+  useEffect(() => { if (active && openNew) { setAdding(true); onNewHandled?.(); } }, [active, openNew]); // eslint-disable-line react-hooks/exhaustive-deps
   const [editInit, setEditInit] = useState(null); // 고치는 문구의 양식 초기값(단건 조회)
   const editMine = (entry) => {
     setMineError('');
@@ -194,13 +197,14 @@ export default function SmsTemplateList({ active, onSendText }) {
     <div className="ktm-root" hidden={!active}>
       <div className="ktm-header">
         <h2 className="ktm-title">문자 템플릿</h2>
-        {adding ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => setAdding(true)}>+ 템플릿 등록</button>}
+        <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => setAdding(true)}>+ 템플릿 등록</button>
       </div>
+      {body}
       {adding ? (
-        <div className="ktm-form-pane">
+        <SmsModal title={editInit ? '문자 템플릿 수정' : '문자 템플릿 등록'} onClose={closeForm}>
           <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
-        </div>
-      ) : body}
+        </SmsModal>
+      ) : null}
     </div>
   );
 }

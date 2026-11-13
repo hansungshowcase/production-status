@@ -1,18 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
-
-// 새 템플릿 등록 맨 위의 종류 고르기(문자 / 알림톡)
-export function TemplateKindChooser({ kind, onPick }) {
-  return (
-    <div className="stf-kinds" role="group" aria-label="템플릿 종류">
-      <button type="button" className={`stf-kind${kind === KIND_SMS ? ' is-active' : ''}`} aria-pressed={kind === KIND_SMS} onClick={() => onPick(KIND_SMS)}>문자 템플릿</button>
-      <button type="button" className={`stf-kind${kind === KIND_KAKAO ? ' is-active' : ''}`} aria-pressed={kind === KIND_KAKAO} onClick={() => onPick(KIND_KAKAO)}>알림톡 템플릿</button>
-    </div>
-  );
-}
 
 // 문자 템플릿 등록: 이름·내용·사진 1장. 검수가 없어 등록하면 바로 쓸 수 있다.
 export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial }) {
@@ -39,6 +30,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(null);
+  const formId = useId();
   const fileRef = useRef(null);
   const bodyRef = useRef(null);
   useEffect(() => {
@@ -99,7 +91,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     );
   }
   return (
-    <form className="stf-form" onSubmit={event => { event.preventDefault(); submit(); }} noValidate>
+    <div className="stf-split">
+    <form id={formId} className="stf-form" onSubmit={event => { event.preventDefault(); submit(); }} noValidate>
       <label className="stf-field">이름
         <input type="text" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => setName(event.target.value)} />
       </label>
@@ -191,10 +184,21 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       </div>
       {imageError ? <p className="ktm-alert" role="alert">{imageError}</p> : null}
       {error ? <p className="ktm-alert" role="alert">{error}</p> : null}
-      <div className="stf-actions">
-        {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>취소</button> : null}
-        <button type="submit" className="ktm-btn ktm-btn--primary" disabled={busy}>{busy ? (initial ? '저장 중…' : '등록 중…') : (initial ? '저장' : '등록')}</button>
-      </div>
+      <ModalFoot>
+        <div className="stf-actions">
+          {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>취소</button> : null}
+          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy}>{busy ? (initial ? '저장 중…' : '등록 중…') : (initial ? '저장' : '등록')}</button>
+        </div>
+      </ModalFoot>
     </form>
+    <aside className="stf-preview" aria-label="미리보기">
+      <div className="stf-phone">
+        {body || images.length ? <div className="stf-bubble">
+          {images.map((item, index) => <img key={item.url || index} className="stf-pimg" src={item.url} alt="" />)}
+          <span className="stf-ptext">{body}</span>
+        </div> : null}
+      </div>
+    </aside>
+    </div>
   );
 }

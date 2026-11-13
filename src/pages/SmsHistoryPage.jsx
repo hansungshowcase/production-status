@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { buildConsoleQuery, parseConsoleQuery } from '../../shared/smsConsole.js';
-import { normalizeKind } from '../components/smsconsole/smsTextTemplateFormModel.js';
+import { KIND_SMS, normalizeKind } from '../components/smsconsole/smsTextTemplateFormModel.js';
 import SmsConsoleSidebar from '../components/smsconsole/SmsConsoleSidebar';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
@@ -34,7 +34,8 @@ export default function SmsHistoryPage() {
 
   // 템플릿 메뉴의 문자·알림톡 화면은 처음 열 때 한 번만 그리고, 오갈 때는 숨기기만 한다(재조회 방지)
   const [tplSeen, setTplSeen] = useState({ sms: false, kakao: false });
-  const tplKind = state.ch === 'sms' ? 'sms' : 'kakao';
+  const oldSmsNew = state.menu === 'templates' && state.mode === 'new' && normalizeKind(searchParams.get('kind')) === KIND_SMS; // 옛 '새 템플릿 등록' 주소(문자)
+  const tplKind = state.ch === 'sms' || oldSmsNew ? 'sms' : 'kakao';
   useEffect(() => {
     if (state.menu !== 'templates') return;
     setTplSeen(prev => (prev[tplKind] ? prev : { ...prev, [tplKind]: true }));
@@ -132,7 +133,7 @@ export default function SmsHistoryPage() {
             <Suspense fallback={PANE_LOADING}>
               {(tplSeen.sms || tplKind === 'sms') && (
                 <div hidden={tplKind !== 'sms'}>
-                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} onSendText={id => selectMenu('send', { text: id })} />
+                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} onSendText={id => selectMenu('send', { text: id })} openNew={oldSmsNew} onNewHandled={() => patchState({ mode: '', ch: 'sms' })} />
                 </div>
               )}
               {(tplSeen.kakao || tplKind === 'kakao') && (
@@ -141,8 +142,6 @@ export default function SmsHistoryPage() {
                     active={state.menu === 'templates' && tplKind === 'kakao'}
                     selectedId={tplKind === 'kakao' ? state.tpl : ''}
                     mode={tplKind === 'kakao' ? state.mode : ''}
-                    kind={kind}
-                    onSendText={id => selectMenu('send', { text: id })}
                     onRoute={patchState}
                     onSend={id => selectMenu('send', { template: id })}
                     onOpenLog={openLog}

@@ -94,10 +94,6 @@
 .ktm-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .ktm-comment-meta { display: block; font-size: 11px; color: var(--smsc-muted, #667085); }
 .ktm-comment-text { white-space: pre-wrap; }
-.ktm-form-pane { min-width: 0; }
-/* 등록·수정 중에는 목록을 접고 양식(입력 | 미리보기)이 전체 폭을 쓴다(쏠라피 등록 화면과 같은 배치) */
-.ktm-layout.is-form { grid-template-columns: minmax(0, 1fr); }
-.ktm-layout.is-form .ktm-detail-pane { position: static; }
 .ktm-list-pane[hidden] { display: none; }
 
 .ktm-modal-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(15, 20, 30, 0.45); display: flex; align-items: center; justify-content: center; padding: 16px; }

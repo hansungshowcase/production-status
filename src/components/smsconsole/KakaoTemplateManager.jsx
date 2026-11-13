@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
-import SmsTextTemplateForm, { TemplateKindChooser } from './SmsTextTemplateForm.jsx';
-import { KIND_KAKAO, KIND_SMS } from './smsTextTemplateFormModel.js';
+import SmsModal from './SmsModal.jsx';
+import { KIND_KAKAO } from './smsTextTemplateFormModel.js';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
   isValidRename, readOnlyAudienceSections, readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras, usageBadge, usageCount,
@@ -67,7 +67,7 @@ function messageLabel(type) {
   return type;
 }
 
-export default function KakaoTemplateManager({ active, selectedId, mode, kind = KIND_SMS, onRoute, onOpenLog, onSend, onSendText }) {
+export default function KakaoTemplateManager({ active, selectedId, mode, onRoute, onOpenLog, onSend }) {
   const [tplState, setTplState] = useState({ loading: false, loaded: false, error: null, status: 0, data: null });
   const [usage, setUsage] = useState(null);
   const [sent, setSent] = useState(null); // 종류·보내는 곳·문자 대체 건수(읽기 전용). 못 불러와도 목록은 그대로
@@ -209,23 +209,6 @@ export default function KakaoTemplateManager({ active, selectedId, mode, kind = 
     : null;
 
   const renderDetail = () => {
-    if (formOpen) {
-      return (
-        <div className="ktm-form-pane">
-          {mode === 'new' ? <TemplateKindChooser kind={KIND_KAKAO} onPick={(next) => onRoute({ mode: 'new', tpl: '', kind: next })} /> : null}
-          <KakaoTemplateForm
-            key={mode === 'edit' ? selected.id : 'new'}
-            mode={mode === 'edit' ? 'edit' : 'create'}
-            initial={mode === 'edit' ? selected : null}
-            targets={data?.targets || []}
-            busy={busy}
-            serverError={formError}
-            onCancel={() => { setFormError(''); onRoute({ mode: '' }); }}
-            onSubmit={submitForm}
-          />
-        </div>
-      );
-    }
     if (!selectedId) return <div className="ktm-empty">왼쪽에서 템플릿을 고르면 미리보기가 보입니다.</div>;
     if (!selected) return <div className="ktm-empty">선택한 템플릿을 찾을 수 없습니다. 삭제되었거나 이 화면에서 볼 수 없는 템플릿입니다.</div>;
     const info = statusInfo(selected.status);
@@ -386,15 +369,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, kind = 
 
   // ----- 본문 -----
   let body;
-  if (mode === 'new' && kind === KIND_SMS) {
-    // 문자 템플릿 등록: 알림톡 목록을 못 불러와도 쓸 수 있게 목록 조회 결과와 상관없이 그린다
-    body = (
-      <div className="ktm-form-pane">
-        <TemplateKindChooser kind={KIND_SMS} onPick={(next) => onRoute({ mode: 'new', tpl: '', kind: next })} />
-        <SmsTextTemplateForm onSend={(id) => onSendText?.(id)} onCancel={() => onRoute({ mode: '' })} />
-      </div>
-    );
-  } else if (!tplState.loaded && tplState.loading) body = <div className="ktm-empty">불러오는 중…</div>;
+  if (!tplState.loaded && tplState.loading) body = <div className="ktm-empty">불러오는 중…</div>;
   else if (tplState.error && !data) {
     const noPermission = tplState.status === 401 || tplState.status === 403;
     body = (
@@ -408,8 +383,8 @@ export default function KakaoTemplateManager({ active, selectedId, mode, kind = 
     body = <div className="ktm-empty">쏠라피 연결 정보가 설정되지 않아 템플릿을 볼 수 없습니다.</div>;
   } else if (data) {
     body = (
-      <div className={`ktm-layout${selectedId || formOpen ? ' has-detail' : ''}${formOpen ? ' is-form' : ''}`}>
-        <section className="ktm-list-pane" aria-label="템플릿 목록" hidden={formOpen}>
+      <div className={`ktm-layout${selectedId ? ' has-detail' : ''}`}>
+        <section className="ktm-list-pane" aria-label="템플릿 목록">
           <div className="ktm-search">
             <Icon name="search" />
             <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 템플릿 ID 검색" aria-label="템플릿 검색" />
@@ -449,18 +424,30 @@ export default function KakaoTemplateManager({ active, selectedId, mode, kind = 
           <h2 className="ktm-title">알림톡 템플릿</h2>
           <p className="ktm-sub">한성쇼케이스 채널의 알림톡 템플릿을 보고, 바로 등록·삭제합니다.</p>
         </div>
-        {mode === 'new' ? null : (
-          <button type="button" className="ktm-btn ktm-btn--primary" disabled={!data || data.configured === false || writeOff}
-            onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '', kind: KIND_KAKAO }); }}>
-            <Icon name="plus" /> 템플릿 등록
-          </button>
-        )}
+        <button type="button" className="ktm-btn ktm-btn--primary" disabled={!data || data.configured === false || writeOff}
+          onClick={() => { setNotice(null); setFormError(''); onRoute({ mode: 'new', tpl: '', kind: KIND_KAKAO }); }}>
+          <Icon name="plus" /> 템플릿 등록
+        </button>
       </div>
       {lockBar}
       {notice ? <div className={`ktm-notice ktm-notice--${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</div> : null}
       {tplState.error && data ? <div className="ktm-notice ktm-notice--error" role="alert">{tplState.error}</div> : null}
       {body}
       {renderDialog()}
+      {formOpen ? (
+        <SmsModal title={mode === 'edit' ? '알림톡 템플릿 수정' : '알림톡 템플릿 등록'} onClose={() => { if (!busy) { setFormError(''); onRoute({ mode: '' }); } }}>
+          <KakaoTemplateForm
+            key={mode === 'edit' ? selected.id : 'new'}
+            mode={mode === 'edit' ? 'edit' : 'create'}
+            initial={mode === 'edit' ? selected : null}
+            targets={data?.targets || []}
+            busy={busy}
+            serverError={formError}
+            onCancel={() => { setFormError(''); onRoute({ mode: '' }); }}
+            onSubmit={submitForm}
+          />
+        </SmsModal>
+      ) : null}
     </div>
   );
 }

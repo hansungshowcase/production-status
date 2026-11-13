@@ -16,7 +16,6 @@ export const CONSOLE_MENUS = Object.freeze([
     id: 'templates', label: '템플릿', subs: [
       { id: 'sms', label: '문자 템플릿', ch: 'sms' },
       { id: 'kakao', label: '알림톡 템플릿', ch: 'kakao' },
-      { id: 'new', label: '새 템플릿 등록', mode: 'new' },
     ],
   },
   { id: 'customer', label: '고객 문자 관리' },
@@ -267,6 +266,6 @@ export function activeSubId(state = {}) {
     const sub = CONSOLE_MENUS.find(menu => menu.id === 'log').subs.find(item => item.aud === clean.aud && item.ch === clean.ch);
     return sub ? sub.id : null;
   }
-  if (clean.menu === 'templates') return clean.mode === 'new' ? 'new' : (clean.ch === 'sms' ? 'sms' : 'kakao');
+  if (clean.menu === 'templates') return clean.ch === 'sms' ? 'sms' : 'kakao';
   return null;
 }

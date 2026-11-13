@@ -7,6 +7,7 @@ import {
 } from '../../../shared/smsConsole.js';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
+import { ModalFoot } from './SmsModal.jsx';
 import {
   addButton,
   afterCreate,
@@ -255,7 +256,7 @@ export default function KakaoTemplateForm({
   );
 
   const formBody = (
-    <form className="smsc-form__form" onSubmit={submit} noValidate>
+    <form id={fid('form')} className="smsc-form__form" onSubmit={submit} noValidate>
       <div className="smsc-form__field">
         <label htmlFor={fid('target')}>채널 / 그룹 <b aria-hidden="true">*</b></label>
         {isEdit ? (
@@ -452,17 +453,17 @@ export default function KakaoTemplateForm({
         </div>
       ) : null}
 
-      <div className="smsc-form__footer">
+      <ModalFoot><div className="smsc-form__footer">
         {stopText ? <p className="smsc-form__error" role="alert">{stopText}</p> : null}
         {inspectError ? <p className="smsc-form__error" role="alert">{inspectError}</p> : null}
         {serverError ? <p className="smsc-form__server" role="alert">{serverError}</p> : null}
         <div className="smsc-form__actions">
           <button type="button" className="smsc-form__btn" onClick={onCancel} disabled={locked}>취소</button>
-          <button type="submit" className="smsc-form__btn smsc-form__btn--primary" disabled={locked}>
+          <button type="submit" form={fid('form')} className="smsc-form__btn smsc-form__btn--primary" disabled={locked}>
             {locked ? '처리 중…' : (isEdit ? '수정 저장' : (createdId ? '검수 요청' : '등록하고 검수 요청'))}
           </button>
         </div>
-      </div>
+      </div></ModalFoot>
     </form>
   );
 
