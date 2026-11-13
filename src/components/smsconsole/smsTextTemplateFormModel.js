@@ -286,8 +286,8 @@ export function stageLabel(f) {
 // 같은 종류·같은 순서값인 단계들의 자리(한 사람에게 2통 방지). → Set<index>
 export function duplicateStages(forms) {
   const seen = new Map();
-  // 즉시형(주문 등록 시·공정 시작/완료 시·회원가입 시)은 일수가 없어 중복으로 보지 않는다. 날짜 기준은 공정 조건이 다르면 다른 단계다.
-  forms.forEach((f, i) => { const n = stageOrder(f); if (n === null || isImmediateKind(f.autoKind) || f.autoKind === AUTO_KIND_MEMBER_JOINED) return; const key = `${f.autoKind}|${n}|${f.unlessStep || ''}`; seen.set(key, [...(seen.get(key) || []), i]); });
+  // 날짜 기준은 공정 조건이 다르면 다른 단계다. 즉시형(주문 등록 시·공정 시작/완료 시·회원가입 시)은 공정·받는 사람까지 같으면 중복이다(둘 다 발송됨).
+  forms.forEach((f, i) => { const n = stageOrder(f); if (n === null) return; const imm = isImmediateKind(f.autoKind) || f.autoKind === AUTO_KIND_MEMBER_JOINED; const key = imm ? `${f.autoKind}|${f.step || ''}|${f.audience || ''}|${[...(f.staff || [])].sort().join(',')}` : `${f.autoKind}|${n}|${f.unlessStep || ''}`; seen.set(key, [...(seen.get(key) || []), i]); });
   const out = new Set();
   seen.forEach((list) => { if (list.length > 1) list.forEach((i) => out.add(i)); });
   return out;

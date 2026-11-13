@@ -240,8 +240,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           {chips.map(chip => (
             <button key={chip.key} type="button" className={`ktm-btn stf-chip${chip.key === activeKey ? ' is-active' : ''}${chip.dirty ? ' is-dirty' : ''}${chip.dup ? ' is-dup' : ''}${chip.failed ? ' is-failed' : ''}`} aria-pressed={chip.key === activeKey} onClick={() => switchTo(chip.key)}>{chip.label}{chip.dirty ? <i className="stf-dot" aria-hidden="true" /> : null}</button>
           ))}
-          <button type="button" className="ktm-btn stf-stage-add" onClick={() => addStage(false)}>+ 단계</button>
-          <button type="button" className="ktm-btn stf-stage-clone" onClick={() => addStage(true)}>복제</button>
+          {immKind || autoKind === AUTO_KIND_MEMBER_JOINED ? null : <button type="button" className="ktm-btn stf-stage-add" onClick={() => addStage(false)}>+ 단계</button>}
+          {immKind || autoKind === AUTO_KIND_MEMBER_JOINED ? null : <button type="button" className="ktm-btn stf-stage-clone" onClick={() => addStage(true)}>복제</button>}
         </div>
       ) : null}
       <label className="stf-field">템플릿 이름
@@ -378,7 +378,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       <ModalFoot>
         <div className="stf-actions">
           {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>취소</button> : null}
-          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy || mergePending}>{busy ? (initial ? '저장 중…' : '등록 중…') : (dirtyCount >= 2 ? `${dirtyCount}개 저장` : (initial ? '저장' : '등록'))}</button>
+          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy || mergePending}>{busy ? (initial && !startNew ? '저장 중…' : '등록 중…') : (dirtyCount >= 2 ? `${dirtyCount}개 저장` : (initial && !startNew ? '저장' : '등록'))}</button>
         </div>
       </ModalFoot>
     </form>

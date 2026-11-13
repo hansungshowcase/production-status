@@ -8,6 +8,8 @@ import {
 } from './smsTemplateListModel.js';
 import { autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
+// 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
+const FLOW_NO_STEP_KINDS = ['order_created', 'process_started', 'process_completed', 'member_joined'];
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsAutoControls from './SmsAutoControls.jsx';
 import SmsOptoutRow from './SmsOptoutRow.jsx';
@@ -156,7 +158,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           <span className="ktm-card-badges stl-flow-on"><span className={`ktm-badge ktm-badge--${flow.on ? 'warn' : 'muted'}`}>켜짐 {flow.on}/{flow.total}</span></span>
         </button>
         <span className="stl-flow-actions">
-          <button type="button" className="ktm-btn" onClick={() => addStep(flow)}>단계 추가</button>
+          {FLOW_NO_STEP_KINDS.includes(flow.steps[0]?.autoKind) ? null : <button type="button" className="ktm-btn" onClick={() => addStep(flow)}>단계 추가</button>}
           <button type="button" className="ktm-btn" onClick={() => editMine(flow.steps[0], flow)}>수정</button>
         </span>
         {open ? <ul className="ktm-cards stl-steps">{flow.steps.map((step) => renderMine(step, 'step-'))}</ul> : null}
@@ -307,7 +309,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       </div>
       {body}
       {adding ? (
-        <SmsModal title={editInit ? '문자 템플릿 수정' : '문자 템플릿 등록'} onClose={closeForm}>
+        <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
           <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
         </SmsModal>
       ) : null}

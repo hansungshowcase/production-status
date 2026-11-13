@@ -501,7 +501,7 @@ test('발송 시각 ① 가입·문의 후 1일 이상 관문은 문구의 시�
   assert.notEqual(await gate(lead({ auto_send_time: '11:00' }), '11:00'), 'early');
 });
 
-test('발송 시각 ② 날짜형: 빈 값이면 10:00 크론이, 값이 있으면 그 시각부터 120분 창에서 5분 크론이 보내고 두 번 돌려도 1건', async () => {
+test('발송 시각 ② 날짜형: 빈 값이면 10:00 크론이, 값이 있으면 그 시각부터 그날 21:00 전까지 5분 크론이 보내고 두 번 돌려도 1건', async () => {
   const plain = timedDb([tpl()]);
   const p0 = fakeProvider();
   assert.equal((await timedRun(plain, p0, runTimedSendAll, NOW)).templates, 0); // 시각 없는 문구는 5분 크론이 건드리지 않는다
@@ -515,8 +515,8 @@ test('발송 시각 ② 날짜형: 빈 값이면 10:00 크론이, 값이 있으�
   assert.equal((await timedRun(db, provider, runTimedSendAll, kstAt('10:35'))).claimed, 0); // 같은 창에서 다시 돌려도 중복 없음
   assert.equal(provider.calls.send.length, 1);
   const late = timedDb([tpl({ auto_send_time: '10:30' })]);
-  assert.equal((await timedRun(late, fakeProvider(), runTimedSendAll, kstAt('12:30'))).templates, 0); // 창(120분) 밖
-  assert.equal((await timedRun(late, fakeProvider(), runTimedSendAll, kstAt('12:29'))).claimed, 1);
+  assert.equal((await timedRun(late, fakeProvider(), runTimedSendAll, kstAt('21:00'))).templates, 0); // 21:00 부터는 안 보냄
+  assert.equal((await timedRun(late, fakeProvider(), runTimedSendAll, kstAt('16:00'))).claimed, 1); // 시각이 한참 지난 뒤 켜도 그날 나간다
 });
 
 test('발송 시각 ③ 저장: 09:00~20:00 30분 단위만, 즉시형·가입 당일은 빈 값으로, 목록 응답에 실림', async () => {

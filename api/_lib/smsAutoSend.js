@@ -322,7 +322,7 @@ export async function runAutoSendAll(deps = {}) {
   return total;
 }
 
-// 발송 시각이 있는 날짜형 문구(출고·주문 후, 납기·출고예정일): 5분 크론이 '시각 이후 120분' 창에서만 실행한다(10:00 크론은 건너뜀).
+// 발송 시각이 있는 날짜형 문구(출고·주문 후, 납기·출고예정일): 5분 크론이 그 시각부터 그날 21:00 전까지 실행한다(10:00 크론은 건너뜀).
 // 가입·문의 후는 runInstantSendAll 이 문구의 시각을 보고 처리한다. 중복 방지(선점 키)·상한·밤 시간 창·마감 시각은 runAutoSend·runEventSend 그대로.
 export async function runTimedSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;

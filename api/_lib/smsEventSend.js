@@ -51,9 +51,9 @@ const placeholders = list => list.map(() => '?').join(', ');
 export const infoMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_INFO_MAX_PER_DAY, DEFAULT_MAX_PER_DAY);
 export const leadMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_LEAD_MAX_PER_DAY, DEFAULT_LEAD_MAX_PER_DAY);
 export const kstMinutes = nowMs => { const d = new Date(nowMs + 9 * 3600000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
-// 발송 시각(설계 28): 'HH:MM' 이후 120분 창 안인지. 시각이 비었거나 형식이 아니면 false.
-export const SEND_TIME_WINDOW_MIN = 120;
-export const inTimedWindow = (sendTime, nowMs) => { const start = sendTimeMinutes(sendTime); const now = kstMinutes(nowMs); return start !== null && now >= start && now < start + SEND_TIME_WINDOW_MIN; };
+// 발송 시각(설계 28): 'HH:MM' 부터 그날 21:00 전까지인지(시각이 지난 뒤 켜도 그날 나간다. 중복은 선점 키가 막는다). 시각이 비었거나 형식이 아니면 false.
+export const SEND_TIME_END_MIN = 21 * 60;
+export const inTimedWindow = (sendTime, nowMs) => { const start = sendTimeMinutes(sendTime); const now = kstMinutes(nowMs); return start !== null && now >= start && now < SEND_TIME_END_MIN; };
 const autoOn = (env = process.env) => env.SMS_AUTO !== 'off';
 const reply = (status, body) => ({ status, body });
 const errorReply = (status, message, extra = {}) => reply(status, { error: { message, status }, ...extra });
