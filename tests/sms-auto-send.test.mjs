@@ -27,13 +27,16 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
     async execute({ sql, args }) {
       const t = sql.replace(/\s+/g, ' ').trim();
       state.sql.push(t);
-      if (/^(CREATE TABLE|ALTER TABLE)/.test(t)) return { rows: [] };
-      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date FROM sms_text_templates')) return { rows: args[0] === state.tpl.id ? [state.tpl] : [] };
-      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled FROM sms_text_templates')) return { rows: state.templates.filter(r => r.id === args[0]) };
+      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE)/.test(t)) return { rows: [] };
+      if (t.startsWith('SELECT conname FROM pg_constraint')) return { rows: [] };
+      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date')) return { rows: args[0] === state.tpl.id ? [state.tpl] : [] };
+      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled')) return { rows: state.templates.filter(r => r.id === args[0]) };
       if (t.startsWith("SELECT id FROM sms_text_templates WHERE auto_enabled = true")) return { rows: state.tpl.auto_enabled ? [{ id: state.tpl.id }] : [] };
+      if (t.includes('FROM orders') && t.includes('LEFT(order_date')) return { rows: state.orders.filter(o => o.order_date && o.order_date.slice(0, 10) >= args[0] && o.order_date.slice(0, 10) <= args[1]).map(o => ({ id: o.id, phone: o.phone, client_name: o.client_name, ship_day: o.order_date.slice(0, 10) })) };
       if (t.includes('FROM orders')) return { rows: state.orders.filter(o => o.status === 'shipped' && o.ship_date.slice(0, 10) >= args[0] && o.ship_date.slice(0, 10) <= args[1]).map(o => ({ id: o.id, phone: o.phone, client_name: o.client_name, ship_day: o.ship_date.slice(0, 10) })) };
       if (t.startsWith('SELECT phone_hash FROM sms_optouts')) return { rows: state.optouts.map(phone_hash => ({ phone_hash })) };
-      if (t.startsWith('SELECT phone_hash, order_id FROM sms_auto_sends')) return { rows: state.sends.filter(r => r.template_id === args[0]) };
+      if (t.startsWith('SELECT phone_hash, order_id')) return { rows: state.sends.filter(r => r.template_id === args[0]) };
+      if (t.startsWith('SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date')) return { rows: state.sends.filter(r => r.kst_date === args[0]).map(r => ({ phone_hash: r.phone_hash })) };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0]).length }] };
       if (t.startsWith('SELECT status, COUNT(*) AS n')) {
         const by = {};
@@ -44,11 +47,11 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
       if (t.startsWith('INSERT INTO sms_auto_sends')) {
         beforeInsert?.(state);
         const rows = [];
-        for (let i = 0; i < args.length; i += 6) {
-          const [template_id, phone_hash, , order_id, , kst_date] = args.slice(i, i + 6);
-          if (state.sends.some(r => r.template_id === template_id && (r.phone_hash === phone_hash || r.order_id === order_id))) continue;
-          const row = { id: state.nextId++, template_id, phone_hash, order_id, kst_date, status: 'claimed' };
-          state.sends.push(row); rows.push({ id: row.id, phone_hash });
+        for (let i = 0; i < args.length; i += 7) {
+          const [template_id, phone_hash, , order_id, , kst_date, round] = args.slice(i, i + 7);
+          if (state.sends.some(r => r.template_id === template_id && (r.round || 1) === round && (r.phone_hash === phone_hash || r.order_id === order_id))) continue;
+          const row = { id: state.nextId++, template_id, phone_hash, order_id, kst_date, status: 'claimed', round };
+          state.sends.push(row); rows.push({ id: row.id, phone_hash, round });
         }
         return { rows };
       }
@@ -80,7 +83,8 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
       if (t.startsWith('UPDATE sms_text_templates SET name = ?, body = ?, auto_enabled = false WHERE id = ?')) {
         const row = state.templates.find(r => r.id === args[2]);
         const imagesChanged = t.includes("COALESCE(images, '')") && String(row.images || '') !== args[args.length - 1];
-        if (row.auto_enabled && (row.body !== args[3] || imagesChanged)) { row.auto_enabled = false; return { rows: [{ id: row.id, auto_kind: row.auto_kind }] }; }
+        const autoChanged = t.includes('auto_repeat IS DISTINCT FROM') && ((row.auto_send_from ?? null) !== args[6] || (row.auto_repeat ?? 1) !== args[7] || (row.auto_interval ?? 30) !== args[8]);
+        if (row.auto_enabled && (row.body !== args[3] || imagesChanged || autoChanged)) { row.auto_enabled = false; return { rows: [{ id: row.id, auto_kind: row.auto_kind }] }; }
         return { rows: [] };
       }
       if (t.startsWith('UPDATE sms_text_templates SET')) {
@@ -88,7 +92,7 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
         const row = state.templates.find(r => r.id === args[args.length - 1]);
         let k = 0;
         for (const part of sets) { const [col, val] = part.split(' = '); if (val === '?') row[col] = args[k++]; else if (val === 'NULL') row[col] = null; else if (val === 'false') row[col] = false; }
-        return { rows: [{ id: row.id, auto_kind: row.auto_kind, auto_days: row.auto_days, auto_enabled: row.auto_enabled }] };
+        return { rows: [{ id: row.id, auto_kind: row.auto_kind, auto_days: row.auto_days, auto_enabled: row.auto_enabled, auto_send_from: row.auto_send_from, auto_repeat: row.auto_repeat, auto_interval: row.auto_interval }] };
       }
       throw new Error(`예상 못 한 SQL ${t}`);
     },
@@ -112,7 +116,7 @@ function fakeProvider({ sendResults = [] } = {}) {
 
 const order = (id, phone, ship, name = '김철수') => ({ id, phone, client_name: name, status: 'shipped', ship_date: ship });
 const setup = (opts) => { _resetAutoSchemaForTest(); _resetTextTemplateSchemaForTest(); _resetManualSendSchemaForTest(); return fakeDb(opts); };
-const run = (db, provider, extra = {}) => runAutoSend({ id: 7, name: db.state.tpl.name, body: db.state.tpl.body, images: db.state.tpl.images ? JSON.parse(db.state.tpl.images) : [], auto_kind: db.state.tpl.auto_kind, auto_days: db.state.tpl.auto_days, auto_enabled: db.state.tpl.auto_enabled, auto_start_date: db.state.tpl.auto_start_date }, { db, provider, env: ENV, nowMs: NOW, ...extra });
+const run = (db, provider, extra = {}) => runAutoSend({ id: 7, name: db.state.tpl.name, body: db.state.tpl.body, images: db.state.tpl.images ? JSON.parse(db.state.tpl.images) : [], auto_kind: db.state.tpl.auto_kind, auto_days: db.state.tpl.auto_days, auto_enabled: db.state.tpl.auto_enabled, auto_start_date: db.state.tpl.auto_start_date, auto_send_from: db.state.tpl.auto_send_from, auto_repeat: db.state.tpl.auto_repeat, auto_interval: db.state.tpl.auto_interval }, { db, provider, env: ENV, nowMs: NOW, ...extra });
 
 test('대상 조회: 출고 후 N일 창(KST 경계)·시작일·010 번호·같은 번호 1명', async () => {
   assert.equal(kstDate(NIGHT), '2026-11-20');
@@ -354,4 +358,82 @@ test('생산 표에는 쓰지 않는다 · vercel.json 기존 크론 8줄 불변
     { path: '/api/cron/sheet-sync', schedule: '* * * * *' }, { path: '/api/cron/external-cleanup', schedule: '*/5 * * * *' },
   ]);
   assert.deepEqual(vercel.crons[8], { path: '/api/cron/sms-auto', schedule: '0 1 * * *' });
+});
+
+// ---- 발송 조건 넓히기(2026-11-13): 회차·주문 등록 후·시작일 ----
+const NOW2 = Date.parse('2026-12-20T01:00:00Z'); // KST 12-20: 출고 10-31 + 20일 + 30일 간격 = 2회차 예정일
+const REPEAT2 = { auto_repeat: 2, auto_interval: 30, images: JSON.stringify([JPG]) };
+
+test('회차: 2회차는 간격 뒤에만 나가고 1회차와 겹치지 않으며, 같은 날 다시 돌려도 0', async () => {
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')], template: REPEAT2 });
+  const provider = fakeProvider();
+  assert.equal((await run(db, provider)).claimed, 1);
+  assert.equal(db.state.sends[0].round, 1);
+  db.state.sends[0].status = 'sent';
+  assert.equal((await run(db, provider, { nowMs: Date.parse('2026-11-30T01:00:00Z') })).claimed, 0); // 간격이 안 지났다
+  const second = await run(db, provider, { nowMs: NOW2 });
+  assert.equal(second.claimed, 1);
+  assert.deepEqual(db.state.sends.map(r => r.round), [1, 2]);
+  assert.equal((await run(db, provider, { nowMs: NOW2 })).claimed, 0);
+});
+
+test('회차: 앞 회차가 sent 가 아니면 다음 회차는 안 나간다', async () => {
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')], template: REPEAT2 });
+  db.state.sends.push({ id: 50, template_id: 7, phone_hash: phoneHash('01033334444'), order_id: 1, kst_date: '2026-11-20', status: 'uncertain', round: 1 });
+  const provider = fakeProvider();
+  const out = await run(db, provider, { nowMs: NOW2 });
+  assert.equal(out.claimed, 0);
+  assert.equal(provider.calls.send.length, 0);
+});
+
+test('주문 등록 후: order_date 기준, 출고 상태와 무관', async () => {
+  const db = setup({ template: { auto_kind: 'order_plus_days' }, orders: [
+    { id: 1, phone: '010-3333-4444', client_name: 'A', status: 'working', ship_date: null, order_date: '2026-10-31' },
+    { id: 2, phone: '010-5555-6666', client_name: 'B', status: 'shipped', ship_date: '2026-10-31', order_date: '2026-09-01' },
+  ] });
+  const provider = fakeProvider();
+  const out = await run(db, provider);
+  assert.equal(out.claimed, 1);
+  assert.equal(provider.calls.send[0].messages[0].to, '01033334444');
+});
+
+test('시작일 전에는 무동작(선점·업로드·발송 0, 현황 대상 0), 그 날이 되면 나간다', async () => {
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')], template: { auto_send_from: '2026-11-21' } });
+  const provider = fakeProvider();
+  const before = await run(db, provider);
+  assert.equal(before.claimed, 0);
+  assert.equal(db.state.sends.length + provider.calls.upload.length + provider.calls.send.length, 0);
+  assert.equal((await autoStatus(db, { id: 7, nowMs: NOW, env: ENV })).body.today_targets, 0);
+  assert.equal((await run(db, provider, { nowMs: Date.parse('2026-11-21T01:00:00Z') })).claimed, 1);
+});
+
+test('같은 번호는 하루 1통: 오늘 다른 문구로 이미 나간 번호는 뺀다', async () => {
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31'), order(2, '010-5555-6666', '2026-10-31')] });
+  db.state.sends.push({ id: 60, template_id: 9, phone_hash: phoneHash('01033334444'), order_id: 99, kst_date: '2026-11-20', status: 'sent', round: 1 });
+  const provider = fakeProvider();
+  const out = await run(db, provider);
+  assert.equal(out.claimed, 1);
+  assert.equal(provider.calls.send[0].messages[0].to, '01055556666');
+});
+
+test('문구 저장: 새 칸 검증(400)·저장·응답, 켜진 문구의 시작일·횟수·간격을 바꾸면 꺼진다', async () => {
+  const db = setup();
+  const auto = { kind: 'order_plus_days', days: 10, send_from: '2026-12-01', repeat: 3, interval: 14 };
+  const created = await saveTextTemplate(db, { name: '주문 후', body: BODY, auto });
+  assert.equal(created.status, 201);
+  assert.deepEqual([created.body.item.auto_send_from, created.body.item.auto_repeat, created.body.item.auto_interval], ['2026-12-01', 3, 14]);
+  const id = created.body.item.id;
+  const one = (await getTextTemplate(db, { id })).body.item;
+  assert.deepEqual([one.auto_kind, one.auto_send_from, one.auto_repeat, one.auto_interval], ['order_plus_days', '2026-12-01', 3, 14]);
+  for (const bad of [{ ...auto, kind: 'x' }, { ...auto, send_from: '2026-13-40' }, { ...auto, repeat: 11 }, { ...auto, interval: 0 }]) {
+    assert.equal((await saveTextTemplate(db, { name: '틀림', body: BODY, auto: bad })).status, 400);
+  }
+  db.state.templates.find(r => r.id === id).auto_enabled = true;
+  assert.equal((await saveTextTemplate(db, { id, name: '주문 후', body: BODY, auto })).body.item.auto_enabled, true);
+  for (const change of [{ send_from: '2026-12-02' }, { repeat: 2 }, { interval: 15 }]) {
+    db.state.templates.find(r => r.id === id).auto_enabled = true;
+    const saved = await saveTextTemplate(db, { id, name: '주문 후', body: BODY, auto: { ...auto, ...change } });
+    assert.equal(saved.body.item.auto_enabled, false);
+    assert.equal(saved.body.item.auto_disabled, true);
+  }
 });

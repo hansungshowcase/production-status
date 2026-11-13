@@ -9,7 +9,8 @@
 .stf-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .stf-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--smsc-line, #dfe3ea); flex: none; }
 .stf-photo { display: inline-flex; gap: 4px; align-items: center; }
-.stf-auto { display: inline-flex; gap: 6px; align-items: center; margin-left: auto; font-size: 14px; }
+.stf-auto { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; font-size: 14px; }
+.stf-form .stf-from { box-sizing: border-box; min-height: 44px; padding: 0 8px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; }
 .stf-auto select { min-height: 44px; padding: 0 8px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; background: var(--smsc-surface, #fff); }
 .stf-form .stf-days { width: 64px; text-align: center; }
 .stf-actions { display: flex; gap: 8px; justify-content: flex-end; }

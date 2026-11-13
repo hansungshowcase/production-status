@@ -9,20 +9,54 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval }) {
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
   if (!trimmed) return { ok: false, reason: 'name', info };
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
-  if (autoKind === AUTO_KIND && normalizeDays(days) === null) return { ok: false, reason: 'days', info };
+  if (AUTO_KINDS.includes(autoKind)) {
+    if (normalizeDays(days) === null) return { ok: false, reason: 'days', info };
+    if (normalizeSendFrom(sendFrom) === null) return { ok: false, reason: 'sendFrom', info };
+    const times = normalizeRepeat(repeat ?? '1');
+    if (times === null) return { ok: false, reason: 'repeat', info };
+    if (times >= 2 && normalizeInterval(interval ?? '30') === null) return { ok: false, reason: 'interval', info };
+  }
   return { ok: true, reason: '', info };
 }
 
 export const IMAGE_MAX = 3;
 export const AUTO_KIND = 'ship_plus_days';
+export const AUTO_KIND_ORDER = 'order_plus_days';
+export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER];
 export const AUTO_DEFAULT_DAYS = 20;
+export const AUTO_DEFAULT_REPEAT = 1;
+export const AUTO_DEFAULT_INTERVAL = 30;
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후' };
+
+// 반복 횟수 1~10, 간격 1~365 정수, 아니면 null
+export function normalizeRepeat(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d{1,2}$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= 10 ? n : null;
+}
+export function normalizeInterval(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= 365 ? n : null;
+}
+// 시작일 칸 → '' (없음) | 'YYYY-MM-DD' | null (잘못됨)
+export function normalizeSendFrom(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]) ? text : null;
+}
 
 // 일수 칸 → 1~365 정수, 아니면 null
 export function normalizeDays(value) {
@@ -38,18 +72,30 @@ export function textFormStopText(reason) {
   if (reason === 'body') return '내용을 입력해 주세요';
   if (reason === 'long') return '내용이 너무 깁니다';
   if (reason === 'days') return '일수는 1부터 365 사이로 넣어 주세요';
+  if (reason === 'sendFrom') return '시작일은 날짜로 넣어 주세요';
+  if (reason === 'repeat') return '횟수는 1부터 10 사이로 넣어 주세요';
+  if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
   return '';
 }
 
 // 저장 요청 본문. 사진이 없으면 image·images 칸을 아예 넣지 않는다. 새 양식은 images(최대 3장)로 보낸다.
-export function buildSaveBody({ name, body, image, images, auto }) {
+export function buildSaveBody({ id, name, body, image, images, auto }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
+  const autoBody = (a) => {
+    if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
+    const out = { kind: a.kind, days: normalizeDays(a.days) };
+    if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
+    if (a.repeat !== undefined) out.repeat = normalizeRepeat(a.repeat) ?? AUTO_DEFAULT_REPEAT;
+    if (a.interval !== undefined) out.interval = normalizeInterval(a.interval) ?? AUTO_DEFAULT_INTERVAL;
+    return out;
+  };
   return {
+    ...(id ? { id } : {}),
     name: String(name || '').trim(),
     body: String(body || ''),
     ...(image?.data ? { image: { data: image.data } } : {}),
     ...(list.length ? { images: list.map((item) => ({ data: item.data })) } : {}),
-    ...(auto ? { auto: auto.kind === AUTO_KIND ? { kind: AUTO_KIND, days: normalizeDays(auto.days) } : { kind: '' } } : {}),
+    ...(auto ? { auto: autoBody(auto) } : {}),
   };
 }
 
@@ -59,7 +105,13 @@ const won = (value) => `${Number(value || 0).toLocaleString('ko-KR')}원`;
 const shortDate = (value) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${Number(m[1])}/${Number(m[2])}` : ''; };
 
 // 발송 조건 한 줄
-export const autoConditionLine = (entry) => (entry?.autoKind === AUTO_KIND ? joinDot(`출고 완료 후 ${entry.autoDays}일 뒤`, '오전 10시', '고객') : '');
+export const autoConditionLine = (entry) => (AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
+  `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
+  '오전 10시',
+  '고객',
+  entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
+  Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
+) : '');
 
 // 현황 한 줄 (resource=auto_status 응답)
 export function autoStatusLine(status) {
@@ -130,8 +182,11 @@ export function myTextSection(items) {
       preview: String(item.body || '').replace(/\s+/g, ' ').trim().slice(0, 60),
       hasImage: Boolean(item.has_image) || Number(item.image_count) > 0,
       imageCount: Number(item.image_count) || (item.has_image ? 1 : 0),
-      autoKind: item.auto_kind === AUTO_KIND ? AUTO_KIND : '',
+      autoKind: AUTO_KINDS.includes(item.auto_kind) ? item.auto_kind : '',
       autoDays: Number(item.auto_days) || 0,
+      autoSendFrom: String(item.auto_send_from || '').slice(0, 10),
+      autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
+      autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
       autoEnabled: Boolean(item.auto_enabled),
     })),
   };
@@ -143,6 +198,22 @@ export function imageUrlsFromItem(item) {
   if (list.length) return list.map((data) => `data:image/jpeg;base64,${data}`);
   const one = imageFromItem(item);
   return one ? [one.url] : [];
+}
+
+// 단건 조회 응답 item → 등록 양식을 고치기용으로 여는 initial 값
+export function formInitialFromItem(item) {
+  const photos = Array.isArray(item?.images) && item.images.length ? item.images.filter((d) => typeof d === 'string' && d) : (item?.image ? [item.image] : []);
+  return {
+    id: item?.id,
+    name: String(item?.name || ''),
+    body: String(item?.body || ''),
+    images: photos.map((data) => ({ data, url: `data:image/jpeg;base64,${data}` })),
+    autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
+    days: String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
+    sendFrom: String(item?.auto_send_from || '').slice(0, 10),
+    repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),
+    interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),
+  };
 }
 
 // 단건 조회의 base64 사진 → SendPanel 이 쓰는 { data, bytes, url }

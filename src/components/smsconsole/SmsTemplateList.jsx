@@ -6,7 +6,7 @@ import { getKstToday } from '../../utils/dateUtils.js';
 import {
   audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, smsBadges, smsPills, sortSmsItems,
 } from './smsTemplateListModel.js';
-import { autoConditionLine, autoStatusLine, ensureAutoSection, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
+import { autoConditionLine, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsAutoControls from './SmsAutoControls.jsx';
 import SmsOptoutRow from './SmsOptoutRow.jsx';
@@ -63,6 +63,15 @@ export default function SmsTemplateList({ active, onSendText }) {
       }).catch(() => {});
     }
   };
+  const [editInit, setEditInit] = useState(null); // 고치는 문구의 양식 초기값(단건 조회)
+  const editMine = (entry) => {
+    setMineError('');
+    fetchSmsConsole('text_template', { id: entry.id }).then((res) => {
+      setEditInit(formInitialFromItem(res?.item));
+      setAdding(true);
+    }).catch((err) => setMineError(err.message || '불러오지 못했습니다.'));
+  };
+  const closeForm = () => { setAdding(false); setEditInit(null); loadMine(); };
   const deleteMine = async (entry) => {
     if (mineConfirm !== entry.id) { setMineConfirm(entry.id); return; }
     setMineError('');
@@ -92,6 +101,7 @@ export default function SmsTemplateList({ active, onSendText }) {
       {mineOpen === entry.id ? (
         <div className="ktm-modal-actions">
           {entry.autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>}
+          <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>
           <button type="button" className="ktm-btn" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
         </div>
       ) : null}
@@ -188,7 +198,7 @@ export default function SmsTemplateList({ active, onSendText }) {
       </div>
       {adding ? (
         <div className="ktm-form-pane">
-          <SmsTextTemplateForm onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={() => setAdding(false)} />
+          <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
         </div>
       ) : body}
     </div>

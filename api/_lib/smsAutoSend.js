@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, sendSettings } from './smsManualSend.js';
-import { AUTO_KIND, ensureTextTemplateSchema, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND, AUTO_LIMITS, isAutoKind, ensureTextTemplateSchema, storedImages } from './smsTextTemplates.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -17,6 +17,7 @@ const CATCH_UP_DAYS = 3;
 const DEFAULT_MAX_PER_DAY = 30;
 const SEND_WINDOW = { from: 8, to: 21 }; // KST 08시 이상 21시 미만
 const TIME_BUDGET_MS = 20000;
+const SEND_RESERVE_MS = 4000; // 전체 마감까지 이만큼도 안 남았으면 사진 올리기·선점을 시작하지 않는다
 const TARGET_LIMIT = 1000;
 
 const flags = new Map();
@@ -37,12 +38,20 @@ export async function ensureAutoSchema(db) {
       part_status TEXT,
       reason TEXT,
       group_ids TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE (template_id, phone_hash),
-      UNIQUE (template_id, order_id)
+      round INT NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
     args: [],
   });
+  // 회차(2026-11-13): 순서 고정 — ① 칸 추가 ② 새 유일 인덱스 ③ 옛 유일 제약 삭제. 실패하면 이 실행이 실패로 끝난다(선점 전).
+  await db.execute({ sql: 'ALTER TABLE sms_auto_sends ADD COLUMN IF NOT EXISTS round INT NOT NULL DEFAULT 1', args: [] });
+  await db.execute({ sql: 'CREATE UNIQUE INDEX IF NOT EXISTS sms_auto_sends_tpl_phone_round ON sms_auto_sends (template_id, phone_hash, round)', args: [] });
+  await db.execute({ sql: 'CREATE UNIQUE INDEX IF NOT EXISTS sms_auto_sends_tpl_order_round ON sms_auto_sends (template_id, order_id, round)', args: [] });
+  const oldUnique = (await db.execute({ sql: "SELECT conname FROM pg_constraint WHERE conrelid = 'sms_auto_sends'::regclass AND contype = 'u'", args: [] })).rows || [];
+  for (const row of oldUnique) {
+    const name = String(row.conname || '');
+    if (name) await db.execute({ sql: `ALTER TABLE sms_auto_sends DROP CONSTRAINT IF EXISTS "${name.replace(/"/g, '""')}"`, args: [] });
+  }
   await db.execute({
     sql: `CREATE TABLE IF NOT EXISTS sms_optouts (
       id BIGSERIAL PRIMARY KEY,
@@ -100,23 +109,31 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
   if (!row) return null;
-  return { id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true, auto_start_date: row.auto_start_date || '' };
+  return {
+    id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true, auto_start_date: row.auto_start_date || '',
+    auto_send_from: row.auto_send_from || '', auto_repeat: Number(row.auto_repeat) || AUTO_LIMITS.defaultRepeat, auto_interval: Number(row.auto_interval) || AUTO_LIMITS.defaultInterval,
+  };
 }
 
-// 대상 조회: orders 읽기 전용 SELECT 1개. 출고(status shipped)한 지 days 일이 된 날부터 3일 전 출고분까지, 시작일 이후 출고분만.
-export async function findTargets(db, { nowMs, days, startDate }) {
+// 대상 조회: orders 읽기 전용 SELECT 1개. 기준일(출고 완료일 또는 주문 등록일)로부터 days 일이 된 날부터 3일 전 기준일분까지, 시작일 이후 기준일분만.
+// kind: 'ship_plus_days'(status shipped 의 ship_date, 기본) | 'order_plus_days'(order_date, 상태 조건 없음)
+export async function findTargets(db, { nowMs, days, startDate, kind = AUTO_KIND }) {
   const today = kstDate(nowMs);
   const upper = addDays(today, -days);
   let lower = addDays(upper, -CATCH_UP_DAYS);
   if (startDate && startDate > lower) lower = startDate;
   if (lower > upper) return [];
   const out = await db.execute({
-    sql: `SELECT id, phone, client_name, LEFT(ship_date, 10) AS ship_day FROM orders
+    sql: kind === 'order_plus_days'
+      ? `SELECT id, phone, client_name, LEFT(order_date, 10) AS ship_day FROM orders
+          WHERE order_date IS NOT NULL AND LEFT(order_date, 10) >= ? AND LEFT(order_date, 10) <= ?
+          ORDER BY order_date ASC, id ASC LIMIT ${TARGET_LIMIT}`
+      : `SELECT id, phone, client_name, LEFT(ship_date, 10) AS ship_day FROM orders
           WHERE status = 'shipped' AND ship_date IS NOT NULL AND LEFT(ship_date, 10) >= ? AND LEFT(ship_date, 10) <= ?
           ORDER BY ship_date ASC, id ASC LIMIT ${TARGET_LIMIT}`,
     args: [lower, upper],
@@ -132,33 +149,62 @@ export async function findTargets(db, { nowMs, days, startDate }) {
   return targets;
 }
 
-// 수신거부·이미 보낸(선점한) 번호·주문을 뺀 오늘 대상
+// 수신거부·이미 보낸(선점한) 번호·주문(회차별)·오늘 이미 나간 번호를 뺀 오늘 대상. 모든 회차를 한 목록으로 합친다.
+// 회차 r(1..repeat)의 예정일 = 기준일 + days + (r−1)×interval. r≥2 는 같은 문구·같은 번호의 r−1 이 'sent' 일 때만.
+// 번호당 1건(낮은 회차 우선), 결과는 예정일이 오래된 순. auto_send_from 전이면 대상 없음.
 async function eligibleTargets(db, template, { nowMs, startDate }) {
-  const raw = await findTargets(db, { nowMs, days: template.auto_days, startDate });
+  const today = kstDate(nowMs);
+  if (template.auto_send_from && today < template.auto_send_from) return [];
+  const kind = template.auto_kind || AUTO_KIND;
+  const repeat = Math.max(1, Math.min(AUTO_LIMITS.repeatMax, Number(template.auto_repeat) || 1));
+  const interval = Number(template.auto_interval) || AUTO_LIMITS.defaultInterval;
+  const claimed = (await db.execute({ sql: 'SELECT phone_hash, order_id, round, status FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || [];
+  const roundOf = row => Number(row.round) || 1;
+  const claimedHash = new Set(claimed.map(row => `${row.phone_hash}|${roundOf(row)}`));
+  const claimedOrder = new Set(claimed.map(row => `${Number(row.order_id)}|${roundOf(row)}`));
+  const sentHash = new Set(claimed.filter(row => row.status === 'sent').map(row => `${row.phone_hash}|${roundOf(row)}`));
+  const sentRounds = new Set(claimed.filter(row => row.status === 'sent').map(roundOf));
+  const raw = [];
+  for (let round = 1; round <= repeat; round += 1) {
+    if (round > 1 && !sentRounds.has(round - 1)) continue; // 앞 회차가 나간 적이 없으면 이 회차는 조회하지 않는다
+    const shift = (round - 1) * interval;
+    for (const t of await findTargets(db, { nowMs, days: template.auto_days + shift, startDate, kind })) {
+      raw.push({ ...t, round, due: addDays(t.shipDate, template.auto_days + shift) });
+    }
+  }
   if (!raw.length) return [];
   const optouts = new Set(((await db.execute({ sql: 'SELECT phone_hash FROM sms_optouts', args: [] })).rows || []).map(row => row.phone_hash));
-  const claimed = (await db.execute({ sql: 'SELECT phone_hash, order_id FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || [];
-  const claimedHash = new Set(claimed.map(row => row.phone_hash));
-  const claimedOrder = new Set(claimed.map(row => Number(row.order_id)));
-  return raw.filter(t => {
+  const todayHash = new Set(((await db.execute({ sql: 'SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date = ?', args: [today] })).rows || []).map(row => row.phone_hash));
+  const free = raw.filter(t => {
     const hash = phoneHash(t.phone);
     t.hash = hash;
-    return !optouts.has(hash) && !claimedHash.has(hash) && !claimedOrder.has(t.orderId);
+    if (optouts.has(hash) || todayHash.has(hash)) return false;
+    if (claimedHash.has(`${hash}|${t.round}`) || claimedOrder.has(`${t.orderId}|${t.round}`)) return false;
+    return t.round === 1 || sentHash.has(`${hash}|${t.round - 1}`);
   });
+  const byPhone = new Map();
+  for (const t of [...free].sort((a, b) => a.round - b.round || (a.due < b.due ? -1 : a.due > b.due ? 1 : 0) || a.orderId - b.orderId)) {
+    if (!byPhone.has(t.hash)) byPhone.set(t.hash, t);
+  }
+  return [...byPhone.values()].sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0) || a.round - b.round || a.orderId - b.orderId);
 }
 
 const placeholders = list => list.map(() => '?').join(', ');
 
 // ---- 자동 발송 1개 문구 실행(설계 3절 ①~⑧ 순서 그대로) ----
-export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now } = {}) {
+// deadline: runAutoSendAll 이 만든 전체 마감 시각(tick 기준). 없으면(단독 실행) 이 문구만 TIME_BUDGET_MS.
+export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline } = {}) {
   const startedAt = tick();
+  const shared = typeof deadline === 'number';
+  const endAt = shared ? deadline : startedAt + TIME_BUDGET_MS;
+  const timeShort = () => shared && endAt - tick() < SEND_RESERVE_MS;
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   const settings = autoSettings(env);
   if (!template.auto_enabled || !settings.on) return { ...out, reason: 'off' }; // ①
   if (!inSendWindow(nowMs)) return { ...out, reason: 'night' }; // ② 선점도 하지 않는다
   const blocked = adCheck(template.body); // ③
   if (blocked) return { ...out, reason: blocked };
-  if (template.auto_kind !== AUTO_KIND || !(template.auto_days >= 1)) return { ...out, reason: 'no_auto' };
+  if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return { ...out, reason: 'no_auto' };
 
   const vendor = provider || getSendProvider();
   const from = digits(env.SMS_SENDER);
@@ -177,6 +223,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   if (!picked.length) return { ...out, ran: true, reason: 'cap' };
 
   const parts = buildParts(template, template.images.length);
+  if (timeShort()) return { ...out, ran: true, reason: 'time' }; // 전체 마감이 가까우면 사진 올리기·선점 없이 끝
   const fileIds = []; // ⑥ 사진 올리기: 장당 1번(받는 사람 수와 무관), 하나라도 실패하면 선점 없이 끝
   for (const base64 of template.images) {
     let fileId = '';
@@ -185,11 +232,12 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
     fileIds.push(fileId);
   }
 
-  // ⑦ 선점: 여러 행 INSERT 1번. 돌아온 행만 보낸다.
-  const values = picked.map(() => "(?, ?, ?, ?, ?, ?, 'claimed')").join(', ');
-  const claimArgs = picked.flatMap(t => [template.id, t.hash, t.phone.slice(-4), t.orderId, t.shipDate, today]);
+  // ⑦ 선점: 여러 행 INSERT 1번. 돌아온 행만 보낸다. (회차 round 포함, 모든 회차 대상을 한 번에)
+  if (timeShort()) return { ...out, ran: true, reason: 'time' };
+  const values = picked.map(() => "(?, ?, ?, ?, ?, ?, 'claimed', ?)").join(', ');
+  const claimArgs = picked.flatMap(t => [template.id, t.hash, t.phone.slice(-4), t.orderId, t.shipDate, today, t.round]);
   const claimedRows = (await db.execute({
-    sql: `INSERT INTO sms_auto_sends (template_id, phone_hash, phone_last4, order_id, ship_date, kst_date, status) VALUES ${values} ON CONFLICT DO NOTHING RETURNING id, phone_hash`,
+    sql: `INSERT INTO sms_auto_sends (template_id, phone_hash, phone_last4, order_id, ship_date, kst_date, status, round) VALUES ${values} ON CONFLICT DO NOTHING RETURNING id, phone_hash, round`,
     args: claimArgs,
   })).rows || [];
   const byHash = new Map(picked.map(t => [t.hash, t]));
@@ -215,7 +263,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   let stop = false;
   for (const part of parts) {
     if (stop) { partStatus.push('skipped'); continue; }
-    if (tick() - startedAt >= TIME_BUDGET_MS) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
+    if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
     const messages = active.map(item => {
       const message = { to: item.target.phone, text: partText(part, template, item.target.name) };
       if (part.image >= 0) message.fileId = fileIds[part.image];
@@ -251,13 +299,14 @@ export async function runAutoSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;
   await ensureTextTemplateSchema(db);
   await sweepStaleClaims(db, nowMs);
-  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind = 'ship_plus_days' ORDER BY id ASC", args: [] });
+  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days') ORDER BY id ASC", args: [] });
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
+  const deadline = (deps.tick || Date.now)() + TIME_BUDGET_MS; // 전체 마감 시각 하나를 문구마다 넘긴다
   for (const row of list.rows || []) {
     const template = await loadTemplate(db, Number(row.id));
     if (!template) continue;
     total.templates += 1;
-    const result = await runAutoSend(template, deps);
+    const result = await runAutoSend(template, { ...deps, deadline });
     if (result.reason && !result.ran) total.skipped += 1;
     for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
   }
@@ -276,11 +325,11 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
   const sent7 = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE template_id = ? AND status = 'sent' AND kst_date >= ?", args: [templateId, addDays(today, -6)] })).rows?.[0]?.n) || 0;
   let todayTargets = 0;
-  if (template.auto_kind === AUTO_KIND && template.auto_days >= 1) {
+  if (isAutoKind(template.auto_kind) && template.auto_days >= 1) {
     const startDate = template.auto_start_date || addDays(today, -template.auto_days);
     todayTargets = (await eligibleTargets(db, template, { nowMs, startDate })).length;
   }
-  const reason = template.auto_kind !== AUTO_KIND ? 'no_auto' : adCheck(template.body);
+  const reason = !isAutoKind(template.auto_kind) ? 'no_auto' : adCheck(template.body);
   return reply(200, {
     enabled: template.auto_enabled && autoSettings(env).on, days: template.auto_days, start_date: template.auto_start_date || '',
     today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'), failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'),
@@ -310,7 +359,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
     await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = false WHERE id = ? RETURNING id', args: [id] });
     return reply(200, { ok: true, enabled: false, start_date: template.auto_start_date || '' });
   }
-  if (template.auto_kind !== AUTO_KIND || !(template.auto_days >= 1)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
+  if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
   const blocked = adCheck(template.body);
   if (blocked) return errorReply(400, blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.', { reason: blocked });
   if (!autoSettings(env).on) return errorReply(503, '자동 발송이 꺼져 있습니다.');

@@ -4,6 +4,10 @@ import { parseSendExtras } from './smsManualSend.js';
 
 export const TEXT_TEMPLATE_LIMITS = Object.freeze({ name: 40, bodyBytes: 2000, count: 100, images: 3, autoDaysMax: 365 });
 export const AUTO_KIND = 'ship_plus_days';
+// 기준 사건: 출고 완료 후 / 주문 등록 후(2026-11-13 더함)
+export const AUTO_KINDS = Object.freeze(['ship_plus_days', 'order_plus_days']);
+export const isAutoKind = kind => AUTO_KINDS.includes(kind);
+export const AUTO_LIMITS = Object.freeze({ repeatMax: 10, intervalMax: 365, defaultRepeat: 1, defaultInterval: 30 });
 const flags = new Map();
 export function _resetTextTemplateSchemaForTest() { flags.clear(); }
 
@@ -23,7 +27,7 @@ export async function ensureTextTemplateSchema(db) {
   // 사진 1장(base64 JPG). 목록 응답에는 싣지 않고 단건 조회에서만 준다.
   await db.execute({ sql: 'ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS image TEXT', args: [] });
   // 출고 후 자동 발송(2026-11-13): 사진 최대 3장(JSON 배열)과 자동 발송 조건·켜짐 상태. 기존 image 칸은 그대로 둔다.
-  for (const column of ['images TEXT', 'auto_kind TEXT', 'auto_days INT', 'auto_enabled BOOLEAN NOT NULL DEFAULT false', 'auto_start_date TEXT']) {
+  for (const column of ['images TEXT', 'auto_kind TEXT', 'auto_days INT', 'auto_enabled BOOLEAN NOT NULL DEFAULT false', 'auto_start_date TEXT', 'auto_send_from TEXT', 'auto_repeat INT NOT NULL DEFAULT 1', 'auto_interval INT NOT NULL DEFAULT 30']) {
     await db.execute({ sql: `ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS ${column}`, args: [] });
   }
   flags.set('sms.textTemplates', true);
@@ -35,8 +39,16 @@ const imageCountOf = row => Math.max(0, Number(row.image_count) || 0);
 const toItem = row => ({
   id: Number(row.id), name: row.name, body: row.body, ...(row.has_image ? { has_image: true } : {}),
   ...(imageCountOf(row) > 0 ? { image_count: imageCountOf(row) } : {}),
-  ...(row.auto_kind ? { auto_kind: String(row.auto_kind), auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true } : {}),
+  ...(row.auto_kind ? autoFields(row) : {}),
 });
+// 자동 발송 칸(응답용). send_from 은 있을 때만, repeat·interval 은 기본값으로 채운다.
+function autoFields(row) {
+  return {
+    auto_kind: String(row.auto_kind), auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true,
+    ...(row.auto_send_from ? { auto_send_from: String(row.auto_send_from) } : {}),
+    auto_repeat: Number(row.auto_repeat) || AUTO_LIMITS.defaultRepeat, auto_interval: Number(row.auto_interval) || AUTO_LIMITS.defaultInterval,
+  };
+}
 
 // 저장된 사진 목록(base64 배열). images 칸이 비어 있으면 예전 image 1장을 쓴다.
 export function storedImages(row) {
@@ -63,14 +75,27 @@ function readImages(input) {
   return { list };
 }
 
-// 입력 auto → { skip } | { kind:'', days:null } | { kind, days } | { error }
+// 입력 auto → { skip } | { kind:'', days:null, … 기본값 } | { kind, days, send_from, repeat, interval } | { error }
 function readAuto(input) {
   if (input?.auto === undefined) return { skip: true };
-  if (input.auto === null || !input.auto?.kind) return { kind: '', days: null };
-  if (input.auto.kind !== AUTO_KIND) return { error: '자동 발송 종류가 올바르지 않습니다.' };
+  if (input.auto === null || !input.auto?.kind) return { kind: '', days: null, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval };
+  if (!isAutoKind(input.auto.kind)) return { error: '자동 발송 종류가 올바르지 않습니다.' };
   const days = Number(input.auto.days);
-  if (!(Number.isInteger(days) && days >= 1 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `출고 후 일수는 1~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
-  return { kind: AUTO_KIND, days };
+  const when = input.auto.kind === AUTO_KIND ? '출고' : '주문';
+  if (!(Number.isInteger(days) && days >= 1 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `${when} 후 일수는 1~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
+  const rawFrom = input.auto.send_from;
+  let sendFrom = null;
+  if (rawFrom !== undefined && rawFrom !== null && rawFrom !== '') {
+    const text = typeof rawFrom === 'string' ? rawFrom : '';
+    const valid = /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(`${text}T00:00:00Z`)) && new Date(`${text}T00:00:00Z`).toISOString().slice(0, 10) === text;
+    if (!valid) return { error: '시작일은 YYYY-MM-DD 형식으로 입력해 주세요.' };
+    sendFrom = text;
+  }
+  const repeat = input.auto.repeat === undefined || input.auto.repeat === null || input.auto.repeat === '' ? AUTO_LIMITS.defaultRepeat : Number(input.auto.repeat);
+  if (!(Number.isInteger(repeat) && repeat >= 1 && repeat <= AUTO_LIMITS.repeatMax)) return { error: `반복 횟수는 1~${AUTO_LIMITS.repeatMax}번으로 입력해 주세요.` };
+  const interval = input.auto.interval === undefined || input.auto.interval === null || input.auto.interval === '' ? AUTO_LIMITS.defaultInterval : Number(input.auto.interval);
+  if (!(Number.isInteger(interval) && interval >= 1 && interval <= AUTO_LIMITS.intervalMax)) return { error: `반복 간격은 1~${AUTO_LIMITS.intervalMax}일로 입력해 주세요.` };
+  return { kind: input.auto.kind, days, send_from: sendFrom, repeat, interval };
 }
 
 // 입력 image → { skip } 건드리지 않음 | { clear } 지움 | { base64 } 저장 | { error }. 형식·용량 검사는 보내기와 같은 함수.
@@ -89,7 +114,7 @@ export async function listTextTemplates(db) {
     sql: `SELECT id, name, body,
       ((image IS NOT NULL AND image <> '') OR COALESCE(images, '') NOT IN ('', '[]')) AS has_image,
       CASE WHEN COALESCE(images, '') NOT IN ('', '[]') THEN jsonb_array_length(images::jsonb) WHEN image IS NOT NULL AND image <> '' THEN 1 ELSE 0 END AS image_count,
-      auto_kind, auto_days, auto_enabled
+      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval
       FROM sms_text_templates ORDER BY name ASC`,
     args: [],
   });
@@ -100,13 +125,13 @@ export async function getTextTemplate(db, input) {
   const id = Number(input?.id);
   if (!(Number.isInteger(id) && id > 0)) return bad('올바른 문구가 아닙니다.');
   await ensureTextTemplateSchema(db);
-  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled FROM sms_text_templates WHERE id = ?', args: [id] });
+  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval FROM sms_text_templates WHERE id = ?', args: [id] });
   const row = out.rows?.[0];
   if (!row) return bad('문구를 찾을 수 없습니다.', 404);
   const images = storedImages(row);
   const item = { id: Number(row.id), name: row.name, body: row.body, ...(images.length ? { has_image: true, image: images[0] } : {}) };
   if (images.length) { item.images = images; item.image_count = images.length; }
-  if (row.auto_kind) { item.auto_kind = String(row.auto_kind); item.auto_days = Number(row.auto_days) || 0; item.auto_enabled = row.auto_enabled === true; }
+  if (row.auto_kind) Object.assign(item, autoFields(row));
   return ok({ item });
 }
 
@@ -143,7 +168,7 @@ export async function saveTextTemplate(db, input) {
         const cols = ['name', 'body']; const args = [name, body.trim()];
         if (photo.base64 && photos.skip) { cols.push('image'); args.push(photo.base64); }
         if (imagesJson) { cols.push('images'); args.push(imagesJson); }
-        if (!auto.skip) { cols.push('auto_kind', 'auto_days'); args.push(auto.kind, auto.days); }
+        if (!auto.skip) { cols.push('auto_kind', 'auto_days', 'auto_send_from', 'auto_repeat', 'auto_interval'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval); }
         out = await db.execute({ sql: `INSERT INTO sms_text_templates (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING id`, args });
       } else {
         out = photo.base64
@@ -151,7 +176,7 @@ export async function saveTextTemplate(db, input) {
           : await db.execute({ sql: 'INSERT INTO sms_text_templates (name, body) VALUES (?, ?) RETURNING id', args: [name, body.trim()] });
       }
       const item = { id: Number(out.rows?.[0]?.id), ...itemBase };
-      if (auto.kind) { item.auto_kind = auto.kind; item.auto_days = auto.days; item.auto_enabled = false; }
+      if (auto.kind) { item.auto_kind = auto.kind; item.auto_days = auto.days; item.auto_enabled = false; if (auto.send_from) item.auto_send_from = auto.send_from; item.auto_repeat = auto.repeat; item.auto_interval = auto.interval; }
       return ok({ item }, 201);
     } catch (error) {
       if (error?.code === '23505') return bad('같은 이름의 문구가 있습니다.', 409);
@@ -165,7 +190,10 @@ export async function saveTextTemplate(db, input) {
   try {
     // 켜진 자동 발송 문구의 본문·일수·사진이 바뀌면 끈다(다시 켤 때 확인을 다시 거치게). 바뀐 게 없으면 아무 행도 안 건드린다.
     const changed = ['body IS DISTINCT FROM ?']; const guardArgs = [name, body.trim(), id, body.trim()];
-    if (!auto.skip) { changed.push('auto_kind IS DISTINCT FROM ?', 'auto_days IS DISTINCT FROM ?'); guardArgs.push(auto.kind, auto.days); }
+    if (!auto.skip) {
+      changed.push('auto_kind IS DISTINCT FROM ?', 'auto_days IS DISTINCT FROM ?', 'auto_send_from IS DISTINCT FROM ?', 'auto_repeat IS DISTINCT FROM ?', 'auto_interval IS DISTINCT FROM ?');
+      guardArgs.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval);
+    }
     if (!photos.skip) { changed.push("COALESCE(images, '') IS DISTINCT FROM ?"); guardArgs.push(imagesJson || ''); }
     else if (!photo.skip) { changed.push("COALESCE(image, '') IS DISTINCT FROM ?"); guardArgs.push(photo.base64 || ''); }
     const guard = await db.execute({
@@ -177,9 +205,9 @@ export async function saveTextTemplate(db, input) {
       const sets = ['name = ?', 'body = ?']; const args = [name, body.trim()];
       if (!photos.skip) { sets.push('images = ?', 'image = NULL'); args.push(imagesJson); }
       else if (!photo.skip) { sets.push('image = ?'); args.push(photo.base64 || null); }
-      if (!auto.skip) { sets.push('auto_kind = ?', 'auto_days = ?'); args.push(auto.kind, auto.days); if (!auto.kind) sets.push('auto_enabled = false'); }
+      if (!auto.skip) { sets.push('auto_kind = ?', 'auto_days = ?', 'auto_send_from = ?', 'auto_repeat = ?', 'auto_interval = ?'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval); if (!auto.kind) sets.push('auto_enabled = false'); }
       args.push(id);
-      const out = await db.execute({ sql: `UPDATE sms_text_templates SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, auto_kind, auto_days, auto_enabled`, args });
+      const out = await db.execute({ sql: `UPDATE sms_text_templates SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval`, args });
       returned = out.rows?.[0] || null;
     } else if (photo.skip) await db.execute({ sql: 'UPDATE sms_text_templates SET name = ?, body = ?, updated_at = NOW() WHERE id = ? RETURNING id', args: [name, body.trim(), id] });
     else await db.execute({ sql: 'UPDATE sms_text_templates SET name = ?, body = ?, image = ?, updated_at = NOW() WHERE id = ? RETURNING id', args: [name, body.trim(), photo.base64 || null, id] });
@@ -188,7 +216,7 @@ export async function saveTextTemplate(db, input) {
     throw error;
   }
   const item = { id, ...itemBase };
-  if (returned?.auto_kind) { item.auto_kind = String(returned.auto_kind); item.auto_days = Number(returned.auto_days) || 0; item.auto_enabled = returned.auto_enabled === true; }
+  if (returned?.auto_kind) Object.assign(item, autoFields(returned));
   if (disabled) { item.auto_enabled = false; item.auto_disabled = true; }
   return ok({ item });
 }
