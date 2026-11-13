@@ -9,7 +9,7 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, audience, staff, step }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step }) {
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
   if (!trimmed) return { ok: false, reason: 'name', info };
@@ -20,8 +20,10 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     if (autoKind !== AUTO_KIND_ORDER_CREATED && !step) return { ok: false, reason: 'step', info };
     if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
   } else if (isDateKind(autoKind)) {
-    if (normalizeOffset(offsetDir, offsetDays) === null) return { ok: false, reason: 'offset', info };
+    if (normalizeOffset(offsetDir, offsetDays, daily) === null) return { ok: false, reason: 'offset', info };
     if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
+  } else if (autoKind === AUTO_KIND_MEMBER_JOINED) {
+    // 이름·본문만 본다
   } else if (AUTO_KINDS.includes(autoKind)) {
     if (normalizeDays(days) === null) return { ok: false, reason: 'days', info };
     if (normalizeSendFrom(sendFrom) === null) return { ok: false, reason: 'sendFrom', info };
@@ -43,7 +45,8 @@ export const AUTO_KIND_ORDER_CREATED = 'order_created';
 export const AUTO_KIND_PROCESS_STARTED = 'process_started';
 export const AUTO_KIND_PROCESS_COMPLETED = 'process_completed';
 export const IMMEDIATE_KINDS = [AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED];
-export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS];
+export const AUTO_KIND_MEMBER_JOINED = 'member_joined';
+export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED];
 export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
 export const isDateKind = (kind) => DATE_KINDS.includes(kind);
@@ -51,26 +54,23 @@ export const isImmediateKind = (kind) => IMMEDIATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
 export const AUTO_DEFAULT_REPEAT = 1;
 export const AUTO_DEFAULT_INTERVAL = 30;
-const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시' };
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시', [AUTO_KIND_MEMBER_JOINED]: '자사몰 회원가입 시' };
 
-// 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남, 뒤에 _daily 가 붙으면 매일 반복) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null
-export const dirBase = (dir) => String(dir || '').replace(/_daily$/, '');
-export const dirDaily = (dir) => (String(dir || '').endsWith('_daily') ? (dirBase(dir) === 'before' ? 'until' : 'ongoing') : '');
-export function normalizeOffset(dir, value) {
-  const base = dirBase(dir);
-  if (base === 'same') return 0;
+// 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null. 매일 반복(daily)은 별도 체크
+export const dirDaily = (dir, daily) => (daily ? (dir === 'before' ? 'until' : 'ongoing') : '');
+export function normalizeOffset(dir, value, daily) {
+  if (dir === 'same') return 0;
   const text = String(value ?? '').trim();
   if (!/^\d{1,3}$/.test(text)) return null;
   const n = Number(text);
-  if (n > 365 || (base !== 'before' && base !== 'after')) return null;
-  if (dir === 'before_daily' && n === 0) return null;
-  return base === 'before' ? -n : n;
+  if (n > 365 || (dir !== 'before' && dir !== 'after')) return null;
+  if (dir === 'before' && daily && n === 0) return null;
+  return dir === 'before' ? -n : n;
 }
-// 부호 있는 정수(+ 서버의 daily 값) → { dir, days }
+// 부호 있는 정수(+ 서버의 daily 값) → { dir, days, daily }
 export const offsetParts = (offset, daily) => {
   const n = Number(offset) || 0;
-  const dir = n < 0 ? 'before' : (n > 0 ? 'after' : 'same');
-  return { dir: (daily === 'until' && n < 0) || daily === 'ongoing' ? `${dir}_daily` : dir, days: String(Math.abs(n)) };
+  return { dir: n < 0 ? 'before' : (n > 0 ? 'after' : 'same'), days: String(Math.abs(n)), daily: daily === 'until' || daily === 'ongoing' };
 };
 const offsetText = (offset, daily) => {
   const n = Number(offset) || 0;
@@ -81,6 +81,7 @@ const offsetText = (offset, daily) => {
 
 // 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
 export function autoVariables(kind, audience) {
+  if (kind === AUTO_KIND_MEMBER_JOINED) return [];
   if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
   const list = ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'];
   return audience === AUDIENCE_STAFF || audience === AUDIENCE_SALES ? [...list, '제품'] : list;
@@ -128,6 +129,7 @@ export function textFormStopText(reason) {
   if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
   if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
   if (reason === 'step') return '공정을 골라 주세요';
+  if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
   if (reason === 'staff') return '받을 직원을 한 명 이상 골라 주세요';
   if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
   if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
@@ -140,6 +142,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
+    if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind };
     if (isImmediateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF;
       return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
@@ -147,10 +150,10 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     if (isDateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF;
       const salesAudience = a.audience === AUDIENCE_SALES;
-      const daily = dirDaily(a.offsetDir);
+      const daily = dirDaily(a.offsetDir, a.daily);
       return {
         kind: a.kind,
-        offset: normalizeOffset(a.offsetDir, a.offsetDays),
+        offset: normalizeOffset(a.offsetDir, a.offsetDays, a.daily),
         ...(daily ? { daily } : {}),
         ...(a.weekdays ? { weekdays: true } : {}),
         unless_step: String(a.unlessStep || ''),
@@ -190,6 +193,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   entry.autoWeekdays ? '평일만' : '',
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
   entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
+) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객'
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
   '오전 10시',
@@ -215,6 +219,7 @@ export function autoStatusLine(status) {
 export function toggleRejectText(reason) {
   if (reason === 'no_ad_prefix') return '본문이 (광고)로 시작해야 켤 수 있습니다.';
   if (reason === 'no_optout_080') return '본문에 무료수신거부 080 번호 줄이 있어야 켤 수 있습니다.';
+  if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
   return '';
 }
 
@@ -308,6 +313,7 @@ export function formInitialFromItem(item) {
     interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),
     offsetDir: offsetParts(item?.auto_offset, item?.auto_daily).dir,
     offsetDays: offsetParts(item?.auto_offset, item?.auto_daily).days,
+    daily: offsetParts(item?.auto_offset, item?.auto_daily).daily,
     weekdays: Boolean(item?.auto_weekdays),
     unlessMode: item?.auto_unless_mode === 'started' ? 'started' : 'completed',
     unlessStep: String(item?.auto_unless_step || ''),

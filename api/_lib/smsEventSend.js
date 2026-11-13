@@ -6,7 +6,8 @@ import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { getSendProvider } from './sendProvider.js';
 import { staffDirectory } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
-import { ensureTextTemplateSchema, infoCheck, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
+import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { STEPS } from './steps.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
 import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
@@ -144,12 +145,26 @@ function expandItems(rows, template, staff, suffix, stats) {
   return items;
 }
 
+// 자사몰 회원가입 후보(읽기만): 창 안의 가입 중 번호가 남은 것. 번호당 평생 1번(dedupe_key = 해시:member:member_joined).
+async function memberCandidates(db, from, to) {
+  const seen = new Set();
+  const items = [];
+  for (const row of await signupCandidates(db, from, to)) {
+    const key = `${row.hash}:member:member_joined`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ order: null, orderId: null, signupId: row.id, phone: row.phone, hash: row.hash, last4: row.last4, baseDay: 'member_joined', key });
+  }
+  return items;
+}
+
 // 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
 async function instantCandidates(db, template, { nowMs, staff, preview }) {
   const enabledMs = preview ? nowMs - WINDOW_MS : Date.parse(template.auto_enabled_at || ''); // 켜기 전 미리 보기: 창 = [지금 − 24시간, 지금]
   if (!Number.isFinite(enabledMs)) return [];
   const from = new Date(Math.max(enabledMs, nowMs - WINDOW_MS)).toISOString();
   const to = new Date(nowMs).toISOString();
+  if (template.auto_kind === 'member_joined') return memberCandidates(db, from, to); // 주문과 무관 — 주문 전제 경로(조회·expandItems)를 타지 않는다
   let out;
   if (template.auto_kind === 'order_created') {
     out = await db.execute({
@@ -238,14 +253,19 @@ export async function runEventSend(template, { db, provider, env = process.env, 
   if (!inSendWindow(nowMs)) return { ...out, reason: 'night' };
   if (!isInfoKind(template.auto_kind)) return { ...out, reason: 'no_auto' };
   if (isEventKind(template.auto_kind) && template.auto_weekdays && kstWeekend(nowMs)) return { ...out, reason: 'weekend' }; // 평일만: KST 토·일 무동작
-  if (isInstantKind(template.auto_kind) && template.auto_kind !== 'order_created' && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
-  if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience)) return { ...out, reason: 'info_check' };
+  if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
+  if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience, template.auto_kind)) return { ...out, reason: 'info_check' };
   const vendor = provider || getSendProvider();
   const from = digits(env.SMS_SENDER);
   if (!vendor || typeof vendor.sendEach !== 'function' || !from) return { ...out, reason: 'no_provider' };
   if (!provider && !hasSolapiCredentials()) return { ...out, reason: 'no_provider' };
 
   await ensureEventSchema(db);
+  const memberKind = template.auto_kind === 'member_joined';
+  if (memberKind) { // 가입 문구: 24시간 지난 번호 지우기 + 보충 조회(60분에 1번, 실패는 조용히)
+    try { await purgeStalePhones(db, nowMs); } catch { warn('[sms-event] 번호 정리 실패'); }
+    await pollSignups(db, { env, fetchImpl, nowMs, warn });
+  }
   const today = kstDate(nowMs);
   const eligible = await pending(db, template, { nowMs, staff, warn });
   out.targets = eligible.length;
@@ -258,10 +278,10 @@ export async function runEventSend(template, { db, provider, env = process.env, 
   if (!picked.length) return { ...out, ran: true, reason: 'cap' };
 
   // 문구 만들기: 한 건에서 예외가 나면 그 건만 건너뛴다.
-  const links = await trackUrls(db, [...new Set(picked.map(item => item.orderId))]);
+  const links = await trackUrls(db, [...new Set(picked.map(item => item.orderId).filter(id => id !== null))]);
   const ready = [];
   for (const item of picked) {
-    try { ready.push({ ...item, text: fillVars(String(template.body).trim(), orderVars(item.order, template.auto_audience, links.get(item.orderId) || '')) }); } catch { /* 이 건만 건너뜀 */ }
+    try { ready.push({ ...item, text: item.order ? fillVars(String(template.body).trim(), orderVars(item.order, template.auto_audience, links.get(item.orderId) || '')) : String(template.body).trim() }); } catch { /* 이 건만 건너뜀 */ }
   }
   if (!ready.length) return { ...out, ran: true };
 
@@ -297,6 +317,9 @@ export async function runEventSend(template, { db, provider, env = process.env, 
   out.claimed = active.length;
   out.ran = true;
   if (!active.length) return out;
+  if (memberKind) { // 선점 직후 번호를 지운다(메모리의 번호로만 보낸다)
+    try { await clearPhones(db, active.map(entry => entry.item.signupId)); } catch { warn('[sms-event] 번호 지우기 실패'); }
+  }
 
   const partStatus = [];
   const groupIds = [];
@@ -388,21 +411,23 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   return reply(200, {
     enabled: template.auto_enabled && autoOn(env), days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
     failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'), last_sent_date: sums.find(row => row.status === 'sent')?.last || '',
-    enable_blocked_reason: eventBlockedReason(template),
+    enable_blocked_reason: eventBlockedReason(template) || (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env)) ? 'cafe24_not_connected' : ''),
   });
 }
 
+const needsStep = kind => kind === 'process_started' || kind === 'process_completed';
 export function eventBlockedReason(template) {
   if (!isInfoKind(template.auto_kind)) return 'no_auto';
-  if (isInstantKind(template.auto_kind) && template.auto_kind !== 'order_created' && !STEPS.includes(template.auto_step)) return 'no_step';
+  if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return 'no_step';
   if (template.auto_audience === 'staff' && !template.auto_staff.length) return 'no_staff';
-  return infoCheck(template.body, template.auto_audience);
+  return infoCheck(template.body, template.auto_audience, template.auto_kind);
 }
 
 // 기존 고객·직원 알림과 같은 조건일 때만 true(기준일형은 기존 납기·출고일 알림이 있어 항상 true)
 function instantOverlap(template) {
   const { auto_kind: kind, auto_step: step, auto_audience: audience } = template;
   if (!isInstantKind(kind)) return true;
+  if (kind === 'member_joined') return false; // 기존 알림이 없다
   if (kind === 'order_created') return audience !== 'staff';
   if (kind === 'process_started') return audience !== 'staff' && step === '도면설계';
   return audience === 'staff' ? step === 'V-커팅작업' : step === '포장';
@@ -419,9 +444,10 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   const blocked = eventBlockedReason(template);
   if (blocked) {
     const message = blocked === 'no_staff' ? '받는 직원을 1명 이상 골라야 켤 수 있습니다.' : blocked === 'no_auto' ? '자동 발송이 설정된 문구가 아닙니다.'
-      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
+      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'info_unknown_var' && template.auto_kind === 'member_joined' ? INFO_CHECK_MESSAGE.info_unknown_var : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
     return errorReply(400, message, { reason: blocked });
   }
+  if (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env))) return errorReply(400, '카페24 연결이 아직 안 됐습니다.', { reason: 'cafe24_not_connected' });
   if (!autoOn(env)) return errorReply(503, '자동 발송이 꺼져 있습니다.');
   if (body.dry_run === true) {
     const vendor = provider || getSendProvider();

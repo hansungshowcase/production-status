@@ -97,6 +97,18 @@ test('즉시형: 카드 줄·공정 미선택 거절·저장 본문·변수·기
   assert.equal(m.formInitialFromItem({ auto_kind: 'process_completed', auto_step: '포장' }).step, '포장');
 });
 
+test('자사몰 회원가입 시: 카드 줄·저장 본문·변수 없음·거절 글·기존 줄 불변', async () => {
+  const m = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const card = (item) => autoConditionLine(m.myTextSection([{ id: 1, name: 'A', body: 'x', ...item }]).items[0]);
+  assert.equal(card({ auto_kind: 'member_joined' }), '자사몰 회원가입 시 · 고객');
+  assert.equal(card({ auto_kind: 'order_created' }), '주문 등록 시 · 고객');
+  assert.deepEqual(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'member_joined', days: '5', step: '포장', audience: 'staff', staff: [1] } }).auto, { kind: 'member_joined' });
+  assert.deepEqual(m.autoVariables('member_joined', 'customer'), []);
+  assert.equal(validateTextForm({ name: 'a', body: '가', autoKind: 'member_joined' }).ok, true);
+  assert.equal(m.textFormStopText('cafe24_not_connected'), '카페24 연결이 아직 안 됐습니다');
+  assert.equal(toggleRejectText('cafe24_not_connected'), '카페24 연결이 아직 안 됐습니다');
+});
+
 test('기준일형 확장: 매일 구간·평일만·미착수·영업담당·출고·납기일, 저장 본문·방향 복원·기존 줄 불변', async () => {
   const m = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
   const card = (item) => autoConditionLine(m.myTextSection([{ id: 1, name: 'A', body: 'x', ...item }]).items[0]);
@@ -104,14 +116,15 @@ test('기준일형 확장: 매일 구간·평일만·미착수·영업담당·�
   assert.equal(card({ auto_kind: 'due_date', auto_offset: 1, auto_daily: 'ongoing', auto_audience: 'sales' }), '납기일 1일 지난 뒤 매일 · 오전 10시 · 영업담당');
   assert.equal(card({ auto_kind: 'ship_or_due', auto_offset: -3 }), '출고·납기일 3일 전 · 오전 10시 · 고객');
   assert.equal(card({ auto_kind: 'due_date', auto_offset: -3, auto_unless_step: '용접작업' }), '납기일 3일 전 · 오전 10시 · 고객 · 용접작업 미완료만');
-  const sent = buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'ship_or_due', offsetDir: 'before_daily', offsetDays: '9', weekdays: true, unlessStep: '용접작업', unlessMode: 'started', audience: 'sales', staff: [1] } });
+  const sent = buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'ship_or_due', offsetDir: 'before', offsetDays: '9', daily: true, weekdays: true, unlessStep: '용접작업', unlessMode: 'started', audience: 'sales', staff: [1] } });
   assert.deepEqual(sent.auto, { kind: 'ship_or_due', offset: -9, daily: 'until', weekdays: true, unless_step: '용접작업', unless_mode: 'started', audience: 'sales', staff: [] });
-  assert.deepEqual(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'due_date', offsetDir: 'same_daily', offsetDays: '5', audience: 'customer' } }).auto, { kind: 'due_date', offset: 0, daily: 'ongoing', unless_step: '', audience: 'customer', staff: [] });
-  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: -9, auto_daily: 'until' }).offsetDir, 'before_daily');
-  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: 2, auto_daily: 'ongoing' }).offsetDir, 'after_daily');
-  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: 0, auto_daily: 'ongoing' }).offsetDir, 'same_daily');
-  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: -3 }).offsetDir, 'before');
-  const base = { name: 'a', body: '가', autoKind: 'due_date', offsetDir: 'after_daily', offsetDays: '1', audience: 'sales', staff: [] };
+  assert.deepEqual(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'due_date', offsetDir: 'same', offsetDays: '5', daily: true, audience: 'customer' } }).auto, { kind: 'due_date', offset: 0, daily: 'ongoing', unless_step: '', audience: 'customer', staff: [] });
+  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: -9, auto_daily: 'until' }).daily, true);
+  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: 2, auto_daily: 'ongoing' }).offsetDir, 'after');
+  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: 0, auto_daily: 'ongoing' }).daily, true);
+  assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: -3 }).daily, false);
+  const base = { name: 'a', body: '가', autoKind: 'due_date', offsetDir: 'after', offsetDays: '1', daily: true, audience: 'sales', staff: [] };
   assert.equal(validateTextForm(base).ok, true);
+  assert.equal(validateTextForm({ ...base, offsetDir: 'before', offsetDays: '0' }).reason, 'offset');
   assert.equal(m.autoVariables('ship_or_due', 'sales').length, 7);
 });

@@ -11,6 +11,7 @@ import { getDb } from './_lib/db.js';
 import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions, staffDirectory } from './_lib/smsManualSend.js';
 import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 import { STEPS } from './_lib/steps.js';
+import { cafe24Connected } from './_lib/cafe24.js';
 import { autoStatus, autoTest, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts']);
@@ -144,7 +145,9 @@ async function handleGet(req, res, ctx) {
     } catch { return fail(res, 500, '자동 발송 현황을 불러오지 못했습니다.'); }
   }
   if (resource === 'auto_meta') { // 번호 없이 공정 이름·직원 이름만
-    return res.status(200).json({ steps: [...STEPS], staff: (deps.staff || staffDirectory()).map(item => ({ id: item.id, name: item.name })) });
+    let connected = false; // 카페24 연결 여부(환경 변수가 없으면 DB 를 보지 않고 false)
+    try { connected = await cafe24Connected(deps.db || getDb(), deps.env || process.env); } catch { connected = false; }
+    return res.status(200).json({ steps: [...STEPS], staff: (deps.staff || staffDirectory()).map(item => ({ id: item.id, name: item.name })), cafe24_connected: connected });
   }
   if (resource === 'optouts') {
     try {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
 import './SmsTextTemplateForm.css';
 
 // 새 템플릿 등록 맨 위의 종류 고르기(문자 / 알림톡)
@@ -28,6 +28,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [offsetDays, setOffsetDays] = useState(initial?.offsetDays || '3');
   const [unlessStep, setUnlessStep] = useState(initial?.unlessStep || '');
   const [unlessMode, setUnlessMode] = useState(initial?.unlessMode || 'completed');
+  const [daily, setDaily] = useState(Boolean(initial?.daily));
   const [weekdays, setWeekdays] = useState(Boolean(initial?.weekdays));
   const [step, setStep] = useState(initial?.step || '');
   const [audience, setAudience] = useState(initial?.audience || 'customer');
@@ -46,8 +47,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   }, []);
   const dateKind = isDateKind(autoKind);
   const immKind = isImmediateKind(autoKind);
-  const dayKind = Boolean(autoKind) && !dateKind && !immKind;
-  const check = validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, audience, staff, step });
+  const dayKind = Boolean(autoKind) && !dateKind && !immKind && autoKind !== AUTO_KIND_MEMBER_JOINED;
+  const check = validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
   const insertVar = varName => {
     const el = bodyRef.current;
     const at = el ? [el.selectionStart, el.selectionEnd] : [body.length, body.length];
@@ -78,7 +79,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setBusy(true);
     setError('');
     try {
-      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, weekdays, step, audience, staff } }));
+      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff } }));
       setSaved(out.item);
       onSaved?.(out.item);
     } catch (err) { setError(textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.'); } finally { setBusy(false); }
@@ -119,6 +120,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         <span className="stf-auto">
           <select value={autoKind} aria-label="자동 발송" onChange={event => setAutoKind(event.target.value)}>
             <option value="">자동 발송 없음</option>
+            <option value={AUTO_KIND_MEMBER_JOINED}>자사몰 회원가입 시</option>
             <option value={AUTO_KIND_ORDER_CREATED}>주문 등록 시</option>
             <option value={AUTO_KIND_ORDER}>주문 등록 후</option>
             <option value={AUTO_KIND_PROCESS_STARTED}>공정 시작 시</option>
@@ -135,15 +137,12 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           {dayKind ? <span>번</span> : null}
           {dayKind && Number(repeat) >= 2 ? <input type="text" inputMode="numeric" className="stf-days" value={interval} maxLength={3} aria-label="간격" onChange={event => setInterval(event.target.value)} /> : null}
           {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
-          {dateKind && offsetDir !== 'same' && offsetDir !== 'same_daily' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
+          {dateKind && offsetDir !== 'same' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
           {dateKind ? (
             <select value={offsetDir} aria-label="기준 방향" onChange={event => setOffsetDir(event.target.value)}>
               <option value="before">일 전</option>
               <option value="same">당일</option>
               <option value="after">일 지남</option>
-              <option value="before_daily">일 전부터 당일까지 매일</option>
-              <option value="after_daily">일 지난 뒤 매일</option>
-              <option value="same_daily">당일부터 매일</option>
             </select>
           ) : null}
           {dateKind ? (
@@ -153,13 +152,14 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               {meta.steps.map(step => <option key={step} value={step}>{step}</option>)}
             </select>
           ) : null}
-          {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
           {dateKind && unlessStep ? (
             <select value={unlessMode} aria-label="공정 조건" onChange={event => setUnlessMode(event.target.value)}>
               <option value="completed">미완료</option>
               <option value="started">미착수</option>
             </select>
           ) : null}
+          {dateKind ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
+          {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
           {immKind && autoKind !== AUTO_KIND_ORDER_CREATED ? (
             <select value={step} aria-label="공정" onChange={event => setStep(event.target.value)}>
               <option value="">공정 선택</option>

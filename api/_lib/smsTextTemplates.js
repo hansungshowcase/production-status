@@ -13,7 +13,8 @@ export const isAutoKind = kind => AUTO_KINDS.includes(kind);
 export const EVENT_KINDS = Object.freeze(['due_date', 'ship_scheduled', 'ship_or_due']);
 export const isEventKind = kind => EVENT_KINDS.includes(kind);
 // 2단계-나(2026-11-13, 설계 15절): 즉시형(주문 등록 시·공정 시작 시·공정 완료 시) — 항상 안내(info) 문구
-export const INSTANT_KINDS = Object.freeze(['order_created', 'process_started', 'process_completed']);
+// 3단계-나(설계 18절): 'member_joined' = 자사몰(카페24) 회원가입 시. 주문과 무관 — 공정·주문 변수 없음, 받는 사람 고객 고정.
+export const INSTANT_KINDS = Object.freeze(['order_created', 'process_started', 'process_completed', 'member_joined']);
 export const isInstantKind = kind => INSTANT_KINDS.includes(kind);
 export const isInfoKind = kind => isEventKind(kind) || isInstantKind(kind);
 export const isAnyAutoKind = kind => isAutoKind(kind) || isInfoKind(kind);
@@ -25,8 +26,12 @@ const AD_WORD_RE = /할인|이벤트|혜택|쿠폰|특가|소개|세일|무료|�
 // 쓸 수 있는 변수(고객 / 직원). 이 밖의 #{…} 는 치환되지 않고 글자 그대로 나가므로 저장·켜기·실행에서 막는다.
 const INFO_VARS = Object.freeze({ customer: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'], staff: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크', '제품'] });
 const hasUnknownVar = (text, audience) => [...text.matchAll(/#\{([^}]*)\}/g)].some(match => !INFO_VARS[audience].includes(match[1]));
-export function infoCheck(body, audience = 'customer') {
+export function infoCheck(body, audience = 'customer', kind = '') {
   const text = String(body ?? '');
+  if (kind === 'member_joined') { // 가입 안내: 변수 전부 거절(주문 변수는 쓸 수 없고 고객명도 웹훅에 없음), 광고 낱말 거절, 주문 변수 필수는 면제
+    if (/#\{/.test(text)) return 'info_unknown_var';
+    return AD_WORD_RE.test(text) ? 'info_has_ad_words' : '';
+  }
   const staffLike = audience === 'staff' || audience === 'sales'; // 영업담당 수신은 직원과 같은 검사
   if (hasUnknownVar(text, staffLike ? 'staff' : 'customer')) return 'info_unknown_var';
   if (staffLike) return '';
@@ -162,17 +167,18 @@ function readEventAuto(auto, staff, body) {
     if (list.length > STAFF_CAP || list.some(item => !staff.some(person => person.id === item))) return { error: '받는 직원이 올바르지 않습니다.' };
     ids = list.sort();
   }
-  const blocked = infoCheck(body, audience);
+  const blocked = infoCheck(body, audience, auto.kind);
   if (blocked) return { error: INFO_CHECK_MESSAGE[blocked], reason: blocked };
   return { kind: auto.kind, days: 0, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, offset, unless_step: unless || null, audience, staff: ids ? JSON.stringify(ids) : null, msg_type: 'info', step: null, daily, weekdays: auto.weekdays === true, unless_mode: unless ? unlessMode : 'completed' };
 }
 
 // 즉시형(주문 등록 시·공정 시작/완료 시): 항상 안내 문구. process_* 는 공정 필수. 일수·오프셋·미완료 조건·시작일·반복은 쓰지 않는다. 받는 사람·본문 검사는 기준일형과 같다.
 function readInstantAuto(auto, staff, body) {
-  const step = auto.kind === 'order_created' ? null : (typeof auto.step === 'string' ? auto.step.trim() : '');
-  if (auto.kind !== 'order_created' && !STEPS.includes(step)) return { error: '공정을 골라 주세요.' };
-  if (auto.audience === 'sales') return { error: '영업담당 수신은 날짜 기준 안내에서만 쓸 수 있습니다.' };
-  const base = readEventAuto({ ...auto, offset: 0, unless_step: '', daily: '', weekdays: false, unless_mode: 'completed' }, staff, body);
+  const member = auto.kind === 'member_joined'; // 가입 안내: 공정 없음·받는 사람 고객 고정
+  const step = auto.kind === 'order_created' || member ? null : (typeof auto.step === 'string' ? auto.step.trim() : '');
+  if (auto.kind !== 'order_created' && !member && !STEPS.includes(step)) return { error: '공정을 골라 주세요.' };
+  if (auto.audience === 'sales' && !member) return { error: '영업담당 수신은 날짜 기준 안내에서만 쓸 수 있습니다.' };
+  const base = readEventAuto({ ...auto, ...(member ? { audience: 'customer', staff: null } : {}), offset: 0, unless_step: '', daily: '', weekdays: false, unless_mode: 'completed' }, staff, body);
   if (base.error) return base;
   return { ...base, kind: auto.kind, step };
 }
