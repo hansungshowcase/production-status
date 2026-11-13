@@ -5,7 +5,8 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { getSendProvider } from './sendProvider.js';
 import { staffDirectory } from './smsManualSend.js';
-import { ensureTextTemplateSchema, infoCheck, isEventKind, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { ensureTextTemplateSchema, infoCheck, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { STEPS } from './steps.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
 import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
@@ -18,6 +19,10 @@ const SEND_RESERVE_MS = 4000;
 const TARGET_LIMIT = 1000;
 const DEFAULT_MAX_PER_DAY = 200;
 const DATE_COLUMN = Object.freeze({ due_date: 'due_date', ship_scheduled: 'ship_scheduled_date' });
+const PROCESS_COLUMN = Object.freeze({ process_started: 'started_at', process_completed: 'completed_at' });
+const WINDOW_MS = 24 * 3600000; // 즉시형 사건 창: [max(켠 시각, 지금 − 24시간), 지금]
+const KEY_CHUNK = 200;
+const ORDER_COLUMNS = 'o.id, o.phone, o.client_name, o.order_date, o.due_date, o.ship_scheduled_date, o.product_type, o.door_type, o.width, o.depth, o.height, o.quantity';
 export const CUSTOMER_VARS = Object.freeze(['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크']);
 export const STAFF_VARS = Object.freeze([...CUSTOMER_VARS, '제품']);
 
@@ -98,7 +103,7 @@ export function eventExampleText(part, template) {
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -107,11 +112,60 @@ export async function loadEventTemplate(db, id) {
     id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: row.auto_audience === 'staff' ? 'staff' : 'customer',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
+    auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
   };
+}
+
+// 주문 행 → 받는 사람별 발송 후보. suffix 는 dedupe_key 끝 부분(기준일형: 기준일, 즉시형: 종류).
+function expandItems(rows, template, staff, suffix) {
+  const people = template.auto_audience === 'staff'
+    ? (staff || staffDirectory()).filter(person => template.auto_staff.includes(person.id) && MOBILE_RE.test(digits(person.phone)))
+    : null;
+  const items = [];
+  for (const order of rows || []) {
+    const recipients = people ? people.map(person => digits(person.phone)) : [digits(order.phone)].filter(phone => TARGET_RE.test(phone));
+    const seen = new Set();
+    for (const phone of recipients) {
+      if (seen.has(phone)) continue;
+      seen.add(phone);
+      const hash = hashOf(phone);
+      items.push({ order, orderId: Number(order.id), phone, hash, last4: phone.slice(-4), baseDay: suffix, key: `${hash}:${Number(order.id)}:${suffix}` });
+    }
+  }
+  return items;
+}
+
+// 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
+async function instantCandidates(db, template, { nowMs, staff }) {
+  const enabledMs = Date.parse(template.auto_enabled_at || '');
+  if (!Number.isFinite(enabledMs)) return [];
+  const from = new Date(Math.max(enabledMs, nowMs - WINDOW_MS)).toISOString();
+  const to = new Date(nowMs).toISOString();
+  let out;
+  if (template.auto_kind === 'order_created') {
+    out = await db.execute({
+      sql: `SELECT ${ORDER_COLUMNS} FROM orders o WHERE o.created_at >= ? AND o.created_at <= ? AND COALESCE(o.status, '') <> 'cancelled' ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
+      args: [from, to],
+    });
+  } else {
+    const column = PROCESS_COLUMN[template.auto_kind];
+    if (!column || !STEPS.includes(template.auto_step)) return [];
+    // 시각은 TEXT(UTC ISO). 형식이 ISO 가 아닌 값은 비교에서 빠진다(안전한 쪽).
+    out = await db.execute({
+      sql: `SELECT ${ORDER_COLUMNS} FROM processes p JOIN orders o ON o.id = p.order_id
+        WHERE p.step_name = ? AND p.${column} IS NOT NULL AND p.${column} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' AND p.${column} >= ? AND p.${column} <= ? AND COALESCE(o.status, '') <> 'cancelled'
+        ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
+      args: [template.auto_step, from, to],
+    });
+  }
+  const seenOrders = new Set();
+  const rows = (out.rows || []).filter(row => !seenOrders.has(Number(row.id)) && seenOrders.add(Number(row.id)));
+  return expandItems(rows, template, staff, template.auto_kind);
 }
 
 // 오늘 대상(이미 선점한 것 제외 전). 납기일/출고예정일 칸이 오늘 − offset 인 진행 중 주문만(당일만, 뒤늦게 보내지 않음).
 async function candidates(db, template, { nowMs, staff }) {
+  if (isInstantKind(template.auto_kind)) return instantCandidates(db, template, { nowMs, staff });
   if (!isEventKind(template.auto_kind)) return [];
   const column = DATE_COLUMN[template.auto_kind];
   const baseDay = addDays(kstDate(nowMs), -template.auto_offset);
@@ -119,30 +173,25 @@ async function candidates(db, template, { nowMs, staff }) {
   let unless = '';
   if (template.auto_unless_step) { unless = " AND EXISTS (SELECT 1 FROM processes p WHERE p.order_id = o.id AND p.step_name = ? AND p.status <> 'completed')"; args.push(template.auto_unless_step); }
   const out = await db.execute({
-    sql: `SELECT o.id, o.phone, o.client_name, o.order_date, o.due_date, o.ship_scheduled_date, o.product_type, o.door_type, o.width, o.depth, o.height, o.quantity
+    sql: `SELECT ${ORDER_COLUMNS}
       FROM orders o WHERE o.status = 'in_production' AND o.${column} IS NOT NULL AND LEFT(o.${column}, 10) = ?${unless} ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
     args,
   });
-  const people = template.auto_audience === 'staff'
-    ? (staff || staffDirectory()).filter(person => template.auto_staff.includes(person.id) && MOBILE_RE.test(digits(person.phone)))
-    : null;
-  const items = [];
-  for (const order of out.rows || []) {
-    const recipients = people ? people.map(person => digits(person.phone)) : [digits(order.phone)].filter(phone => TARGET_RE.test(phone));
-    const seen = new Set();
-    for (const phone of recipients) {
-      if (seen.has(phone)) continue;
-      seen.add(phone);
-      const hash = hashOf(phone);
-      items.push({ order, orderId: Number(order.id), phone, hash, last4: phone.slice(-4), baseDay, key: `${hash}:${Number(order.id)}:${baseDay}` });
-    }
-  }
-  return items;
+  return expandItems(out.rows, template, staff, baseDay);
 }
 
 async function pending(db, template, deps) {
   const items = await candidates(db, template, deps);
   if (!items.length) return [];
+  if (isInstantKind(template.auto_kind)) { // 즉시형: 후보 키만 IN 조회(문구 기록 전체를 읽지 않는다)
+    const done = new Set();
+    const keys = items.map(item => item.key);
+    for (let i = 0; i < keys.length; i += KEY_CHUNK) {
+      const chunk = keys.slice(i, i + KEY_CHUNK);
+      for (const row of (await db.execute({ sql: `SELECT dedupe_key FROM sms_event_sends WHERE template_id = ? AND dedupe_key IN (${placeholders(chunk)})`, args: [template.id, ...chunk] })).rows || []) done.add(row.dedupe_key);
+    }
+    return items.filter(item => !done.has(item.key));
+  }
   const claimed = new Set(((await db.execute({ sql: 'SELECT dedupe_key FROM sms_event_sends WHERE template_id = ?', args: [template.id] })).rows || []).map(row => row.dedupe_key));
   return items.filter(item => !claimed.has(item.key));
 }
@@ -167,7 +216,8 @@ export async function runEventSend(template, { db, provider, env = process.env, 
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   if (!template.auto_enabled || !autoOn(env)) return { ...out, reason: 'off' };
   if (!inSendWindow(nowMs)) return { ...out, reason: 'night' };
-  if (!isEventKind(template.auto_kind)) return { ...out, reason: 'no_auto' };
+  if (!isInfoKind(template.auto_kind)) return { ...out, reason: 'no_auto' };
+  if (isInstantKind(template.auto_kind) && template.auto_kind !== 'order_created' && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
   if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience)) return { ...out, reason: 'info_check' };
   const vendor = provider || getSendProvider();
   const from = digits(env.SMS_SENDER);
@@ -278,6 +328,33 @@ export async function runEventSendAll(deps = {}) {
   return total;
 }
 
+// 즉시형 크론(5분마다): 켜진 즉시형 문구 SELECT 1번 — 없으면 끝. 야간(KST 21~08)에는 무동작(24시간 창 덕에 아침 첫 실행에서 나간다).
+export async function runInstantSendAll(deps = {}) {
+  const { db, nowMs = Date.now() } = deps;
+  const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
+  const sql = `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN (${INSTANT_KINDS.map(kind => `'${kind}'`).join(', ')}) ORDER BY id ASC`;
+  let list;
+  try { list = await db.execute({ sql, args: [] }); } catch (error) {
+    if (error?.code !== '42703' && error?.code !== '42P01') throw error; // 표·칸이 아직 없으면 만든 뒤 한 번 더
+    await ensureTextTemplateSchema(db);
+    list = await db.execute({ sql, args: [] });
+  }
+  if (!(list.rows || []).length || !inSendWindow(nowMs)) return total;
+  await ensureTextTemplateSchema(db);
+  await ensureEventSchema(db);
+  await db.execute({ sql: "UPDATE sms_event_sends SET status = 'uncertain', reason = '실행이 끊김' WHERE status = 'claimed' AND kst_date < ?", args: [kstDate(nowMs)] });
+  const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS;
+  for (const row of list.rows) {
+    const template = await loadEventTemplate(db, Number(row.id));
+    if (!template) continue;
+    total.templates += 1;
+    const result = await runEventSend(template, { ...deps, deadline });
+    if (result.reason && !result.ran) total.skipped += 1;
+    for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
+  }
+  return total;
+}
+
 // ---- 화면 자료 ----
 export async function eventStatus(db, template, { nowMs = Date.now(), env = process.env, staff } = {}) {
   await ensureEventSchema(db);
@@ -286,7 +363,7 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends WHERE template_id = ? GROUP BY status', args: [id] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
   const sent7 = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_event_sends WHERE template_id = ? AND status = 'sent' AND kst_date >= ?", args: [id, addDays(today, -6)] })).rows?.[0]?.n) || 0;
-  const todayTargets = (await pending(db, template, { nowMs, staff })).length;
+  const todayTargets = isInstantKind(template.auto_kind) && !template.auto_enabled ? 0 : (await pending(db, template, { nowMs, staff })).length;
   return reply(200, {
     enabled: template.auto_enabled && autoOn(env), days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
     failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'), last_sent_date: sums.find(row => row.status === 'sent')?.last || '',
@@ -295,9 +372,19 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
 }
 
 export function eventBlockedReason(template) {
-  if (!isEventKind(template.auto_kind)) return 'no_auto';
+  if (!isInfoKind(template.auto_kind)) return 'no_auto';
+  if (isInstantKind(template.auto_kind) && template.auto_kind !== 'order_created' && !STEPS.includes(template.auto_step)) return 'no_step';
   if (template.auto_audience === 'staff' && !template.auto_staff.length) return 'no_staff';
   return infoCheck(template.body, template.auto_audience);
+}
+
+// 기존 고객·직원 알림과 같은 조건일 때만 true(기준일형은 기존 납기·출고일 알림이 있어 항상 true)
+function instantOverlap(template) {
+  const { auto_kind: kind, auto_step: step, auto_audience: audience } = template;
+  if (!isInstantKind(kind)) return true;
+  if (kind === 'order_created') return audience !== 'staff';
+  if (kind === 'process_started') return audience !== 'staff' && step === '도면설계';
+  return audience === 'staff' ? step === 'V-커팅작업' : step === '포장';
 }
 
 function costOf(vendor, parts, people, env) {
@@ -311,18 +398,22 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   const blocked = eventBlockedReason(template);
   if (blocked) {
     const message = blocked === 'no_staff' ? '받는 직원을 1명 이상 골라야 켤 수 있습니다.' : blocked === 'no_auto' ? '자동 발송이 설정된 문구가 아닙니다.'
-      : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
+      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
     return errorReply(400, message, { reason: blocked });
   }
   if (!autoOn(env)) return errorReply(503, '자동 발송이 꺼져 있습니다.');
   if (body.dry_run === true) {
     const vendor = provider || getSendProvider();
     const parts = buildEventParts(template, template.images.length);
-    const targets = (await pending(db, template, { nowMs, staff })).length;
+    const targets = isInstantKind(template.auto_kind) && !template.auto_enabled ? 0 : (await pending(db, template, { nowMs, staff })).length; // 즉시형은 켜기 전이면 0
     const people = Math.min(targets, infoMaxPerDay(env));
-    return reply(200, { ok: true, targets, parts: parts.length, cost: vendor ? costOf(vendor, parts, people, env) : null, daily_max: infoMaxPerDay(env), overlap: true });
+    return reply(200, { ok: true, targets, parts: parts.length, cost: vendor ? costOf(vendor, parts, people, env) : null, daily_max: infoMaxPerDay(env), overlap: instantOverlap(template) });
   }
   const startDate = kstDate(nowMs);
+  if (isInstantKind(template.auto_kind)) { // 켠 시각 = NOW(). 이 시각 이전 사건은 보내지 않는다.
+    await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = true, auto_start_date = ?, auto_enabled_at = NOW() WHERE id = ? RETURNING id', args: [startDate, template.id] });
+    return reply(200, { ok: true, enabled: true, start_date: startDate });
+  }
   await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = true, auto_start_date = ? WHERE id = ? RETURNING id', args: [startDate, template.id] });
   return reply(200, { ok: true, enabled: true, start_date: startDate });
 }

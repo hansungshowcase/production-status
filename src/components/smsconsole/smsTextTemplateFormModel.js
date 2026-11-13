@@ -9,14 +9,17 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, audience, staff }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, audience, staff, step }) {
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
   if (!trimmed) return { ok: false, reason: 'name', info };
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
-  if (isDateKind(autoKind)) {
+  if (isImmediateKind(autoKind)) {
+    if (autoKind !== AUTO_KIND_ORDER_CREATED && !step) return { ok: false, reason: 'step', info };
+    if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
+  } else if (isDateKind(autoKind)) {
     if (normalizeOffset(offsetDir, offsetDays) === null) return { ok: false, reason: 'offset', info };
     if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
   } else if (AUTO_KINDS.includes(autoKind)) {
@@ -35,13 +38,18 @@ export const AUTO_KIND_ORDER = 'order_plus_days';
 export const AUTO_KIND_DUE = 'due_date';
 export const AUTO_KIND_SHIP_PLAN = 'ship_scheduled';
 export const DATE_KINDS = [AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN];
-export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS];
+export const AUTO_KIND_ORDER_CREATED = 'order_created';
+export const AUTO_KIND_PROCESS_STARTED = 'process_started';
+export const AUTO_KIND_PROCESS_COMPLETED = 'process_completed';
+export const IMMEDIATE_KINDS = [AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED];
+export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS];
 export const AUDIENCE_STAFF = 'staff';
 export const isDateKind = (kind) => DATE_KINDS.includes(kind);
+export const isImmediateKind = (kind) => IMMEDIATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
 export const AUTO_DEFAULT_REPEAT = 1;
 export const AUTO_DEFAULT_INTERVAL = 30;
-const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일' };
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시' };
 
 // 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null
 export function normalizeOffset(dir, value) {
@@ -61,7 +69,7 @@ const offsetText = (offset) => { const n = Number(offset) || 0; return n === 0 ?
 
 // 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
 export function autoVariables(kind, audience) {
-  if (!isDateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
+  if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
   const list = ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'];
   return audience === AUDIENCE_STAFF ? [...list, '제품'] : list;
 }
@@ -107,6 +115,7 @@ export function textFormStopText(reason) {
   if (reason === 'repeat') return '횟수는 1부터 10 사이로 넣어 주세요';
   if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
   if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
+  if (reason === 'step') return '공정을 골라 주세요';
   if (reason === 'staff') return '받을 직원을 한 명 이상 골라 주세요';
   if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
   if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
@@ -119,6 +128,10 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
+    if (isImmediateKind(a.kind)) {
+      const staffAudience = a.audience === AUDIENCE_STAFF;
+      return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
+    }
     if (isDateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF;
       return { kind: a.kind, offset: normalizeOffset(a.offsetDir, a.offsetDays), unless_step: String(a.unlessStep || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
@@ -145,7 +158,10 @@ const won = (value) => `${Number(value || 0).toLocaleString('ko-KR')}원`;
 const shortDate = (value) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${Number(m[1])}/${Number(m[2])}` : ''; };
 
 // 발송 조건 한 줄
-export const autoConditionLine = (entry) => (isDateKind(entry?.autoKind) ? joinDot(
+export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? joinDot(
+  `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
+  entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
+) : isDateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset)}`,
   '오전 10시',
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
@@ -234,6 +250,7 @@ export function myTextSection(items) {
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
       autoOffset: Number(item.auto_offset) || 0,
       autoUnlessStep: String(item.auto_unless_step || ''),
+      autoStep: String(item.auto_step || ''),
       autoAudience: item.auto_audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer',
       autoStaffCount: Array.isArray(item.auto_staff) ? item.auto_staff.length : 0,
       autoEnabled: Boolean(item.auto_enabled),
@@ -265,6 +282,7 @@ export function formInitialFromItem(item) {
     offsetDir: offsetParts(item?.auto_offset).dir,
     offsetDays: offsetParts(item?.auto_offset).days,
     unlessStep: String(item?.auto_unless_step || ''),
+    step: String(item?.auto_step || ''),
     audience: item?.auto_audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer',
     staff: Array.isArray(item?.auto_staff) ? item.auto_staff : [],
   };

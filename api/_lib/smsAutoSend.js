@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, sendSettings } from './smsManualSend.js';
-import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isEventKind, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isInfoKind, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
@@ -111,7 +111,7 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -121,6 +121,7 @@ async function loadTemplate(db, id) {
     auto_send_from: row.auto_send_from || '', auto_repeat: Number(row.auto_repeat) || AUTO_LIMITS.defaultRepeat, auto_interval: Number(row.auto_interval) || AUTO_LIMITS.defaultInterval,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: row.auto_audience === 'staff' ? 'staff' : 'customer',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
+    auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
   };
 }
 
@@ -325,7 +326,7 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
   await ensureAutoSchema(db);
   const template = await loadTemplate(db, templateId);
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
-  if (isEventKind(template.auto_kind)) return eventStatus(db, template, { nowMs, env }); // 안내 문구는 새 모듈
+  if (isInfoKind(template.auto_kind)) return eventStatus(db, template, { nowMs, env }); // 안내 문구는 새 모듈
   const today = kstDate(nowMs);
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_auto_sends WHERE template_id = ? GROUP BY status', args: [templateId] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
@@ -365,7 +366,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
     await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = false WHERE id = ? RETURNING id', args: [id] });
     return reply(200, { ok: true, enabled: false, start_date: template.auto_start_date || '' });
   }
-  if (isEventKind(template.auto_kind)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs }); } // 안내 문구는 새 모듈
+  if (isInfoKind(template.auto_kind)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs }); } // 안내 문구는 새 모듈
   if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
   const blocked = adCheck(template.body);
   if (blocked) return errorReply(400, blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.', { reason: blocked });
@@ -399,7 +400,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
   const vendor = provider || getSendProvider();
   if (!vendor || typeof vendor.sendEach !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
-  const info = isEventKind(template.auto_kind); // 안내 문구는 예시 값으로 치환
+  const info = isInfoKind(template.auto_kind); // 안내 문구는 예시 값으로 치환
   const parts = info ? buildEventParts(template, template.images.length) : buildParts(template, template.images.length);
   const cost = costOf(vendor, parts, 1, env);
   if (dryRun) return reply(200, { ok: true, dry_run: true, parts: parts.length, cost });

@@ -16,7 +16,8 @@
     { "path": "/api/cron/sms-delivery-monitor", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/sheet-sync", "schedule": "* * * * *" },
     { "path": "/api/cron/external-cleanup", "schedule": "*/5 * * * *" },
-    { "path": "/api/cron/sms-auto", "schedule": "0 1 * * *" }
+    { "path": "/api/cron/sms-auto", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/sms-auto-event", "schedule": "*/5 * * * *" }
   ],
   "rewrites": [
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }

@@ -77,3 +77,22 @@ test('기준일형: 카드 줄·offset 부호·직원 0명 거절·변수 목록
   assert.equal(m.formInitialFromItem({ auto_kind: 'due_date', auto_offset: 4, auto_audience: 'staff', auto_staff: [3] }).offsetDir, 'after');
   assert.match(m.textFormStopText('info_has_ad_words'), /광고 낱말/);
 });
+
+test('즉시형: 카드 줄·공정 미선택 거절·저장 본문·변수·기존 줄 불변', async () => {
+  const m = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const card = (item) => autoConditionLine(m.myTextSection([{ id: 1, name: 'A', body: 'x', ...item }]).items[0]);
+  assert.equal(card({ auto_kind: 'order_created' }), '주문 등록 시 · 고객');
+  assert.equal(card({ auto_kind: 'process_completed', auto_step: '포장', auto_audience: 'staff', auto_staff: [1, 2] }), '공정 완료 시(포장) · 직원 2명');
+  assert.equal(card({ auto_kind: 'ship_plus_days', auto_days: 20 }), '출고 완료 후 20일 뒤 · 오전 10시 · 고객');
+  const base = { name: 'a', body: '가', autoKind: 'process_started', audience: 'customer', staff: [] };
+  assert.equal(validateTextForm(base).reason, 'step');
+  assert.equal(validateTextForm({ ...base, step: '포장' }).ok, true);
+  assert.equal(validateTextForm({ ...base, autoKind: 'order_created' }).ok, true);
+  assert.equal(validateTextForm({ ...base, step: '포장', audience: 'staff' }).reason, 'staff');
+  assert.equal(m.textFormStopText('step'), '공정을 골라 주세요');
+  assert.deepEqual(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'process_completed', step: '포장', audience: 'staff', staff: [1, 2], days: '5' } }).auto, { kind: 'process_completed', step: '포장', audience: 'staff', staff: [1, 2] });
+  assert.deepEqual(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'order_created', step: '포장', audience: 'customer' } }).auto, { kind: 'order_created', step: '', audience: 'customer', staff: [] });
+  assert.equal(m.autoVariables('order_created', 'customer').length, 6);
+  assert.equal(m.autoVariables('process_started', 'staff').length, 7);
+  assert.equal(m.formInitialFromItem({ auto_kind: 'process_completed', auto_step: '포장' }).step, '포장');
+});
