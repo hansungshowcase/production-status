@@ -123,5 +123,9 @@ test('조건 거르기 분류: 내 문구는 autoKind, 항목은 조건 글·이
   assert.equal(conditionGroup({ name: '일반', preview: '안녕' }), '조건 없음');
   assert.equal(conditionGroup({ name: '출고 완료 안내', trigger: '출고 완료 시', audience: { id: 'customer' } }), '출고 완료');
   assert.equal(conditionGroup({ name: '기타', trigger: '', audience: { id: 'customer' } }), '조건 없음');
+  // '주문의'는 문의가 아니고, '작업지시서'는 공정이 아니고, 날짜 기준 알림은 공정 조건이 붙어도 날짜 묶음
+  assert.equal(conditionGroup({ name: '제작 시작 안내', trigger: '주문의 첫 공정인 도면설계가 실제 시작될 때' }), '공정');
+  assert.equal(conditionGroup({ name: '주문 접수 안내', trigger: '주문 생성 또는 작업지시서 등록 시 멱등 발송' }), '주문 등록');
+  assert.equal(conditionGroup({ name: '조립 작업 납기 알림', trigger: '생산중 · 납기 0~4일 · 조립작업 미완료' }), '납기·출고예정일');
   assert.equal(CONDITION_GROUPS.at(-1), '조건 없음');
 });

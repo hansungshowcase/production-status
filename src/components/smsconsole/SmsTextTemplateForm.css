@@ -21,7 +21,10 @@
 .stf-cells select { min-height: 44px; padding: 0 2px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; background: var(--smsc-surface, #fff); }
 .stf-form input.stf-days { width: 40px; padding: 8px 4px; text-align: center; }
 .stf-cells label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.stf-line .stf-tag { font-size: 11px; color: var(--smsc-muted, #667085); white-space: nowrap; }
+.stf-line .stf-tag { font-size: 12px; font-weight: 600; color: #344054; white-space: nowrap; }
+/* 조건 줄은 36px 칸으로 낮춰 팝업 높이(520)를 넘기지 않는다. 그래도 넘치면 왼쪽 열 안에서만 스크롤 */
+.stf-form .stf-conds select, .stf-form .stf-conds input:not(.stf-check), .stf-form .stf-conds .stf-from { min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+@media (min-width: 769px) { .stf-split .stf-form { max-height: min(520px, calc(90vh - 220px)); overflow-y: auto; } }
 .stf-form textarea { min-height: 120px; }
 .stf-form input.stf-check { width: 16px; height: 16px; margin: 0; }
 .stf-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: -6px; }
