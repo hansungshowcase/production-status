@@ -5,6 +5,9 @@
     "NODE_OPTIONS": "--no-deprecation"
   },
   "functions": {
+    "api/cron/sms-auto.js": { "maxDuration": 90 },
+    "api/cron/sms-auto-event.js": { "maxDuration": 90 },
+    "api/sms-console.js": { "maxDuration": 90 },
     "api/**/*.js": { "maxDuration": 30 }
   },
   "crons": [

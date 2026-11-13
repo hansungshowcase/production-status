@@ -4,7 +4,8 @@ import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
 import { runInstantSendAll } from '../_lib/smsEventSend.js';
 
-export const INSTANT_TIME_BUDGET_MS = 20000;
+export const config = { maxDuration: 90 }; // vercel.json 과 같은 값 — 통 사이 기다림(설계 22-4)
+export const INSTANT_TIME_BUDGET_MS = 70000; // 설계 22-4: 함수 제한 90초(vercel.json) 안
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));

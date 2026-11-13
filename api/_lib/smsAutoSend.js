@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
-import { ensureManualSendSchema, sendSettings } from './smsManualSend.js';
+import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
 import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isInfoKind, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, runEventSend } from './smsEventSend.js';
 
@@ -17,7 +17,7 @@ const KEY_RE = /^[\w-]{8,80}$/;
 const CATCH_UP_DAYS = 3;
 const DEFAULT_MAX_PER_DAY = 30;
 const SEND_WINDOW = { from: 8, to: 21 }; // KST 08시 이상 21시 미만
-const TIME_BUDGET_MS = 20000;
+const TIME_BUDGET_MS = 70000; // 여러 통 사이 기다림(설계 22-4) 때문에 20초에서 올림. 함수 제한 90초(vercel.json) 안
 export const AUTO_TIME_BUDGET_MS = TIME_BUDGET_MS; // 크론이 광고·안내 실행에 같은 전체 마감 시각을 넘길 때 쓴다
 const SEND_RESERVE_MS = 4000; // 전체 마감까지 이만큼도 안 남았으면 사진 올리기·선점을 시작하지 않는다
 const TARGET_LIMIT = 1000;
@@ -199,12 +199,12 @@ const placeholders = list => list.map(() => '?').join(', ');
 
 // ---- 자동 발송 1개 문구 실행(설계 3절 ①~⑧ 순서 그대로) ----
 // deadline: runAutoSendAll 이 만든 전체 마감 시각(tick 기준). 없으면(단독 실행) 이 문구만 TIME_BUDGET_MS.
-export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline } = {}) {
+export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, sleep } = {}) {
   const startedAt = tick();
   const shared = typeof deadline === 'number';
   const endAt = shared ? deadline : startedAt + TIME_BUDGET_MS;
   const timeShort = () => shared && endAt - tick() < SEND_RESERVE_MS;
-  if (template.auto_msg_type === 'info') return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline }); // 안내 문구는 새 모듈
+  if (template.auto_msg_type === 'info') return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep }); // 안내 문구는 새 모듈
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   const settings = autoSettings(env);
   if (!template.auto_enabled || !settings.on) return { ...out, reason: 'off' }; // ①
@@ -230,6 +230,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   if (!picked.length) return { ...out, ran: true, reason: 'cap' };
 
   const parts = buildParts(template, template.images.length);
+  if (multiPartTimeShort(parts.length, endAt - tick(), env)) return { ...out, ran: true, reason: 'time' }; // 여러 통은 끝까지 나갈 시간이 모자라면 선점 전에 통째로 다음 실행으로
   if (timeShort()) return { ...out, ran: true, reason: 'time' }; // 전체 마감이 가까우면 사진 올리기·선점 없이 끝
   const fileIds = []; // ⑥ 사진 올리기: 장당 1번(받는 사람 수와 무관), 하나라도 실패하면 선점 없이 끝
   for (const base64 of template.images) {
@@ -268,8 +269,9 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   const groupIds = [];
   let reason = '';
   let stop = false;
-  for (const part of parts) {
+  for (const [partIndex, part] of parts.entries()) {
     if (stop) { partStatus.push('skipped'); continue; }
+    await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
     if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
     const messages = active.map(item => {
       const message = { to: item.target.phone, text: partText(part, template, item.target.name) };
@@ -386,7 +388,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
 
 // action auto_test { id, to, dry_run, idempotencyKey }: 번호 1개 전용. 자동 발송과 같은 통 구성, #{고객명} 은 '고객'.
 // sms_auto_sends 에는 적지 않고 sms_manual_sends 에 건수를 남긴다(그 표의 하루 상한에 잡힌다).
-export async function autoTest(body, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, writeEnabled = true } = {}) {
+export async function autoTest(body, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, writeEnabled = true, sleep } = {}) {
   const settings = sendSettings(env, writeEnabled);
   if (!settings.enabled) return errorReply(403, '발송이 꺼져 있습니다.');
   const id = Number(body?.id);
@@ -438,8 +440,9 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   let stop = false;
   let groupId = null;
   let message = '';
-  for (const part of parts) {
+  for (const [partIndex, part] of parts.entries()) {
     if (stop) { results.push('skipped'); continue; }
+    await waitBeforePart(partIndex, { env, sleep });
     const item = { to, text: info ? eventExampleText(part, template) : partText(part, template, '고객') };
     if (part.image >= 0) item.fileId = fileIds[part.image];
     let result;

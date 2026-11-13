@@ -100,6 +100,20 @@ test('납기 3일 전 + 미완료 공정: 용접작업이 아직 안 끝난 진�
   assert.equal(provider.calls.send.length, 1);
 });
 
+test('안내 문구도 사진 2장이면 통 사이에 한 번 기다린다(통 1개면 기다림 없음)', async () => {
+  const mk = () => fakeDb({ orders: [mkOrder(1)], processes: [{ order_id: 1, step_name: '용접작업', status: 'waiting' }] });
+  const slept = [];
+  const sleep = async ms => { slept.push(ms); };
+  const provider = fakeProvider();
+  const out = await go(mk(), provider, tpl({ auto_unless_step: '용접작업', images: ['AAAA', 'BBBB'] }), { sleep });
+  assert.equal(provider.calls.send.length, 2);
+  assert.deepEqual(slept, [15000]);
+  slept.length = 0;
+  await go(mk(), fakeProvider(), tpl({ auto_unless_step: '용접작업', images: ['AAAA'] }), { sleep });
+  assert.deepEqual(slept, []);
+  assert.equal(out.claimed, 1);
+});
+
 test('직원 2명에게 같은 주문 알림이 각각 1번, 다시 돌려도(다음 날 포함) 중복 없음', async () => {
   const db = fakeDb({ orders: [mkOrder(1)] });
   const provider = fakeProvider();

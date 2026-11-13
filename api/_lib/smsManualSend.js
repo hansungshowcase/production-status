@@ -47,6 +47,28 @@ export async function ensureManualSendSchema(db) {
 const digits = value => String(value ?? '').replace(/\D/g, '');
 const intEnv = (value, fallback) => { const n = Number(value); return Number.isInteger(n) && n > 0 ? n : fallback; };
 
+// 사진 여러 장 문구는 통마다 따로 접수되므로, 앞 통이 먼저 도착하도록 통과 통 사이에 기다린다(설계 22절).
+// SMS_PART_GAP_MS: 0~60000(ms). 비었거나 잘못된 값은 기본 15000. 시험(node --test)에서 sleep 을 주입하지 않으면 기다리지 않는다.
+export const DEFAULT_PART_GAP_MS = 15000;
+export function partGapMs(env = process.env) {
+  const raw = env?.SMS_PART_GAP_MS;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return DEFAULT_PART_GAP_MS;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 60000 ? n : DEFAULT_PART_GAP_MS;
+}
+const realSleep = ms => (process.env.NODE_TEST_CONTEXT ? Promise.resolve() : new Promise(resolve => setTimeout(resolve, ms)));
+// 여러 통 문구가 끝까지 나갈 만큼 시간이 남았는지(설계 22-4): (통 수-1)×기다림 + 통 수×5초 + 5초. 통 1개는 해당 없음.
+export function multiPartTimeShort(partCount, remainingMs, env = process.env) {
+  if (!(partCount > 1)) return false;
+  return remainingMs < (partCount - 1) * partGapMs(env) + partCount * 5000 + 5000;
+}
+// 둘째 통부터(index >= 1) 접수 전에 호출한다.
+export async function waitBeforePart(index, { env = process.env, sleep = realSleep } = {}) {
+  if (index < 1) return;
+  const ms = partGapMs(env);
+  if (ms > 0) await sleep(ms);
+}
+
 export function sendSettings(env = process.env, writeEnabled = true) {
   return {
     // 템플릿 등록·삭제와 같은 쓰기 스위치(SMS_CONSOLE_WRITE, smsConsoleGuard)가 켜져 있으면 열리고, SMS_SEND=off 로 발송만 끌 수 있다.

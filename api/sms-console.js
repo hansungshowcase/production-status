@@ -22,7 +22,8 @@ const DAY_MS = 86400000;
 const STATUS_KEYS = ['APPROVED', 'INSPECTING', 'PENDING', 'REJECTED'];
 // 이 프로그램이 고객 알림톡에 쓰는 템플릿 ID 환경값(api/_lib/notify.js TEMPLATE_ENV 와 같아야 함 — 시험이 확인).
 // 며칠 안 쓰였어도 지우면 주문 접수·제작 시작·포장·출고·일정 변경 알림이 멈추므로 삭제를 막는다.
-export const PROGRAM_TEMPLATE_ENVS = Object.freeze(['SOLAPI_TPL_ORDERED', 'SOLAPI_TPL_STARTED', 'SOLAPI_TPL_PACKED', 'SOLAPI_TPL_SHIPPED', 'SOLAPI_TPL_RESCHEDULED']);
+export const config = { maxDuration: 90 }; // vercel.json 과 같은 값 — 시험 발송의 통 사이 기다림(설계 22-4)
+export const PROGRAM_TEMPLATE_ENVS =Object.freeze(['SOLAPI_TPL_ORDERED', 'SOLAPI_TPL_STARTED', 'SOLAPI_TPL_PACKED', 'SOLAPI_TPL_SHIPPED', 'SOLAPI_TPL_RESCHEDULED']);
 export function programTemplateIds() {
   const ids = new Set(PROGRAM_TEMPLATE_ENVS.map(name => String(process.env[name] || '').trim()).filter(Boolean));
   for (const id of String(process.env.SMS_CONSOLE_PROTECTED_TEMPLATE_IDS || '').split(',')) if (id.trim()) ids.add(id.trim());

@@ -206,6 +206,40 @@ test('사진 2장 → 사진 올리기 2번·발송 호출 2번(받는 사람 �
   assert.equal(buildParts({ name: 'n', body: BODY }, 0).length, 1);
 });
 
+test('여러 통은 통 사이에 기다린다: 통 2개면 sleep 1번(0통째 뒤·1통째 앞), 통 1개면 0번, 값 0이면 기다림 없음', async () => {
+  const trace = [];
+  const tracedProvider = () => { const p = fakeProvider(); const send = p.sendEach; p.sendEach = async input => { trace.push(`send${p.calls.send.length}`); return send(input); }; return p; };
+  const sleep = async ms => { trace.push(`sleep${ms}`); };
+  const out = await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), tracedProvider(), { sleep });
+  assert.equal(out.sent, 1);
+  assert.deepEqual(trace, ['send0', 'sleep15000', 'send1']);
+  trace.length = 0;
+  const viaTest = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-gap-0001' }, { db: setup(), provider: tracedProvider(), env: { ...ENV, SMS_PART_GAP_MS: '3000' }, nowMs: NOW, sleep });
+  assert.deepEqual(viaTest.body.part_status, ['sent', 'sent']);
+  assert.deepEqual(trace, ['send0', 'sleep3000', 'send1']);
+  trace.length = 0;
+  await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')], template: { images: JSON.stringify([JPG]) } }), tracedProvider(), { sleep });
+  assert.deepEqual(trace, ['send0']);
+  trace.length = 0;
+  await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), tracedProvider(), { sleep, env: { ...ENV, SMS_PART_GAP_MS: '0' } });
+  assert.deepEqual(trace, ['send0', 'send1']);
+  trace.length = 0;
+  await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), tracedProvider(), { sleep, env: { ...ENV, SMS_PART_GAP_MS: 'abc' } });
+  assert.deepEqual(trace, ['send0', 'sleep15000', 'send1']);
+});
+
+test('여러 통 문구는 남은 시간이 모자라면 선점·업로드·발송 0으로 통째로 건너뛰고, 충분하면 나간다', async () => {
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+  const provider = fakeProvider();
+  const out = await run(db, provider, { tick: () => 1000, deadline: 30000 }); // 남은 29초 < 15+10+5 = 30초
+  assert.equal(out.reason, 'time');
+  assert.equal(out.claimed, 0);
+  assert.equal(provider.calls.upload.length + provider.calls.send.length, 0);
+  assert.ok(!db.state.sql.some(s => s.startsWith('INSERT INTO sms_auto_sends')));
+  const ok = await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), fakeProvider(), { tick: () => 1000, deadline: 31000, sleep: async () => {} });
+  assert.equal(ok.sent, 1);
+});
+
 test('1통째가 실패하면 2통째는 0, 불확실·일부 실패·시간 초과는 uncertain 이고 다시 보내지 않는다', async () => {
   const orders = [order(1, '010-3333-4444', '2026-10-31'), order(2, '010-5555-6666', '2026-10-31')];
   let db = setup({ orders });
@@ -232,7 +266,7 @@ test('1통째가 실패하면 2통째는 0, 불확실·일부 실패·시간 초
   db = setup({ orders });
   provider = fakeProvider();
   let t = 0;
-  out = await run(db, provider, { tick: () => (t += 15000) }); // 1통째 뒤 20초 초과
+  out = await run(db, provider, { tick: () => (t += 25000) }); // 1통째 뒤 70초 마감 초과(마감 70초로 올린 데 맞춰 시계 간격만 조정)
   assert.equal(provider.calls.send.length, 1);
   assert.equal(out.uncertain, 2);
   assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'skipped']);

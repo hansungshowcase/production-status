@@ -15,6 +15,7 @@ function timingSafeMatch(left, right) {
 }
 
 // 매일 KST 10:00 에 켜진 자동 문구를 보낸다. 응답·로그에는 건수만 남긴다(이름·번호 없음).
+export const config = { maxDuration: 90 }; // vercel.json 과 같은 값 — 통 사이 기다림(설계 22-4)
 export async function handleSmsAuto(req, res, dependencies = {}) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: { message: 'Method not allowed' } });

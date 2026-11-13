@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { getSendProvider } from './sendProvider.js';
-import { staffDirectory, templateVariableNames } from './smsManualSend.js';
+import { staffDirectory, multiPartTimeShort, templateVariableNames, waitBeforePart } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
 import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, isLeadKind, LEAD_KINDS, parseStaffIds, storedImages } from './smsTextTemplates.js';
@@ -19,7 +19,7 @@ const HASH_SALT = 'hansung-sms-event-v1';
 const TARGET_RE = /^010\d{7,8}$/;
 const MOBILE_RE = /^01[016789]\d{7,8}$/;
 const SEND_WINDOW = { from: 8, to: 21 }; // KST 08시 이상 21시 미만
-const TIME_BUDGET_MS = 20000;
+const TIME_BUDGET_MS = 70000; // 설계 22-4: 함수 제한 90초(vercel.json) 안
 const SEND_RESERVE_MS = 4000;
 const TARGET_LIMIT = 1000;
 const DEFAULT_MAX_PER_DAY = 200;
@@ -296,7 +296,7 @@ export async function ataReady(templateId, { kakao = kakaoTemplates, kakaoOpts, 
 
 // ---- 문구 1개 실행 ----
 export async function runEventSend(template, deps = {}) {
-  const { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, staff, warn = console.warn } = deps;
+  const { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, staff, warn = console.warn, sleep } = deps;
   const startedAt = tick();
   const shared = typeof deadline === 'number';
   const endAt = shared ? deadline : startedAt + TIME_BUDGET_MS;
@@ -348,6 +348,7 @@ export async function runEventSend(template, deps = {}) {
   if (!ready.length) return { ...out, ran: true };
 
   const parts = buildEventParts(template, ata ? 0 : template.images.length); // 알림톡은 사진 없이 1통
+  if (multiPartTimeShort(parts.length, endAt - tick(), env)) return { ...out, ran: true, reason: 'time' }; // 여러 통은 끝까지 나갈 시간이 모자라면 선점 전에 통째로 다음 실행으로
   if (timeShort()) return { ...out, ran: true, reason: 'time' };
   const fileIds = [];
   for (const base64 of ata ? [] : template.images) {
@@ -387,8 +388,9 @@ export async function runEventSend(template, deps = {}) {
   const groupIds = [];
   let reason = '';
   let stop = false;
-  for (const part of parts) {
+  for (const [partIndex, part] of parts.entries()) {
     if (stop) { partStatus.push('skipped'); continue; }
+    await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
     if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
     const messages = ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: entry.item.vars })) : active.map(entry => {
       const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
