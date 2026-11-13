@@ -35,3 +35,9 @@
 .stf-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .stf-done { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--smsc-accent-weak, #eaf0ff); font-size: 15px; }
 @media (max-width: 640px) { .stf-actions { flex-direction: column-reverse; } .stf-actions .ktm-btn { width: 100%; } }
+.stf-stages { display: flex; gap: 4px; align-items: center; height: 36px; flex: none; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
+.stf-form .stf-chip, .stf-form .stf-stage-add, .stf-form .stf-stage-clone { min-height: 32px; padding: 0 10px; font-size: 13px; flex: none; }
+.stf-form .stf-chip.is-active { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent-weak, #eaf0ff); font-weight: 600; }
+.stf-form .stf-chip.is-dup, .stf-form .stf-chip.is-failed { border-color: #d92d20; color: #b42318; }
+.stf-dot { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--smsc-accent, #2457d6); }
+.stf-form.has-stages textarea { min-height: 84px; }

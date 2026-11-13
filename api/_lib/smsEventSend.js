@@ -7,7 +7,7 @@ import { getSendProvider } from './sendProvider.js';
 import { staffDirectory, multiPartTimeShort, templateVariableNames, waitBeforePart } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
-import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, isLeadKind, LEAD_KINDS, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, isLeadKind, LEAD_KINDS, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
@@ -50,7 +50,10 @@ const leadFilter = lead => ` AND template_id ${lead ? 'IN' : 'NOT IN'} (SELECT i
 const placeholders = list => list.map(() => '?').join(', ');
 export const infoMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_INFO_MAX_PER_DAY, DEFAULT_MAX_PER_DAY);
 export const leadMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_LEAD_MAX_PER_DAY, DEFAULT_LEAD_MAX_PER_DAY);
-const kstMinutes = nowMs => { const d = new Date(nowMs + 9 * 3600000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+export const kstMinutes = nowMs => { const d = new Date(nowMs + 9 * 3600000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+// 발송 시각(설계 28): 'HH:MM' 이후 120분 창 안인지. 시각이 비었거나 형식이 아니면 false.
+export const SEND_TIME_WINDOW_MIN = 120;
+export const inTimedWindow = (sendTime, nowMs) => { const start = sendTimeMinutes(sendTime); const now = kstMinutes(nowMs); return start !== null && now >= start && now < start + SEND_TIME_WINDOW_MIN; };
 const autoOn = (env = process.env) => env.SMS_AUTO !== 'off';
 const reply = (status, body) => ({ status, body });
 const errorReply = (status, message, extra = {}) => reply(status, { error: { message, status }, ...extra });
@@ -116,7 +119,7 @@ export function eventExampleText(part, template) {
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -127,7 +130,7 @@ export async function loadEventTemplate(db, id) {
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
-    auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '',
+    auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '',
   };
 }
 
@@ -308,7 +311,7 @@ export async function runEventSend(template, deps = {}) {
   if (isEventKind(template.auto_kind) && template.auto_weekdays && kstWeekend(nowMs)) return { ...out, reason: 'weekend' }; // 평일만: KST 토·일 무동작
   const lead = isLeadKind(template.auto_kind);
   const ata = lead && Boolean(template.auto_ata_template); // 알림톡 갈래: sendKakaoEach (문자는 sendEach)
-  if (lead && template.auto_days >= 1 && kstMinutes(nowMs) < LEAD_FROM_MINUTE) return { ...out, reason: 'early' }; // 1일 이상 단계는 KST 09:30 부터
+  if (lead && template.auto_days >= 1 && kstMinutes(nowMs) < (sendTimeMinutes(template.auto_send_time) ?? LEAD_FROM_MINUTE)) return { ...out, reason: 'early' }; // 1일 이상 단계는 문구의 발송 시각(없으면 KST 09:30) 부터
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
   if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience, template.auto_kind, ata)) return { ...out, reason: 'info_check' };
   const vendor = provider || getSendProvider();
@@ -422,7 +425,7 @@ export async function runEventSendAll(deps = {}) {
   await ensureTextTemplateSchema(db);
   await ensureEventSchema(db);
   await db.execute({ sql: "UPDATE sms_event_sends SET status = 'uncertain', reason = '실행이 끊김' WHERE status = 'claimed' AND kst_date < ?", args: [kstDate(nowMs)] });
-  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('due_date', 'ship_scheduled', 'ship_or_due') ORDER BY id ASC", args: [] });
+  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('due_date', 'ship_scheduled', 'ship_or_due') AND COALESCE(auto_send_time, '') = '' ORDER BY id ASC", args: [] });
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS;
   for (const row of list.rows || []) {

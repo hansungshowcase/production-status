@@ -110,3 +110,38 @@ test('발송 조건 조각: 11가지 조건 모두 조각을 이으면 autoCondi
   assert.deepEqual(staff.extras, ['오전 10시', '평일만']);
   assert.deepEqual(autoConditionParts({ autoKind: 'x' }), { when: '', who: '', via: '', extras: [] });
 });
+
+test('발송 시각: 저장 본문 auto_send_time(날짜형은 값, 즉시형·빈 값은 빈 값)과 조건 글의 시각', async () => {
+  const { sendTimeLabel, SEND_TIMES } = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  assert.equal(SEND_TIMES.length, 23);
+  assert.equal(sendTimeLabel('09:00'), '오전 9:00');
+  assert.equal(sendTimeLabel('14:30'), '오후 2:30');
+  const lead = { kind: 'lead_plus_days', days: '3', sendTime: '14:30' };
+  assert.equal(buildSaveBody({ name: 'a', body: 'b', auto: lead }).auto.auto_send_time, '14:30');
+  assert.equal(buildSaveBody({ name: 'a', body: 'b', auto: { ...lead, days: '0' } }).auto.auto_send_time, '');
+  assert.equal(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'due_date', offsetDir: 'before', offsetDays: '3', sendTime: '' } }).auto.auto_send_time, '');
+  assert.equal(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'process_started', step: '용접', sendTime: '10:00' } }).auto.auto_send_time, '');
+  const base = { autoKind: 'ship_plus_days', autoDays: 20 };
+  assert.equal(autoConditionLine(base), '출고 완료 후 20일 뒤 · 오전 10시 · 고객');
+  assert.equal(autoConditionLine({ ...base, autoSendTime: '15:00' }), '출고 완료 후 20일 뒤 · 오후 3:00 · 고객');
+  assert.equal(autoConditionLine({ autoKind: 'lead_plus_days', autoDays: 2 }), '가입·문의 후 2일 뒤 · 오전 9시 30분 · 고객');
+});
+
+test('단계: 같은 일수 중복 판정과 팝업 시작 상태', async () => {
+  const { duplicateStages, bootStages, formValuesFromItem, stageLabel } = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const mk = (id, days) => ({ id, name: `n${id}`, body: 'b', autoKind: 'lead_plus_days', days: String(days) });
+  assert.deepEqual([...duplicateStages([mk(1, 0), mk(2, 3), mk(3, 3)].map(formValuesFromItem))], [1, 2]);
+  assert.equal(duplicateStages([mk(1, 0), mk(2, 3)].map(formValuesFromItem)).size, 0);
+  assert.equal(stageLabel(formValuesFromItem(mk(1, 0))), '당일');
+  assert.equal(stageLabel(formValuesFromItem(mk(1, 7))), '7일');
+  const single = bootStages(undefined, undefined, false);
+  assert.equal(single.stages.length, 1);
+  assert.equal(single.stages[0].base, null);
+  const boot = bootStages(mk(2, 3), [mk(1, 0), mk(2, 3)], false);
+  assert.equal(boot.stages.length, 2);
+  assert.equal(boot.activeKey, 's2');
+  const added = bootStages(undefined, [mk(1, 0), mk(2, 3)], true);
+  assert.equal(added.stages.length, 3);
+  assert.equal(added.values.autoKind, 'lead_plus_days');
+  assert.equal(added.values.name, '');
+});

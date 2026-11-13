@@ -5,8 +5,8 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
-import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isInfoKind, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
-import { buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, runEventSend } from './smsEventSend.js';
+import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isEventKind, isInfoKind, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -111,7 +111,7 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_send_time FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -122,7 +122,7 @@ async function loadTemplate(db, id) {
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
-    auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
+    auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '', auto_send_time: row.auto_send_time || '',
   };
 }
 
@@ -308,7 +308,7 @@ export async function runAutoSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;
   await ensureTextTemplateSchema(db);
   await sweepStaleClaims(db, nowMs);
-  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days') ORDER BY id ASC", args: [] });
+  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days') AND COALESCE(auto_send_time, '') = '' ORDER BY id ASC", args: [] });
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS; // 전체 마감 시각 하나를 문구마다 넘긴다
   for (const row of list.rows || []) {
@@ -316,6 +316,27 @@ export async function runAutoSendAll(deps = {}) {
     if (!template) continue;
     total.templates += 1;
     const result = await runAutoSend(template, { ...deps, deadline });
+    if (result.reason && !result.ran) total.skipped += 1;
+    for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
+  }
+  return total;
+}
+
+// 발송 시각이 있는 날짜형 문구(출고·주문 후, 납기·출고예정일): 5분 크론이 '시각 이후 120분' 창에서만 실행한다(10:00 크론은 건너뜀).
+// 가입·문의 후는 runInstantSendAll 이 문구의 시각을 보고 처리한다. 중복 방지(선점 키)·상한·밤 시간 창·마감 시각은 runAutoSend·runEventSend 그대로.
+export async function runTimedSendAll(deps = {}) {
+  const { db, nowMs = Date.now() } = deps;
+  const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
+  if (kstMinutes(nowMs) < 9 * 60) return total; // 가장 이른 시각(09:00) 전에는 조회도 하지 않는다
+  await ensureTextTemplateSchema(db);
+  const list = await db.execute({ sql: "SELECT id, auto_kind, auto_send_time FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'due_date', 'ship_scheduled', 'ship_or_due') AND COALESCE(auto_send_time, '') <> '' ORDER BY id ASC", args: [] });
+  const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS;
+  for (const row of list.rows || []) {
+    if (!inTimedWindow(row.auto_send_time, nowMs)) continue;
+    const template = isEventKind(row.auto_kind) ? await loadEventTemplate(db, Number(row.id)) : await loadTemplate(db, Number(row.id));
+    if (!template) continue;
+    total.templates += 1;
+    const result = isEventKind(row.auto_kind) ? await runEventSend(template, { ...deps, deadline }) : await runAutoSend(template, { ...deps, deadline });
     if (result.reason && !result.ran) total.skipped += 1;
     for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
   }

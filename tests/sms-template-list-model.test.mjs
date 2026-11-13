@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildSmsItems, conditionGroup, defaultSmsFilter, filterSmsItems, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, buildSmsItems, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -128,4 +128,26 @@ test('조건 거르기 분류: 내 문구는 autoKind, 항목은 조건 글·이
   assert.equal(conditionGroup({ name: '주문 접수 안내', trigger: '주문 생성 또는 작업지시서 등록 시 멱등 발송' }), '주문 등록');
   assert.equal(conditionGroup({ name: '조립 작업 납기 알림', trigger: '생산중 · 납기 0~4일 · 조립작업 미완료' }), '납기·출고예정일');
   assert.equal(CONDITION_GROUPS.at(-1), '조건 없음');
+});
+
+test('흐름 묶기: 가입·문의 10 + 출고 2 + 조건 없음 1 → 흐름 2 + 단일 1, 일수 순, 켜짐 수', () => {
+  const lead = [40, 0, 2, 3, 4, 5, 6, 7, 8, 20].map((d) => ({ id: `l${d}`, name: `${d}일`, autoKind: 'lead_plus_days', autoDays: d, autoAudience: 'customer', autoEnabled: d === 2, autoAtaTemplate: d === 3 ? 'T' : '' }));
+  const ship = [20, 3].map((d) => ({ id: `s${d}`, name: `출고 ${d}`, autoKind: 'ship_plus_days', autoDays: d, autoAudience: 'customer', autoEnabled: false }));
+  const plain = { id: 'p1', name: '일반', preview: '안녕' };
+  const flows = groupFlows([lead[0], plain, ...lead.slice(1), ...ship]);
+  assert.equal(flows.length, 3);
+  assert.equal(flows.filter((f) => f.single).length, 1);
+  const [f1, , f2] = [flows[0], flows[1], flows[2]];
+  assert.equal(f1.label, '가입·문의 후');
+  assert.deepEqual(f1.steps.map((s) => flowStepText(s)), ['당일', '2일', '3일', '4일', '5일', '6일', '7일', '8일', '20일', '40일']);
+  assert.equal(f1.total, 10);
+  assert.equal(f1.on, 1);
+  assert.equal(f1.via, '알림톡');
+  assert.equal(f2.label, '출고 완료 후');
+  assert.deepEqual(f2.steps.map((s) => s.id), ['s3', 's20']);
+  assert.equal(groupFlows(ship, () => true)[0].on, 2);
+  assert.equal(flowStepText({ autoKind: 'due_date', autoOffset: -3 }), '3일 전');
+  assert.equal(flowStepText({ autoKind: 'ship_or_due', autoOffset: 2 }), '2일 지남');
+  assert.equal(flowStepText({ autoKind: 'process_completed', autoStep: '조립작업' }), '조립작업');
+  assert.equal(flowStepText({ autoKind: 'order_created' }), '즉시');
 });

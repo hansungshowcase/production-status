@@ -84,3 +84,17 @@
   .stl-rows .stl-row .ktm-card-meta { grid-column: 1 / -1; grid-row: 2; padding-left: 12px; }
   .stl-rows .stl-row .sac-row { grid-column: 1; grid-row: auto; padding: 0 12px 8px; margin: 0; }
 }
+
+/* 흐름 행(내 문구 탭): 기준 시점 | 단계 칩·받는 사람·수단 | 켜짐 n/N | 단계 추가·수정. 펼치면 단계 행 */
+.stl-rows .stl-flow .stl-flow-name { font-weight: 600; }
+.stl-rows .stl-flow .stl-stepchips { display: flex; gap: 4px; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+.stl-rows .stl-flow .stl-stepchip { flex: 0 0 auto; }
+.stl-rows .stl-flow-actions { grid-column: 4; grid-row: 1; align-self: start; display: flex; gap: 6px; margin: 5px 0 0; padding: 0 10px; min-width: 0; white-space: nowrap; box-sizing: border-box; }
+.stl-rows .stl-flow-actions .ktm-btn { padding-top: 3px; padding-bottom: 3px; min-height: 28px; font-size: 12px; }
+.stl-rows .stl-flow > .stl-steps { grid-column: 1 / -1; grid-row: 2; margin: 0; border-top: 1px solid var(--smsc-line, #dfe3ea); background: #fafbfc; }
+.stl-rows .stl-flow > .stl-steps > .stl-step:last-child { border-bottom: 0; }
+.stl-rows .stl-step .ktm-card-name { padding-left: 28px; }
+@media (max-width: 760px) {
+  .stl-rows .stl-flow-actions { grid-column: 1; grid-row: auto; padding: 0 12px 8px; margin: 0; }
+  .stl-rows .stl-flow > .stl-steps { grid-row: auto; }
+}

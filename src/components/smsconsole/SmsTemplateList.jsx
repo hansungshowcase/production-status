@@ -4,7 +4,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowStepText, groupFlows, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
 import { autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
@@ -70,14 +70,28 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   // 옛 주소(mode=new&kind=sms)로 들어오면 등록 팝업을 연 채로 보여 준다
   useEffect(() => { if (active && openNew) { setAdding(true); onNewHandled?.(); } }, [active, openNew]); // eslint-disable-line react-hooks/exhaustive-deps
   const [editInit, setEditInit] = useState(null); // 고치는 문구의 양식 초기값(단건 조회)
-  const editMine = (entry) => {
+  const [formOpts, setFormOpts] = useState({}); // 같은 흐름의 문구(siblings)와 새 단계 여부(startNew)
+  const loadInit = (id) => fetchSmsConsole('text_template', { id }).then((res) => formInitialFromItem(res?.item));
+  const editMine = (entry, flow = null) => {
     setMineError('');
-    fetchSmsConsole('text_template', { id: entry.id }).then((res) => {
-      setEditInit(formInitialFromItem(res?.item));
+    const inits = flow && flow.steps.length ? Promise.all(flow.steps.map((step) => loadInit(step.id))) : null;
+    Promise.all([loadInit(entry.id), inits]).then(([init, siblings]) => {
+      setFormOpts(siblings ? { siblings, startNew: false } : {});
+      setEditInit(init);
       setAdding(true);
     }).catch((err) => setMineError(err.message || '불러오지 못했습니다.'));
   };
-  const closeForm = () => { setAdding(false); setEditInit(null); loadMine(); };
+  // 흐름에 새 단계 추가: 마지막 단계의 조건을 복사하고 이름·내용·사진은 비운 채 새 문구로 연다
+  const addStep = (flow) => {
+    setMineError('');
+    Promise.all(flow.steps.map((step) => loadInit(step.id))).then((siblings) => {
+      const last = siblings[siblings.length - 1];
+      setFormOpts({ siblings, startNew: true });
+      setEditInit({ ...last, id: undefined, name: '', body: '', images: [] });
+      setAdding(true);
+    }).catch((err) => setMineError(err.message || '불러오지 못했습니다.'));
+  };
+  const closeForm = () => { setAdding(false); setEditInit(null); setFormOpts({}); loadMine(); };
   const deleteMine = async (entry) => {
     if (mineConfirm !== entry.id) { setMineConfirm(entry.id); return; }
     setMineError('');
@@ -90,7 +104,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const mySection = useMemo(() => myTextSection(mine), [mine]);
   // 내 문구 카드. 켜진 자동 문구는 '발송 중' 묶음에도 같은 카드로 보인다(그래서 함수로 둔다)
   const renderMine = (entry, prefix = '') => (
-    <li key={`${prefix}${entry.id}`} className={`ktm-card stl-row${mineOpen === entry.id ? ' is-selected' : ''}`}>
+    <li key={`${prefix}${entry.id}`} className={`ktm-card stl-row${prefix === 'step-' ? ' stl-step' : ''}${mineOpen === entry.id ? ' is-selected' : ''}`}>
       <button type="button" className="ktm-card-main" aria-expanded={mineOpen === entry.id} onClick={() => openMine(entry)}>
         <span className="ktm-card-name">{entry.name}</span>
         {entry.autoKind ? (() => {
@@ -114,7 +128,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           </span>
         ) : null}
       </button>
-      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button></SmsAutoControls> : null}
+      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button></SmsAutoControls> : null}
       {mineOpen === entry.id ? (
         <div className="ktm-modal-actions">
           {entry.autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>}
@@ -125,9 +139,42 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     </li>
   );
 
+  // 흐름 행: ▸ 기준 시점 | 단계 칩·받는 사람·수단·시각 | 켜짐 n/N | [단계 추가][수정]. 펼치면 단계 행(renderMine)
+  const renderFlow = (flow) => {
+    const open = flowOpen === flow.key;
+    const chips = flow.steps.map((step) => flowStepText(step)).join(' · ');
+    return (
+      <li key={flow.key} className={`ktm-card stl-row stl-flow${open ? ' is-selected' : ''}`}>
+        <button type="button" className="ktm-card-main" aria-expanded={open} onClick={() => { setFlowOpen(open ? '' : flow.key); setMineOpen(''); setMineConfirm(''); }}>
+          <span className="ktm-card-name stl-flow-name">{flow.label}</span>
+          <span className="ktm-card-meta stl-flow-meta" title={chips}>
+            <span className="stl-stepchips">{flow.steps.map((step) => <span key={step.id} className="ktm-chip stl-stepchip">{flowStepText(step)}</span>)}</span>
+            {flow.who ? <span className={`ktm-chip stl-who ${flow.who === '고객' ? 'stl-who--cust' : (flow.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{flow.who}</span> : null}
+            {flow.via ? <span className="ktm-chip stl-via">{flow.via}</span> : null}
+            {flow.time ? <span className="stl-extras">{flow.time}</span> : null}
+          </span>
+          <span className="ktm-card-badges stl-flow-on"><span className={`ktm-badge ktm-badge--${flow.on ? 'warn' : 'muted'}`}>켜짐 {flow.on}/{flow.total}</span></span>
+        </button>
+        <span className="stl-flow-actions">
+          <button type="button" className="ktm-btn" onClick={() => addStep(flow)}>단계 추가</button>
+          <button type="button" className="ktm-btn" onClick={() => editMine(flow.steps[0], flow)}>수정</button>
+        </span>
+        {open ? <ul className="ktm-cards stl-steps">{flow.steps.map((step) => renderMine(step, 'step-'))}</ul> : null}
+      </li>
+    );
+  };
+
   const { items } = state;
   const allMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
   const sortedMine = useMemo(() => allMine.filter((row) => !cond || conditionGroup(row) === cond), [allMine, cond]);
+  // 내 문구 탭은 흐름(기준 시점) 단위 행. siblings 는 조건 거르기와 상관없이 같은 흐름 전체
+  const flowRows = useMemo(() => groupFlows(sortedMine, (entry) => Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
+  const flowById = useMemo(() => {
+    const map = new Map();
+    groupFlows(allMine).forEach((flow) => flow.steps.forEach((step) => map.set(step.id, flow)));
+    return map;
+  }, [allMine]);
+  const [flowOpen, setFlowOpen] = useState('');
   // 탭 숫자는 조건 거르기와 상관없이 전체 기준
   const runningAll = useMemo(() => allMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)).length, [allMine, autoStatus]);
   const condItems = useMemo(() => (cond ? items.filter((item) => conditionGroup(item) === cond) : items), [items, cond]);
@@ -143,19 +190,19 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
 
   // 쪽 나누기는 선택한 탭의 행에만 적용한다
   const rowKeys = useMemo(() => {
-    if (isMineTab) return sortedMine.map((entry) => `m-${entry.id}`);
+    if (isMineTab) return flowRows.map((row) => row.key);
     const keys = [];
     sections.forEach((aud) => aud.kinds.forEach((section) => {
       if (aud.group === '고객' && section.kind === '이벤트·혜택') shownAutos.forEach((entry) => keys.push(`run-${entry.id}`));
       section.items.forEach((item) => keys.push(`i-${item.id}`));
     }));
     return keys;
-  }, [isMineTab, sortedMine, sections, shownAutos]);
+  }, [isMineTab, flowRows, sections, shownAutos]);
   const paged = paginateRows(rowKeys, pageNo);
   const pageSet = new Set(paged.rows);
-  const pickCond = (value) => { setCond(value); setPageNo(1); setOpenId(''); setMineOpen(''); setMineConfirm(''); };
-  const pickFilter = (id) => { setPicked(id); setPageNo(1); setOpenId(''); setMineOpen(''); };
-  const goPage = (next) => { setPageNo(next); setOpenId(''); setMineOpen(''); setMineConfirm(''); };
+  const pickCond = (value) => { setCond(value); setPageNo(1); setOpenId(''); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); };
+  const pickFilter = (id) => { setPicked(id); setPageNo(1); setOpenId(''); setMineOpen(''); setFlowOpen(''); };
+  const goPage = (next) => { setPageNo(next); setOpenId(''); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); };
   const kindHasRow = (aud, section) => section.items.some((item) => pageSet.has(`i-${item.id}`))
     || (aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.some((entry) => pageSet.has(`run-${entry.id}`)));
 
@@ -193,7 +240,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           <div className="stl-cols" aria-hidden="true"><span>템플릿 이름</span><span>발송 조건</span><span>상태</span><span>관리</span></div>
           {isMineTab ? (
             <ul className="ktm-cards">
-              {sortedMine.filter((entry) => pageSet.has(`m-${entry.id}`)).map((entry) => renderMine(entry))}
+              {flowRows.filter((row) => pageSet.has(row.key)).map((row) => (row.single ? renderMine(row.entry) : renderFlow(row)))}
             </ul>
           ) : sections.length === 0 ? <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div> : sections.filter((aud) => aud.kinds.some((section) => kindHasRow(aud, section))).map((aud) => (
             aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => (
@@ -261,7 +308,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       {body}
       {adding ? (
         <SmsModal title={editInit ? '문자 템플릿 수정' : '문자 템플릿 등록'} onClose={closeForm}>
-          <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
+          <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
         </SmsModal>
       ) : null}
     </div>

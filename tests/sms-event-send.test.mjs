@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { handleSmsConsole } from '../api/sms-console.js';
 import { _resetTextTemplateSchemaForTest, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
-import { _resetEventSchemaForTest, fillVars, orderVars, runEventSend, runInstantSendAll } from '../api/_lib/smsEventSend.js';
+import { _resetEventSchemaForTest, fillVars, orderVars, runEventSend, runEventSendAll, runInstantSendAll } from '../api/_lib/smsEventSend.js';
+import { runTimedSendAll } from '../api/_lib/smsAutoSend.js';
 
 const NOW = Date.parse('2026-11-20T01:00:00Z'); // KST 2026-11-20 10:00
 const NIGHT = Date.parse('2026-11-19T15:30:00Z'); // KST 11-20 00:30
@@ -472,4 +473,65 @@ test('3단계 ④ 영업담당 수신: 담당 번호로 주문마다 1통, 미�
   assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), [ALERT_ROUTES[name].replace(/\D/g, ''), ALERT_ROUTES[name].replace(/\D/g, '')]);
   assert.ok(provider.calls.send[0].messages[0].text.startsWith('쇼케이스 HS-2026-0001'));
   assert.deepEqual(warns.filter(a => String(a[0]).includes('영업담당')).map(a => a[1]), [2]);
+});
+
+// ---- 발송 시각(auto_send_time, 설계 28-A) ----
+const kstAt = hhmm => Date.parse(`2026-11-20T${hhmm}:00+09:00`);
+function timedDb(templates) {
+  const db = instantDb({ orders: [mkOrder(1)], templates });
+  const base = db.execute.bind(db);
+  db.execute = async ({ sql, args }) => {
+    const t = sql.replace(/\s+/g, ' ').trim();
+    const dateKinds = ['due_date', 'ship_scheduled', 'ship_or_due'];
+    if (t.startsWith('SELECT id, auto_kind, auto_send_time FROM sms_text_templates')) return { rows: db.state.templates.filter(r => r.auto_enabled && dateKinds.includes(r.auto_kind) && r.auto_send_time).map(r => ({ id: r.id, auto_kind: r.auto_kind, auto_send_time: r.auto_send_time })) };
+    if (t.startsWith("SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('due_date'")) return { rows: db.state.templates.filter(r => r.auto_enabled && dateKinds.includes(r.auto_kind) && !r.auto_send_time).map(r => ({ id: r.id })) };
+    return base({ sql, args });
+  };
+  return db;
+}
+const timedRun = (db, provider, fn, nowMs) => { _resetEventSchemaForTest(); _resetTextTemplateSchemaForTest(); return fn({ db, provider, env: ENV, nowMs, staff: STAFF, warn() {} }); };
+
+test('발송 시각 ① 가입·문의 후 1일 이상 관문은 문구의 시각(없으면 09:30)을 따른다', async () => {
+  const lead = (extra = {}) => ({ id: 3, name: '가입 안내', body: '#{고객명}님 안내', images: [], auto_kind: 'lead_plus_days', auto_days: 2, auto_enabled: true, auto_offset: 0, auto_unless_step: '', auto_audience: 'customer', auto_staff: [], auto_msg_type: 'info', auto_enabled_at: ENABLED_AT, ...extra });
+  const gate = async (template, hhmm) => { try { return (await go(instantDb(), fakeProvider(), template, { nowMs: kstAt(hhmm) })).reason; } catch { return 'passed'; } };
+  assert.equal(await gate(lead(), '09:29'), 'early');
+  assert.notEqual(await gate(lead(), '09:30'), 'early');
+  assert.equal(await gate(lead({ auto_send_time: '11:00' }), '09:30'), 'early');
+  assert.equal(await gate(lead({ auto_send_time: '11:00' }), '10:59'), 'early');
+  assert.notEqual(await gate(lead({ auto_send_time: '11:00' }), '11:00'), 'early');
+});
+
+test('발송 시각 ② 날짜형: 빈 값이면 10:00 크론이, 값이 있으면 그 시각부터 120분 창에서 5분 크론이 보내고 두 번 돌려도 1건', async () => {
+  const plain = timedDb([tpl()]);
+  const p0 = fakeProvider();
+  assert.equal((await timedRun(plain, p0, runTimedSendAll, NOW)).templates, 0); // 시각 없는 문구는 5분 크론이 건드리지 않는다
+  assert.equal((await timedRun(plain, p0, runEventSendAll, NOW)).claimed, 1); // 10:00 크론이 처리
+  const db = timedDb([tpl({ auto_send_time: '10:30' })]);
+  const provider = fakeProvider();
+  assert.equal((await timedRun(db, provider, runEventSendAll, NOW)).templates, 0); // 10:00 크론은 건너뜀
+  assert.equal((await timedRun(db, provider, runTimedSendAll, kstAt('10:29'))).templates, 0); // 시각 전
+  assert.equal(provider.calls.send.length, 0);
+  assert.equal((await timedRun(db, provider, runTimedSendAll, kstAt('10:30'))).claimed, 1);
+  assert.equal((await timedRun(db, provider, runTimedSendAll, kstAt('10:35'))).claimed, 0); // 같은 창에서 다시 돌려도 중복 없음
+  assert.equal(provider.calls.send.length, 1);
+  const late = timedDb([tpl({ auto_send_time: '10:30' })]);
+  assert.equal((await timedRun(late, fakeProvider(), runTimedSendAll, kstAt('12:30'))).templates, 0); // 창(120분) 밖
+  assert.equal((await timedRun(late, fakeProvider(), runTimedSendAll, kstAt('12:29'))).claimed, 1);
+});
+
+test('발송 시각 ③ 저장: 09:00~20:00 30분 단위만, 즉시형·가입 당일은 빈 값으로, 목록 응답에 실림', async () => {
+  const db = instantDb();
+  _resetTextTemplateSchemaForTest();
+  const save = (name, auto, body = CUSTOMER_BODY) => saveTextTemplate(db, { name, body, auto }, { staff: STAFF });
+  const ok = await save('납기 시각', { kind: 'due_date', offset: -3, send_time: '10:30' });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.body.item.auto_send_time, '10:30');
+  assert.equal(db.state.templates[0].auto_send_time, '10:30');
+  for (const bad of ['09:15', '08:30', '20:30', '10:3', 'abc']) assert.equal((await save(`x${bad}`, { kind: 'due_date', offset: -3, send_time: bad })).status, 400);
+  const post = await save('주문 후', { kind: 'order_plus_days', days: 2, send_time: '20:00' });
+  assert.equal(post.body.item?.auto_send_time, '20:00', JSON.stringify(post.body));
+  assert.equal((await save('즉시', { kind: 'order_created', send_time: '10:30' })).body.item.auto_send_time, undefined);
+  assert.equal((await save('가입 당일', { kind: 'lead_plus_days', days: 0, send_time: '10:30' }, '#{고객명}님 안내')).body.item.auto_send_time, undefined);
+  assert.equal((await save('가입 2일', { kind: 'lead_plus_days', days: 2, send_time: '10:30' }, '#{고객명}님 안내')).body.item.auto_send_time, '10:30');
+  assert.equal((await save('빈 값', { kind: 'due_date', offset: -3 })).body.item.auto_send_time, undefined);
 });

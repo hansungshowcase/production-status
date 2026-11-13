@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -52,29 +52,36 @@ function conditionResult(f) {
     if (dayCount === null) return '';
     Object.assign(entry, { autoDays: dayCount, autoSendFrom: f.sendFrom, autoRepeat: normalizeRepeat(f.repeat) ?? AUTO_DEFAULT_REPEAT, autoInterval: normalizeInterval(f.interval) ?? AUTO_DEFAULT_INTERVAL });
   }
-  return autoConditionLine(entry);
+  return autoConditionLine({ ...entry, autoSendTime: hasSendTime(kind, f.days) ? f.sendTime : '' });
 }
 
 // 문자 템플릿 등록: 이름·내용·사진 1장. 검수가 없어 등록하면 바로 쓸 수 있다.
-export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial }) {
-  const [name, setName] = useState(initial?.name || '');
-  const [body, setBody] = useState(initial?.body || '');
-  const [images, setImages] = useState(initial?.images || []); // 최대 3장
-  const [autoKind, setAutoKind] = useState(initial?.autoKind || '');
-  const [days, setDays] = useState(initial?.days || String(AUTO_DEFAULT_DAYS));
-  const [sendFrom, setSendFrom] = useState(initial?.sendFrom || '');
-  const [repeat, setRepeat] = useState(initial?.repeat || String(AUTO_DEFAULT_REPEAT));
-  const [interval, setInterval] = useState(initial?.interval || String(AUTO_DEFAULT_INTERVAL));
-  const [offsetDir, setOffsetDir] = useState(initial?.offsetDir || 'before');
-  const [offsetDays, setOffsetDays] = useState(initial?.offsetDays || '3');
-  const [unlessStep, setUnlessStep] = useState(initial?.unlessStep || '');
-  const [unlessMode, setUnlessMode] = useState(initial?.unlessMode || 'completed');
-  const [daily, setDaily] = useState(Boolean(initial?.daily));
-  const [weekdays, setWeekdays] = useState(Boolean(initial?.weekdays));
-  const [step, setStep] = useState(initial?.step || '');
-  const [audience, setAudience] = useState(initial?.audience || 'customer');
-  const [staff, setStaff] = useState(initial?.staff || []);
-  const [ataTemplate, setAtaTemplate] = useState(initial?.ataTemplate || '');
+export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial, siblings, startNew }) {
+  const [boot] = useState(() => bootStages(initial, siblings, startNew));
+  const v0 = boot.values;
+  const [stages, setStages] = useState(boot.stages); // 단계별 보관 값(지금 편집 중인 단계의 최신 값은 아래 칸 상태에 있다)
+  const [activeKey, setActiveKey] = useState(boot.activeKey);
+  const nextKey = useRef(2);
+  const pendingError = useRef('');
+  const [name, setName] = useState(v0.name);
+  const [body, setBody] = useState(v0.body);
+  const [images, setImages] = useState(v0.images); // 최대 3장
+  const [autoKind, setAutoKind] = useState(v0.autoKind);
+  const [days, setDays] = useState(v0.days);
+  const [sendFrom, setSendFrom] = useState(v0.sendFrom);
+  const [repeat, setRepeat] = useState(v0.repeat);
+  const [interval, setInterval] = useState(v0.interval);
+  const [offsetDir, setOffsetDir] = useState(v0.offsetDir);
+  const [offsetDays, setOffsetDays] = useState(v0.offsetDays);
+  const [unlessStep, setUnlessStep] = useState(v0.unlessStep);
+  const [unlessMode, setUnlessMode] = useState(v0.unlessMode);
+  const [daily, setDaily] = useState(v0.daily);
+  const [weekdays, setWeekdays] = useState(v0.weekdays);
+  const [step, setStep] = useState(v0.step);
+  const [audience, setAudience] = useState(v0.audience);
+  const [staff, setStaff] = useState(v0.staff);
+  const [ataTemplate, setAtaTemplate] = useState(v0.ataTemplate);
+  const [sendTime, setSendTime] = useState(v0.sendTime); // '' = 안 골랐음(칸에는 기본값이 보이고 저장 때는 빈 값)
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
   const [adMark, setAdMark] = useState(true);
@@ -99,7 +106,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const adOn = isAdKind(autoKind) && adMark;
   const outBody = adOn ? withAdFormat(body) : body;
   const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
-  useEffect(() => { setError(''); }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark]);
+  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime]);
   const insertVar = varName => {
     const el = bodyRef.current;
     const at = el ? [el.selectionStart, el.selectionEnd] : [body.length, body.length];
@@ -119,7 +126,47 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const mergePending = wantMerge && !mergeFailed && !merged;
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const { info } = check;
-  const conditionText = conditionResult({ autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate });
+  const conditionText = conditionResult({ autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
+  const showTime = hasSendTime(autoKind, days);
+
+  // ---- 단계(같은 흐름의 문구 여러 개) ----
+  const collect = () => ({ name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
+  const applyValues = v => {
+    setName(v.name); setBody(v.body); setImages(v.images); setAutoKind(v.autoKind); setDays(v.days); setSendFrom(v.sendFrom); setRepeat(v.repeat); setInterval(v.interval);
+    setOffsetDir(v.offsetDir); setOffsetDays(v.offsetDays); setUnlessStep(v.unlessStep); setUnlessMode(v.unlessMode); setDaily(v.daily); setWeekdays(v.weekdays);
+    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setImageError('');
+  };
+  const forms = stages.map(item => (item.key === activeKey ? collect() : item.form));
+  const dupSet = duplicateStages(forms);
+  const dirtyOf = (item, f) => item.base === null || stageDirtySig(f) !== item.base;
+  const multi = stages.length > 1;
+  const dirtyCount = multi ? stages.filter((item, i) => dirtyOf(item, forms[i])).length : 0;
+  const showStages = hasStageRow(autoKind, siblings) || multi;
+  const chips = stages.map((item, i) => ({ key: item.key, label: stageLabel(forms[i]), order: stageOrder(forms[i]), dirty: multi && dirtyOf(item, forms[i]), dup: dupSet.has(i), failed: item.failed && item.key !== activeKey, idx: i })).sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.idx - b.idx);
+  const switchTo = key => {
+    if (key === activeKey) return;
+    const target = stages.find(item => item.key === key);
+    if (!target) return;
+    const cur = collect();
+    setStages(prev => prev.map(item => (item.key === activeKey ? { ...item, form: cur } : item)));
+    applyValues(target.form);
+    setActiveKey(key);
+  };
+  const addStage = withContent => {
+    const cur = collect();
+    const key = `n${nextKey.current}`;
+    nextKey.current += 1;
+    const form = newStageValues(cur, withContent);
+    setStages(prev => [...prev.map(item => (item.key === activeKey ? { ...item, form: cur } : item)), { key, id: undefined, form, base: null, failed: false }]);
+    applyValues(form);
+    setActiveKey(key);
+  };
+  const failAt = (i, text) => {
+    pendingError.current = text;
+    setError(text);
+    setStages(prev => prev.map((item, n) => (n === i ? { ...item, failed: true } : item)));
+    if (stages[i].key !== activeKey) switchTo(stages[i].key);
+  };
 
   const pickImage = async event => {
     const file = event.target.files?.[0];
@@ -137,14 +184,41 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   };
   const submit = async () => {
     if (busy || mergePending) return;
-    if (!check.ok) { setError(textFormStopText(check.reason)); return; }
+    const cur = collect();
+    const list = stages.map((item, i) => ({ item, f: item.key === activeKey ? cur : item.form, i }));
+    const pick = multi ? list.filter(({ item, f }) => dirtyOf(item, f)) : list; // 안 바뀐 단계는 보내지 않는다(한 단계뿐이면 종전대로 저장)
+    setStages(prev => prev.map(item => (item.failed ? { ...item, failed: false } : item)));
+    const clash = pick.find(({ i }) => dupSet.has(i));
+    if (multi && clash) { failAt(clash.i, textFormStopText('dup')); return; }
+    const outOf = f => (isAdKind(f.autoKind) && adMark ? withAdFormat(f.body) : f.body);
+    for (const { f, i } of pick) {
+      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step });
+      if (!chk.ok) { failAt(i, textFormStopText(chk.reason)); return; }
+    }
     setBusy(true);
     setError('');
-    try {
-      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body: outBody, images: outImages, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff, ataTemplate } }));
-      setSaved(out.item);
-      onSaved?.(out.item);
-    } catch (err) { setError(textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.'); } finally { setBusy(false); }
+    let last = null;
+    let broke = false;
+    for (const { item, f, i } of pick) {
+      let made = null;
+      try {
+        let imgs = outImages;
+        if (item.key !== activeKey) {
+          imgs = f.images;
+          if (merge && f.images.length >= 2) { made = await mergeImages(f.images); imgs = [made]; }
+        }
+        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime } }));
+        last = out.item;
+        setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
+      } catch (err) {
+        broke = true;
+        failAt(i, textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.');
+        break;
+      } finally { if (made) URL.revokeObjectURL(made.url); }
+    }
+    setBusy(false);
+    if (last) onSaved?.(last);
+    if (!broke) setSaved(last || { id: stages.find(x => x.key === activeKey)?.id });
   };
 
   if (saved) {
@@ -160,7 +234,16 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   }
   return (
     <div className="stf-split">
-    <form id={formId} className="stf-form" onSubmit={event => { event.preventDefault(); submit(); }} noValidate>
+    <form id={formId} className={`stf-form${showStages ? ' has-stages' : ''}`} onSubmit={event => { event.preventDefault(); submit(); }} noValidate>
+      {showStages ? (
+        <div className="stf-stages" role="group" aria-label="단계">
+          {chips.map(chip => (
+            <button key={chip.key} type="button" className={`ktm-btn stf-chip${chip.key === activeKey ? ' is-active' : ''}${chip.dirty ? ' is-dirty' : ''}${chip.dup ? ' is-dup' : ''}${chip.failed ? ' is-failed' : ''}`} aria-pressed={chip.key === activeKey} onClick={() => switchTo(chip.key)}>{chip.label}{chip.dirty ? <i className="stf-dot" aria-hidden="true" /> : null}</button>
+          ))}
+          <button type="button" className="ktm-btn stf-stage-add" onClick={() => addStage(false)}>+ 단계</button>
+          <button type="button" className="ktm-btn stf-stage-clone" onClick={() => addStage(true)}>복제</button>
+        </div>
+      ) : null}
       <label className="stf-field">템플릿 이름
         <input type="text" placeholder="목록에서 찾을 이름 (고객에게는 안 보임)" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => setName(event.target.value)} />
       </label>
@@ -208,6 +291,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                 <option value="before">일 전</option>
                 <option value="same">당일</option>
                 <option value="after">일 지남</option>
+              </select>
+            ) : null}
+            {showTime ? (
+              <select className="stf-time" value={sendTime || defaultSendTime(autoKind)} aria-label="발송 시각" onChange={event => setSendTime(event.target.value)}>
+                {SEND_TIMES.map(time => <option key={time} value={time}>{sendTimeLabel(time)}</option>)}
               </select>
             ) : null}
           </span>
@@ -290,7 +378,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       <ModalFoot>
         <div className="stf-actions">
           {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>취소</button> : null}
-          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy || mergePending}>{busy ? (initial ? '저장 중…' : '등록 중…') : (initial ? '저장' : '등록')}</button>
+          <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy || mergePending}>{busy ? (initial ? '저장 중…' : '등록 중…') : (dirtyCount >= 2 ? `${dirtyCount}개 저장` : (initial ? '저장' : '등록'))}</button>
         </div>
       </ModalFoot>
     </form>

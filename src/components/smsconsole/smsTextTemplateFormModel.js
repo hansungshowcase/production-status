@@ -182,6 +182,7 @@ export function textFormStopText(reason) {
   if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
   if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
   if (reason === 'step') return '공정을 골라 주세요';
+  if (reason === 'dup') return '같은 일수 단계가 있습니다';
   if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
   if (reason === 'lead_source_not_connected') return '가입·문의 정보 연결이 아직 안 됐습니다.';
   if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
@@ -224,13 +225,15 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     if (a.interval !== undefined) out.interval = normalizeInterval(a.interval) ?? AUTO_DEFAULT_INTERVAL;
     return out;
   };
+  // 시각은 값이 넘어왔을 때만 싣는다: 시각이 뜻을 갖는 조건이면 고른 값(없으면 빈 값), 그 밖은 빈 값
+  const autoOut = (a) => { const o = autoBody(a); return o.kind && a.sendTime !== undefined ? { ...o, auto_send_time: hasSendTime(a.kind, a.days) && SEND_TIMES.includes(a.sendTime) ? a.sendTime : '' } : o; };
   return {
     ...(id ? { id } : {}),
     name: String(name || '').trim(),
     body: String(body || ''),
     ...(image?.data ? { image: { data: image.data } } : {}),
     ...(list.length ? { images: list.map((item) => ({ data: item.data })) } : {}),
-    ...(auto ? { auto: autoBody(auto) } : {}),
+    ...(auto ? { auto: autoOut(auto) } : {}),
   };
 }
 
@@ -239,25 +242,107 @@ const joinDot = (...parts) => parts.filter(Boolean).join(' · ');
 const won = (value) => `${Number(value || 0).toLocaleString('ko-KR')}원`;
 const shortDate = (value) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${Number(m[1])}/${Number(m[2])}` : ''; };
 
+// ---------- 발송 시각(날짜형 조건) · 흐름의 단계 ----------
+export const SEND_TIMES = Array.from({ length: 23 }, (_, i) => `${String(9 + Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
+// 'HH:MM'(09:00~20:00, 30분 단위) → '오전 9:00' · '오후 2:30'. 목록 밖 값·빈 값이면 ''.
+export function sendTimeLabel(time) {
+  if (!SEND_TIMES.includes(time)) return '';
+  const hour = Number(time.slice(0, 2));
+  return `${hour < 12 ? '오전' : '오후'} ${hour > 12 ? hour - 12 : hour}:${time.slice(3)}`;
+}
+// 시각 칸이 뜻을 갖는 조건: 날짜형·출고 완료 후·주문 등록 후, 가입·문의 후(일수 1 이상). 즉시형·회원가입 시는 없다.
+export const hasSendTime = (kind, days) => (kind === AUTO_KIND_LEAD_PLUS ? (normalizeLeadDays(days) ?? 0) >= 1 : kind === AUTO_KIND || kind === AUTO_KIND_ORDER || isDateKind(kind));
+// 사장님이 고르지 않았을 때 칸에 골라져 보이는 값(가입·문의 후 09:30, 그 밖 날짜형 10:00)
+export const defaultSendTime = (kind) => (kind === AUTO_KIND_LEAD_PLUS ? '09:30' : (hasSendTime(kind, '1') ? '10:00' : ''));
+
+// 폼 값 한 벌(등록 팝업 상태). item 은 formInitialFromItem 모양(없으면 빈 등록).
+export function formValuesFromItem(item) {
+  const i = item || {};
+  return {
+    name: i.name || '', body: i.body || '', images: Array.isArray(i.images) ? i.images : [],
+    autoKind: i.autoKind || '', days: i.days || String(AUTO_DEFAULT_DAYS), sendFrom: i.sendFrom || '',
+    repeat: i.repeat || String(AUTO_DEFAULT_REPEAT), interval: i.interval || String(AUTO_DEFAULT_INTERVAL),
+    offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
+    daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
+    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '',
+  };
+}
+// 단계 순서값(일수 오름차순에 쓴다). 즉시형·회원가입 시는 0, 입력이 올바르지 않으면 null.
+export function stageOrder(f) {
+  const kind = f?.autoKind;
+  if (kind === AUTO_KIND_LEAD_PLUS) return normalizeLeadDays(f.days);
+  if (kind === AUTO_KIND || kind === AUTO_KIND_ORDER) return normalizeDays(f.days);
+  if (isDateKind(kind)) return normalizeOffset(f.offsetDir, f.offsetDays, f.daily);
+  return AUTO_KINDS.includes(kind) ? 0 : null;
+}
+// 단계 칩 글자: 당일 · 2일 · 3일 전 · 2일 후 · 즉시
+export function stageLabel(f) {
+  const n = stageOrder(f);
+  if (n === null) return '새 단계';
+  if (isDateKind(f.autoKind)) return n === 0 ? '당일' : (n < 0 ? `${-n}일 전` : `${n}일 후`);
+  if (isImmediateKind(f.autoKind) || f.autoKind === AUTO_KIND_MEMBER_JOINED) return '즉시';
+  return n === 0 ? '당일' : `${n}일`;
+}
+// 같은 종류·같은 순서값인 단계들의 자리(한 사람에게 2통 방지). → Set<index>
+export function duplicateStages(forms) {
+  const seen = new Map();
+  // 즉시형(주문 등록 시·공정 시작/완료 시·회원가입 시)은 일수가 없어 중복으로 보지 않는다. 날짜 기준은 공정 조건이 다르면 다른 단계다.
+  forms.forEach((f, i) => { const n = stageOrder(f); if (n === null || isImmediateKind(f.autoKind) || f.autoKind === AUTO_KIND_MEMBER_JOINED) return; const key = `${f.autoKind}|${n}|${f.unlessStep || ''}`; seen.set(key, [...(seen.get(key) || []), i]); });
+  const out = new Set();
+  seen.forEach((list) => { if (list.length > 1) list.forEach((i) => out.add(i)); });
+  return out;
+}
+// 바뀜 판정용 짧은 서명(사진은 길이·앞뒤 일부만 본다)
+export function stageDirtySig(f) {
+  const photo = (item) => { const d = String(item?.data || item?.url || ''); return `${d.length}:${d.slice(0, 24)}:${d.slice(-24)}`; };
+  return JSON.stringify({ ...f, images: (f.images || []).map(photo) });
+}
+// 새 단계의 폼 값. 기본은 조건만 복사하고 이름·내용·사진을 비운다. withContent 면 내용까지 복사하고 일수만 비운다.
+export function newStageValues(from, withContent) {
+  const base = { ...from, staff: [...(from.staff || [])] };
+  if (!withContent) return { ...base, name: '', body: '', images: [] };
+  const dayless = isDateKind(base.autoKind) ? { offsetDir: base.offsetDir === 'same' ? 'after' : base.offsetDir, offsetDays: '' } : { days: '' };
+  return { ...base, ...dayless, images: (from.images || []).map((i) => ({ data: i.data, bytes: i.bytes, url: i.data ? `data:image/jpeg;base64,${i.data}` : i.url })) };
+}
+// 팝업을 열 때의 단계 묶음: { stages:[{key,id,form,base,failed}], activeKey, values }
+export function bootStages(initial, siblings, startNew) {
+  const cur = formValuesFromItem(initial);
+  const mk = (id, form) => ({ key: `s${id}`, id, form, base: stageDirtySig(form), failed: false });
+  const list = (Array.isArray(siblings) ? siblings : []).filter((s) => s && s.id !== undefined && s.id !== null);
+  const stages = list.map((s) => (initial?.id && s.id === initial.id ? mk(s.id, cur) : mk(s.id, formValuesFromItem(s))));
+  if (initial?.id && !stages.some((s) => s.id === initial.id)) stages.push(mk(initial.id, cur));
+  if (!stages.length) stages.push(initial?.id ? mk(initial.id, cur) : { key: 'n0', id: undefined, form: cur, base: null, failed: false });
+  if (startNew && !initial?.id) {
+    const last = [...stages].sort((a, b) => (stageOrder(a.form) ?? 9999) - (stageOrder(b.form) ?? 9999)).pop();
+    const fresh = { key: 'n1', id: undefined, form: newStageValues(last.form, false), base: null, failed: false };
+    stages.push(fresh);
+    return { stages, activeKey: fresh.key, values: fresh.form };
+  }
+  const active = stages.find((s) => initial?.id && s.id === initial.id) || stages[0];
+  return { stages, activeKey: active.key, values: active.form };
+}
+// 단계 줄을 그릴지: siblings 가 왔거나 자동 발송 조건을 고른 상태
+export const hasStageRow = (kind, hasSiblings) => Boolean(hasSiblings) || AUTO_KINDS.includes(kind);
+
 // 발송 조건 한 줄
 export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
 ) : isDateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset, entry.autoDaily)}`,
-  '오전 10시',
+  sendTimeLabel(entry.autoSendTime) || '오전 10시',
   entry.autoWeekdays ? '평일만' : '',
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
   entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
 ) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객'
 ) : entry?.autoKind === AUTO_KIND_LEAD_PLUS ? joinDot(
   Number(entry.autoDays) > 0 ? `가입·문의 후 ${Number(entry.autoDays)}일 뒤` : '가입·문의 당일',
-  Number(entry.autoDays) > 0 ? '오전 9시 30분' : '',
+  Number(entry.autoDays) > 0 ? (sendTimeLabel(entry.autoSendTime) || '오전 9시 30분') : '',
   '고객',
   entry.autoAtaTemplate ? '알림톡' : '',
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
-  '오전 10시',
+  sendTimeLabel(entry.autoSendTime) || '오전 10시',
   '고객',
   entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
@@ -363,6 +448,7 @@ export function myTextSection(items) {
       autoAudience: item.auto_audience === AUDIENCE_STAFF || item.auto_audience === AUDIENCE_SALES ? item.auto_audience : 'customer',
       autoStaffCount: Array.isArray(item.auto_staff) ? item.auto_staff.length : 0,
       autoEnabled: Boolean(item.auto_enabled),
+      autoSendTime: SEND_TIMES.includes(item.auto_send_time) ? item.auto_send_time : '',
     })),
   };
 }
@@ -398,6 +484,7 @@ export function formInitialFromItem(item) {
     step: String(item?.auto_step || ''),
     audience: item?.auto_audience === AUDIENCE_STAFF || item?.auto_audience === AUDIENCE_SALES ? item.auto_audience : 'customer',
     staff: Array.isArray(item?.auto_staff) ? item.auto_staff : [],
+    sendTime: SEND_TIMES.includes(item?.auto_send_time) ? item.auto_send_time : '',
   };
 }
 

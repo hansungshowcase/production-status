@@ -200,3 +200,53 @@ export function conditionGroup(row) {
   if (/주문|구매/.test(text)) return '주문 등록';
   return '조건 없음';
 }
+
+// ---------- 흐름(기준 시점) 묶기: 같은 종류·받는 사람(·공정)의 자동 문구를 한 행으로 ----------
+const FLOW_LABELS = {
+  lead_plus_days: '가입·문의 후', ship_plus_days: '출고 완료 후', order_plus_days: '주문 등록 후',
+  due_date: '납기일', ship_scheduled: '출고예정일', ship_or_due: '출고·납기일',
+  order_created: '주문 등록 시', process_started: '공정 시작 시', process_completed: '공정 완료 시', member_joined: '자사몰 회원가입 시',
+};
+const OFFSET_KINDS = ['due_date', 'ship_scheduled', 'ship_or_due'];
+const IMMEDIATE_FLOW_KINDS = ['order_created', 'process_started', 'process_completed', 'member_joined'];
+const stepDays = (entry) => (OFFSET_KINDS.includes(entry.autoKind) ? (Number(entry.autoOffset) || 0) : (Number(entry.autoDays) || 0));
+
+// 단계 칩 글자: 0 → 당일, N → N일(날짜 기준은 N일 전·N일 지남), 즉시형은 공정 이름 또는 즉시
+export function flowStepText(entry) {
+  if (IMMEDIATE_FLOW_KINDS.includes(entry?.autoKind)) return entry.autoStep || '즉시';
+  const n = stepDays(entry);
+  if (OFFSET_KINDS.includes(entry?.autoKind)) return n === 0 ? '당일' : (n < 0 ? `${-n}일 전` : `${n}일 지남`);
+  return n === 0 ? '당일' : `${n}일`;
+}
+
+// entries(내 문구) → 앞에서 나온 순서대로 [{ key, label, who, via, time, on, total, steps[], single }]
+// 조건 없는 문구는 { single: true, entry } 한 줄. enabledOf(entry) 로 켜짐을 센다(없으면 autoEnabled).
+export function groupFlows(entries, enabledOf = (entry) => Boolean(entry.autoEnabled)) {
+  const out = [];
+  const byKey = new Map();
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    if (!entry?.autoKind) { out.push({ key: `m-${entry?.id}`, single: true, entry, steps: [] }); return; }
+    const key = `${entry.autoKind}|${entry.autoAudience || 'customer'}|${entry.autoStep || ''}`;
+    let flow = byKey.get(key);
+    if (!flow) {
+      flow = { key, single: false, steps: [] };
+      byKey.set(key, flow);
+      out.push(flow);
+    }
+    flow.steps.push(entry);
+  });
+  out.forEach((flow) => {
+    if (flow.single) return;
+    flow.steps.sort((a, b) => (stepDays(a) - stepDays(b)) || String(a.name || '').localeCompare(String(b.name || ''), 'ko', { numeric: true }));
+    const first = flow.steps[0];
+    const parts = autoConditionParts(first);
+    flow.label = `${FLOW_LABELS[first.autoKind] || ''}${first.autoStep ? `(${first.autoStep})` : ''}`;
+    flow.who = parts.who;
+    flow.via = flow.steps.some((step) => step.autoAtaTemplate) ? '알림톡' : '';
+    const times = [...new Set(flow.steps.map((step) => String(step.autoSendTime || '')).filter(Boolean))];
+    flow.time = times.length > 1 ? '시각 여러 개' : (times[0] || '');
+    flow.total = flow.steps.length;
+    flow.on = flow.steps.filter((step) => enabledOf(step)).length;
+  });
+  return out;
+}
