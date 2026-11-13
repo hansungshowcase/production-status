@@ -24,6 +24,7 @@ function fakeDb({ otherSends = 0 } = {}) {
       const t = sql.replace(/\s+/g, ' ').trim();
       state.sql.push(t);
       if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE)/.test(t)) return { rows: [] };
+      if (t.startsWith('SELECT id FROM sms_text_templates WHERE auto_enabled = true AND id <> ?')) return { rows: (state.templates || []).filter(r => r.auto_enabled && r.id !== args[0] && (r.auto_kind === 'member_joined' || (r.auto_kind === 'lead_plus_days' && r.auto_days === 0))).slice(0, 1).map(r => ({ id: r.id })) };
       if (t.startsWith('INSERT INTO sms_leads')) {
         const [source, key_hash, joined_at, phone_hash, phone_last4, phone_enc, name_enc] = args;
         if (state.leads.some(r => r.source === source && r.key_hash === key_hash)) return { rows: [] };
@@ -141,6 +142,26 @@ test('켜기 차단: 연결 길이 없으면 lead_source_not_connected, 알림�
   const on = await eventToggleOn({}, tpl({ auto_enabled: false, auto_ata_template: 'KA01TP1' }), { db: db2, env: { ...ENV, ...AT_ENV }, nowMs: NOW, kakao: fakeKakao() });
   assert.equal(on.status, 200); assert.equal(on.body.enabled, true);
   assert.ok(updates[0].sql.includes('auto_enabled_at = NOW()'));
+});
+
+test('켜기 겹침: 가입 당일 문구(member_joined·lead 0일)는 동시에 둘 이상 못 켜고, 겹침이 없으면 켜진다', async () => {
+  const E = { ...ENV, ...AT_ENV };
+  const run = async (template, others) => { reset(); const db = fakeDb(); db.state.templates = others; return eventToggleOn({}, template, { db, env: E, nowMs: NOW }); };
+  const joined = { id: 20, auto_kind: 'member_joined', auto_days: 0, auto_enabled: true };
+  const zero = { id: 21, auto_kind: 'lead_plus_days', auto_days: 0, auto_enabled: true };
+  const one = await run(tpl({ auto_enabled: false }), [joined]); // ① lead 0일 켜기 + 켜진 member_joined
+  assert.equal(one.status, 400); assert.equal(one.body.reason, 'lead_overlap');
+  reset(); const dbM = fakeDb(); dbM.state.templates = [zero]; // ② member_joined 켜기 + 켜진 lead 0일 (카페24 연결 검사는 통과하도록 흉내)
+  const dbM2 = { ...dbM, async execute(q) { return q.sql.includes('FROM cafe24_tokens') ? { rows: [{ id: 1 }] } : dbM.execute(q); } };
+  const cafe = { CAFE24_CLIENT_ID: 'c', CAFE24_CLIENT_SECRET: 's', CAFE24_MALL_ID: 'm' };
+  const two = await eventToggleOn({}, tpl({ id: 8, body: '한성쇼케이스입니다.', auto_kind: 'member_joined', auto_enabled: false }), { db: dbM2, env: { ...E, ...cafe }, nowMs: NOW });
+  assert.equal(two.status, 400); assert.equal(two.body.reason, 'lead_overlap');
+  const three = await run(tpl({ auto_enabled: false }), [zero]); // ③ lead 0일끼리
+  assert.equal(three.status, 400); assert.equal(three.body.reason, 'lead_overlap');
+  reset(); const dbF = fakeDb(); dbF.state.templates = [{ id: 22, auto_kind: 'lead_plus_days', auto_days: 2, auto_enabled: true }]; // N>=1 은 막지 않음 → 기존대로 켜짐
+  const dbF2 = { ...dbF, async execute(q) { return q.sql.startsWith('UPDATE sms_text_templates SET auto_enabled = true') ? { rows: [] } : dbF.execute(q); } };
+  const free = await eventToggleOn({}, tpl({ auto_enabled: false }), { db: dbF2, env: E, nowMs: NOW });
+  assert.equal(free.status, 200); assert.equal(free.body.enabled, true);
 });
 
 test('저장: lead 는 일수 0 허용·고객명만·알림톡 칸 저장, 광고 낱말은 문자일 때만 거절, 다른 종류는 알림톡 칸이 빈 값', () => {

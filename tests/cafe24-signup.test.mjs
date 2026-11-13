@@ -50,6 +50,7 @@ function fakeDb({ templates = [], tokens = null } = {}) {
       }
       if (t.startsWith('UPDATE sms_event_sends SET status = ?')) { const [status, , , , ...ids] = args; for (const r of state.sends.filter(x => ids.includes(x.id))) r.status = status; return { rows: [] }; }
       if (t.startsWith('SELECT id FROM sms_text_templates WHERE name')) return { rows: state.templates.filter(r => r.name === args[0]) };
+      if (t.startsWith('SELECT id FROM sms_text_templates WHERE auto_enabled = true AND id <> ?')) return { rows: [] }; // 가입 당일 문구 겹침 조회(설계 19-7)
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_text_templates')) return { rows: [{ n: state.templates.length }] };
       if (t.startsWith('INSERT INTO sms_text_templates')) { state.templates.push({ id: state.templates.length + 1 }); return { rows: [{ id: state.templates.length }] }; }
       if (t.startsWith('SELECT id FROM cafe24_tokens')) return { rows: state.tokens ? [{ id: 1 }] : [] };

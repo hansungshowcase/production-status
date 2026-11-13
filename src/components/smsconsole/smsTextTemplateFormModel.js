@@ -242,6 +242,7 @@ export function toggleRejectText(reason) {
   if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
   if (reason === 'lead_source_not_connected') return '가입·문의 정보 연결이 아직 안 됐습니다.';
   if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
+  if (reason === 'lead_overlap') return '가입 당일에 나가는 문구가 이미 켜져 있습니다.';
   return '';
 }
 

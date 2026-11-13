@@ -522,6 +522,11 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
     if (!(await leadSourcesConnected(db, env))) return errorReply(400, '가입·문의 정보 연결이 아직 안 됐습니다.', { reason: 'lead_source_not_connected' });
     if (template.auto_ata_template && !(await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env })).ok) return errorReply(400, '알림톡 템플릿이 승인 상태가 아니거나 고객명 외 변수가 있습니다.', { reason: 'ata_not_ready' });
   }
+  const todayKind = template.auto_kind === 'member_joined' || (template.auto_kind === 'lead_plus_days' && Number(template.auto_days) === 0);
+  if (todayKind) { // 가입 당일에 나가는 문구는 동시에 둘 이상 켜지 않는다(설계 19-7)
+    const clash = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND id <> ? AND (auto_kind = 'member_joined' OR (auto_kind = 'lead_plus_days' AND auto_days = 0)) LIMIT 1", args: [template.id] });
+    if (clash.rows?.length) return errorReply(400, '가입 당일에 나가는 문구가 이미 켜져 있습니다.', { reason: 'lead_overlap' });
+  }
   if (!autoOn(env)) return errorReply(503, '자동 발송이 꺼져 있습니다.');
   if (body.dry_run === true) {
     const vendor = provider || getSendProvider();
