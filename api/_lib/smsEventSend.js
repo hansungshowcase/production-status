@@ -136,8 +136,8 @@ function expandItems(rows, template, staff, suffix) {
 }
 
 // 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
-async function instantCandidates(db, template, { nowMs, staff }) {
-  const enabledMs = Date.parse(template.auto_enabled_at || '');
+async function instantCandidates(db, template, { nowMs, staff, preview }) {
+  const enabledMs = preview ? nowMs - WINDOW_MS : Date.parse(template.auto_enabled_at || ''); // 켜기 전 미리 보기: 창 = [지금 − 24시간, 지금]
   if (!Number.isFinite(enabledMs)) return [];
   const from = new Date(Math.max(enabledMs, nowMs - WINDOW_MS)).toISOString();
   const to = new Date(nowMs).toISOString();
@@ -153,7 +153,7 @@ async function instantCandidates(db, template, { nowMs, staff }) {
     // 시각은 TEXT(UTC ISO). 형식이 ISO 가 아닌 값은 비교에서 빠진다(안전한 쪽).
     out = await db.execute({
       sql: `SELECT ${ORDER_COLUMNS} FROM processes p JOIN orders o ON o.id = p.order_id
-        WHERE p.step_name = ? AND p.${column} IS NOT NULL AND p.${column} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T' AND p.${column} >= ? AND p.${column} <= ? AND COALESCE(o.status, '') <> 'cancelled'
+        WHERE p.step_name = ? AND p.${column} IS NOT NULL AND p.${column} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$' AND p.${column} >= ? AND p.${column} <= ? AND COALESCE(o.status, '') <> 'cancelled'
         ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
       args: [template.auto_step, from, to],
     });
@@ -164,8 +164,8 @@ async function instantCandidates(db, template, { nowMs, staff }) {
 }
 
 // 오늘 대상(이미 선점한 것 제외 전). 납기일/출고예정일 칸이 오늘 − offset 인 진행 중 주문만(당일만, 뒤늦게 보내지 않음).
-async function candidates(db, template, { nowMs, staff }) {
-  if (isInstantKind(template.auto_kind)) return instantCandidates(db, template, { nowMs, staff });
+async function candidates(db, template, { nowMs, staff, preview }) {
+  if (isInstantKind(template.auto_kind)) return instantCandidates(db, template, { nowMs, staff, preview });
   if (!isEventKind(template.auto_kind)) return [];
   const column = DATE_COLUMN[template.auto_kind];
   const baseDay = addDays(kstDate(nowMs), -template.auto_offset);
@@ -363,7 +363,7 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends WHERE template_id = ? GROUP BY status', args: [id] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
   const sent7 = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_event_sends WHERE template_id = ? AND status = 'sent' AND kst_date >= ?", args: [id, addDays(today, -6)] })).rows?.[0]?.n) || 0;
-  const todayTargets = isInstantKind(template.auto_kind) && !template.auto_enabled ? 0 : (await pending(db, template, { nowMs, staff })).length;
+  const todayTargets = (await pending(db, template, { nowMs, staff, preview: isInstantKind(template.auto_kind) && !template.auto_enabled })).length;
   return reply(200, {
     enabled: template.auto_enabled && autoOn(env), days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
     failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'), last_sent_date: sums.find(row => row.status === 'sent')?.last || '',
@@ -405,7 +405,7 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   if (body.dry_run === true) {
     const vendor = provider || getSendProvider();
     const parts = buildEventParts(template, template.images.length);
-    const targets = isInstantKind(template.auto_kind) && !template.auto_enabled ? 0 : (await pending(db, template, { nowMs, staff })).length; // 즉시형은 켜기 전이면 0
+    const targets = (await pending(db, template, { nowMs, staff, preview: isInstantKind(template.auto_kind) && !template.auto_enabled })).length; // 즉시형 켜기 전: 최근 24시간 사건 기준 미리 보기(읽기만)
     const people = Math.min(targets, infoMaxPerDay(env));
     return reply(200, { ok: true, targets, parts: parts.length, cost: vendor ? costOf(vendor, parts, people, env) : null, daily_max: infoMaxPerDay(env), overlap: instantOverlap(template) });
   }

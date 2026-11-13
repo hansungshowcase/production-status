@@ -340,3 +340,47 @@ test('즉시형 ⑥ 켜진 문구의 공정을 바꾸면 꺼지고, 켜기는 �
   assert.equal(res.status, 200);
   assert.ok(seen[0].includes('auto_enabled_at = NOW()'));
 });
+
+// ---- 2단계-다: 켜기 전 미리 보기 건수 + 공정 시각 형식(Z 까지) ----
+test('즉시형 다① 켜기 전 dry_run·현황 targets 는 최근 24시간 후보 수(읽기만, 기록 INSERT 없음)', async () => {
+  const { eventToggleOn, eventStatus } = await import('../api/_lib/smsEventSend.js');
+  const db = instantDb({
+    orders: [mkOrder(1), mkOrder(2), mkOrder(3)],
+    processes: [
+      { order_id: 1, step_name: '포장', status: 'completed', completed_at: '2026-11-19T05:00:00.000Z' }, // 24시간 안
+      { order_id: 2, step_name: '포장', status: 'completed', completed_at: '2026-11-19T00:30:00.000Z' }, // 24시간 밖
+      { order_id: 3, step_name: '포장', status: 'completed', completed_at: '2026-11-20T00:30:00.000Z' }, // 24시간 안
+    ],
+  });
+  const tpl = itpl({ auto_enabled: false, auto_enabled_at: null });
+  const inner = db.execute;
+  db.execute = async q => (/GROUP BY status|AND status = 'sent'|COUNT\(\*\) AS n FROM sms_event_sends/.test(q.sql) ? { rows: [] } : inner(q)); // 현황의 합계 조회만 빈 값
+  const dry = await eventToggleOn({ dry_run: true }, tpl, { db, provider: { ...fakeProvider(), estimate: () => ({ total: 0 }) }, env: ENV, nowMs: NOW, staff: STAFF });
+  assert.equal(dry.body.targets, 2);
+  _resetEventSchemaForTest();
+  assert.equal((await eventStatus(db, tpl, { nowMs: NOW, env: ENV, staff: STAFF })).body.today_targets, 2);
+  assert.equal(db.state.sends.length, 0);
+});
+
+test('즉시형 다② Z 로 끝나지 않는 공정 시각은 대상에서 빠진다(SQL 형식 검사)', async () => {
+  const db = instantDb({
+    orders: [mkOrder(1), mkOrder(2)],
+    processes: [
+      { order_id: 1, step_name: '포장', status: 'completed', completed_at: '2026-11-20T00:30:00.000Z' },
+      { order_id: 2, step_name: '포장', status: 'completed', completed_at: '2026-11-20T00:40:00' }, // Z 없음
+    ],
+  });
+  const inner = db.execute;
+  db.execute = async q => { // 가짜 DB 가 SQL 의 정규식을 그대로 적용하게 한다
+    const out = await inner(q);
+    const m = /p\.completed_at ~ '([^']+)'/.exec(q.sql);
+    if (!m) return out;
+    const re = new RegExp(m[1].replace(/\[0-9\]/g, '\\d'));
+    const ok = new Set(db.state.processes.filter(p => re.test(p.completed_at || '')).map(p => p.order_id));
+    return { rows: (out.rows || []).filter(r => ok.has(r.id)) };
+  };
+  const provider = fakeProvider();
+  assert.equal((await go(db, provider, itpl())).claimed, 1);
+  assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), ['01000000001']);
+  assert.ok(db.state.sql.some(s => s.includes("Z$'")));
+});
