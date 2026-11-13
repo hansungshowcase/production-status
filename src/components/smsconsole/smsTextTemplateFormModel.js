@@ -37,41 +37,53 @@ export const AUTO_KIND = 'ship_plus_days';
 export const AUTO_KIND_ORDER = 'order_plus_days';
 export const AUTO_KIND_DUE = 'due_date';
 export const AUTO_KIND_SHIP_PLAN = 'ship_scheduled';
-export const DATE_KINDS = [AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN];
+export const AUTO_KIND_SHIP_OR_DUE = 'ship_or_due';
+export const DATE_KINDS = [AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE];
 export const AUTO_KIND_ORDER_CREATED = 'order_created';
 export const AUTO_KIND_PROCESS_STARTED = 'process_started';
 export const AUTO_KIND_PROCESS_COMPLETED = 'process_completed';
 export const IMMEDIATE_KINDS = [AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED];
 export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS];
 export const AUDIENCE_STAFF = 'staff';
+export const AUDIENCE_SALES = 'sales';
 export const isDateKind = (kind) => DATE_KINDS.includes(kind);
 export const isImmediateKind = (kind) => IMMEDIATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
 export const AUTO_DEFAULT_REPEAT = 1;
 export const AUTO_DEFAULT_INTERVAL = 30;
-const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시' };
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시' };
 
-// 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null
+// 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남, 뒤에 _daily 가 붙으면 매일 반복) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null
+export const dirBase = (dir) => String(dir || '').replace(/_daily$/, '');
+export const dirDaily = (dir) => (String(dir || '').endsWith('_daily') ? (dirBase(dir) === 'before' ? 'until' : 'ongoing') : '');
 export function normalizeOffset(dir, value) {
-  if (dir === 'same') return 0;
+  const base = dirBase(dir);
+  if (base === 'same') return 0;
   const text = String(value ?? '').trim();
   if (!/^\d{1,3}$/.test(text)) return null;
   const n = Number(text);
-  if (n > 365 || (dir !== 'before' && dir !== 'after')) return null;
-  return dir === 'before' ? -n : n;
+  if (n > 365 || (base !== 'before' && base !== 'after')) return null;
+  if (dir === 'before_daily' && n === 0) return null;
+  return base === 'before' ? -n : n;
 }
-// 부호 있는 정수 → { dir, days }
-export const offsetParts = (offset) => {
+// 부호 있는 정수(+ 서버의 daily 값) → { dir, days }
+export const offsetParts = (offset, daily) => {
   const n = Number(offset) || 0;
-  return { dir: n < 0 ? 'before' : (n > 0 ? 'after' : 'same'), days: String(Math.abs(n)) };
+  const dir = n < 0 ? 'before' : (n > 0 ? 'after' : 'same');
+  return { dir: (daily === 'until' && n < 0) || daily === 'ongoing' ? `${dir}_daily` : dir, days: String(Math.abs(n)) };
 };
-const offsetText = (offset) => { const n = Number(offset) || 0; return n === 0 ? '당일' : (n < 0 ? `${-n}일 전` : `${n}일 지남`); };
+const offsetText = (offset, daily) => {
+  const n = Number(offset) || 0;
+  if (daily === 'until') return `${-n}일 전부터 당일까지 매일`;
+  if (daily === 'ongoing') return n > 0 ? `${n}일 지난 뒤 매일` : '당일부터 매일';
+  return n === 0 ? '당일' : (n < 0 ? `${-n}일 전` : `${n}일 지남`);
+};
 
 // 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
 export function autoVariables(kind, audience) {
   if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
   const list = ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'];
-  return audience === AUDIENCE_STAFF ? [...list, '제품'] : list;
+  return audience === AUDIENCE_STAFF || audience === AUDIENCE_SALES ? [...list, '제품'] : list;
 }
 
 // 반복 횟수 1~10, 간격 1~365 정수, 아니면 null
@@ -134,7 +146,18 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     }
     if (isDateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF;
-      return { kind: a.kind, offset: normalizeOffset(a.offsetDir, a.offsetDays), unless_step: String(a.unlessStep || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
+      const salesAudience = a.audience === AUDIENCE_SALES;
+      const daily = dirDaily(a.offsetDir);
+      return {
+        kind: a.kind,
+        offset: normalizeOffset(a.offsetDir, a.offsetDays),
+        ...(daily ? { daily } : {}),
+        ...(a.weekdays ? { weekdays: true } : {}),
+        unless_step: String(a.unlessStep || ''),
+        ...(a.unlessStep && a.unlessMode === 'started' ? { unless_mode: 'started' } : {}),
+        audience: staffAudience ? AUDIENCE_STAFF : (salesAudience ? AUDIENCE_SALES : 'customer'),
+        staff: staffAudience && Array.isArray(a.staff) ? a.staff : [],
+      };
     }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
@@ -162,10 +185,11 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
 ) : isDateKind(entry?.autoKind) ? joinDot(
-  `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset)}`,
+  `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset, entry.autoDaily)}`,
   '오전 10시',
-  entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
-  entry.autoUnlessStep ? `${entry.autoUnlessStep} 미완료만` : '',
+  entry.autoWeekdays ? '평일만' : '',
+  entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
+  entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
   '오전 10시',
@@ -249,9 +273,12 @@ export function myTextSection(items) {
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
       autoOffset: Number(item.auto_offset) || 0,
+      autoDaily: item.auto_daily === 'until' || item.auto_daily === 'ongoing' ? item.auto_daily : '',
+      autoWeekdays: Boolean(item.auto_weekdays),
+      autoUnlessMode: item.auto_unless_mode === 'started' ? 'started' : 'completed',
       autoUnlessStep: String(item.auto_unless_step || ''),
       autoStep: String(item.auto_step || ''),
-      autoAudience: item.auto_audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer',
+      autoAudience: item.auto_audience === AUDIENCE_STAFF || item.auto_audience === AUDIENCE_SALES ? item.auto_audience : 'customer',
       autoStaffCount: Array.isArray(item.auto_staff) ? item.auto_staff.length : 0,
       autoEnabled: Boolean(item.auto_enabled),
     })),
@@ -279,11 +306,13 @@ export function formInitialFromItem(item) {
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
     repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),
     interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),
-    offsetDir: offsetParts(item?.auto_offset).dir,
-    offsetDays: offsetParts(item?.auto_offset).days,
+    offsetDir: offsetParts(item?.auto_offset, item?.auto_daily).dir,
+    offsetDays: offsetParts(item?.auto_offset, item?.auto_daily).days,
+    weekdays: Boolean(item?.auto_weekdays),
+    unlessMode: item?.auto_unless_mode === 'started' ? 'started' : 'completed',
     unlessStep: String(item?.auto_unless_step || ''),
     step: String(item?.auto_step || ''),
-    audience: item?.auto_audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer',
+    audience: item?.auto_audience === AUDIENCE_STAFF || item?.auto_audience === AUDIENCE_SALES ? item.auto_audience : 'customer',
     staff: Array.isArray(item?.auto_staff) ? item.auto_staff : [],
   };
 }

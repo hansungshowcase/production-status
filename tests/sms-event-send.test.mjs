@@ -384,3 +384,78 @@ test('즉시형 다② Z 로 끝나지 않는 공정 시각은 대상에서 빠�
   assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), ['01000000001']);
   assert.ok(db.state.sql.some(s => s.includes("Z$'")));
 });
+
+// ---- 3단계-가(설계 17절): 매일 반복 구간·평일만·미착수·영업담당·출고·납기일 기준 ----
+function dayDb(opts) { // 새 조건의 orders 조회를 흉내 낸다(기존 fakeDb 는 그대로)
+  const db = fakeDb(opts);
+  const base = db.execute.bind(db);
+  db.execute = async ({ sql, args }) => {
+    const t = sql.replace(/\s+/g, ' ').trim();
+    if (!t.includes('FROM orders o WHERE') || /LEFT\(o\.\w+, 10\) = \?/.test(t) && !t.includes('COALESCE(NULLIF')) return base({ sql, args });
+    db.state.sql.push(t);
+    const baseDate = o => (t.includes('COALESCE(NULLIF') ? (o.ship_scheduled_date || o.due_date) : o[/LEFT\(o\.(\w+), 10\)/.exec(t)[1]]);
+    const range = t.includes('>= ? AND') ? (d => d >= args[0] && d <= args[1]) : t.includes('<= ?') ? (d => d <= args[0]) : (d => d === args[0]);
+    const used = t.includes('>= ? AND') ? 2 : 1;
+    let rows = db.state.orders.filter(o => o.status === 'in_production' && baseDate(o) && range(String(baseDate(o)).slice(0, 10)));
+    if (t.includes('p.step_name = ?')) {
+      const started = t.includes("NOT IN ('in_progress', 'completed')");
+      rows = rows.filter(o => db.state.processes.some(p => p.order_id === o.id && p.step_name === args[used] && (started ? !['in_progress', 'completed'].includes(p.status) : p.status !== 'completed')));
+    }
+    return { rows };
+  };
+  return db;
+}
+const dtpl = (extra = {}) => tpl({ auto_kind: 'due_date', auto_daily: '', auto_weekdays: false, auto_unless_mode: 'completed', ...extra });
+const DAY = 86400000;
+
+test('3단계 ① until: 범위 안팎·같은 날 두 번 1번·다음 날 다시, 일 전이 아니면 400(offset)', async () => {
+  const dates = ['2026-11-19', '2026-11-20', '2026-11-22', '2026-11-23', '2026-11-24'];
+  const db = dayDb({ orders: dates.map((d, i) => mkOrder(i + 1, { due_date: d })) });
+  const provider = fakeProvider();
+  const t = dtpl({ auto_offset: -3, auto_daily: 'until' });
+  const first = await go(db, provider, t);
+  assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), ['01000000002', '01000000003', '01000000004']);
+  assert.equal(first.claimed, 3);
+  assert.equal((await go(db, provider, t)).claimed, 0);
+  assert.ok(db.state.sends.every(r => r.dedupe_key.endsWith(':2026-11-20')));
+  assert.equal((await go(db, provider, t, { nowMs: NOW + DAY })).claimed, 3); // 11-22·23·24
+  assert.ok(db.state.sends.some(r => r.dedupe_key.endsWith(':2026-11-21')));
+  _resetTextTemplateSchemaForTest();
+  const bad = await saveTextTemplate(fakeDb(), { name: 'u', body: '#{주문번호} 납기', auto: { kind: 'due_date', offset: 0, daily: 'until' } }, { staff: STAFF });
+  assert.deepEqual([bad.status, bad.body.reason], [400, 'offset']);
+  const ok = await saveTextTemplate(fakeDb(), { name: 'u', body: '#{주문번호} 납기', auto: { kind: 'ship_or_due', offset: -9, daily: 'until', weekdays: true } }, { staff: STAFF });
+  assert.deepEqual([ok.status, ok.body.item.auto_daily, ok.body.item.auto_weekdays, ok.body.item.auto_unless_mode], [201, 'until', true, 'completed']);
+});
+
+test('3단계 ② ongoing(지난 뒤 계속) + 평일만: 금요일 나가고 토요일 무동작, 월요일 다시', async () => {
+  const db = dayDb({ orders: [mkOrder(1, { due_date: '2026-11-19' }), mkOrder(2, { due_date: '2026-11-20' }), mkOrder(3, { due_date: '2026-11-10' })] });
+  const provider = fakeProvider();
+  const t = dtpl({ auto_offset: 1, auto_daily: 'ongoing', auto_weekdays: true });
+  assert.equal((await go(db, provider, t)).claimed, 2); // 11-19·11-10 (11-20 은 아직 지나지 않음)
+  const sat = await go(db, provider, t, { nowMs: NOW + DAY });
+  assert.deepEqual([sat.reason, sat.ran, provider.calls.send.length], ['weekend', false, 1]);
+  assert.equal((await go(db, provider, t, { nowMs: NOW + 3 * DAY })).claimed, 3); // 월요일 11-23: 11-19·11-10·11-20
+});
+
+test('3단계 ③ 미착수: 진행 중 공정은 제외(미완료는 진행 중도 포함), ship_or_due 기준일은 출고예정일 우선', async () => {
+  const orders = [mkOrder(1), mkOrder(2), mkOrder(3), mkOrder(4, { due_date: '2026-12-31', ship_scheduled_date: '2026-11-23' }), mkOrder(5, { due_date: '2026-11-23', ship_scheduled_date: '2026-12-31' })];
+  const processes = [{ order_id: 1, step_name: '용접작업', status: 'waiting' }, { order_id: 2, step_name: '용접작업', status: 'in_progress' }, { order_id: 3, step_name: '용접작업', status: 'completed' }, { order_id: 4, step_name: '용접작업', status: 'waiting' }, { order_id: 5, step_name: '용접작업', status: 'waiting' }];
+  const started = await go(dayDb({ orders, processes }), fakeProvider(), dtpl({ auto_kind: 'ship_or_due', auto_offset: -3, auto_unless_step: '용접작업', auto_unless_mode: 'started' }));
+  assert.equal(started.claimed, 2); // 1(납기 11-23, 대기)·4(출고예정 11-23, 대기)
+  const provider = fakeProvider();
+  await go(dayDb({ orders, processes }), provider, dtpl({ auto_kind: 'ship_or_due', auto_offset: -3, auto_unless_step: '용접작업' }));
+  assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), ['01000000001', '01000000002', '01000000004']);
+});
+
+test('3단계 ④ 영업담당 수신: 담당 번호로 주문마다 1통, 미지정·모르는 이름은 건너뛰고 건수만 warn', async () => {
+  const { ALERT_ROUTES } = await import('../api/_lib/alertRoutes.js');
+  const name = Object.keys(ALERT_ROUTES)[0];
+  const db = dayDb({ orders: [mkOrder(1, { sales_person: name }), mkOrder(2, { sales_person: '' }), mkOrder(3, { sales_person: '없는사람' }), mkOrder(4, { sales_person: name })] });
+  const provider = fakeProvider();
+  const warns = [];
+  const out = await go(db, provider, dtpl({ auto_audience: 'sales', body: '#{제품} #{주문번호} 납기 #{예상출고일}' }), { warn: (...a) => warns.push(a) });
+  assert.equal(out.claimed, 2);
+  assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), [ALERT_ROUTES[name].replace(/\D/g, ''), ALERT_ROUTES[name].replace(/\D/g, '')]);
+  assert.ok(provider.calls.send[0].messages[0].text.startsWith('쇼케이스 HS-2026-0001'));
+  assert.deepEqual(warns.filter(a => String(a[0]).includes('영업담당')).map(a => a[1]), [2]);
+});

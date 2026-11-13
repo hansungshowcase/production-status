@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
 import './SmsTextTemplateForm.css';
 
 // 새 템플릿 등록 맨 위의 종류 고르기(문자 / 알림톡)
@@ -27,6 +27,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [offsetDir, setOffsetDir] = useState(initial?.offsetDir || 'before');
   const [offsetDays, setOffsetDays] = useState(initial?.offsetDays || '3');
   const [unlessStep, setUnlessStep] = useState(initial?.unlessStep || '');
+  const [unlessMode, setUnlessMode] = useState(initial?.unlessMode || 'completed');
+  const [weekdays, setWeekdays] = useState(Boolean(initial?.weekdays));
   const [step, setStep] = useState(initial?.step || '');
   const [audience, setAudience] = useState(initial?.audience || 'customer');
   const [staff, setStaff] = useState(initial?.staff || []);
@@ -76,7 +78,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setBusy(true);
     setError('');
     try {
-      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, step, audience, staff } }));
+      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, weekdays, step, audience, staff } }));
       setSaved(out.item);
       onSaved?.(out.item);
     } catch (err) { setError(textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.'); } finally { setBusy(false); }
@@ -124,6 +126,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <option value={AUTO_KIND}>출고 완료 후</option>
             <option value={AUTO_KIND_DUE}>납기일 기준</option>
             <option value={AUTO_KIND_SHIP_PLAN}>출고예정일 기준</option>
+            <option value={AUTO_KIND_SHIP_OR_DUE}>출고·납기일 기준</option>
           </select>
           {dayKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
           {dayKind ? <span>일 뒤</span> : null}
@@ -132,12 +135,15 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           {dayKind ? <span>번</span> : null}
           {dayKind && Number(repeat) >= 2 ? <input type="text" inputMode="numeric" className="stf-days" value={interval} maxLength={3} aria-label="간격" onChange={event => setInterval(event.target.value)} /> : null}
           {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
-          {dateKind && offsetDir !== 'same' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
+          {dateKind && offsetDir !== 'same' && offsetDir !== 'same_daily' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
           {dateKind ? (
             <select value={offsetDir} aria-label="기준 방향" onChange={event => setOffsetDir(event.target.value)}>
               <option value="before">일 전</option>
               <option value="same">당일</option>
               <option value="after">일 지남</option>
+              <option value="before_daily">일 전부터 당일까지 매일</option>
+              <option value="after_daily">일 지난 뒤 매일</option>
+              <option value="same_daily">당일부터 매일</option>
             </select>
           ) : null}
           {dateKind ? (
@@ -145,6 +151,13 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               <option value="">공정 조건 없음</option>
               {unlessStep && !meta.steps.includes(unlessStep) ? <option value={unlessStep}>{unlessStep}</option> : null}
               {meta.steps.map(step => <option key={step} value={step}>{step}</option>)}
+            </select>
+          ) : null}
+          {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
+          {dateKind && unlessStep ? (
+            <select value={unlessMode} aria-label="공정 조건" onChange={event => setUnlessMode(event.target.value)}>
+              <option value="completed">미완료</option>
+              <option value="started">미착수</option>
             </select>
           ) : null}
           {immKind && autoKind !== AUTO_KIND_ORDER_CREATED ? (
@@ -158,6 +171,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <select value={audience} aria-label="받는 사람" onChange={event => setAudience(event.target.value)}>
               <option value="customer">고객</option>
               <option value={AUDIENCE_STAFF}>직원</option>
+              {dateKind ? <option value={AUDIENCE_SALES}>영업담당</option> : null}
             </select>
           ) : null}
           {(dateKind || immKind) && audience === AUDIENCE_STAFF ? meta.staff.map(person => (

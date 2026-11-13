@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { getSendProvider } from './sendProvider.js';
 import { staffDirectory } from './smsManualSend.js';
+import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { ensureTextTemplateSchema, infoCheck, INSTANT_KINDS, isEventKind, isInfoKind, isInstantKind, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { STEPS } from './steps.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
@@ -19,10 +20,11 @@ const SEND_RESERVE_MS = 4000;
 const TARGET_LIMIT = 1000;
 const DEFAULT_MAX_PER_DAY = 200;
 const DATE_COLUMN = Object.freeze({ due_date: 'due_date', ship_scheduled: 'ship_scheduled_date' });
+const SHIP_OR_DUE_SQL = "COALESCE(NULLIF(o.ship_scheduled_date, ''), NULLIF(o.due_date, ''))"; // 3단계-가: 출고예정일(없으면 납기일)
 const PROCESS_COLUMN = Object.freeze({ process_started: 'started_at', process_completed: 'completed_at' });
 const WINDOW_MS = 24 * 3600000; // 즉시형 사건 창: [max(켠 시각, 지금 − 24시간), 지금]
 const KEY_CHUNK = 200;
-const ORDER_COLUMNS = 'o.id, o.phone, o.client_name, o.order_date, o.due_date, o.ship_scheduled_date, o.product_type, o.door_type, o.width, o.depth, o.height, o.quantity';
+const ORDER_COLUMNS = 'o.id, o.phone, o.client_name, o.order_date, o.due_date, o.ship_scheduled_date, o.product_type, o.door_type, o.width, o.depth, o.height, o.quantity, o.sales_person';
 export const CUSTOMER_VARS = Object.freeze(['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크']);
 export const STAFF_VARS = Object.freeze([...CUSTOMER_VARS, '제품']);
 
@@ -33,6 +35,7 @@ const digits = value => String(value ?? '').replace(/\D/g, '');
 const kstDate = nowMs => new Date(nowMs + 9 * 3600000).toISOString().slice(0, 10);
 const kstHour = nowMs => new Date(nowMs + 9 * 3600000).getUTCHours();
 const addDays = (date, n) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const kstWeekend = nowMs => { const d = new Date(nowMs + 9 * 3600000).getUTCDay(); return d === 0 || d === 6; };
 const inSendWindow = nowMs => { const h = kstHour(nowMs); return h >= SEND_WINDOW.from && h < SEND_WINDOW.to; };
 const hashOf = phone => crypto.createHash('sha256').update(`${HASH_SALT}:${digits(phone)}`).digest('hex');
 const intEnv = (value, fallback) => { const n = Number(value); return Number.isInteger(n) && n > 0 ? n : fallback; };
@@ -78,7 +81,7 @@ export function orderVars(order, audience, trackUrl = '') {
     고객명: cleanValue(order.client_name).slice(0, 20) || '고객', 주문번호: orderNo(order), 규격: specLine(order),
     수량: qty === null ? '' : `${qty}대`, 예상출고일: fmtDate(customerExpectedShipDate(order)), 조회링크: trackUrl || '',
   };
-  if (audience === 'staff') vars.제품 = cleanValue(order.product_type) || '주문 제품';
+  if (audience === 'staff' || audience === 'sales') vars.제품 = cleanValue(order.product_type) || '주문 제품';
   for (const key of Object.keys(vars)) vars[key] = cleanValue(vars[key]);
   return vars;
 }
@@ -97,33 +100,39 @@ export function buildEventParts(template, imageCount) {
 // 시험 발송용: 예시 값으로 치환(직원 대상이면 직원용 변수까지)
 export function eventExampleText(part, template) {
   if (part.short) return part.text;
-  return fillVars(String(template.body).trim(), orderVars(EXAMPLE_ORDER, template.auto_audience === 'staff' ? 'staff' : 'customer', 'https://production-status.vercel.app/track/EXAMPLE'));
+  return fillVars(String(template.body).trim(), orderVars(EXAMPLE_ORDER, template.auto_audience === 'customer' ? 'customer' : 'staff', 'https://production-status.vercel.app/track/EXAMPLE'));
 }
 
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
   if (!row) return null;
   return {
     id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
-    auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: row.auto_audience === 'staff' ? 'staff' : 'customer',
+    auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
+    auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
   };
 }
 
 // 주문 행 → 받는 사람별 발송 후보. suffix 는 dedupe_key 끝 부분(기준일형: 기준일, 즉시형: 종류).
-function expandItems(rows, template, staff, suffix) {
+function expandItems(rows, template, staff, suffix, stats) {
   const people = template.auto_audience === 'staff'
     ? (staff || staffDirectory()).filter(person => template.auto_staff.includes(person.id) && MOBILE_RE.test(digits(person.phone)))
     : null;
   const items = [];
   for (const order of rows || []) {
-    const recipients = people ? people.map(person => digits(person.phone)) : [digits(order.phone)].filter(phone => TARGET_RE.test(phone));
+    let recipients;
+    if (template.auto_audience === 'sales') { // 영업담당: orders.sales_person → alertRoutes 의 이름·번호표(읽기만). 못 찾으면 건너뜀
+      const phone = digits(ALERT_ROUTES[canonicalAlertRecipientName(order.sales_person)]);
+      recipients = MOBILE_RE.test(phone) ? [phone] : [];
+      if (!recipients.length && stats) stats.noSales += 1;
+    } else recipients = people ? people.map(person => digits(person.phone)) : [digits(order.phone)].filter(phone => TARGET_RE.test(phone));
     const seen = new Set();
     for (const phone of recipients) {
       if (seen.has(phone)) continue;
@@ -164,26 +173,37 @@ async function instantCandidates(db, template, { nowMs, staff, preview }) {
 }
 
 // 오늘 대상(이미 선점한 것 제외 전). 납기일/출고예정일 칸이 오늘 − offset 인 진행 중 주문만(당일만, 뒤늦게 보내지 않음).
-async function candidates(db, template, { nowMs, staff, preview }) {
+async function candidates(db, template, { nowMs, staff, preview, warn }) {
   if (isInstantKind(template.auto_kind)) return instantCandidates(db, template, { nowMs, staff, preview });
   if (!isEventKind(template.auto_kind)) return [];
-  const column = DATE_COLUMN[template.auto_kind];
-  const baseDay = addDays(kstDate(nowMs), -template.auto_offset);
+  const today = kstDate(nowMs);
+  const baseDay = addDays(today, -template.auto_offset);
+  const daily = template.auto_daily || '';
+  const expr = template.auto_kind === 'ship_or_due' ? SHIP_OR_DUE_SQL : `o.${DATE_COLUMN[template.auto_kind]}`;
   const args = [baseDay];
+  let range = ` AND LEFT(${expr}, 10) = ?`; // 기존: 기준일 그 하루만
+  if (daily === 'until') { range = ` AND LEFT(${expr}, 10) >= ? AND LEFT(${expr}, 10) <= ?`; args.splice(0, 1, today, baseDay); } // 오늘 ≤ 기준일 ≤ 오늘 − offset
+  else if (daily === 'ongoing') range = ` AND LEFT(${expr}, 10) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND LEFT(${expr}, 10) <= ?`; // 기준일 ≤ 오늘 − offset(날짜가 빈 주문 제외)
   let unless = '';
-  if (template.auto_unless_step) { unless = " AND EXISTS (SELECT 1 FROM processes p WHERE p.order_id = o.id AND p.step_name = ? AND p.status <> 'completed')"; args.push(template.auto_unless_step); }
+  if (template.auto_unless_step) {
+    const notDone = template.auto_unless_mode === 'started' ? "p.status NOT IN ('in_progress', 'completed')" : "p.status <> 'completed'"; // 미착수 = 진행중·완료가 아님
+    unless = ` AND EXISTS (SELECT 1 FROM processes p WHERE p.order_id = o.id AND p.step_name = ? AND ${notDone})`; args.push(template.auto_unless_step);
+  }
   const out = await db.execute({
     sql: `SELECT ${ORDER_COLUMNS}
-      FROM orders o WHERE o.status = 'in_production' AND o.${column} IS NOT NULL AND LEFT(o.${column}, 10) = ?${unless} ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
+      FROM orders o WHERE o.status = 'in_production' AND ${expr} IS NOT NULL${range}${unless} ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
     args,
   });
-  return expandItems(out.rows, template, staff, baseDay);
+  const stats = { noSales: 0 };
+  const items = expandItems(out.rows, template, staff, daily ? today : baseDay, stats); // 매일 반복이면 키 끝 날짜 = 오늘(하루 1번)
+  if (stats.noSales && warn) warn('[sms-event] 영업담당을 찾지 못해 건너뛴 건수', stats.noSales);
+  return items;
 }
 
 async function pending(db, template, deps) {
   const items = await candidates(db, template, deps);
   if (!items.length) return [];
-  if (isInstantKind(template.auto_kind)) { // 즉시형: 후보 키만 IN 조회(문구 기록 전체를 읽지 않는다)
+  if (isInstantKind(template.auto_kind) || template.auto_daily) { // 즉시형·매일 반복: 후보 키만 IN 조회(문구 기록 전체를 읽지 않는다)
     const done = new Set();
     const keys = items.map(item => item.key);
     for (let i = 0; i < keys.length; i += KEY_CHUNK) {
@@ -217,6 +237,7 @@ export async function runEventSend(template, { db, provider, env = process.env, 
   if (!template.auto_enabled || !autoOn(env)) return { ...out, reason: 'off' };
   if (!inSendWindow(nowMs)) return { ...out, reason: 'night' };
   if (!isInfoKind(template.auto_kind)) return { ...out, reason: 'no_auto' };
+  if (isEventKind(template.auto_kind) && template.auto_weekdays && kstWeekend(nowMs)) return { ...out, reason: 'weekend' }; // 평일만: KST 토·일 무동작
   if (isInstantKind(template.auto_kind) && template.auto_kind !== 'order_created' && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
   if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience)) return { ...out, reason: 'info_check' };
   const vendor = provider || getSendProvider();
@@ -226,7 +247,7 @@ export async function runEventSend(template, { db, provider, env = process.env, 
 
   await ensureEventSchema(db);
   const today = kstDate(nowMs);
-  const eligible = await pending(db, template, { nowMs, staff });
+  const eligible = await pending(db, template, { nowMs, staff, warn });
   out.targets = eligible.length;
   if (!eligible.length) return { ...out, ran: true };
 
@@ -314,7 +335,7 @@ export async function runEventSendAll(deps = {}) {
   await ensureTextTemplateSchema(db);
   await ensureEventSchema(db);
   await db.execute({ sql: "UPDATE sms_event_sends SET status = 'uncertain', reason = '실행이 끊김' WHERE status = 'claimed' AND kst_date < ?", args: [kstDate(nowMs)] });
-  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('due_date', 'ship_scheduled') ORDER BY id ASC", args: [] });
+  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('due_date', 'ship_scheduled', 'ship_or_due') ORDER BY id ASC", args: [] });
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS;
   for (const row of list.rows || []) {
