@@ -4,7 +4,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, paginateRows, smsBadges, smsPills, sortSmsItems,
+  audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
 import { autoConditionLine, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
@@ -114,20 +114,26 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   );
 
   const { items } = state;
-  const pills = useMemo(() => smsPills(items), [items]);
-  const filter = picked ?? defaultSmsFilter(items);
-  const runningAutos = useMemo(() => (mySection ? mySection.items.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)) : []), [mySection, autoStatus]);
+  const sortedMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
+  const pills = useMemo(() => [...smsPills(items), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection]);
+  const rawTab = picked ?? defaultSmsFilter(items);
+  const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
+  const isMineTab = tab === 'mine';
+  const filter = isMineTab ? 'all' : tab;
+  const runningAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
   const shownAutos = filter === 'in_use' ? runningAutos : [];
   const sections = useMemo(() => ensureAutoSection(audienceSections(items, filter), shownAutos.length), [items, filter, shownAutos.length]);
 
+  // 쪽 나누기는 선택한 탭의 행에만 적용한다
   const rowKeys = useMemo(() => {
-    const keys = mySection ? mySection.items.map((entry) => `m-${entry.id}`) : [];
+    if (isMineTab) return sortedMine.map((entry) => `m-${entry.id}`);
+    const keys = [];
     sections.forEach((aud) => aud.kinds.forEach((section) => {
       if (aud.group === '고객' && section.kind === '이벤트·혜택') shownAutos.forEach((entry) => keys.push(`run-${entry.id}`));
       section.items.forEach((item) => keys.push(`i-${item.id}`));
     }));
     return keys;
-  }, [mySection, sections, shownAutos]);
+  }, [isMineTab, sortedMine, sections, shownAutos]);
   const paged = paginateRows(rowKeys, pageNo);
   const pageSet = new Set(paged.rows);
   const pickFilter = (id) => { setPicked(id); setPageNo(1); setOpenId(''); setMineOpen(''); };
@@ -148,28 +154,30 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   } else {
     body = (
       <>
-        {mySection && mySection.items.some((entry) => pageSet.has(`m-${entry.id}`)) ? (
-          <section className="ktm-aud" aria-label="내 문구">
-            <h3 className="ktm-kind-head ktm-kind-head--aud">내 문구 <span className="ktm-kind-count">{mySection.count}</span></h3>
-            <ul className="ktm-cards">
-              {mySection.items.filter((entry) => pageSet.has(`m-${entry.id}`)).map((entry) => renderMine(entry))}
-            </ul>
-          </section>
-        ) : null}
         {mineError ? <p className="ktm-alert" role="alert">{mineError}</p> : null}
-        <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
-          {pills.map((pill) => (
-            <button type="button" key={pill.id} className={`ktm-pill${filter === pill.id ? ' is-active' : ''}`} aria-pressed={filter === pill.id} onClick={() => pickFilter(pill.id)}>
-              {pill.label} {pill.count}
-            </button>
-          ))}
+        <div className="stl-tabs">
+          <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
+            {pills.map((pill) => (
+              <button type="button" key={pill.id} className={`ktm-pill${tab === pill.id ? ' is-active' : ''}`} aria-pressed={tab === pill.id} onClick={() => pickFilter(pill.id)}>
+                {pill.label} {pill.count}
+              </button>
+            ))}
+          </div>
+          <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
         </div>
-        {sections.length === 0 ? <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div> : sections.filter((aud) => aud.kinds.some((section) => kindHasRow(aud, section))).map((aud) => (
-          <section key={aud.group} className="ktm-aud" aria-label={aud.group}>
-            <h3 className="ktm-kind-head ktm-kind-head--aud">{aud.group} <span className="ktm-kind-count">{aud.count}</span></h3>
-            {aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => (
-              <section key={section.kind || aud.group} className="ktm-kind" aria-label={section.kind || aud.group}>
-                {section.kind ? <h3 className="ktm-kind-head">{section.kind} <span className="ktm-kind-count">{section.items.length + (aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0)}</span></h3> : null}
+        <div className="stl-table">
+          <div className="stl-cols" aria-hidden="true"><span>템플릿 이름</span><span>발송 조건</span><span>상태</span><span>관리</span></div>
+          {isMineTab ? (
+            <ul className="ktm-cards">
+              {sortedMine.filter((entry) => pageSet.has(`m-${entry.id}`)).map((entry) => renderMine(entry))}
+            </ul>
+          ) : sections.length === 0 ? <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div> : sections.filter((aud) => aud.kinds.some((section) => kindHasRow(aud, section))).map((aud) => (
+            aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => (
+              <section key={`${aud.group}/${section.kind || ''}`} className="stl-group" aria-label={section.kind || aud.group}>
+                <h3 className="stl-grouphead">
+                  {section.kind ? `${aud.group} › ${section.kind}` : aud.group}{' '}
+                  <span className="ktm-kind-count">{section.kind ? section.items.length + (aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0) : aud.count}</span>
+                </h3>
                 <ul className="ktm-cards">
                   {aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.filter((entry) => pageSet.has(`run-${entry.id}`)).map((entry) => renderMine(entry, 'run-')) : null}
                   {section.items.filter((item) => pageSet.has(`i-${item.id}`)).map((item) => {
@@ -202,9 +210,9 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                   })}
                 </ul>
               </section>
-            ))}
-          </section>
-        ))}
+            ))
+          ))}
+        </div>
         {paged.pages > 1 ? (
           <nav className="stl-pager" aria-label="쪽 이동">
             <button type="button" className="stl-page" disabled={paged.page <= 1} aria-label="이전 쪽" onClick={() => goPage(paged.page - 1)}>‹</button>

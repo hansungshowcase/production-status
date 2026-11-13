@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildSmsItems, defaultSmsFilter, filterSmsItems, paginateRows, smsBadges, smsPills, sortSmsItems,
+  buildSmsItems, defaultSmsFilter, filterSmsItems, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -106,4 +106,9 @@ test('paginateRows: 10행씩 쪽 나누기, 쪽 번호는 범위로 고정', () 
   assert.equal(paginateRows(rows, 9).page, 2);
   assert.deepEqual(paginateRows(rows.slice(0, 10), 5), { page: 1, pages: 1, rows: rows.slice(0, 10) });
   assert.deepEqual(paginateRows([], 3), { page: 1, pages: 1, rows: [] });
+});
+
+test('sortByNameNumeric: 내 문구는 숫자 인식 순서', () => {
+  const names = ['40일', '20일', '2일', '0일', '3일', '10일'].map((name) => ({ name }));
+  assert.deepEqual(sortByNameNumeric(names).map((e) => e.name), ['0일', '2일', '3일', '10일', '20일', '40일']);
 });

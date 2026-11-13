@@ -179,3 +179,8 @@ export function paginateRows(rows, page, size = 10) {
   const at = Math.min(pages, Math.max(1, Math.floor(Number(page)) || 1));
   return { page: at, pages, rows: list.slice((at - 1) * size, at * size) };
 }
+
+// 내 문구 이름을 숫자 인식 순서로(0일, 2일, 3일 … 20일, 40일)
+export function sortByNameNumeric(entries) {
+  return [...(Array.isArray(entries) ? entries : [])].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko', { numeric: true }));
+}
