@@ -47,7 +47,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     const el = bodyRef.current;
     const at = el ? [el.selectionStart, el.selectionEnd] : [body.length, body.length];
     const text = `#{${varName}}`;
-    setBody(`${body.slice(0, at[0])}${text}${body.slice(at[1])}`);
+    setBody(prev => `${prev.slice(0, at[0])}${text}${prev.slice(at[1])}`);
     setTimeout(() => { if (el) { el.focus(); el.setSelectionRange(at[0] + text.length, at[0] + text.length); } }, 0);
   };
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
@@ -97,11 +97,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       </label>
       <label className="stf-field">내용
         <textarea ref={bodyRef} rows={6} value={body} onChange={event => setBody(event.target.value)} />
-        <span className="stf-meta">
-          <span className="stf-vars">{autoVariables(autoKind, audience).map(item => <button key={item} type="button" className="ktm-btn stf-var" onClick={() => insertVar(item)}>{item}</button>)}</span>
-          <span className="stf-count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}</span>
-        </span>
       </label>
+      <div className="stf-meta">
+        <span className="stf-vars">{autoVariables(autoKind, audience).map(item => <button key={item} type="button" className="ktm-btn stf-var" onClick={() => insertVar(item)}>{item}</button>)}</span>
+        <span className="stf-count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}</span>
+      </div>
       <div className="stf-row">
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
         <button type="button" className="ktm-btn" disabled={images.length >= IMAGE_MAX} onClick={() => fileRef.current?.click()}>사진</button>
