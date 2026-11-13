@@ -156,6 +156,29 @@ solapi.sendEach = async function sendEach({ from, messages }, { fetchImpl } = {}
   return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
 };
 
+// ---- 받는 사람마다 변수가 다른 알림톡(자동 발송용, 2026-11-13 설계 19-3) ----
+// send-many 1회. messages:[{to, templateId, variables:{이름:값}}]. 같은 채널(pfId)·발신번호. 응답은 sendEach 와 같은 모양. 기존 sendKakao 는 바꾸지 않는다.
+solapi.sendKakaoEach = async function sendKakaoEach({ from, pfId, messages, disableSms = true }, { fetchImpl } = {}) {
+  const list = (Array.isArray(messages) ? messages : []).map(item => {
+    const variables = {};
+    for (const [name, value] of Object.entries(item.variables || {})) variables[`#{${name}}`] = String(value ?? '');
+    return { to: item.to, from, type: 'ATA', kakaoOptions: { pfId, templateId: item.templateId, variables, disableSms: disableSms !== false } };
+  });
+  const total = list.length;
+  let payload;
+  try {
+    payload = await call('messages/v4/send-many/detail', { method: 'POST', body: { messages: list, allowDuplicates: false, showMessageList: false } }, { fetchImpl });
+  } catch (error) {
+    const status = Number(error?.status);
+    if (status >= 400 && status < 500) return { accepted: 0, failed: total, groupId: null, uncertain: false, error: String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) };
+    return { accepted: 0, failed: 0, groupId: null, uncertain: true, error: '보냈는지 확인하지 못했습니다. 발송 내역을 확인해 주세요' };
+  }
+  const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
+  const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
+  const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
+  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
+};
+
 const PROVIDERS = { solapi };
 
 export function getSendProvider(name = process.env.SMS_SEND_PROVIDER || 'solapi') {

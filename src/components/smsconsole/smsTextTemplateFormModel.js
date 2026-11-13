@@ -24,6 +24,8 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
   } else if (autoKind === AUTO_KIND_MEMBER_JOINED) {
     // 이름·본문만 본다
+  } else if (autoKind === AUTO_KIND_LEAD_PLUS) {
+    if (normalizeLeadDays(days) === null) return { ok: false, reason: 'offset', info };
   } else if (AUTO_KINDS.includes(autoKind)) {
     if (normalizeDays(days) === null) return { ok: false, reason: 'days', info };
     if (normalizeSendFrom(sendFrom) === null) return { ok: false, reason: 'sendFrom', info };
@@ -46,7 +48,8 @@ export const AUTO_KIND_PROCESS_STARTED = 'process_started';
 export const AUTO_KIND_PROCESS_COMPLETED = 'process_completed';
 export const IMMEDIATE_KINDS = [AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED];
 export const AUTO_KIND_MEMBER_JOINED = 'member_joined';
-export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED];
+export const AUTO_KIND_LEAD_PLUS = 'lead_plus_days';
+export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS];
 export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
 export const isDateKind = (kind) => DATE_KINDS.includes(kind);
@@ -54,7 +57,7 @@ export const isImmediateKind = (kind) => IMMEDIATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
 export const AUTO_DEFAULT_REPEAT = 1;
 export const AUTO_DEFAULT_INTERVAL = 30;
-const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시', [AUTO_KIND_MEMBER_JOINED]: '자사몰 회원가입 시' };
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시', [AUTO_KIND_MEMBER_JOINED]: '자사몰 회원가입 시', [AUTO_KIND_LEAD_PLUS]: '가입·문의' };
 
 // 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null. 매일 반복(daily)은 별도 체크
 export const dirDaily = (dir, daily) => (daily ? (dir === 'before' ? 'until' : 'ongoing') : '');
@@ -82,6 +85,7 @@ const offsetText = (offset, daily) => {
 // 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
 export function autoVariables(kind, audience) {
   if (kind === AUTO_KIND_MEMBER_JOINED) return [];
+  if (kind === AUTO_KIND_LEAD_PLUS) return ['고객명'];
   if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
   const list = ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'];
   return audience === AUDIENCE_STAFF || audience === AUDIENCE_SALES ? [...list, '제품'] : list;
@@ -110,6 +114,14 @@ export function normalizeSendFrom(value) {
   return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3]) ? text : null;
 }
 
+// 가입·문의 후 일수 칸 → 0~365 정수, 아니면 null
+export function normalizeLeadDays(value) {
+  const text = String(value ?? '').trim();
+  if (!/^\d{1,3}$/.test(text)) return null;
+  const days = Number(text);
+  return days <= 365 ? days : null;
+}
+
 // 일수 칸 → 1~365 정수, 아니면 null
 export function normalizeDays(value) {
   const text = String(value ?? '').trim();
@@ -130,6 +142,8 @@ export function textFormStopText(reason) {
   if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
   if (reason === 'step') return '공정을 골라 주세요';
   if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
+  if (reason === 'lead_source_not_connected') return '가입·문의 정보 연결이 아직 안 됐습니다.';
+  if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
   if (reason === 'staff') return '받을 직원을 한 명 이상 골라 주세요';
   if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
   if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
@@ -143,6 +157,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
     if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind };
+    if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || '') };
     if (isImmediateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF;
       return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
@@ -194,6 +209,11 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
   entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
 ) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객'
+) : entry?.autoKind === AUTO_KIND_LEAD_PLUS ? joinDot(
+  Number(entry.autoDays) > 0 ? `가입·문의 후 ${Number(entry.autoDays)}일 뒤` : '가입·문의 당일',
+  Number(entry.autoDays) > 0 ? '오전 9시 30분' : '',
+  '고객',
+  entry.autoAtaTemplate ? '알림톡' : '',
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
   '오전 10시',
@@ -220,6 +240,8 @@ export function toggleRejectText(reason) {
   if (reason === 'no_ad_prefix') return '본문이 (광고)로 시작해야 켤 수 있습니다.';
   if (reason === 'no_optout_080') return '본문에 무료수신거부 080 번호 줄이 있어야 켤 수 있습니다.';
   if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
+  if (reason === 'lead_source_not_connected') return '가입·문의 정보 연결이 아직 안 됐습니다.';
+  if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
   return '';
 }
 
@@ -274,6 +296,7 @@ export function myTextSection(items) {
       imageCount: Number(item.image_count) || (item.has_image ? 1 : 0),
       autoKind: AUTO_KINDS.includes(item.auto_kind) ? item.auto_kind : '',
       autoDays: Number(item.auto_days) || 0,
+      autoAtaTemplate: String(item.auto_ata_template || ''),
       autoSendFrom: String(item.auto_send_from || '').slice(0, 10),
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
@@ -307,7 +330,8 @@ export function formInitialFromItem(item) {
     body: String(item?.body || ''),
     images: photos.map((data) => ({ data, url: `data:image/jpeg;base64,${data}` })),
     autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
-    days: String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
+    days: item?.auto_kind === AUTO_KIND_LEAD_PLUS ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
+    ataTemplate: String(item?.auto_ata_template || ''),
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
     repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),
     interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),

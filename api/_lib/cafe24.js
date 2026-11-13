@@ -2,10 +2,11 @@
 // 번호는 가입 문자를 보내기 전까지만 암호화해 두고(선점 직후·24시간 뒤 지움), 해시·끝 4자리만 남긴다. 토큰·번호·본문은 로그에 남기지 않는다.
 import crypto from 'node:crypto';
 import { decryptPrivateConfigRow, encryptPrivateConfigValue } from './privateConfig.js';
+import { insertLead } from './smsLeads.js';
 
 const HASH_SALT = 'hansung-sms-event-v1'; // smsEventSend.js 의 번호 해시와 같은 식(같은 번호 = 같은 해시)
-const MOBILE_RE = /^01[016789]\d{7,8}$/;
-const PHONE_KEY = 'cafe24.phone';
+export const MOBILE_RE = /^01[016789]\d{7,8}$/;
+export const PHONE_KEY = 'cafe24.phone';
 const ACCESS_KEY = 'cafe24.access';
 const REFRESH_KEY = 'cafe24.refresh';
 const PHONE_KEEP_MS = 24 * 3600000;
@@ -19,7 +20,7 @@ export const WEBHOOK_EVENT_JOIN = 90032;
 const flags = new Map();
 export function _resetCafe24SchemaForTest() { flags.clear(); }
 
-const digits = value => String(value ?? '').replace(/\D/g, '');
+export const digits = value => String(value ?? '').replace(/\D/g, '');
 const sha = text => crypto.createHash('sha256').update(text).digest('hex');
 export const phoneHash = phone => sha(`${HASH_SALT}:${digits(phone)}`);
 const memberHash = memberId => sha(`cafe24-member-v1:${String(memberId).trim()}`);
@@ -209,7 +210,7 @@ export async function hasEnabledJoinTemplate(db) {
 }
 
 // 가입 1건 저장(같은 회원 아이디는 1행). 번호는 keepPhone 이고 암호화가 될 때만 저장한다. 반환: true=새 행
-export async function insertSignup(db, { memberId, phone, joinedAtMs, source, keepPhone }) {
+export async function insertSignup(db, { memberId, phone, name, joinedAtMs, source, keepPhone }) {
   const id = String(memberId || '').trim(); const number = digits(phone);
   if (!id || !MOBILE_RE.test(number)) return false;
   let enc = null;
@@ -218,7 +219,9 @@ export async function insertSignup(db, { memberId, phone, joinedAtMs, source, ke
     sql: 'INSERT INTO cafe24_signups (member_hash, joined_at, phone_hash, phone_last4, phone_enc, source) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (member_hash) DO NOTHING RETURNING id',
     args: [memberHash(id), iso(joinedAtMs), phoneHash(number), number.slice(-4), enc, source],
   });
-  return Boolean(out.rows?.[0]);
+  const added = Boolean(out.rows?.[0]);
+  if (added) { try { await insertLead(db, { source: 'cafe24', key: id, phone: number, name, joinedAtMs }); } catch { /* 접수 표 저장 실패는 조용히 */ } }
+  return added;
 }
 
 // 발송 후보: 창 안의 가입 중 번호가 남아 있는 것(읽기만). 복호화 못 하는 행은 건너뛴다.
@@ -263,7 +266,7 @@ export async function pollSignups(db, { env = process.env, fetchImpl = fetch, no
     let added = 0; let skipped = 0;
     for (const item of Array.isArray(list) ? list : []) {
       try {
-        if (await insertSignup(db, { memberId: item?.member_id, phone: item?.cellphone, joinedAtMs: readJoinedAt(item?.created_date, nowMs), source: 'poll', keepPhone: true })) added += 1;
+        if (await insertSignup(db, { memberId: item?.member_id, phone: item?.cellphone, name: item?.name, joinedAtMs: readJoinedAt(item?.created_date, nowMs), source: 'poll', keepPhone: true })) added += 1;
       } catch { skipped += 1; }
     }
     if (skipped) warn('[cafe24] 보충 조회에서 저장하지 못한 건수', skipped);

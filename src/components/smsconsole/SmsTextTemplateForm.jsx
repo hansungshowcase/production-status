@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, autoVariables, isDateKind, isImmediateKind, KIND_KAKAO, KIND_SMS, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
 import './SmsTextTemplateForm.css';
 
 // 새 템플릿 등록 맨 위의 종류 고르기(문자 / 알림톡)
@@ -33,7 +33,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [step, setStep] = useState(initial?.step || '');
   const [audience, setAudience] = useState(initial?.audience || 'customer');
   const [staff, setStaff] = useState(initial?.staff || []);
-  const [meta, setMeta] = useState({ steps: [], staff: [] });
+  const [ataTemplate, setAtaTemplate] = useState(initial?.ataTemplate || '');
+  const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,12 +43,13 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const bodyRef = useRef(null);
   useEffect(() => {
     let alive = true;
-    fetchSmsConsole('auto_meta').then(out => { if (alive && out) setMeta({ steps: Array.isArray(out.steps) ? out.steps : [], staff: Array.isArray(out.staff) ? out.staff : [] }); }).catch(() => {});
+    fetchSmsConsole('auto_meta').then(out => { if (alive && out) setMeta({ steps: Array.isArray(out.steps) ? out.steps : [], staff: Array.isArray(out.staff) ? out.staff : [], ata: Array.isArray(out.ata_templates) ? out.ata_templates : [] }); }).catch(() => {});
     return () => { alive = false; };
   }, []);
   const dateKind = isDateKind(autoKind);
   const immKind = isImmediateKind(autoKind);
-  const dayKind = Boolean(autoKind) && !dateKind && !immKind && autoKind !== AUTO_KIND_MEMBER_JOINED;
+  const dayKind = Boolean(autoKind) && !dateKind && !immKind && autoKind !== AUTO_KIND_MEMBER_JOINED && autoKind !== AUTO_KIND_LEAD_PLUS;
+  const leadKind = autoKind === AUTO_KIND_LEAD_PLUS;
   const check = validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
   const insertVar = varName => {
     const el = bodyRef.current;
@@ -79,7 +81,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setBusy(true);
     setError('');
     try {
-      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff } }));
+      const out = await postSmsConsole('text_template_save', buildSaveBody({ id: initial?.id, name, body, images, auto: { kind: autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, unlessStep, unlessMode, weekdays, step, audience, staff, ataTemplate } }));
       setSaved(out.item);
       onSaved?.(out.item);
     } catch (err) { setError(textFormStopText(err?.data?.reason) || err.message || '등록하지 못했습니다.'); } finally { setBusy(false); }
@@ -121,6 +123,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           <select value={autoKind} aria-label="자동 발송" onChange={event => setAutoKind(event.target.value)}>
             <option value="">자동 발송 없음</option>
             <option value={AUTO_KIND_MEMBER_JOINED}>자사몰 회원가입 시</option>
+            <option value={AUTO_KIND_LEAD_PLUS}>가입·문의 후</option>
             <option value={AUTO_KIND_ORDER_CREATED}>주문 등록 시</option>
             <option value={AUTO_KIND_ORDER}>주문 등록 후</option>
             <option value={AUTO_KIND_PROCESS_STARTED}>공정 시작 시</option>
@@ -130,8 +133,15 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <option value={AUTO_KIND_SHIP_PLAN}>출고예정일 기준</option>
             <option value={AUTO_KIND_SHIP_OR_DUE}>출고·납기일 기준</option>
           </select>
-          {dayKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
-          {dayKind ? <span>일 뒤</span> : null}
+          {dayKind || leadKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
+          {dayKind || leadKind ? <span>일 뒤</span> : null}
+          {leadKind ? (
+            <select value={ataTemplate} aria-label="알림톡" onChange={event => setAtaTemplate(event.target.value)}>
+              <option value="">문자로</option>
+              {ataTemplate && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{ataTemplate}</option> : null}
+              {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          ) : null}
           {dayKind ? <input type="date" className="stf-from" value={sendFrom} aria-label="시작일" onChange={event => setSendFrom(event.target.value)} /> : null}
           {dayKind ? <input type="text" inputMode="numeric" className="stf-days" value={repeat} maxLength={2} aria-label="횟수" onChange={event => setRepeat(event.target.value)} /> : null}
           {dayKind ? <span>번</span> : null}

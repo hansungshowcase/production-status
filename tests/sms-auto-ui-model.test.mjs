@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  autoConditionLine, autoConfirmLine, autoStatusLine, buildSaveBody, ensureAutoSection, imageUrlsFromItem, myTextSection,
+  autoConditionLine, autoVariables, autoConfirmLine, autoStatusLine, buildSaveBody, ensureAutoSection, imageUrlsFromItem, myTextSection,
   formInitialFromItem, normalizeDays, testPhoneDigits, toggleRejectText, validateTextForm,
 } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
@@ -127,4 +127,28 @@ test('기준일형 확장: 매일 구간·평일만·미착수·영업담당·�
   assert.equal(validateTextForm(base).ok, true);
   assert.equal(validateTextForm({ ...base, offsetDir: 'before', offsetDays: '0' }).reason, 'offset');
   assert.equal(m.autoVariables('ship_or_due', 'sales').length, 7);
+});
+
+test('가입·문의 후: 카드 줄 글자(알림톡·문자·당일)', () => {
+  const line = (days, ata) => autoConditionLine(myTextSection([{ id: 1, name: 'A', body: 'x', auto_kind: 'lead_plus_days', auto_days: days, auto_ata_template: ata }]).items[0]);
+  assert.equal(line(2, 'KA01'), '가입·문의 후 2일 뒤 · 오전 9시 30분 · 고객 · 알림톡');
+  assert.equal(line(0, 'KA01'), '가입·문의 당일 · 고객 · 알림톡');
+  assert.equal(line(20, ''), '가입·문의 후 20일 뒤 · 오전 9시 30분 · 고객');
+});
+
+test('가입·문의 후: 일수 0 허용 · 저장 본문에 알림톡 포함 · 불러오기 값', () => {
+  assert.equal(validateTextForm({ name: 'a', body: '가', autoKind: 'lead_plus_days', days: '0' }).ok, true);
+  assert.equal(validateTextForm({ name: 'a', body: '가', autoKind: 'lead_plus_days', days: '366' }).ok, false);
+  assert.equal(validateTextForm({ name: 'a', body: '가', autoKind: 'lead_plus_days', days: '' }).ok, false);
+  const save = buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'lead_plus_days', days: '0', ataTemplate: 'KA01', audience: 'staff', daily: true } });
+  assert.deepEqual(save.auto, { kind: 'lead_plus_days', days: 0, ata_template: 'KA01' });
+  const init = formInitialFromItem({ id: 1, name: 'a', body: 'b', auto_kind: 'lead_plus_days', auto_days: 0, auto_ata_template: 'KA01' });
+  assert.equal(init.days, '0');
+  assert.equal(init.ataTemplate, 'KA01');
+});
+
+test('가입·문의 후: 변수는 고객명만 · 켜기 거절 글자', () => {
+  assert.deepEqual(autoVariables('lead_plus_days', 'customer'), ['고객명']);
+  assert.equal(toggleRejectText('lead_source_not_connected'), '가입·문의 정보 연결이 아직 안 됐습니다.');
+  assert.ok(toggleRejectText('ata_not_ready'));
 });

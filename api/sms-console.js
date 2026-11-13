@@ -147,7 +147,16 @@ async function handleGet(req, res, ctx) {
   if (resource === 'auto_meta') { // 번호 없이 공정 이름·직원 이름만
     let connected = false; // 카페24 연결 여부(환경 변수가 없으면 DB 를 보지 않고 false)
     try { connected = await cafe24Connected(deps.db || getDb(), deps.env || process.env); } catch { connected = false; }
-    return res.status(200).json({ steps: [...STEPS], staff: (deps.staff || staffDirectory()).map(item => ({ id: item.id, name: item.name })), cafe24_connected: connected });
+    let leadConnected = false; // 가입·문의 정보 연결 여부(모듈이 없거나 실패하면 false)
+    try { const leads = await import('./_lib/smsLeads.js'); leadConnected = Boolean(await leads.leadSourcesConnected(deps.db || getDb(), deps.env || process.env)); } catch { leadConnected = false; }
+    let ataTemplates = []; // 승인된 한성 채널 알림톡 템플릿(기존 목록 캐시 사용, 실패하면 빈 배열)
+    try {
+      if ((deps.hasCredentials || hasSolapiCredentials)()) {
+        const listed = await kakao.listTemplates(opts);
+        ataTemplates = (listed.items || []).filter(item => item.status === 'APPROVED' && item.id).map(item => ({ id: item.id, name: item.name }));
+      }
+    } catch { ataTemplates = []; }
+    return res.status(200).json({ steps: [...STEPS], staff: (deps.staff || staffDirectory()).map(item => ({ id: item.id, name: item.name })), cafe24_connected: connected, lead_connected: leadConnected, ata_templates: ataTemplates });
   }
   if (resource === 'optouts') {
     try {

@@ -4,6 +4,7 @@ import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
 import { AUTO_TIME_BUDGET_MS, runAutoSendAll } from '../_lib/smsAutoSend.js';
 import { maintainCafe24 } from '../_lib/cafe24.js';
+import { purgeOldLeads } from '../_lib/smsLeads.js';
 import { runEventSendAll } from '../_lib/smsEventSend.js';
 
 function timingSafeMatch(left, right) {
@@ -34,6 +35,7 @@ export async function handleSmsAuto(req, res, dependencies = {}) {
     const result = await run(deps);
     const info = await runEvent(deps); // 광고 실행 뒤 안내 실행(같은 전체 마감 시각)
     try { await (dependencies.maintainCafe24 || maintainCafe24)(db, { env: deps.env, fetchImpl: deps.fetchImpl, nowMs }); } catch { /* 카페24 정리·토큰 갱신 실패는 조용히 */ }
+    try { await (dependencies.purgeOldLeads || purgeOldLeads)(db, nowMs); } catch { /* 접수 정리 실패는 조용히 */ }
     logger.info?.('[sms-auto]', result, info);
     return res.json({ ok: true, ...result, info });
   } catch {
