@@ -13,12 +13,16 @@
 .stf-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .stf-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--smsc-line, #dfe3ea); flex: none; }
 .stf-photo { display: inline-flex; gap: 4px; align-items: center; }
-.stf-auto { display: inline-flex; gap: 2px; align-items: center; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; font-size: 14px; }
+.stf-conds { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.stf-line { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 8px; }
+.stf-cells { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.stf-result { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--smsc-accent-weak, #eaf0ff); font-size: 13px; }
 .stf-form .stf-from { box-sizing: border-box; min-height: 44px; padding: 0 8px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; }
-.stf-auto select { min-height: 44px; padding: 0 2px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; background: var(--smsc-surface, #fff); }
+.stf-cells select { min-height: 44px; padding: 0 2px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; font: inherit; font-size: 14px; background: var(--smsc-surface, #fff); }
 .stf-form input.stf-days { width: 40px; padding: 8px 4px; text-align: center; }
-.stf-auto label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.stf-auto .stf-tag { font-size: 11px; color: var(--smsc-muted, #667085); margin-left: 6px; white-space: nowrap; }
+.stf-cells label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.stf-line .stf-tag { font-size: 11px; color: var(--smsc-muted, #667085); white-space: nowrap; }
+.stf-form textarea { min-height: 120px; }
 .stf-form input.stf-check { width: 16px; height: 16px; margin: 0; }
 .stf-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: -6px; }
 .stf-vars { display: inline-flex; gap: 4px; flex-wrap: wrap; }

@@ -263,6 +263,18 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
 ) : '');
 
+// 발송 조건을 조각으로: { when, who, via, extras[] } — autoConditionLine 과 같은 글을 ' · ' 로 나눠 만든다
+export function autoConditionParts(entry) {
+  const list = autoConditionLine(entry).split(' · ').filter(Boolean);
+  const parts = { when: list[0] || '', who: '', via: '', extras: [] };
+  list.slice(1).forEach((text) => {
+    if (!parts.who && /^(고객|영업담당|직원 \d+명)$/.test(text)) parts.who = text;
+    else if (!parts.via && text === '알림톡') parts.via = text;
+    else parts.extras.push(text);
+  });
+  return parts;
+}
+
 // 현황 한 줄 (resource=auto_status 응답)
 export function autoStatusLine(status) {
   if (!status) return '';

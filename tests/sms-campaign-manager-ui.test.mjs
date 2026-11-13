@@ -8,12 +8,13 @@ const componentSource = readFileSync(new URL('../src/components/SmsCampaignManag
 const componentCss = readFileSync(new URL('../src/components/SmsCampaignManager.css', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../src/api/notificationCampaigns.js', import.meta.url), 'utf8');
 
-test('사이드바 다음에 현재 고객 또는 직원 범위의 문자 관리 도구를 둔다', () => {
-  // 11/11 장부 20번: 가로 대상 탭 → 사이드바 메뉴(customer·staff). 관리 도구는 하나만 mount 하고 audience 만 바꾼다.
-  assert.match(pageSource, /<SmsCampaignManager audience=\{audience\} \/>/);
-  assert.equal(pageSource.split('<SmsCampaignManager').length - 1, 1);
-  assert.ok(pageSource.indexOf('<SmsCampaignManager') > pageSource.indexOf('<SmsConsoleSidebar'));
-  assert.ok(pageSource.indexOf('<SmsCampaignManager') < pageSource.search(/id="sms-history-audience-panel-customer"/));
+test('새 문자 등록 단추는 초안 폼이 아니라 문자 템플릿 등록 팝업으로 연결한다', () => {
+  // 초안 저장소는 서버가 canActivate:false 라 발송되지 않아 화면 연결을 끊고, 실제 발송되는 템플릿 등록으로 보낸다(2026-11-14)
+  assert.doesNotMatch(pageSource, /<SmsCampaignManager/);
+  assert.match(pageSource, /selectMenu\('templates', \{ mode: 'new', kind: KIND_SMS \}\)/);
+  assert.match(pageSource, />새 문자 등록<\/button>/);
+  assert.ok(pageSource.indexOf('sms-console-new-text') > pageSource.indexOf('<SmsConsoleSidebar'));
+  assert.ok(pageSource.indexOf('sms-console-new-text') < pageSource.search(/id="sms-history-audience-panel-customer"/));
   assert.match(pageCss, /grid-template-rows:\s*auto auto minmax\(0, 1fr\)/);
 });
 

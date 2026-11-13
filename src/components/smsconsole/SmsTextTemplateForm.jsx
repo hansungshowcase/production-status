@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage } from './sendPanelModel.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -30,6 +30,29 @@ async function mergeImages(list) {
     edge = Math.round(Math.max(lay.width, lay.height) * 0.8);
   }
   throw new Error('사진이 너무 큽니다');
+}
+
+// 폼 상태 → autoConditionLine 이 받는 entry 모양으로 바꿔 결과 한 줄을 만든다(입력이 올바르지 않으면 빈 글).
+function conditionResult(f) {
+  const kind = f.autoKind;
+  if (!kind) return '';
+  const entry = { autoKind: kind };
+  if (isImmediateKind(kind)) {
+    Object.assign(entry, { autoStep: kind === AUTO_KIND_ORDER_CREATED ? '' : f.step, autoAudience: f.audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer', autoStaffCount: f.staff.length });
+  } else if (isDateKind(kind)) {
+    const offset = normalizeOffset(f.offsetDir, f.offsetDays, f.daily);
+    if (offset === null) return '';
+    Object.assign(entry, { autoOffset: offset, autoDaily: dirDaily(f.offsetDir, f.daily), autoWeekdays: f.weekdays, autoAudience: f.audience, autoStaffCount: f.staff.length, autoUnlessStep: f.unlessStep, autoUnlessMode: f.unlessMode });
+  } else if (kind === AUTO_KIND_LEAD_PLUS) {
+    const leadDays = normalizeLeadDays(f.days);
+    if (leadDays === null) return '';
+    Object.assign(entry, { autoDays: leadDays, autoAtaTemplate: f.ataTemplate });
+  } else if (kind !== AUTO_KIND_MEMBER_JOINED) {
+    const dayCount = normalizeDays(f.days);
+    if (dayCount === null) return '';
+    Object.assign(entry, { autoDays: dayCount, autoSendFrom: f.sendFrom, autoRepeat: normalizeRepeat(f.repeat) ?? AUTO_DEFAULT_REPEAT, autoInterval: normalizeInterval(f.interval) ?? AUTO_DEFAULT_INTERVAL });
+  }
+  return autoConditionLine(entry);
 }
 
 // 문자 템플릿 등록: 이름·내용·사진 1장. 검수가 없어 등록하면 바로 쓸 수 있다.
@@ -96,6 +119,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const mergePending = wantMerge && !mergeFailed && !merged;
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const { info } = check;
+  const conditionText = conditionResult({ autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate });
 
   const pickImage = async event => {
     const file = event.target.files?.[0];
@@ -141,7 +165,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         <input type="text" placeholder="목록에서 찾을 이름 (고객에게는 안 보임)" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => setName(event.target.value)} />
       </label>
       <label className="stf-field">내용
-        <textarea ref={bodyRef} rows={6} value={body} onChange={event => setBody(event.target.value)} />
+        <textarea ref={bodyRef} rows={autoKind ? 4 : 6}value={body} onChange={event => setBody(event.target.value)} />
       </label>
       <div className="stf-meta">
         <span className="stf-vars">{autoVariables(autoKind, audience).map(item => <button key={item} type="button" className="ktm-btn stf-var" onClick={() => insertVar(item)}>{item}</button>)}</span>
@@ -158,85 +182,108 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <button type="button" className="ktm-btn" onClick={() => removeImage(index)}>빼기</button>
           </span>
         ))}
-        <span className="stf-auto">
-          <select value={autoKind} aria-label="자동 발송" onChange={event => setAutoKind(event.target.value)}>
-            <option value="">자동 발송 없음</option>
-            <option value={AUTO_KIND_MEMBER_JOINED}>자사몰 회원가입 시</option>
-            <option value={AUTO_KIND_LEAD_PLUS}>가입·문의 후</option>
-            <option value={AUTO_KIND_ORDER_CREATED}>주문 등록 시</option>
-            <option value={AUTO_KIND_ORDER}>주문 등록 후</option>
-            <option value={AUTO_KIND_PROCESS_STARTED}>공정 시작 시</option>
-            <option value={AUTO_KIND_PROCESS_COMPLETED}>공정 완료 시</option>
-            <option value={AUTO_KIND}>출고 완료 후</option>
-            <option value={AUTO_KIND_DUE}>납기일 기준</option>
-            <option value={AUTO_KIND_SHIP_PLAN}>출고예정일 기준</option>
-            <option value={AUTO_KIND_SHIP_OR_DUE}>출고·납기일 기준</option>
-          </select>
-          {isAdKind(autoKind) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
-          {dayKind || leadKind ? <span className="stf-tag">언제</span> : null}
-          {dayKind || leadKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
-          {dayKind || leadKind ? <span>일 뒤</span> : null}
-          {leadKind ? <span className="stf-tag">알림톡</span> : null}
-          {leadKind ? (
-            <select value={ataTemplate} aria-label="알림톡" onChange={event => setAtaTemplate(event.target.value)}>
-              <option value="">문자로</option>
-              {ataTemplate && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{ataTemplate}</option> : null}
-              {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </div>
+      <div className="stf-conds">
+        <div className="stf-line">
+          <span className="stf-tag">언제</span>
+          <span className="stf-cells">
+            <select value={autoKind} aria-label="자동 발송" onChange={event => setAutoKind(event.target.value)}>
+              <option value="">자동 발송 없음</option>
+              <option value={AUTO_KIND_MEMBER_JOINED}>자사몰 회원가입 시</option>
+              <option value={AUTO_KIND_LEAD_PLUS}>가입·문의 후</option>
+              <option value={AUTO_KIND_ORDER_CREATED}>주문 등록 시</option>
+              <option value={AUTO_KIND_ORDER}>주문 등록 후</option>
+              <option value={AUTO_KIND_PROCESS_STARTED}>공정 시작 시</option>
+              <option value={AUTO_KIND_PROCESS_COMPLETED}>공정 완료 시</option>
+              <option value={AUTO_KIND}>출고 완료 후</option>
+              <option value={AUTO_KIND_DUE}>납기일 기준</option>
+              <option value={AUTO_KIND_SHIP_PLAN}>출고예정일 기준</option>
+              <option value={AUTO_KIND_SHIP_OR_DUE}>출고·납기일 기준</option>
             </select>
-          ) : null}
-          {dayKind ? <span className="stf-tag">시작일</span> : null}
-          {dayKind ? <input type="date" className="stf-from" value={sendFrom} aria-label="시작일" onChange={event => setSendFrom(event.target.value)} /> : null}
-          {dayKind ? <span className="stf-tag">반복</span> : null}
-          {dayKind ? <input type="text" inputMode="numeric" className="stf-days" value={repeat} maxLength={2} aria-label="횟수" onChange={event => setRepeat(event.target.value)} /> : null}
-          {dayKind ? <span>번</span> : null}
-          {dayKind && Number(repeat) >= 2 ? <input type="text" inputMode="numeric" className="stf-days" value={interval} maxLength={3} aria-label="간격" onChange={event => setInterval(event.target.value)} /> : null}
-          {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
-          {dateKind ? <span className="stf-tag">언제</span> : null}
-          {dateKind && offsetDir !== 'same' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
-          {dateKind ? (
-            <select value={offsetDir} aria-label="기준 방향" onChange={event => setOffsetDir(event.target.value)}>
-              <option value="before">일 전</option>
-              <option value="same">당일</option>
-              <option value="after">일 지남</option>
-            </select>
-          ) : null}
-          {dateKind ? <span className="stf-tag">공정</span> : null}
-          {dateKind ? (
-            <select value={unlessStep} aria-label="미완료 공정" onChange={event => setUnlessStep(event.target.value)}>
-              <option value="">공정 조건 없음</option>
-              {unlessStep && !meta.steps.includes(unlessStep) ? <option value={unlessStep}>{unlessStep}</option> : null}
-              {meta.steps.map(step => <option key={step} value={step}>{step}</option>)}
-            </select>
-          ) : null}
-          {dateKind && unlessStep ? (
-            <select value={unlessMode} aria-label="공정 조건" onChange={event => setUnlessMode(event.target.value)}>
-              <option value="completed">미완료</option>
-              <option value="started">미착수</option>
-            </select>
-          ) : null}
-          {dateKind ? <span className="stf-tag">요일</span> : null}
-          {dateKind ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
-          {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
-          {immKind && autoKind !== AUTO_KIND_ORDER_CREATED ? <span className="stf-tag">공정</span> : null}
-          {immKind && autoKind !== AUTO_KIND_ORDER_CREATED ? (
-            <select value={step} aria-label="공정" onChange={event => setStep(event.target.value)}>
-              <option value="">공정 선택</option>
-              {step && !meta.steps.includes(step) ? <option value={step}>{step}</option> : null}
-              {meta.steps.map(item => <option key={item} value={item}>{item}</option>)}
-            </select>
-          ) : null}
-          {dateKind || immKind ? <span className="stf-tag">받는 사람</span> : null}
-          {dateKind || immKind ? (
-            <select value={audience} aria-label="받는 사람" onChange={event => setAudience(event.target.value)}>
-              <option value="customer">고객</option>
-              <option value={AUDIENCE_STAFF}>직원</option>
-              {dateKind ? <option value={AUDIENCE_SALES}>영업담당</option> : null}
-            </select>
-          ) : null}
-          {(dateKind || immKind) && audience === AUDIENCE_STAFF ? meta.staff.map(person => (
-            <button key={person.id} type="button" className={`ktm-btn stf-staff${staff.includes(person.id) ? ' is-active' : ''}`} aria-pressed={staff.includes(person.id)} onClick={() => toggleStaff(person.id)}>{person.name}</button>
-          )) : null}
-        </span>
+            {dayKind || leadKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
+            {dayKind || leadKind ? <span>일 뒤</span> : null}
+            {dateKind && offsetDir !== 'same' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
+            {dateKind ? (
+              <select value={offsetDir} aria-label="기준 방향" onChange={event => setOffsetDir(event.target.value)}>
+                <option value="before">일 전</option>
+                <option value="same">당일</option>
+                <option value="after">일 지남</option>
+              </select>
+            ) : null}
+          </span>
+        </div>
+        {dateKind || immKind ? (
+          <div className="stf-line">
+            <span className="stf-tag">받는 사람</span>
+            <span className="stf-cells">
+              <select value={audience} aria-label="받는 사람" onChange={event => setAudience(event.target.value)}>
+                <option value="customer">고객</option>
+                <option value={AUDIENCE_STAFF}>직원</option>
+                {dateKind ? <option value={AUDIENCE_SALES}>영업담당</option> : null}
+              </select>
+              {audience === AUDIENCE_STAFF ? meta.staff.map(person => (
+                <button key={person.id} type="button" className={`ktm-btn stf-staff${staff.includes(person.id) ? ' is-active' : ''}`} aria-pressed={staff.includes(person.id)} onClick={() => toggleStaff(person.id)}>{person.name}</button>
+              )) : null}
+            </span>
+          </div>
+        ) : null}
+        {dateKind || (immKind && autoKind !== AUTO_KIND_ORDER_CREATED) ? (
+          <div className="stf-line">
+            <span className="stf-tag">공정</span>
+            <span className="stf-cells">
+              {dateKind ? (
+                <select value={unlessStep} aria-label="미완료 공정" onChange={event => setUnlessStep(event.target.value)}>
+                  <option value="">공정 조건 없음</option>
+                  {unlessStep && !meta.steps.includes(unlessStep) ? <option value={unlessStep}>{unlessStep}</option> : null}
+                  {meta.steps.map(item => <option key={item} value={item}>{item}</option>)}
+                </select>
+              ) : (
+                <select value={step} aria-label="공정" onChange={event => setStep(event.target.value)}>
+                  <option value="">공정 선택</option>
+                  {step && !meta.steps.includes(step) ? <option value={step}>{step}</option> : null}
+                  {meta.steps.map(item => <option key={item} value={item}>{item}</option>)}
+                </select>
+              )}
+              {dateKind && unlessStep ? (
+                <select value={unlessMode} aria-label="공정 조건" onChange={event => setUnlessMode(event.target.value)}>
+                  <option value="completed">미완료</option>
+                  <option value="started">미착수</option>
+                </select>
+              ) : null}
+            </span>
+          </div>
+        ) : null}
+        {dayKind || dateKind ? (
+          <div className="stf-line">
+            <span className="stf-tag">반복</span>
+            <span className="stf-cells">
+              {dayKind ? <input type="date" className="stf-from" value={sendFrom} aria-label="시작일" onChange={event => setSendFrom(event.target.value)} /> : null}
+              {dayKind ? <span>부터</span> : null}
+              {dayKind ? <input type="text" inputMode="numeric" className="stf-days" value={repeat} maxLength={2} aria-label="횟수" onChange={event => setRepeat(event.target.value)} /> : null}
+              {dayKind ? <span>번</span> : null}
+              {dayKind && Number(repeat) >= 2 ? <input type="text" inputMode="numeric" className="stf-days" value={interval} maxLength={3} aria-label="간격" onChange={event => setInterval(event.target.value)} /> : null}
+              {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
+              {dateKind ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
+              {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
+            </span>
+          </div>
+        ) : null}
+        {leadKind || isAdKind(autoKind) ? (
+          <div className="stf-line">
+            <span className="stf-tag">수단</span>
+            <span className="stf-cells">
+              {leadKind ? (
+                <select value={ataTemplate} aria-label="알림톡" onChange={event => setAtaTemplate(event.target.value)}>
+                  <option value="">문자로</option>
+                  {ataTemplate && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{`목록에 없는 알림톡 (…${ataTemplate.slice(-4)})`}</option> : null}
+                  {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              ) : null}
+              {isAdKind(autoKind) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
+            </span>
+          </div>
+        ) : null}
+        {conditionText ? <p className="stf-result" aria-label="발송 조건">{conditionText}</p> : null}
       </div>
       {imageError ? <p className="ktm-alert" role="alert">{imageError}</p> : null}
       {error ? <p className="ktm-alert" role="alert">{error}</p> : null}

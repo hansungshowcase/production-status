@@ -6,7 +6,6 @@ import SmsConsoleSidebar from '../components/smsconsole/SmsConsoleSidebar';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
 import SolapiMessageLog from '../components/SolapiMessageLog';
-import SmsCampaignManager from '../components/SmsCampaignManager';
 import StaffSmsPanel from '../components/StaffSmsPanel';
 import './SmsHistoryPage.css';
 
@@ -154,7 +153,7 @@ export default function SmsHistoryPage() {
 
         {(isMounted('customer') || isMounted('staff')) && (
           <div className="sms-console-campaign" hidden={state.menu !== 'customer' && state.menu !== 'staff'}>
-            <SmsCampaignManager audience={audience} />
+            <button type="button" className="sms-console-new-text" onClick={() => selectMenu('templates', { mode: 'new', kind: KIND_SMS })}>새 문자 등록</button>
           </div>
         )}
 

@@ -819,6 +819,22 @@
 .sms-console-pane,
 .sms-console-campaign { min-width: 0; }
 
+/* 새 문자 등록: 템플릿 > 문자 템플릿의 등록 팝업(저장·자동 발송 조건)을 연다 */
+.sms-console-campaign { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
+.sms-console-new-text {
+  min-height: var(--control-min-height);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-sm);
+  background: var(--blue);
+  color: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+}
+.sms-console-new-text:focus-visible { outline: 3px solid var(--blue); outline-offset: var(--space-1); }
+
 .sms-console-loading {
   margin: 0;
   padding: 24px 0;

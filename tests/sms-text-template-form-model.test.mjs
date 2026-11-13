@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSaveBody, mergeLayout, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
+import { autoConditionLine, autoConditionParts, buildSaveBody, mergeLayout, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 test('종류: 없거나 모르는 값은 문자, kakao 만 알림톡', () => {
   assert.equal(normalizeKind(undefined), 'sms');
@@ -81,4 +81,32 @@ test('사진 합치기 배치: 세로 사진은 가로 나란히·높이 같음,
   assert.equal(col.rects[0].w, col.rects[1].w);
   assert.equal(col.rects[1].y, col.rects[0].h);
   assert.ok(col.width <= 1500 && col.height <= 1500);
+});
+
+test('발송 조건 조각: 11가지 조건 모두 조각을 이으면 autoConditionLine 과 같다', () => {
+  const entries = [
+    { autoKind: 'ship_plus_days', autoDays: 20, autoSendFrom: '2026-12-05', autoRepeat: 3, autoInterval: 30 },
+    { autoKind: 'order_plus_days', autoDays: 7 },
+    { autoKind: 'due_date', autoOffset: -3, autoDaily: '', autoAudience: 'customer' },
+    { autoKind: 'ship_scheduled', autoOffset: 0, autoWeekdays: true, autoAudience: 'staff', autoStaffCount: 2 },
+    { autoKind: 'ship_or_due', autoOffset: 2, autoDaily: 'ongoing', autoAudience: 'sales', autoUnlessStep: '조립작업', autoUnlessMode: 'started' },
+    { autoKind: 'order_created', autoAudience: 'staff', autoStaffCount: 1 },
+    { autoKind: 'process_started', autoStep: '재단' },
+    { autoKind: 'process_completed', autoStep: '조립작업', autoAudience: 'staff', autoStaffCount: 3 },
+    { autoKind: 'member_joined' },
+    { autoKind: 'lead_plus_days', autoDays: 0 },
+    { autoKind: 'lead_plus_days', autoDays: 3, autoAtaTemplate: 'tpl_1' },
+  ];
+  entries.forEach((entry) => {
+    const parts = autoConditionParts(entry);
+    const joined = [parts.when, parts.who, parts.via, ...parts.extras].filter(Boolean).sort();
+    assert.deepEqual(joined, autoConditionLine(entry).split(' · ').sort());
+    assert.ok(parts.when);
+  });
+  const lead = autoConditionParts(entries[10]);
+  assert.deepEqual(lead, { when: '가입·문의 후 3일 뒤', who: '고객', via: '알림톡', extras: ['오전 9시 30분'] });
+  const staff = autoConditionParts(entries[3]);
+  assert.equal(staff.who, '직원 2명');
+  assert.deepEqual(staff.extras, ['오전 10시', '평일만']);
+  assert.deepEqual(autoConditionParts({ autoKind: 'x' }), { when: '', who: '', via: '', extras: [] });
 });

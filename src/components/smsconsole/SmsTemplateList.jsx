@@ -4,9 +4,9 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  audienceSections, buildKindedItems, conditionLine, defaultSmsFilter, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
-import { autoConditionLine, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
+import { autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsAutoControls from './SmsAutoControls.jsx';
@@ -28,6 +28,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const [mineConfirm, setMineConfirm] = useState('');
   const [mineError, setMineError] = useState('');
   const [pageNo, setPageNo] = useState(1); // 목록은 10행씩 쪽으로 나눈다
+  const [cond, setCond] = useState(''); // 발송 조건 거르기('' = 전체)
 
   const load = () => {
     setState((prev) => ({ ...prev, error: '' }));
@@ -92,10 +93,21 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     <li key={`${prefix}${entry.id}`} className={`ktm-card stl-row${mineOpen === entry.id ? ' is-selected' : ''}`}>
       <button type="button" className="ktm-card-main" aria-expanded={mineOpen === entry.id} onClick={() => openMine(entry)}>
         <span className="ktm-card-name">{entry.name}</span>
-        <span className="ktm-card-meta"><span>{entry.autoKind ? autoConditionLine(entry) : entry.preview}</span></span>
+        {entry.autoKind ? (() => {
+          const cp = autoConditionParts(entry);
+          return (
+            <span className="ktm-card-meta stl-cond" title={autoConditionLine(entry)}>
+              <span className="stl-when">{cp.when}</span>
+              {cp.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
+              {cp.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
+              {cp.extras.length ? <span className="stl-extras">{cp.extras.join(' · ')}</span> : null}
+            </span>
+          );
+        })() : <span className="ktm-card-meta"><span>{entry.preview}</span></span>}
         {entry.hasImage ? <span className="ktm-card-badges"><span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span></span> : null}
         {mineOpen === entry.id ? (
           <span className="ktm-open">
+            {entry.autoKind ? <span className="stl-open-cond">{autoConditionLine(entry)}</span> : null}
             {entry.autoKind && autoStatus[entry.id] ? <span className="sac-status">{autoStatusLine(autoStatus[entry.id])}</span> : null}
             {(minePhoto[entry.id] || []).map((url, index, all) => <img key={index} className={all.length > 1 ? 'ktm-open-img sac-thumb' : 'ktm-open-img'} src={url} alt="" />)}
             <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>
@@ -114,16 +126,20 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   );
 
   const { items } = state;
-  const sortedMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
+  const allMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
+  const sortedMine = useMemo(() => allMine.filter((row) => !cond || conditionGroup(row) === cond), [allMine, cond]);
+  // 탭 숫자는 조건 거르기와 상관없이 전체 기준
+  const runningAll = useMemo(() => allMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)).length, [allMine, autoStatus]);
+  const condItems = useMemo(() => (cond ? items.filter((item) => conditionGroup(item) === cond) : items), [items, cond]);
   const runningAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
   // '발송 중' 숫자에는 켜진 내 자동 문구도 센다(표의 총 건수와 같게)
-  const pills = useMemo(() => [...smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAutos.length } : pill)), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection, runningAutos]);
+  const pills = useMemo(() => [...smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : pill)), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection, runningAll]);
   const rawTab = picked ?? defaultSmsFilter(items);
   const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
   const isMineTab = tab === 'mine';
   const filter = isMineTab ? 'all' : tab;
   const shownAutos = filter === 'in_use' ? runningAutos : [];
-  const sections = useMemo(() => ensureAutoSection(audienceSections(items, filter), shownAutos.length), [items, filter, shownAutos.length]);
+  const sections = useMemo(() => ensureAutoSection(audienceSections(condItems, filter), shownAutos.length), [condItems, filter, shownAutos.length]);
 
   // 쪽 나누기는 선택한 탭의 행에만 적용한다
   const rowKeys = useMemo(() => {
@@ -137,6 +153,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   }, [isMineTab, sortedMine, sections, shownAutos]);
   const paged = paginateRows(rowKeys, pageNo);
   const pageSet = new Set(paged.rows);
+  const pickCond = (value) => { setCond(value); setPageNo(1); setOpenId(''); setMineOpen(''); setMineConfirm(''); };
   const pickFilter = (id) => { setPicked(id); setPageNo(1); setOpenId(''); setMineOpen(''); };
   const goPage = (next) => { setPageNo(next); setOpenId(''); setMineOpen(''); setMineConfirm(''); };
   const kindHasRow = (aud, section) => section.items.some((item) => pageSet.has(`i-${item.id}`))
@@ -164,7 +181,13 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
               </button>
             ))}
           </div>
-          <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
+          <span className="stl-right">
+            <select className="stl-cond-select" aria-label="발송 조건" value={cond} onChange={(event) => pickCond(event.target.value)}>
+              <option value="">조건 전체</option>
+              {CONDITION_GROUPS.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+            <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
+          </span>
         </div>
         <div className="stl-table">
           <div className="stl-cols" aria-hidden="true"><span>템플릿 이름</span><span>발송 조건</span><span>상태</span><span>관리</span></div>
@@ -186,19 +209,20 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                     const line = conditionLine(item, recipients);
                     return (
                       <li key={item.id} className={`ktm-card stl-row${openId === item.id ? ' is-selected' : ''}`}>
-                        <button type="button" className="ktm-card-main" aria-expanded={openId === item.id} onClick={() => setOpenId(openId === item.id ? '' : item.id)}>
+                        <button type="button" className={`ktm-card-main${expandable ? '' : ' is-flat'}`} aria-expanded={openId === item.id} onClick={() => setOpenId(openId === item.id ? '' : item.id)}>
                           <span className="ktm-card-name">{item.name}</span>
-                          <span className="ktm-card-meta">
+                          <span className="ktm-card-meta" title={line || undefined}>
                             <span className="ktm-chip">{item.audience.label}</span>
                             <span className="ktm-chip ktm-chip--sender">{item.sender}</span>
                             {item.channel ? <span className="ktm-chan">{item.channel}</span> : null}
-                            {line ? <span>{line}</span> : null}
+                            {line ? <span className="stl-line">{line}</span> : null}
                           </span>
                           <span className="ktm-card-badges">
                             {[...smsBadges(item), ...kindBadges(item)].map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
                           </span>
                           {openId === item.id && expandable ? (
                             <span className="ktm-open">
+                              {line ? <span className="stl-open-cond">{line}</span> : null}
                               {item.external && item.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {item.trigger}</span> : null}
                               {item.scenario ? <span className="ktm-open-line"><b>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {item.scenario}</span> : null}
                               {item.image ? <img className="ktm-open-img" src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : null}

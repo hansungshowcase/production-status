@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildSmsItems, defaultSmsFilter, filterSmsItems, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, buildSmsItems, conditionGroup, defaultSmsFilter, filterSmsItems, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -111,4 +111,17 @@ test('paginateRows: 10행씩 쪽 나누기, 쪽 번호는 범위로 고정', () 
 test('sortByNameNumeric: 내 문구는 숫자 인식 순서', () => {
   const names = ['40일', '20일', '2일', '0일', '3일', '10일'].map((name) => ({ name }));
   assert.deepEqual(sortByNameNumeric(names).map((e) => e.name), ['0일', '2일', '3일', '10일', '20일', '40일']);
+});
+
+test('조건 거르기 분류: 내 문구는 autoKind, 항목은 조건 글·이름 낱말', () => {
+  assert.equal(conditionGroup({ autoKind: 'lead_plus_days', autoDays: 0, name: 'a' }), '가입·문의');
+  assert.equal(conditionGroup({ autoKind: 'member_joined', name: 'a' }), '가입·문의');
+  assert.equal(conditionGroup({ autoKind: 'order_created', name: 'a', autoAudience: 'staff' }), '주문 등록');
+  assert.equal(conditionGroup({ autoKind: 'process_completed', autoStep: '조립작업', name: 'a' }), '공정');
+  assert.equal(conditionGroup({ autoKind: 'ship_or_due', autoOffset: -1, name: 'a' }), '납기·출고예정일');
+  assert.equal(conditionGroup({ autoKind: 'ship_plus_days', autoDays: 20, name: 'a' }), '출고 완료');
+  assert.equal(conditionGroup({ name: '일반', preview: '안녕' }), '조건 없음');
+  assert.equal(conditionGroup({ name: '출고 완료 안내', trigger: '출고 완료 시', audience: { id: 'customer' } }), '출고 완료');
+  assert.equal(conditionGroup({ name: '기타', trigger: '', audience: { id: 'customer' } }), '조건 없음');
+  assert.equal(CONDITION_GROUPS.at(-1), '조건 없음');
 });

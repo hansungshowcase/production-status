@@ -1,6 +1,7 @@
 import {
   EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
+import { autoConditionParts } from './smsTextTemplateFormModel.js';
 import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
@@ -183,4 +184,17 @@ export function paginateRows(rows, page, size = 10) {
 // 내 문구 이름을 숫자 인식 순서로(0일, 2일, 3일 … 20일, 40일)
 export function sortByNameNumeric(entries) {
   return [...(Array.isArray(entries) ? entries : [])].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'ko', { numeric: true }));
+}
+
+// 조건 거르기: 행(내 문구 또는 카탈로그·외부 항목) → 묶음 이름
+export const CONDITION_GROUPS = ['가입·문의', '주문 등록', '공정', '납기·출고예정일', '출고 완료', '조건 없음'];
+export function conditionGroup(row) {
+  const text = row?.autoKind ? autoConditionParts(row).when : `${row?.trigger || ''} ${row?.name || ''}`;
+  if (!row?.autoKind && row?.preview !== undefined) return '조건 없음';
+  if (/가입|문의/.test(text)) return '가입·문의';
+  if (/주문/.test(text)) return '주문 등록';
+  if (/공정|작업|착수/.test(text)) return '공정';
+  if (/납기|출고예정/.test(text)) return '납기·출고예정일';
+  if (/출고 완료|출고완료/.test(text)) return '출고 완료';
+  return '조건 없음';
 }
