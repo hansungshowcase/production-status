@@ -60,6 +60,7 @@ function fakeDb({ templates = [], tokens = null } = {}) {
       }
       if (t.startsWith('SELECT access_enc, refresh_enc, access_expires_at')) return { rows: state.tokens ? [state.tokens] : [] };
       if (t.startsWith('UPDATE cafe24_tokens SET refreshing_until')) { state.tokens.refreshing_until = args[0]; return { rows: [{ id: 1 }] }; }
+      if (t.startsWith('UPDATE cafe24_tokens SET refresh_expires_at = NULL')) { state.tokens.refresh_expires_at = null; state.tokens.refreshing_until = null; return { rows: [] }; }
       if (t.startsWith('INSERT INTO cafe24_tokens')) { state.tokens = { ...(state.tokens || {}), access_enc: args[0], refresh_enc: args[1], access_expires_at: args[2], refresh_expires_at: args[3] }; return { rows: [] }; }
       throw new Error(`예상 못 한 SQL ${t}`);
     },
@@ -231,4 +232,18 @@ test('가입 ⑦ 콜백: 쿠키 난수가 없거나 state 와 다르면 토큰 �
   assert.equal(calls, 0);
   assert.equal((await run(`cafe24_oauth=${nonce}`)).code, 200);
   assert.equal(calls, 1);
+});
+
+test('가입 ⑧ 갱신이 401 로 실패하면 refresh_expires_at 이 NULL 이 되고 콜백은 이미 연결됨이 아니라 authorize 로 보낸다', async () => {
+  const db = fakeDb({ tokens: { access_enc: sealValue('cafe24.access', 'a'), refresh_enc: sealValue('cafe24.refresh', 'r'), access_expires_at: '2026-11-20T00:00:00.000Z', refresh_expires_at: '2026-12-01T00:00:00.000Z' } });
+  _resetCafe24SchemaForTest();
+  const before = mkRes();
+  await handleCafe24Callback({ method: 'GET', query: {} }, before, { env: ENV, nowMs: NOW, db });
+  assert.equal(before.code, 200); // 갱신 실패 전에는 이미 연결됨
+  await assert.rejects(getAccessToken(db, { env: ENV, nowMs: NOW, fetchImpl: async () => ({ ok: false, status: 401 }) }));
+  assert.equal(db.state.tokens.refresh_expires_at, null);
+  const after = mkRes();
+  await handleCafe24Callback({ method: 'GET', query: {} }, after, { env: ENV, nowMs: NOW, db });
+  assert.equal(after.code, 302);
+  assert.ok(after.headers.Location.includes('/oauth/authorize?'));
 });

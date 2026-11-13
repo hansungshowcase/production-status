@@ -81,7 +81,7 @@ export async function cafe24Connected(db, env = process.env) {
   if (!cafe24Env(env)) return false;
   try {
     await ensureCafe24Schema(db);
-    return Boolean((await db.execute({ sql: 'SELECT id FROM cafe24_tokens WHERE id = 1', args: [] })).rows?.[0]);
+    return Boolean((await db.execute({ sql: 'SELECT id FROM cafe24_tokens WHERE id = 1 AND refresh_expires_at IS NOT NULL', args: [] })).rows?.[0]);
   } catch { return false; }
 }
 
@@ -100,7 +100,7 @@ async function tokenRequest(config, fetchImpl, params) {
   const response = await fetchImpl(`https://${config.mallId}.cafe24api.com/api/v2/oauth/token`, {
     method: 'POST', headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString(),
   });
-  if (!response.ok) throw new Error(`cafe24 token http ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error(`cafe24 token http ${response.status}`), { status: response.status });
   return response.json();
 }
 
@@ -114,8 +114,18 @@ export async function exchangeCode(db, { env = process.env, code, fetchImpl = fe
   await saveTokens(db, data, nowMs);
 }
 
+// 토큰을 못 쓰게 됐을 때(리프레시 400·401, 복호화 실패) 만료 일자를 지워 "이미 연결됨" 판정이 거짓이 되게 한다(콜백으로 재연결)
+const invalidateLink = db => db.execute({ sql: 'UPDATE cafe24_tokens SET refresh_expires_at = NULL, refreshing_until = NULL WHERE id = 1', args: [] });
+async function openOrInvalidate(db, key, text) {
+  try { return openValue(key, text); } catch (error) { await invalidateLink(db); throw error; }
+}
 async function refreshNow(db, config, fetchImpl, nowMs, row) {
-  const data = await tokenRequest(config, fetchImpl, { grant_type: 'refresh_token', refresh_token: openValue(REFRESH_KEY, row.refresh_enc) });
+  const refreshToken = await openOrInvalidate(db, REFRESH_KEY, row.refresh_enc);
+  let data;
+  try { data = await tokenRequest(config, fetchImpl, { grant_type: 'refresh_token', refresh_token: refreshToken }); } catch (error) {
+    if (error?.status === 400 || error?.status === 401) await invalidateLink(db);
+    throw error;
+  }
   await saveTokens(db, data, nowMs);
   return String(data.access_token);
 }
@@ -145,11 +155,11 @@ export async function getAccessToken(db, { env = process.env, fetchImpl = fetch,
   await ensureCafe24Schema(db);
   const row = (await db.execute({ sql: 'SELECT access_enc, refresh_enc, access_expires_at FROM cafe24_tokens WHERE id = 1', args: [] })).rows?.[0];
   if (!row) return null;
-  if (row.access_expires_at && new Date(row.access_expires_at).getTime() > nowMs + 60000) return openValue(ACCESS_KEY, row.access_enc);
+  if (row.access_expires_at && new Date(row.access_expires_at).getTime() > nowMs + 60000) return openOrInvalidate(db, ACCESS_KEY, row.access_enc);
   if (!(await claimRefresh(db, nowMs))) return null;
   const fresh = await readTokenRow(db);
   if (!fresh) return null;
-  if (fresh.access_expires_at && new Date(fresh.access_expires_at).getTime() > nowMs + 60000) { await releaseClaim(db); return openValue(ACCESS_KEY, fresh.access_enc); }
+  if (fresh.access_expires_at && new Date(fresh.access_expires_at).getTime() > nowMs + 60000) { await releaseClaim(db); return openOrInvalidate(db, ACCESS_KEY, fresh.access_enc); }
   return refreshNow(db, config, fetchImpl, nowMs, fresh);
 }
 // 매일 크론: 리프레시 토큰 만료 5일 이내면 갱신 1번
