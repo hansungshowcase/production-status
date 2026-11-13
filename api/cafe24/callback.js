@@ -3,7 +3,8 @@
 import { getDb } from '../_lib/db.js';
 import { baseUrl, cafe24Env, cafe24LinkFresh, checkState, exchangeCode, makeState, stateNonce, timingSafeMatch } from '../_lib/cafe24.js';
 
-const SCOPE = 'mall.read_customer';
+// 보충 조회(customersprivacy)는 개인정보 읽기 권한이 있어야 한다 — 앱에 등록한 3개와 같게 요청한다(카페24 scope 는 쉼표로 잇는다).
+const SCOPE = 'mall.read_customer,mall.read_personal,mall.read_privacy';
 const COOKIE = 'cafe24_oauth';
 // state 를 이 브라우저에 묶는 쿠키(10분). 값은 state 안의 난수이며 토큰·코드가 아니다.
 const cookieLine = (value, maxAge) => `${COOKIE}=${value}; HttpOnly; Secure; SameSite=Lax; Path=/api/cafe24; Max-Age=${maxAge}`;
