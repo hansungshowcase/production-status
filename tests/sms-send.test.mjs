@@ -146,6 +146,17 @@ test('dry_run: 인원·종류·예상 비용만, 업체 호출 0·기록 0', asy
   assert.equal(db.rows.size, 0);
 });
 
+test('바뀌지 않은 #{변수}가 남은 내용은 400(중복 없이 이름 안내), 변수가 없으면 종전대로', async () => {
+  const { db, sendProvider, deps } = setup();
+  const left = await run(payload({ text: '#{고객명}님 #{주문번호} #{고객명}' }), deps);
+  assert.equal(left.statusCode, 400);
+  assert.match(left.body.error.message,/바뀌지 않은 변수가 남아 있습니다: 고객명, 주문번호\./);
+  assert.equal(sendProvider.calls.length, 0);
+  assert.equal(db.rows.size, 0);
+  assert.equal((await run(payload({ text: '홍길동님 안녕하세요' }), deps)).statusCode, 200);
+  assert.equal(sendProvider.calls.length, 1);
+});
+
 test('입력 검증: 번호 형식·빈 내용·키 없음', async () => {
   const { sendProvider, deps } = setup();
   assert.equal((await run(payload({ recipients: ['12345'] }), deps)).statusCode, 400);

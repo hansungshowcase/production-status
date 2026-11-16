@@ -471,3 +471,11 @@ test('문구 저장: 새 칸 검증(400)·저장·응답, 켜진 문구의 시�
     assert.equal(saved.body.item.auto_disabled, true);
   }
 });
+
+test('문구 저장: 출고·주문 후 광고형은 고객명 밖의 변수를 거절하고 고객명만이면 통과', async () => {
+  const db = setup();
+  const auto = { kind: 'order_plus_days', days: 10 };
+  const bad = await saveTextTemplate(db, { name: '변수', body: `${BODY}\n#{주문번호}`, auto });
+  assert.deepEqual([bad.status, bad.body.reason], [400, 'info_unknown_var']);
+  assert.equal((await saveTextTemplate(db, { name: '고객명만', body: BODY, auto })).status, 201);
+});

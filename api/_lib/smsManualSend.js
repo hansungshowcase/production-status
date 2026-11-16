@@ -132,6 +132,8 @@ export async function runSend(body, { env = process.env, db, provider, fetchImpl
   const text = typeof body.text === 'string' ? body.text.replace(/\r\n?/g, '\n').trim() : '';
   const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
   if (!text) return errorReply(400, '내용을 넣어 주세요.');
+  const leftVars = [...new Set([...text.matchAll(/#\{([^}]*)\}/g)].map(match => match[1]))];
+  if (leftVars.length) return errorReply(400, `바뀌지 않은 변수가 남아 있습니다: ${leftVars.join(', ')}. 실제 내용으로 바꿔서 보내 주세요.`);
   if ([...subject].length > SUBJECT_MAX) return errorReply(400, `제목은 ${SUBJECT_MAX}자 이하로 적어 주세요.`);
   if (/^\(광고\)/.test(text) || /^\(광고\)/.test(subject)) return errorReply(400, '광고 문자는 아직 여기서 보낼 수 없습니다.');
   const kind = classifyText(text, subject);

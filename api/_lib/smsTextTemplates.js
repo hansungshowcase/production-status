@@ -172,6 +172,7 @@ function readAutoBase(input, staff) {
   if (!(Number.isInteger(repeat) && repeat >= 1 && repeat <= AUTO_LIMITS.repeatMax)) return { error: `반복 횟수는 1~${AUTO_LIMITS.repeatMax}번으로 입력해 주세요.` };
   const interval = input.auto.interval === undefined || input.auto.interval === null || input.auto.interval === '' ? AUTO_LIMITS.defaultInterval : Number(input.auto.interval);
   if (!(Number.isInteger(interval) && interval >= 1 && interval <= AUTO_LIMITS.intervalMax)) return { error: `반복 간격은 1~${AUTO_LIMITS.intervalMax}일로 입력해 주세요.` };
+  if (typeof input.body === 'string' && [...input.body.matchAll(/#\{([^}]*)\}/g)].some(match => match[1] !== '고객명')) return { error: INFO_CHECK_MESSAGE.info_unknown_var, reason: 'info_unknown_var' };
   return { kind: input.auto.kind, days, send_from: sendFrom, repeat, interval, ...AD_EXTRA };
 }
 

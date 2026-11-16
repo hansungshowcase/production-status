@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { autoConditionLine, autoConditionParts, buildSaveBody, mergeLayout, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
+import { autoConditionLine, autoConditionParts, buildSaveBody, mergeLayout, imageFromItem, myTextSection, normalizeKind, textFormStopText, validateTextForm, autoVariables, previewFill } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 test('종류: 없거나 모르는 값은 문자, kakao 만 알림톡', () => {
   assert.equal(normalizeKind(undefined), 'sms');
@@ -144,4 +144,15 @@ test('단계: 같은 일수 중복 판정과 팝업 시작 상태', async () => 
   assert.equal(added.stages.length, 3);
   assert.equal(added.values.autoKind, 'lead_plus_days');
   assert.equal(added.values.name, '');
+});
+
+test('변수: 종류 없음이면 고객명 단추, 예시 값 미리보기, 쓸 수 없는 변수는 저장 전에 거절', () => {
+  assert.deepEqual(autoVariables('', 'customer'), ['고객명']);
+  assert.deepEqual(autoVariables('member_joined', 'customer'), []);
+  assert.equal(previewFill('#{고객명}님 안녕하세요 #{모름}'), '홍길동님 안녕하세요 #{모름}');
+  assert.equal(validateTextForm({ name: 'a', body: '#{고객명}님' }).ok, true);
+  const bad = validateTextForm({ name: 'a', body: '#{주문번호} 안내' });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.reason, 'info_unknown_var');
+  assert.equal(validateTextForm({ name: 'a', body: '#{주문번호} 안내', autoKind: 'due_date', audience: 'customer', offsetDir: 'before', offsetDays: '1' }).reason === 'info_unknown_var', false);
 });

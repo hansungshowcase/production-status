@@ -16,6 +16,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
+  { const allowed = autoVariables(autoKind, audience); if (bodyVarNames(body).some(item => !allowed.includes(item))) return { ok: false, reason: 'info_unknown_var', info }; }
   if (isImmediateKind(autoKind)) {
     if (autoKind !== AUTO_KIND_ORDER_CREATED && !step) return { ok: false, reason: 'step', info };
     if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
@@ -127,10 +128,17 @@ const offsetText = (offset, daily) => {
 export function autoVariables(kind, audience) {
   if (kind === AUTO_KIND_MEMBER_JOINED) return [];
   if (kind === AUTO_KIND_LEAD_PLUS) return ['고객명'];
-  if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) ? ['고객명'] : [];
+  if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) || !kind ? ['고객명'] : [];
   const list = ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'];
   return audience === AUDIENCE_STAFF || audience === AUDIENCE_SALES ? [...list, '제품'] : list;
 }
+
+// 본문의 #{이름} 이름들(중복 없이)
+export const bodyVarNames = body => [...new Set([...String(body ?? '').matchAll(/#\{([^}]+)\}/g)].map(m => m[1]))];
+// 미리보기용 예시 값(api/_lib/smsEventSend.js EXAMPLE_ORDER·orderVars 와 같은 값)
+export const PREVIEW_VARS = Object.freeze({ 고객명: '홍길동', 주문번호: 'HS-2026-0001', 규격: '슬라이딩 1200×600×1800mm', 수량: '1대', 예상출고일: '2026-11-23', 조회링크: 'https://production-status.vercel.app/track/EXAMPLE', 제품: '쇼케이스' });
+// #{이름} 을 예시 값으로 바꾼다(모르는 이름은 그대로). 저장되는 본문은 바꾸지 않는다.
+export const previewFill = body => String(body ?? '').replace(/#\{([^}]+)\}/g, (all, name) => (Object.prototype.hasOwnProperty.call(PREVIEW_VARS, name) ? PREVIEW_VARS[name] : all));
 
 // 반복 횟수 1~10, 간격 1~365 정수, 아니면 null
 export function normalizeRepeat(value) {

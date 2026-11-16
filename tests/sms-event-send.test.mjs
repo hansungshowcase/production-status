@@ -528,7 +528,7 @@ test('발송 시각 ③ 저장: 09:00~20:00 30분 단위만, 즉시형·가입 �
   assert.equal(ok.body.item.auto_send_time, '10:30');
   assert.equal(db.state.templates[0].auto_send_time, '10:30');
   for (const bad of ['09:15', '08:30', '20:30', '10:3', 'abc']) assert.equal((await save(`x${bad}`, { kind: 'due_date', offset: -3, send_time: bad })).status, 400);
-  const post = await save('주문 후', { kind: 'order_plus_days', days: 2, send_time: '20:00' });
+  const post = await save('주문 후', { kind: 'order_plus_days', days: 2, send_time: '20:00' }, '#{고객명}님 안내');
   assert.equal(post.body.item?.auto_send_time, '20:00', JSON.stringify(post.body));
   assert.equal((await save('즉시', { kind: 'order_created', send_time: '10:30' })).body.item.auto_send_time, undefined);
   assert.equal((await save('가입 당일', { kind: 'lead_plus_days', days: 0, send_time: '10:30' }, '#{고객명}님 안내')).body.item.auto_send_time, undefined);
