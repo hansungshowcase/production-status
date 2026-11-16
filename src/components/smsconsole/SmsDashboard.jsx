@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchSolapiMessages } from '../../api/solapiMessages';
 import { fetchSmsConsole } from '../../api/smsConsole';
+import { SOLAPI_HEALTH_REASONS } from '../../../shared/solapiHealthText.js';
 import {
   summarizeToday, matrixCells, hourlyBars, recentGroups, balanceState, templateCountsView,
 } from './dashboardModel';
@@ -49,6 +50,18 @@ const ICONS = {
   balance: <path d="M3 7h18v12H3zM3 7l3-3h12l3 3M16 13h2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />,
   template: <path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />,
 };
+
+// 쏠라피 연동 이상 띠: 정상이면 null(아무것도 그리지 않는다)
+function healthBand(health) {
+  if (!health || typeof health !== 'object') return null;
+  const bad = health.state && health.state !== 'ok' && health.state !== 'unknown';
+  if (!bad && !health.cron_stale) return null;
+  const reason = bad ? (SOLAPI_HEALTH_REASONS[health.state] || '연동 상태를 확인하세요') : SOLAPI_HEALTH_REASONS.cron_stale;
+  let okAt = '';
+  const t = health.last_ok_at ? new Date(health.last_ok_at) : null;
+  if (t && !Number.isNaN(t.getTime())) okAt = t.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' });
+  return `쏠라피 연동 이상: ${reason}${okAt ? ` · 마지막 정상 ${okAt}` : ''}`;
+}
 
 export default function SmsDashboard({ active = true, onNavigate }) {
   const [log, setLog] = useState({ data: null, error: '' });
@@ -117,8 +130,11 @@ export default function SmsDashboard({ active = true, onNavigate }) {
   const noKey = '쏠라피 키가 설정되지 않았습니다';
   const first = !checkedAt && loading;
 
+  const band = healthBand(overview.data?.solapi_health);
+
   return (
     <div className="smsd">
+      {band ? <p className="smsd-health-band" role="alert">{band}</p> : null}
       <div className="smsd-top">
         <span className="smsd-checked" aria-live="polite">{checkedAt ? `확인 ${checkedAt}` : (first ? '불러오는 중' : '')}</span>
         <button type="button" className="smsd-refresh" onClick={load} disabled={loading}>

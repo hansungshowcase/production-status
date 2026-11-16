@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
 import { runSmsDeliveryMonitor } from '../_lib/solapiDeliveryMonitor.js';
+import { runSolapiHealthCycle } from '../_lib/solapiHealth.js';
 
 function timingSafeMatch(left, right) {
   const leftBuffer = Buffer.from(String(left));
@@ -25,8 +26,15 @@ export async function handleSmsDeliveryMonitor(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const monitor = dependencies.monitor || runSmsDeliveryMonitor;
-  const result = await monitor(db, { nowMs });
   const logger = dependencies.logger || console;
+  // 쏠라피 연동 점검(조회만). 실패·예외가 나도 아래 기존 전달 상태 감시는 그대로 돈다.
+  try {
+    const health = await (dependencies.healthCycle || runSolapiHealthCycle)(db, { nowMs });
+    if (health && health.state !== 'ok') logger.warn?.('[solapi-health]', { state: health.state, fail_count: health.fail_count });
+  } catch (error) {
+    logger.warn?.('[solapi-health] check failed', error?.message || error);
+  }
+  const result = await monitor(db, { nowMs });
   logger.info?.('[sms-delivery-monitor]', result);
   return res.json({ ok: true, ...result });
 }

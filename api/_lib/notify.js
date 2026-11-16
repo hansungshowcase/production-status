@@ -249,19 +249,35 @@ export function classifyProviderOutcome(result) {
   return 'uncertain';
 }
 
-async function solapiSend(message, channel) {
+// 운영(production)에서 솔라피 키가 비면 dry_run(성공)으로 넘어가지 않고 명시적 실패로 돌려준다(2026-11-16).
+// 로컬·시험·미리보기는 지금처럼 dry_run.
+function missingCredentialsResult(channel) {
+  if (process.env.VERCEL_ENV === 'production') {
+    return { ok: false, channel, msgId: null, explicitFailure: true, error: 'solapi_not_configured' };
+  }
+  return { ok: true, dryRun: true, channel, msgId: null };
+}
+
+const SEND_RATE_LIMIT_WAITS = [500, 1500]; // 429 만 다시 시도(합계 2초). 5xx·시간 초과는 보냈는지 모르므로 다시 보내지 않는다.
+
+export async function solapiSend(message, channel, { fetchImpl = fetch, sleep = (waitMs) => new Promise(resolve => setTimeout(resolve, waitMs)) } = {}) {
   try {
-    const res = await fetch(SOLAPI_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        Authorization: solapiAuthHeader(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ message }),
-      // 행(hang) 방지: 솔라피 지연 시 본 응답(주문생성/출고 등)이 maxDuration 까지 끌려가며
-      // 함수가 킬되는 것 차단 — 타임아웃은 catch 로 수렴해 {ok:false} 처리 (googleSheets.js 와 동일 패턴)
-      signal: AbortSignal.timeout(5000),
-    });
+    let res;
+    for (let attempt = 0; ; attempt += 1) {
+      res = await fetchImpl(SOLAPI_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: solapiAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message }),
+        // 행(hang) 방지: 솔라피 지연 시 본 응답(주문생성/출고 등)이 maxDuration 까지 끌려가며
+        // 함수가 킬되는 것 차단 — 타임아웃은 catch 로 수렴해 {ok:false} 처리 (googleSheets.js 와 동일 패턴)
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.status !== 429 || attempt >= SEND_RATE_LIMIT_WAITS.length) break;
+      await sleep(SEND_RATE_LIMIT_WAITS[attempt]);
+    }
     let data = null;
     try { data = await res.json(); } catch { /* 비JSON 응답 방어 */ }
     if (!res.ok) {
@@ -293,7 +309,7 @@ async function sendCustomerMessage({ to, subject, text, variables, templateEnv, 
   const from = normalizePhone(process.env.SMS_SENDER);
 
   if (!solapiConfigured()) {
-    return { ok: true, dryRun: true, channel: pfId && templateId ? 'alimtalk' : 'lms', msgId: null };
+    return missingCredentialsResult(pfId && templateId ? 'alimtalk' : 'lms');
   }
 
   // 실발송 여부는 위 solapiConfigured() 하나로만 판단한다.
@@ -562,7 +578,7 @@ export async function sendAdminLms(db, {
 
   let result;
   if (!solapiConfigured()) {
-    result = { ok: true, dryRun: true, channel: 'lms', msgId: null };
+    result = missingCredentialsResult('lms');
   } else {
     const from = normalizePhone(process.env.SMS_SENDER);
     if (!from) {

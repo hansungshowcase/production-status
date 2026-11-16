@@ -211,3 +211,5 @@
   .smsd-r-state { grid-area: state; }
   .smsd-r-id { grid-area: id; }
 }
+
+.smsd-health-band { margin: 0 0 8px; padding: 8px 12px; border-radius: 8px; background: var(--smsd-danger); color: #fff; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }

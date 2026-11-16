@@ -37,30 +37,47 @@ function cleanMessage(value) {
   return text || '쏠라피에서 요청을 받아들이지 않았습니다';
 }
 
-export async function call(path, { method = 'GET', body, query } = {}, { fetchImpl = fetch } = {}) {
+const defaultSleep = (waitMs) => new Promise(resolve => setTimeout(resolve, waitMs));
+const RATE_LIMIT_WAITS = [500, 1500]; // 429 는 쏠라피가 처리하지 않고 돌려보낸 것이라 다시 보내도 중복이 아니다. 합계 2초
+const GET_RETRY_WAIT = 300;
+
+export async function call(path, { method = 'GET', body, query } = {}, { fetchImpl = fetch, sleep = defaultSleep } = {}) {
   const url = new URL(path, BASE);
   for (const [key, value] of Object.entries(query || {})) {
     if (value != null && value !== '') url.searchParams.set(key, String(value));
   }
-  let response;
-  try {
-    const headers = { Authorization: authHeader() };
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
-    response = await fetchImpl(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch {
+  const isGet = method === 'GET';
+  let rateRetries = 0;
+  let getRetried = false;
+  for (;;) {
+    let response;
+    try {
+      const headers = { Authorization: authHeader() };
+      if (body !== undefined) headers['Content-Type'] = 'application/json';
+      response = await fetchImpl(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch {
+      // 조회(GET)만 네트워크 오류에 1번 다시 시도. 발송(POST)은 보냈는지 모르므로 다시 보내지 않는다.
+      if (isGet && !getRetried) { getRetried = true; await sleep(GET_RETRY_WAIT); continue; }
+      throw new SolapiKakaoError(502, GENERIC_ERROR);
+    }
+    if (response.status === 429 && rateRetries < RATE_LIMIT_WAITS.length) {
+      await sleep(RATE_LIMIT_WAITS[rateRetries]);
+      rateRetries += 1;
+      continue;
+    }
+    if (isGet && response.status >= 500 && !getRetried) { getRetried = true; await sleep(GET_RETRY_WAIT); continue; }
+    const payload = await response.json().catch(() => null);
+    if (response.ok) return payload;
+    if (response.status >= 400 && response.status < 500) {
+      throw new SolapiKakaoError(response.status, cleanMessage(payload?.errorMessage));
+    }
     throw new SolapiKakaoError(502, GENERIC_ERROR);
   }
-  const payload = await response.json().catch(() => null);
-  if (response.ok) return payload;
-  if (response.status >= 400 && response.status < 500) {
-    throw new SolapiKakaoError(response.status, cleanMessage(payload?.errorMessage));
-  }
-  throw new SolapiKakaoError(502, GENERIC_ERROR);
 }
 
 function cached(key, ttl, nowMs) {

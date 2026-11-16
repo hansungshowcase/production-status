@@ -14,6 +14,7 @@ import { STEPS } from './_lib/steps.js';
 import { cafe24Connected } from './_lib/cafe24.js';
 import { autoStatus, autoTest, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 import { catchupPreview } from './_lib/smsEventSend.js';
+import { readSolapiHealth } from './_lib/solapiHealth.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts', 'catchup_preview']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete']);
@@ -190,10 +191,14 @@ async function handleGet(req, res, ctx) {
     }
     const write = await guard.writeStatus({ db: deps.db, nowMs });
     if (resource === 'overview') {
-      if (!configured) return res.status(200).json({ configured: false, balance: null, template_counts: null, write, checked_at });
+      // 쏠라피 연동 점검 결과(DB 에 저장된 마지막 상태만. 없거나 못 읽으면 키 자체를 빼서 화면에 띠가 안 뜬다)
+      let solapiHealth = null;
+      try { solapiHealth = await readSolapiHealth(deps.db || getDb(), { nowMs }); } catch { solapiHealth = null; }
+      const healthPart = solapiHealth ? { solapi_health: solapiHealth } : {};
+      if (!configured) return res.status(200).json({ configured: false, balance: null, template_counts: null, write, checked_at, ...healthPart });
       const [balance, listed] = await Promise.all([kakao.getBalance(opts), kakao.listTemplates(opts)]);
       return res.status(200).json({ configured: true, balance: Number.isFinite(balance) ? balance : null,
-        template_counts: listed.counts || emptyCounts(), write, checked_at });
+        template_counts: listed.counts || emptyCounts(), write, checked_at, ...healthPart });
     }
     if (resource === 'templates') {
       if (!configured) return res.status(200).json({ configured: false, write, targets: [], items: [], counts: emptyCounts(), unresolved_groups: 0, checked_at });
