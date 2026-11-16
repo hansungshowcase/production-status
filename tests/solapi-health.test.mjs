@@ -29,6 +29,8 @@ test('401 은 auth_failed, 시간 초과는 unreachable, 정상 응답은 ok', a
   assert.equal(timeout.state, 'unreachable');
   const ok = await checkSolapiHealth({ env: FULL_ENV, sleep: noSleep, fetchImpl: async () => json(200, { channelList: [{ channelId: 'PF1' }] }) });
   assert.equal(ok.state, 'ok');
+  const noPf = await checkSolapiHealth({ env: { ...FULL_ENV, KAKAO_PF_ID: '' }, sleep: noSleep, fetchImpl: async () => json(200, { channelList: [] }) });
+  assert.equal(noPf.state, 'ok');
 });
 
 function fakeDb() {

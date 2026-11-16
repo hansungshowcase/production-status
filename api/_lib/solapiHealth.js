@@ -22,7 +22,8 @@ export async function checkSolapiHealth({ env = process.env, fetchImpl = fetch, 
   const missing = ['SOLAPI_API_KEY', 'SOLAPI_API_SECRET', 'SMS_SENDER'].filter(name => !text(env[name]));
   if (missing.length) return { state: 'not_configured', detail: `missing: ${missing.join(', ')}`, checkedAt };
   const pfId = text(env.KAKAO_PF_ID);
-  if (!pfId) return { state: 'channel_missing', detail: 'missing: KAKAO_PF_ID', checkedAt };
+  // KAKAO_PF_ID 는 그룹 템플릿일 때만 쓰는 보조 값이라 비어 있어도 정상이다(채널은 템플릿의 channelId 에서 얻는다).
+  // 비어 있으면 채널 ID 대조만 건너뛰고, 인증 확인 겸 채널 목록 조회가 성공하면 ok.
 
   try {
     const found = new Set();
@@ -32,7 +33,7 @@ export async function checkSolapiHealth({ env = process.env, fetchImpl = fetch, 
       const list = payload?.channelList;
       const items = Array.isArray(list) ? list : (list && typeof list === 'object' ? Object.values(list) : []);
       for (const item of items) if (item?.channelId) found.add(String(item.channelId));
-      if (found.has(pfId)) return { state: 'ok', detail: '', checkedAt };
+      if (!pfId || found.has(pfId)) return { state: 'ok', detail: '', checkedAt };
       startKey = payload?.nextKey || null;
       if (!startKey) break;
     }
@@ -137,7 +138,8 @@ export async function runSolapiHealthCycle(db, options = {}) {
   let viaSms = false;
 
   if (result.state === 'ok') {
-    if (alertedMs != null) {
+    // 2026-11-16: KAKAO_PF_ID 없음을 장애로 잘못 판정했던 것의 복구는 알리지 않는다(거짓 장애였음). 한 번 지나가면 쓸모없는 분기.
+    if (alertedMs != null && prev?.last_detail !== 'missing: KAKAO_PF_ID') {
       message = alertMessage(result.state, '', true);
       viaSms = SMS_ALERT_STATES.has(prev?.last_state);
     }
