@@ -220,7 +220,29 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     ? <div className="ktm-lockbar ktm-lockbar--off"><Icon name="lock" /><span>등록·삭제가 꺼져 있습니다(서버 설정 SMS_CONSOLE_WRITE=off)</span></div>
     : null;
 
+  const renderReadOnlyDetail = (entry) => (
+    <div className="ktm-detail">
+      <div className="ktm-detail-head">
+        <button type="button" className="ktm-btn ktm-back" onClick={() => setOpenRoId('')}><Icon name="back" /> 목록</button>
+        <h3 className="ktm-detail-name">{entry.name}</h3>
+        {entry.active === false ? <span className="ktm-light ktm-light--off">꺼짐</span> : <span className="ktm-light ktm-light--on">켜짐</span>}
+      </div>
+      <KakaoTemplatePreview template={{
+        name: entry.name, content: entry.body || '', emphasizeType: entry.image ? 'IMAGE' : undefined, imageUrl: entry.image || '',
+        buttons: [], targetName: entry.sender || '',
+      }} />
+      <dl className="ktm-info">
+        <dt>보내는 곳</dt><dd>{entry.sender}</dd>
+        <dt>종류</dt><dd>{entry.kind} · {entry.channel === 'BMS' ? '브랜드메시지·친구톡' : '알림톡'}</dd>
+        {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
+        {entry.scenario ? <><dt>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{entry.scenario}</dd></> : null}
+      </dl>
+    </div>
+  );
+
   const renderDetail = () => {
+    const roEntry = !selectedId && openRoId ? readOnly.find((entry) => entry.id === openRoId) : null;
+    if (roEntry) return renderReadOnlyDetail(roEntry);
     if (!selectedId) return <div className="ktm-empty">왼쪽에서 템플릿을 고르면 미리보기가 보입니다.</div>;
     if (!selected) return <div className="ktm-empty">선택한 템플릿을 찾을 수 없습니다. 삭제되었거나 이 화면에서 볼 수 없는 템플릿입니다.</div>;
     const info = statusInfo(selected.status);
@@ -315,7 +337,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     ) : null;
     return (
       <li key={item.id} className={`ktm-card ktm-card--slim${item.id === selectedId ? ' is-selected' : ''}`}>
-        <button type="button" className="ktm-card-main" onClick={() => { setNotice(null); onRoute({ tpl: item.id, mode: '' }); }} aria-current={item.id === selectedId ? 'true' : undefined}>
+        <button type="button" className="ktm-card-main" onClick={() => { setNotice(null); setOpenRoId(''); onRoute({ tpl: item.id, mode: '' }); }} aria-current={item.id === selectedId ? 'true' : undefined}>
           <span className="ktm-card-name">{item.name}</span>
           {picked ? (
             <span className="ktm-card-meta">
@@ -359,11 +381,10 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <h4 className="ktm-kind-head ktm-kind-head--sub">{group.group} <span className="ktm-kind-count">{group.items.length}</span></h4>
           <ul className="ktm-cards">
             {group.items.map((entry) => {
-              const expandable = Boolean(entry.body || entry.image || entry.trigger || entry.scenario);
               const opened = openRoId === entry.id;
               return (
                 <li key={entry.id} className={`ktm-card ktm-card--slim${opened ? ' is-selected' : ''}`}>
-                  <button type="button" className="ktm-card-main" aria-expanded={opened} onClick={() => setOpenRoId(opened ? '' : entry.id)}>
+                  <button type="button" className="ktm-card-main" aria-expanded={opened} onClick={() => { setOpenRoId(opened ? '' : entry.id); if (!opened && selectedId) onRoute({ tpl: '' }); }}>
                     <span className="ktm-card-name">{entry.name}</span>
                     {opened ? (
                       <span className="ktm-card-meta">
@@ -378,14 +399,6 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
                         : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
                       {entry.ad ? <span className="ktm-badge ktm-badge--info">광고</span> : null}
                     </span>
-                    {opened && expandable ? (
-                      <span className="ktm-open">
-                        {entry.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {entry.trigger}</span> : null}
-                        {entry.scenario ? <span className="ktm-open-line"><b>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {entry.scenario}</span> : null}
-                        {entry.image ? <img className="ktm-open-img" src={entry.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : null}
-                        {entry.body ? <span className="ktm-open-body">{entry.body}</span> : null}
-                      </span>
-                    ) : null}
                   </button>
                 </li>
               );
@@ -433,7 +446,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     body = <div className="ktm-empty">쏠라피 연결 정보가 설정되지 않아 템플릿을 볼 수 없습니다.</div>;
   } else if (data) {
     body = (
-      <div className={`ktm-layout${selectedId ? ' has-detail' : ''}`}>
+      <div className={`ktm-layout${selectedId || openRoId ? ' has-detail' : ''}`}>
         <section className="ktm-list-pane" aria-label="템플릿 목록">
           <div className="ktm-search">
             <Icon name="search" />
