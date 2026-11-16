@@ -85,7 +85,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
   const [adMark, setAdMark] = useState(true);
-  const [merge, setMerge] = useState(true);
+  const [merge, setMerge] = useState(!(initial && !startNew)); // 저장된 문구를 고칠 때는 저장된 사진을 그대로 둔다(체크해야만 합침)
   const [merged, setMerged] = useState(null);
   const [mergeFailed, setMergeFailed] = useState(false);
   const [error, setError] = useState('');
