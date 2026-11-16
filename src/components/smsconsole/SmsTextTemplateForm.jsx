@@ -138,7 +138,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   };
   const forms = stages.map(item => (item.key === activeKey ? collect() : item.form));
   const dupSet = duplicateStages(forms);
-  const dirtyOf = (item, f) => item.base === null || stageDirtySig(f) !== item.base;
+  const dirtyOf = (item, f) => item.base === null || stageDirtySig(f) !== item.base || (merge && f.images.length >= 2); // 따로 저장된 사진 2장 이상은 합쳐서 다시 저장해야 하므로 바뀐 단계로 본다
   const multi = stages.length > 1;
   const dirtyCount = multi ? stages.filter((item, i) => dirtyOf(item, forms[i])).length : 0;
   const showStages = hasStageRow(autoKind, siblings) || multi;
