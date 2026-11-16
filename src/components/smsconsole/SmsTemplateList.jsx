@@ -198,7 +198,11 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const filter = isMineTab ? 'all' : tab;
   const allAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind), [sortedMine]);
   const shownAutos = filter === 'in_use' ? runningAutos : (isMineTab ? [] : allAutos);
-  const sections = useMemo(() => ensureAutoSection(audienceSections(condItems, filter), shownAutos.length), [condItems, filter, shownAutos.length]);
+  // 내 자동 문구가 들어가는 '고객' 묶음을 맨 앞에 둔다(사장님이 켜고 끄는 문구가 먼저 보이게)
+  const sections = useMemo(() => {
+    const list = ensureAutoSection(audienceSections(condItems, filter), shownAutos.length);
+    return shownAutos.length ? [...list].sort((a, b) => Number(b.group === '고객') - Number(a.group === '고객')) : list;
+  }, [condItems, filter, shownAutos.length]);
 
   // 쪽 나누기는 선택한 탭의 행에만 적용한다
   const rowKeys = useMemo(() => {
@@ -258,7 +262,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => (
               <section key={`${aud.group}/${section.kind || ''}`} className="stl-group" aria-label={section.kind || aud.group}>
                 <h3 className="stl-grouphead">
-                  {section.kind ? `${aud.group} › ${section.kind}` : aud.group}{' '}
+                  {aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.length > 0 && section.items.length === 0 ? '내 문구 › 자동 발송' : (section.kind ? `${aud.group} › ${section.kind}` : aud.group)}{' '}
                   <span className="ktm-kind-count">{section.kind ? section.items.length + (aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0) : aud.count}</span>
                 </h3>
                 <ul className="ktm-cards">
