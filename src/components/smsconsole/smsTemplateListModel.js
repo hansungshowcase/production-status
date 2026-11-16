@@ -59,7 +59,8 @@ export function smsPills(items) {
 
 // 신호등(2026-11-16 사장님 "오프면 빨간색 온이면 초록색 한눈에"): 켜짐 초록 · 꺼짐 빨강 · 일부만 켜짐 노랑
 export function itemLight(item) {
-  return item?.active === false || item?.policy?.status === 'paused' ? { tone: 'off', text: '꺼짐' } : { tone: 'on', text: '켜짐' };
+  // 설정 미완료(예: 제작 시작 알림 사용 설정이 꺼짐)도 실제로는 안 나가므로 꺼짐
+  return item?.active === false || item?.policy?.status === 'paused' || item?.config?.status === 'incomplete' ? { tone: 'off', text: '꺼짐' } : { tone: 'on', text: '켜짐' };
 }
 export function flowLightTone(on, total) {
   if (!on) return 'off';
