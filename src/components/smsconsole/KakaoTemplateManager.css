@@ -148,3 +148,15 @@
 .ktm-aud { margin: 0 0 20px; }
 .ktm-kind-head--aud { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--smsc-border, #e3e6ec); font-size: 16px; font-weight: 800; }
 .ktm-card.is-selected .ktm-chip--sender { background: #fff; }
+
+/* 알림톡 목록 한 줄 카드(2026-11-16 사장님: 위아래로 길어지지 않게, 켜짐·꺼짐은 신호등). 칩은 고른 줄에서만 아래 줄로 보인다 */
+.ktm-card--slim .ktm-card-main { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 4px 6px 12px; min-height: 40px; box-sizing: border-box; }
+.ktm-card--slim .ktm-card-name { flex: 1 1 160px; min-width: 0; display: block; white-space: nowrap; text-overflow: ellipsis; }
+.ktm-card--slim .ktm-card-badges { flex: 0 1 auto; justify-content: flex-end; align-items: center; }
+.ktm-card--slim .ktm-card-meta, .ktm-card--slim .ktm-open { order: 3; flex: 1 1 100%; }
+.ktm-card--slim .ktm-menu-wrap { padding-top: 0; align-items: center; }
+.ktm-cards:has(> .ktm-card--slim) { gap: 4px; }
+.ktm-light { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 18px; white-space: nowrap; }
+.ktm-light::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.ktm-light--on { background: #dff5e5; color: #12803a; }
+.ktm-light--off { background: #fde3e1; color: #d12c20; }
