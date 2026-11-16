@@ -29,10 +29,10 @@ test('카탈로그 → 목록: 대상 칩·건수', () => {
 test('발송 중 판정·알약·필터·처음 선택', () => {
   const items = buildSmsItems(overview);
   const pills = smsPills(items);
-  assert.deepEqual(pills.map((p) => [p.id, p.count]), [['in_use', 3], ['all', 6]]);
+  assert.deepEqual(pills.map((p) => [p.id, p.count]), [['all', 6], ['in_use', 3]]);
   assert.deepEqual(filterSmsItems(items, 'in_use').map((i) => i.id), ['c2', 'i1', 'sms_delivery_block_admin_alert']);
   assert.equal(filterSmsItems(items, 'all').length, 6);
-  assert.equal(defaultSmsFilter(items), 'in_use');
+  assert.equal(defaultSmsFilter(items), 'all');
   assert.equal(defaultSmsFilter(buildSmsItems({ groups: [{ id: 'customer', items: [mk('x', 0)] }] })), 'all');
 });
 

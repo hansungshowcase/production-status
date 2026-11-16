@@ -52,9 +52,18 @@ export function sortSmsItems(items) {
 export function smsPills(items) {
   const list = Array.isArray(items) ? items : [];
   return [
+    { id: 'all', label: '전체', count: list.length }, // 2026-11-16 사장님: 전체 탭이 가장 왼쪽
     { id: 'in_use', label: '발송 중', count: list.filter(isInUse).length },
-    { id: 'all', label: '전체', count: list.length },
   ];
+}
+
+// 신호등(2026-11-16 사장님 "오프면 빨간색 온이면 초록색 한눈에"): 켜짐 초록 · 꺼짐 빨강 · 일부만 켜짐 노랑
+export function itemLight(item) {
+  return item?.active === false || item?.policy?.status === 'paused' ? { tone: 'off', text: '꺼짐' } : { tone: 'on', text: '켜짐' };
+}
+export function flowLightTone(on, total) {
+  if (!on) return 'off';
+  return on >= total ? 'on' : 'part';
 }
 
 export function filterSmsItems(items, status) {
@@ -62,8 +71,9 @@ export function filterSmsItems(items, status) {
   return status === 'in_use' ? list.filter(isInUse) : list;
 }
 
-export function defaultSmsFilter(items) {
-  return (Array.isArray(items) ? items : []).some(isInUse) ? 'in_use' : 'all';
+// 처음 열리는 탭은 가장 왼쪽의 전체
+export function defaultSmsFilter() {
+  return 'all';
 }
 
 // 카드 배지 [{tone,text}]: 최근 7일 건수 + 정책 중단 + 설정 미완료

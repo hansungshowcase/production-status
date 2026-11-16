@@ -1,5 +1,12 @@
 /* 문자 템플릿 목록: 탭 한 줄 + 열 머리글이 있는 표. 알림톡 화면(ktm-card)은 그대로 두고 stl-rows 아래에서만 덮어쓴다. */
-.stl-rows { --stl-cols: 220px minmax(0, 1fr) 170px 236px; }
+.stl-rows { --stl-cols: 220px minmax(0, 1fr) 200px 236px; }
+
+/* 신호등: 켜짐 초록 · 꺼짐 빨강 · 일부만 켜짐 노랑 */
+.stl-rows .stl-light { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 18px; white-space: nowrap; }
+.stl-rows .stl-light::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.stl-rows .stl-light--on { background: #dff5e5; color: #12803a; }
+.stl-rows .stl-light--off { background: #fde3e1; color: #d12c20; }
+.stl-rows .stl-light--part { background: #fff1cc; color: #a86a00; }
 
 .stl-rows .stl-tabs { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
 .stl-rows .stl-tabs .ktm-pills { margin: 0; }

@@ -4,7 +4,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowStepText, groupFlows, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
 import { autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
@@ -37,7 +37,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     // 보낸 묶음(sent)은 못 불러와도 카탈로그 카드는 그대로 보인다
     fetchInternalNotifications({ view: 'day', date: getKstToday() }).then((res) => setRecipients(Array.isArray(res?.recipients) ? res.recipients : null)).catch(() => setRecipients(null));
     Promise.all([fetchNotificationOverview(), fetchSmsConsole('sent').catch(() => null)])
-      .then(([data, sent]) => setState({ loaded: true, error: '', items: sortSmsItems(buildKindedItems(data, sent && Array.isArray(sent.groups) ? sent.groups : null)) }))
+      // '미분류'(등록된 문구와 안 맞는 발송 기록 묶음)는 템플릿이 아니라서 이 목록에서 뺀다 — 기록은 발송 내역에 있다(2026-11-16 사장님 "미분류는 뭐야")
+      .then(([data, sent]) => setState({ loaded: true, error: '', items: sortSmsItems(buildKindedItems(data, sent && Array.isArray(sent.groups) ? sent.groups : null)).filter((item) => item.kind !== '미분류') }))
       .catch((err) => setState({ loaded: true, error: err.message || '불러오지 못했습니다.', items: [] }));
   };
   useEffect(() => {
@@ -105,6 +106,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   };
   const mySection = useMemo(() => myTextSection(mine), [mine]);
   // 내 문구 카드. 켜진 자동 문구는 '발송 중' 묶음에도 같은 카드로 보인다(그래서 함수로 둔다)
+  const isOn = (entry) => Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled);
   const renderMine = (entry, prefix = '') => (
     <li key={`${prefix}${entry.id}`} className={`ktm-card stl-row${prefix === 'step-' ? ' stl-step' : ''}${mineOpen === entry.id ? ' is-selected' : ''}`}>
       <button type="button" className="ktm-card-main" aria-expanded={mineOpen === entry.id} onClick={() => openMine(entry)}>
@@ -120,7 +122,12 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             </span>
           );
         })() : <span className="ktm-card-meta"><span>{entry.preview}</span></span>}
-        {entry.hasImage ? <span className="ktm-card-badges"><span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span></span> : null}
+        {entry.autoKind || entry.hasImage ? (
+          <span className="ktm-card-badges">
+            {entry.autoKind ? <span className={`stl-light stl-light--${isOn(entry) ? 'on' : 'off'}`}>{isOn(entry) ? '켜짐' : '꺼짐'}</span> : null}
+            {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
+          </span>
+        ) : null}
         {mineOpen === entry.id ? (
           <span className="ktm-open">
             {entry.autoKind ? <span className="stl-open-cond">{autoConditionLine(entry)}</span> : null}
@@ -155,7 +162,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             {flow.via ? <span className="ktm-chip stl-via">{flow.via}</span> : null}
             {flow.time ? <span className="stl-extras">{flow.time}</span> : null}
           </span>
-          <span className="ktm-card-badges stl-flow-on"><span className={`ktm-badge ktm-badge--${flow.on ? 'warn' : 'muted'}`}>켜짐 {flow.on}/{flow.total}</span></span>
+          <span className="ktm-card-badges stl-flow-on"><span className={`stl-light stl-light--${flowLightTone(flow.on, flow.total)}`}>켜짐 {flow.on}/{flow.total}</span></span>
         </button>
         <span className="stl-flow-actions">
           {FLOW_NO_STEP_KINDS.includes(flow.steps[0]?.autoKind) ? null : <button type="button" className="ktm-btn" onClick={() => addStep(flow)}>단계 추가</button>}
@@ -182,12 +189,15 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const condItems = useMemo(() => (cond ? items.filter((item) => conditionGroup(item) === cond) : items), [items, cond]);
   const runningAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
   // '발송 중' 숫자에는 켜진 내 자동 문구도 센다(표의 총 건수와 같게)
-  const pills = useMemo(() => [...smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : pill)), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection, runningAll]);
+  // '전체'에는 내 자동 문구를 켜짐·꺼짐 상관없이 모두 보인다(2026-11-16 사장님: 한눈에 신호등처럼)
+  const autoAll = useMemo(() => allMine.filter((entry) => entry.autoKind).length, [allMine]);
+  const pills = useMemo(() => [...smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll })), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection, runningAll, autoAll]);
   const rawTab = picked ?? defaultSmsFilter(items);
   const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
   const isMineTab = tab === 'mine';
   const filter = isMineTab ? 'all' : tab;
-  const shownAutos = filter === 'in_use' ? runningAutos : [];
+  const allAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind), [sortedMine]);
+  const shownAutos = filter === 'in_use' ? runningAutos : (isMineTab ? [] : allAutos);
   const sections = useMemo(() => ensureAutoSection(audienceSections(condItems, filter), shownAutos.length), [condItems, filter, shownAutos.length]);
 
   // 쪽 나누기는 선택한 탭의 행에만 적용한다
@@ -267,7 +277,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                             {line ? <span className="stl-line">{line}</span> : null}
                           </span>
                           <span className="ktm-card-badges">
-                            {[...smsBadges(item), ...kindBadges(item)].map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
+                            <span className={`stl-light stl-light--${itemLight(item).tone}`}>{itemLight(item).text}</span>
+                            {[...smsBadges(item), ...kindBadges(item)].filter((badge) => badge.text !== '꺼짐').map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
                           </span>
                           {openId === item.id && expandable ? (
                             <span className="ktm-open">
