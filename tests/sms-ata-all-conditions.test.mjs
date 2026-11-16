@@ -30,7 +30,8 @@ function fakeDb({ orders = [], dueRows = [], createdRows = [], orderDay = [], op
       if (t.startsWith('SELECT id, track_token FROM orders')) return { rows: [] };
       if (t.startsWith('SELECT dedupe_key FROM sms_event_sends WHERE template_id = ? AND dedupe_key IN')) return { rows: state.sends.filter(r => r.template_id === args[0] && args.slice(1).includes(r.dedupe_key)).map(r => ({ dedupe_key: r.dedupe_key })) };
       if (t.startsWith('SELECT dedupe_key FROM sms_event_sends WHERE template_id = ?')) return { rows: state.sends.filter(r => r.template_id === args[0]).map(r => ({ dedupe_key: r.dedupe_key })) };
-      if (t.startsWith('SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0]).length }] };
+      if (t.startsWith('SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0] && (t.includes("kind = 'catchup'") ? r.kind === 'catchup' : t.includes("<> 'catchup'") ? r.kind !== 'catchup' : true)).length }] };
+      if (t.startsWith("UPDATE sms_event_sends SET kind = 'catchup'")) { for (const r of state.sends.filter(x => args.includes(x.id))) r.kind = 'catchup'; return { rows: [] }; }
       if (t.startsWith('INSERT INTO sms_event_sends')) {
         const rows = [];
         for (let i = 0; i < args.length; i += 6) {
@@ -256,7 +257,7 @@ test('따라잡기 발송 가능 시간: 밤(08시 전·21시 이후)에는 선�
 test('따라잡기 상한 이월: 하루 상한까지만 보내고 남은 번호는 다음 날 이어서, 남은 게 없으면 완료 표시(다시 돌지 않음)', async () => {
   const orders = [1, 2, 3, 4, 5].map(i => order(i, `010-1000-000${i}`, `2026-10-0${i}`, `고객${i}`));
   const db = fakeDb({ orders }); const provider = fakeProvider();
-  const env = { ...ENV, SMS_AUTO_INFO_MAX_PER_DAY: '2' };
+  const env = { ...ENV, SMS_CATCHUP_MAX_PER_DAY: '2' };
   const day1 = await go(db, provider, catchupTpl(), { env });
   assert.equal(day1.claimed, 2); assert.deepEqual(db.state.done, []);
   const day2 = await go(db, provider, catchupTpl(), { env, nowMs: NOW + DAY });
@@ -302,7 +303,7 @@ test('미리보기: 범위별(고른 범위·30일·90일·가장 오래된 출�
   assert.equal(byKey.d30.count, 2); assert.equal(byKey.d90.count, 3);
   assert.equal(byKey.all.count, 4); assert.equal(byKey.all.from, '2026-06-01'); assert.equal(byKey.all.cost, 52);
   assert.equal(out.unit, 13); assert.equal(out.balance, 100000); assert.equal(out.balance_short, false);
-  assert.equal(out.daily_max, 200); assert.equal(out.days_needed, 1);
+  assert.equal(out.daily_max, 1000); assert.equal(out.per_run, 100); assert.equal(out.days_needed, 1);
   assert.equal(JSON.stringify(out).includes('01111112222'), false); // 번호 자체는 돌려주지 않는다
   const lowBalance = await catchupPreview(db, { from: '2026-01-01', nowMs: NOW, env: ENV, provider: fakeProvider(), kakao: fakeKakao({}, 20) });
   assert.equal(lowBalance.balance_short, true); assert.equal(lowBalance.balance, 20);
@@ -365,4 +366,54 @@ test('알림톡 상세 연결 줄: 조건 이름·1회·시각·켜짐/꺼짐·�
   assert.equal(ataLinkLine(entry, { enabled: true, sent_7d: 4 }), '출고 완료 후 2일 뒤 · 오전 10:00 · 1회 · 켜짐 · 일괄 2026-11-17 09:00 · 출고일 2026-05-26~오늘 · 최근 7일 4건');
   const [off] = myTextSection([{ id: 6, name: 'x', body: 'b', auto_kind: 'due_date', auto_offset: -2, auto_enabled: false, auto_ata_template: 'KA01' }]).items;
   assert.match(ataLinkLine(off, null), /^납기일 2일 전 · .*1회 · 꺼짐$/);
+});
+
+// ---------- F. 하루에 다 보내기: 일괄 발송 전용 상한(기본 1000) · 크론 1회 묶음 · 안내 상한과 분리 ----------
+const bulkOrders = n => Array.from({ length: n }, (_, i) => order(i + 1, `010${String(10000000 + i * 7)}`, `2026-${String(6 + (i % 5)).padStart(2, "0")}-${String(1 + (i % 28)).padStart(2, '0')}`, `고객${i}`));
+
+test('F: 이미 출고된 429건이 기본 상한(1000)으로 하루 안에 다 나간다 — 5분 크론마다 100건씩, 5번(약 20분) 안에 끝나고 완료 표시', async () => {
+  const db = fakeDb({ orders: bulkOrders(429) }); const provider = fakeProvider();
+  const tpl = catchupTpl({ auto_catchup_from: '2026-05-01', auto_catchup_at: '2026-11-20T09:00' });
+  const sentPerRun = [];
+  for (let run = 0; run < 6; run += 1) {
+    const out = await go(db, provider, tpl, { nowMs: NOW + run * 5 * 60000, env: ENV }); // 안내 상한·일괄 상한 환경값 없음 = 기본값
+    sentPerRun.push(out.claimed);
+  }
+  assert.deepEqual(sentPerRun, [100, 100, 100, 100, 29, 0]);
+  const calls = provider.calls.kakao;
+  assert.ok(calls.every(call => call.messages.length <= 100)); // 한 번의 send-many 는 100건 이하
+  const phones = calls.flatMap(call => call.messages.map(m => m.to));
+  assert.equal(phones.length, 429); assert.equal(new Set(phones).size, 429);
+  assert.ok(db.state.sends.every(r => r.kind === 'catchup' && r.kst_date === '2026-11-20'));
+  assert.deepEqual(db.state.done, [31]); // 마지막(0건) 실행에서 완료 표시
+  // 시작 10:00 → 5번째 묶음이 10:20 → 08~21시 안에서 20분
+  assert.ok(new Date(NOW + 4 * 5 * 60000 + 9 * HOUR).getUTCHours() < 21);
+});
+
+test('F: 일괄 발송 전용 상한은 환경값(SMS_CATCHUP_MAX_PER_DAY)으로만 바뀌고 넘으면 다음 날로 이월된다', async () => {
+  const db = fakeDb({ orders: bulkOrders(250) }); const provider = fakeProvider();
+  const tpl = catchupTpl({ auto_catchup_from: '2026-05-01' });
+  const env = { ...ENV, SMS_CATCHUP_MAX_PER_DAY: '150' };
+  const day1 = [];
+  for (let run = 0; run < 4; run += 1) day1.push((await go(db, provider, tpl, { nowMs: NOW + run * 5 * 60000, env })).claimed);
+  assert.deepEqual(day1, [100, 50, 0, 0]); // 하루 150건
+  const day2 = (await go(db, provider, tpl, { nowMs: NOW + DAY, env })).claimed;
+  assert.equal(day2, 100);
+});
+
+test('F: 안내 상한은 일괄 발송분에 깎이지 않고, 일괄 발송도 안내 문자 때문에 막히지 않는다', async () => {
+  // (1) 일괄 429건이 먼저 나간 뒤에도 안내 문구(납기일 알림톡)는 안내 상한(여기서는 2)까지 그대로 나간다
+  const dueRows = [1, 2, 3].map(i => ({ id: 900 + i, phone: `010-7000-000${i}`, client_name: `납기${i}`, order_date: '2026-11-10', due_date: '2026-11-20', quantity: 1 }));
+  const db = fakeDb({ orders: bulkOrders(429), dueRows }); const provider = fakeProvider();
+  const catchup = catchupTpl({ auto_catchup_from: '2026-05-01' });
+  for (let run = 0; run < 5; run += 1) await go(db, provider, catchup, { nowMs: NOW + run * 5 * 60000, env: ENV });
+  assert.equal(db.state.sends.filter(r => r.kind === 'catchup').length, 429);
+  const info = await go(db, provider, base({ id: 41, auto_kind: 'due_date', auto_days: 0 }), { env: { ...ENV, SMS_AUTO_INFO_MAX_PER_DAY: '2' }, nowMs: NOW + 40 * 60000 });
+  assert.equal(info.claimed, 2); assert.equal(info.reason, ''); // 429건을 보냈어도 안내 2건 상한이 그대로 2건
+  // (2) 반대로 안내 문자가 하루 상한(200)을 이미 다 썼어도 일괄 발송은 막히지 않는다
+  const db2 = fakeDb({ orders: bulkOrders(30) }); const provider2 = fakeProvider();
+  for (let i = 0; i < 200; i += 1) db2.state.sends.push({ id: 5000 + i, template_id: 77, dedupe_key: `x${i}`, kst_date: '2026-11-20', status: 'sent' });
+  db2.state.nextId = 6000;
+  const out = await go(db2, provider2, catchup, { env: ENV });
+  assert.equal(out.claimed, 30);
 });

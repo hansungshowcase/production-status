@@ -24,6 +24,8 @@ const TIME_BUDGET_MS = 70000; // 설계 22-4: 함수 제한 90초(vercel.json) �
 const SEND_RESERVE_MS = 4000;
 const TARGET_LIMIT = 1000;
 const DEFAULT_MAX_PER_DAY = 200;
+const DEFAULT_CATCHUP_MAX_PER_DAY = 1000;
+const DEFAULT_CATCHUP_PER_RUN = 100;
 const DEFAULT_LEAD_MAX_PER_DAY = 300; // 가입·문의 문구는 기존 안내 상한과 따로 센다
 const LEAD_FROM_MINUTE = 9 * 60 + 30; // 가입·문의 후 1일 이상: KST 09:30 이후
 const LEAD_KIND_SQL = LEAD_KINDS.map(kind => `'${kind}'`).join(', ');
@@ -53,6 +55,11 @@ const leadFilter = lead => ` AND template_id ${lead ? 'IN' : 'NOT IN'} (SELECT i
 const placeholders = list => list.map(() => '?').join(', ');
 export const infoMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_INFO_MAX_PER_DAY, DEFAULT_MAX_PER_DAY);
 export const leadMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_LEAD_MAX_PER_DAY, DEFAULT_LEAD_MAX_PER_DAY);
+// 이미 출고된 주문 1회 발송(따라잡기) 전용 상한: 안내 하루 상한(200)과 따로 센다(2026-11-16 사장님 "하루에 다 보내"). 기본 1000 = 쏠라피 일일 한도.
+// 크론 1회(5분)에는 CATCHUP_PER_RUN 건까지만 한 번의 send-many 로 보낸다(쏠라피 요청 8초 제한 안, 다시 보내지 않는 POST 라 한 번에 크게 보내지 않는다).
+export const catchupMaxPerDay = (env = process.env) => intEnv(env.SMS_CATCHUP_MAX_PER_DAY, DEFAULT_CATCHUP_MAX_PER_DAY);
+export const catchupPerRun = (env = process.env) => intEnv(env.SMS_CATCHUP_PER_RUN, DEFAULT_CATCHUP_PER_RUN);
+const NOT_CATCHUP = " AND COALESCE(kind, '') <> 'catchup'"; // 안내 상한 계산에서 일괄 발송분을 뺀다
 export const kstMinutes = nowMs => { const d = new Date(nowMs + 9 * 3600000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 // 발송 시각(설계 28): 'HH:MM' 부터 그날 21:00 전까지인지(시각이 지난 뒤 켜도 그날 나간다. 중복은 선점 키가 막는다). 시각이 비었거나 형식이 아니면 false.
 export const SEND_TIME_END_MIN = 21 * 60;
@@ -81,6 +88,7 @@ export async function ensureEventSchema(db) {
     )`,
     args: [],
   });
+  await db.execute({ sql: 'ALTER TABLE sms_event_sends ADD COLUMN IF NOT EXISTS kind TEXT', args: [] }); // 'catchup' = 이미 출고된 주문 1회 발송분(안내 상한에서 뺀다)
   flags.set('sms.event', true);
 }
 
@@ -301,9 +309,10 @@ export async function catchupPreview(db, { from, templateId = null, nowMs = Date
   ].map(range => ({ ...range, cost: estimate(range.count) }));
   let balance = null;
   try { const value = await kakao.getBalance(kakaoOpts); balance = Number.isFinite(value) ? value : null; } catch { balance = null; }
-  const dailyMax = infoMaxPerDay(env);
+  const dailyMax = catchupMaxPerDay(env); // 일괄 발송 전용 하루 상한(안내 상한과 따로)
+  const perRun = catchupPerRun(env);
   const picked = ranges[0];
-  return { today, oldest_ship_date: oldest, ranges, unit: estimate(1), balance, daily_max: dailyMax, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
+  return { today, oldest_ship_date: oldest, ranges, unit: estimate(1), balance, daily_max: dailyMax, per_run: perRun, eta_minutes: picked.count ? Math.max(0, Math.ceil(picked.count / perRun) - 1) * 5 : 0, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
 }
 
 // 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
@@ -452,9 +461,17 @@ export async function runEventSend(template, deps = {}) {
     pfId = ready.pfId;
   }
   const max = lead ? leadMaxPerDay(env) : infoMaxPerDay(env);
-  const usedToday = Number((await db.execute({ sql: `SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?${leadFilter(lead)}`, args: [today] })).rows?.[0]?.n) || 0;
-  const picked = eligible.slice(0, Math.max(0, max - usedToday));
-  if (picked.length < eligible.length) warn('[sms-event] 하루 상한으로 못 보낸 건수', eligible.length - picked.length);
+  const catchupMax = catchupMaxPerDay(env);
+  const countToday = async sql => Number((await db.execute({ sql, args: [today] })).rows?.[0]?.n) || 0;
+  const infoSql = `SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?${leadFilter(lead)}${NOT_CATCHUP}`;
+  const catchupSql = "SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ? AND kind = 'catchup'";
+  const normalItems = eligible.filter(item => !item.catchup);
+  const catchupItems = eligible.filter(item => item.catchup);
+  const usedToday = await countToday(infoSql);
+  const catchupUsed = catchupItems.length ? await countToday(catchupSql) : 0;
+  // 일괄 발송분은 자기 상한(하루 catchupMax)과 크론 1회 묶음(catchupPerRun)만 따르고, 안내 상한을 쓰지도 깎지도 않는다.
+  const picked = [...normalItems.slice(0, Math.max(0, max - usedToday)), ...catchupItems.slice(0, Math.max(0, Math.min(catchupPerRun(env), catchupMax - catchupUsed)))];
+  if (picked.length < eligible.length) warn('[sms-event] 하루 상한·묶음으로 못 보낸 건수', eligible.length - picked.length);
   if (!picked.length) return { ...out, ran: true, reason: 'cap' };
 
   // 문구 만들기: 한 건에서 예외가 나면 그 건만 건너뛴다.
@@ -485,16 +502,18 @@ export async function runEventSend(template, deps = {}) {
   })).rows || [];
   const byKey = new Map(ready.map(item => [item.key, item]));
   let active = claimedRows.map(row => ({ id: Number(row.id), item: byKey.get(row.dedupe_key) })).filter(entry => entry.item);
-  // 크론이 겹쳐 돌았을 때: 선점 뒤 오늘 합계가 상한을 넘으면 넘은 행은 지우고 보내지 않는다.
-  const after = Number((await db.execute({ sql: `SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?${leadFilter(lead)}`, args: [today] })).rows?.[0]?.n) || 0;
-  if (after > max) {
-    const over = Math.min(active.length, after - max);
-    const drop = active.slice(active.length - over);
-    if (drop.length) {
-      await db.execute({ sql: `DELETE FROM sms_event_sends WHERE status = 'claimed' AND id IN (${placeholders(drop)})`, args: drop.map(entry => entry.id) });
-      active = active.slice(0, active.length - over);
-    }
-  }
+  const claimedCatchup = active.filter(entry => entry.item.catchup);
+  if (claimedCatchup.length) await db.execute({ sql: `UPDATE sms_event_sends SET kind = 'catchup' WHERE id IN (${placeholders(claimedCatchup)})`, args: claimedCatchup.map(entry => entry.id) });
+  // 크론이 겹쳐 돌았을 때: 선점 뒤 오늘 합계가 상한을 넘으면 넘은 행은 지우고 보내지 않는다(안내분·일괄 발송분을 따로 센다).
+  const trim = async (group, after, limit) => {
+    if (after <= limit) return;
+    const drop = group.slice(Math.max(0, group.length - Math.min(group.length, after - limit)));
+    if (!drop.length) return;
+    await db.execute({ sql: `DELETE FROM sms_event_sends WHERE status = 'claimed' AND id IN (${placeholders(drop)})`, args: drop.map(entry => entry.id) });
+    active = active.filter(entry => !drop.includes(entry));
+  };
+  await trim(active.filter(entry => !entry.item.catchup), await countToday(infoSql), max);
+  if (claimedCatchup.length) await trim(active.filter(entry => entry.item.catchup), await countToday(catchupSql), catchupMax);
   out.claimed = active.length;
   out.ran = true;
   if (!active.length) return out;

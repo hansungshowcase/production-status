@@ -423,7 +423,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                     </li>
                   ))}
                 </ul>
-                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · 알림톡 1건 {won(catchupInfo.data.unit)} · 하루 {catchupInfo.data.daily_max}건까지(넘으면 다음 날 이어서{catchupInfo.data.days_needed > 1 ? `, 약 ${catchupInfo.data.days_needed}일` : ''})</p>
+                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · 알림톡 1건 {won(catchupInfo.data.unit)} · 일괄 발송은 5분마다 {catchupInfo.data.per_run}건씩, 시작 후 약 {catchupInfo.data.eta_minutes}분 안에 모두 나갑니다(하루 {catchupInfo.data.daily_max}건까지{catchupInfo.data.days_needed > 1 ? `, 넘으면 다음 날 이어서 약 ${catchupInfo.data.days_needed}일` : ''}, 안내 문자 상한과 따로 셉니다)</p>
                 {catchupInfo.data.balance_short ? <p className="ktm-alert" role="alert">잔액이 예상 비용보다 적습니다. 충전 후 보내세요(발송은 막지 않습니다).</p> : null}
                 <p className="stf-cu-foot">템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다. 나중 자동 발송과 같은 번호에는 겹쳐 보내지 않습니다.</p>
               </div>
