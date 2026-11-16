@@ -85,7 +85,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
   const [adMark, setAdMark] = useState(true);
-  const [merge, setMerge] = useState(!(initial && !startNew)); // 저장된 문구를 고칠 때는 저장된 사진을 그대로 둔다(체크해야만 합침)
+  const [merge, setMerge] = useState(true); // 2026-11-16 사장님 "이미지 2개를 등록하면 자동으로 합쳐서 보내도록, 비용도 아껴야": 사진 2장 이상은 등록·수정 모두 기본으로 한 장에 합친다(체크를 풀면 따로)
   const [merged, setMerged] = useState(null);
   const [mergeFailed, setMergeFailed] = useState(false);
   const [error, setError] = useState('');
