@@ -190,7 +190,7 @@ test('야간·꺼짐·광고 형식 불일치면 선점도 발송도 업로드�
   assert.equal(adCheck('(광고) 안녕\n무료수신거부 번호 안내'), 'no_optout_080');
 });
 
-test('사진 2장 → 사진 올리기 2번·발송 호출 2번(받는 사람 수와 무관), 2통째는 짧은 글+사진', async () => {
+test('사진 2장 → 사진 올리기 2번·발송 호출 2번(받는 사람 수와 무관), 사진 순서대로 가고 본문은 마지막 통에 한 번만(2026-11-16 사장님)', async () => {
   const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31', '김철수'), order(2, '010-5555-6666', '2026-10-30', '이영희'), order(3, '010-7777-8888', '2026-10-29')] });
   const provider = fakeProvider();
   const out = await run(db, provider);
@@ -199,9 +199,10 @@ test('사진 2장 → 사진 올리기 2번·발송 호출 2번(받는 사람 �
   assert.equal(provider.calls.send.length, 2);
   const [first, second] = provider.calls.send;
   assert.equal(first.messages.length, 3);
-  assert.ok(first.messages.some(m => m.text.includes('김철수 대표님')) && first.messages.some(m => m.text.includes('이영희 대표님')));
   assert.deepEqual(first.messages.map(m => m.fileId), ['F1', 'F1', 'F1']);
-  assert.ok(second.messages.every(m => m.fileId === 'F2' && m.text.startsWith('(광고) 한성쇼케이스') && m.text.includes('2/2') && m.text.includes('080-123-4567')));
+  assert.ok(first.messages.every(m => m.text.startsWith('(광고) 한성쇼케이스') && m.text.includes('080-123-4567') && !m.text.includes('대표님') && !m.text.includes('1/2')));
+  assert.ok(second.messages.every(m => m.fileId === 'F2'));
+  assert.ok(second.messages.some(m => m.text.includes('김철수 대표님')) && second.messages.some(m => m.text.includes('이영희 대표님')));
   assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'sent']);
   assert.equal(buildParts({ name: 'n', body: BODY }, 0).length, 1);
 });
@@ -336,7 +337,7 @@ test('내 번호로 시험: 번호 1개만, 같은 키 재요청은 다시 안 �
   const sent = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
   assert.deepEqual(sent.body.part_status, ['sent', 'sent']);
   assert.ok(provider.calls.send.every(c => c.messages.length === 1));
-  assert.ok(provider.calls.send[0].messages[0].text.includes('고객 대표님'));
+  assert.ok(!provider.calls.send[0].messages[0].text.includes('고객 대표님') && provider.calls.send[1].messages[0].text.includes('고객 대표님'));
   const again = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
   assert.equal(again.body.duplicate, true);
   assert.equal(provider.calls.send.length, 2);
