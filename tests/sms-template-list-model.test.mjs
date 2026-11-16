@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildSmsItems, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, buildSmsItems, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -150,4 +150,7 @@ test('흐름 묶기: 가입·문의 10 + 출고 2 + 조건 없음 1 → 흐름 2
   assert.equal(flowStepText({ autoKind: 'ship_or_due', autoOffset: 2 }), '2일 지남');
   assert.equal(flowStepText({ autoKind: 'process_completed', autoStep: '조립작업' }), '조립작업');
   assert.equal(flowStepText({ autoKind: 'order_created' }), '즉시');
+  assert.equal(isAtaEntry({ autoKind: 'member_joined', autoAtaTemplate: 'KA01' }), true);
+  assert.equal(isAtaEntry({ autoKind: 'member_joined', autoAtaTemplate: '' }), false);
+  assert.equal(isAtaEntry({ autoKind: '', autoAtaTemplate: '' }), false);
 });

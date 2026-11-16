@@ -137,6 +137,7 @@ export default function SmsHistoryPage() {
               )}
               {(tplSeen.kakao || tplKind === 'kakao') && (
                 <div hidden={tplKind !== 'kakao'}>
+                  <SmsTemplateList channel="kakao" active={state.menu === 'templates' && tplKind === 'kakao'} onSendText={id => selectMenu('send', { text: id })} />
                   <KakaoTemplateManager
                     active={state.menu === 'templates' && tplKind === 'kakao'}
                     selectedId={tplKind === 'kakao' ? state.tpl : ''}

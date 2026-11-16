@@ -4,7 +4,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAtaEntry, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
 import { autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
@@ -18,7 +18,9 @@ import './SmsAutoControls.css';
 import './SmsTemplateList.css';
 
 // 문자 템플릿: 자동 문자 문구 카탈로그를 카드로 보여 준다(조회만).
-export default function SmsTemplateList({ active, onSendText, openNew, onNewHandled }) {
+// channel 'kakao': 알림톡 템플릿 화면 위에 끼워 넣는 모드(알림톡이 붙은 자동 발송 흐름만 그린다)
+export default function SmsTemplateList({ active, onSendText, openNew, onNewHandled, channel = 'sms' }) {
+  const isKakao = channel === 'kakao';
   const [state, setState] = useState({ loaded: false, error: '', items: [] });
   const [recipients, setRecipients] = useState(null); // 직원 문자 관리의 등록 직원(못 받으면 null — 조건만 보임)
   const [picked, setPicked] = useState(null);
@@ -42,7 +44,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       .catch((err) => setState({ loaded: true, error: err.message || '불러오지 못했습니다.', items: [] }));
   };
   useEffect(() => {
-    if (!active || startedRef.current) return;
+    if (!active || startedRef.current || isKakao) return;
     startedRef.current = true;
     load();
   }, [active]);
@@ -104,7 +106,12 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       setMineConfirm(''); setMineOpen('');
     } catch (err) { setMineError(err.message || '지우지 못했습니다.'); }
   };
-  const mySection = useMemo(() => myTextSection(mine), [mine]);
+  const mySection = useMemo(() => {
+    const section = myTextSection(mine);
+    if (!section) return null;
+    const rows = section.items.filter((entry) => isAtaEntry(entry) === isKakao);
+    return rows.length ? { ...section, items: rows, count: rows.length } : null;
+  }, [mine, isKakao]);
   // 내 문구 카드. 켜진 자동 문구는 '발송 중' 묶음에도 같은 카드로 보인다(그래서 함수로 둔다)
   const isOn = (entry) => Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled);
   const renderMine = (entry, prefix = '') => (
@@ -313,6 +320,26 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
         ) : null}
         <SmsOptoutRow active={active} />
       </>
+    );
+  }
+
+  if (isKakao) {
+    if (!mySection) return null;
+    return (
+      <div className="ktm-root stl-rows" hidden={!active}>
+        <h3 className="stl-grouphead">자동 발송 조건 <span className="ktm-kind-count">{flowRows.length}</span></h3>
+        {mineError ? <p className="ktm-alert" role="alert">{mineError}</p> : null}
+        <div className="stl-table">
+          <ul className="ktm-cards">
+            {flowRows.map((row) => (row.single ? renderMine(row.entry) : renderFlow(row)))}
+          </ul>
+        </div>
+        {adding ? (
+          <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
+            <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
+          </SmsModal>
+        ) : null}
+      </div>
     );
   }
 

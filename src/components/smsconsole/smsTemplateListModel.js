@@ -222,6 +222,9 @@ const OFFSET_KINDS = ['due_date', 'ship_scheduled', 'ship_or_due'];
 const IMMEDIATE_FLOW_KINDS = ['order_created', 'process_started', 'process_completed', 'member_joined'];
 const stepDays = (entry) => (OFFSET_KINDS.includes(entry.autoKind) ? (Number(entry.autoOffset) || 0) : (Number(entry.autoDays) || 0));
 
+// 알림톡 템플릿이 붙은 자동 문구(알림톡 템플릿 화면에서 보인다)
+export const isAtaEntry = (entry) => Boolean(entry?.autoKind && entry?.autoAtaTemplate);
+
 // 단계 칩 글자: 0 → 당일, N → N일(날짜 기준은 N일 전·N일 지남), 즉시형은 공정 이름 또는 즉시
 export function flowStepText(entry) {
   if (IMMEDIATE_FLOW_KINDS.includes(entry?.autoKind)) return entry.autoStep || '즉시';
