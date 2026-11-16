@@ -8,6 +8,7 @@ import {
 } from './_lib/solapiMessageLog.js';
 import { kindOfType } from '../shared/smsConsole.js';
 import { buildGroupRows, fetchSolapiGroupsDay, groupSource } from './_lib/solapiGroupLog.js';
+import { authHeader } from './_lib/customerReviewDelivery.js';
 
 const AUDIENCES = new Set(['all', 'customer', 'staff', 'other']);
 const STATUSES = new Set(['all', 'success', 'pending', 'failed']);
@@ -76,6 +77,20 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
 
   const now = Number.isFinite(nowMs) ? nowMs : Date.now();
   const q = req.query || {};
+  // 사진 1장의 주소: 발송 내역 상세에서 메시지에 붙은 사진을 보여 준다(쏠라피 보관함의 파일 정보에서 주소만 꺼낸다)
+  if (String(queryValue(q.view) || '') === 'image') {
+    const imageId = String(queryValue(q.image_id) || '').trim();
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(imageId)) return bad(res, '올바른 사진 ID 가 아닙니다.');
+    if (!hasSolapiCredentials()) return res.json({ url: null });
+    try {
+      const response = await (fetchImpl || fetch)(`https://api.solapi.com/storage/v1/files/${imageId}`, { headers: { Authorization: authHeader() }, signal: AbortSignal.timeout(8000) });
+      const payload = await response.json().catch(() => ({}));
+      const url = [payload?.url, payload?.fileUrl, payload?.link, payload?.originalUrl].find(value => typeof value === 'string' && /^https:\/\//.test(value)) || null;
+      return res.json({ url, status: response.status, fields: Object.keys(payload || {}).slice(0, 20) });
+    } catch {
+      return res.status(502).json({ error: '사진을 불러오지 못했습니다' });
+    }
+  }
   const date = String(queryValue(q.date) || kstToday(now)).trim();
   const audience = String(queryValue(q.audience) || 'all');
   const status = String(queryValue(q.status) || 'all');

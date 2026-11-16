@@ -217,11 +217,11 @@ test('대체 발송 10분 유예: 최근 3xxx 는 pending, 오래되면 failed',
   assert.equal(byId[old.messageId].status, 'failed');
 });
 
-test('외부 발송 본문은 앞 40자만', async () => {
+test('외부 발송 본문도 자르지 않고 전체를 준다(2026-11-16 사장님: 어떤 메시지인지 정확히)', async () => {
   const m = msg({ to: OTHER_PHONE, text: 'ㄱ'.repeat(100), subject: 'S'.repeat(80) });
   const { response } = await call({ view: 'messages' }, { messages: [m] });
-  assert.equal(response.body.items[0].text, `${'ㄱ'.repeat(40)}…`);
-  assert.equal(response.body.items[0].subject, `${'S'.repeat(40)}…`);
+  assert.equal(response.body.items[0].text, 'ㄱ'.repeat(100));
+  assert.equal(response.body.items[0].subject, 'S'.repeat(80));
 });
 
 test('쪽 크기(기본 50·20/50/100), counts 는 status·type 필터 전 값, 보기=groups 면 items=[]', async () => {

@@ -209,11 +209,6 @@ export function externalCategory(entry, source = null) {
 }
 
 // ---------- item / group ----------
-function cut40(value) {
-  const text = String(value ?? '');
-  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
-}
-
 const TYPE_NAMES = { SMS: '단문문자', LMS: '장문문자', MMS: '사진문자', ATA: '알림톡', CTA: '친구톡', CTI: '친구톡', NSA: '네이버톡' };
 export function typeName(type) {
   const raw = String(type || '').toUpperCase();
@@ -253,7 +248,7 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
     const state = classifyStatus(final, { nowMs, replacementPossible });
     let subject = safeText(final.subject ?? dbRow?.message_subject ?? null);
     let text = safeText(final.text);
-    if (kind.external) { text = text == null ? null : cut40(text); subject = subject == null ? null : cut40(subject); }
+    // 2026-11-16 사장님 "누르면 어떤 메시지인지 정확히 보여야 해 어떤 이미지인지도": 외부 발송도 본문을 자르지 않는다(링크·전화번호 가림은 그대로)
     const disableSms = orig.kakaoOptions?.disableSms;
     const logs = (final.log?.length ? final.log : orig.log) || [];
     return {
@@ -277,6 +272,7 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
       log: logs.slice(-20).map(entry => ({ at: entry.createAt || null, message: safeText(entry.message) })),
       reported_at: final.dateReported || null, received_at: state.status === 'success' ? final.dateReceived || null : null,
       subject, text,
+      image_id: nullable(final.imageId || orig.imageId || orig.kakaoOptions?.imageId || final.kakaoOptions?.imageId || orig.kakaoOptions?.bms?.imageId || final.kakaoOptions?.bms?.imageId),
     };
   });
   return items.sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));

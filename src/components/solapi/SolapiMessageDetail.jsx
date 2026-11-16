@@ -11,6 +11,25 @@ function yesNo(value) {
   return '-';
 }
 
+// 메시지에 붙은 사진: 사진 ID 로 주소를 한 번 받아 보여 준다(상세를 열 때만 부른다)
+function MessageImage({ imageId }) {
+  const [state, setState] = useState({ url: '', failed: false });
+  useEffect(() => {
+    if (!imageId) return undefined;
+    let alive = true;
+    setState({ url: '', failed: false });
+    fetch(`/api/solapi-messages?view=image&image_id=${encodeURIComponent(imageId)}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => { if (alive) setState({ url: data?.url || '', failed: !data?.url }); })
+      .catch(() => { if (alive) setState({ url: '', failed: true }); });
+    return () => { alive = false; };
+  }, [imageId]);
+  if (!imageId) return null;
+  if (state.failed) return <div className="smd-img-note">사진이 붙은 메시지입니다(사진을 불러오지 못했습니다)</div>;
+  if (!state.url) return <div className="smd-img-note">사진 불러오는 중…</div>;
+  return <a href={state.url} target="_blank" rel="noreferrer"><img className="smd-img" src={state.url} alt="메시지에 붙은 사진" onError={() => setState({ url: '', failed: true })} /></a>;
+}
+
 function Field({ label, children, wide }) {
   const empty = children === undefined || children === null || children === '';
   return (
@@ -148,6 +167,7 @@ export default function SolapiMessageDetail({ item, group, checkedAt, onClose })
                     </div>
                   </div>
                   <div className="smd-bubble">
+                    <MessageImage imageId={item.image_id} />
                     {item.subject ? <div className="smd-subject">{item.subject}</div> : null}
                     <div className="smd-text">{item.text || '(본문 없음)'}</div>
                   </div>
@@ -188,6 +208,7 @@ export default function SolapiMessageDetail({ item, group, checkedAt, onClose })
 
           {tab === 1 ? (
             <section className="smd-content" aria-label="메시지 내용">
+              <MessageImage imageId={item.image_id} />
               {item.subject ? <h3 className="smd-content-subject">{item.subject}</h3> : null}
               <div className="smd-content-text">{item.text || '(본문 없음)'}</div>
               <div className="smd-content-meta">{item.type_name || typeLabel} / {item.bytes ?? 0} Bytes · {typeKey(item.type)}</div>
