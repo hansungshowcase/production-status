@@ -261,7 +261,7 @@ async function handlePost(req, res, ctx) {
       const db = deps.db || getDb();
       const env = deps.env || process.env;
       const out = action === 'auto_toggle' ? await autoToggle(body, { db, provider: deps.sendProvider, env, nowMs, kakao, kakaoOpts: opts })
-        : action === 'auto_test' ? await autoTest(body, { db, provider: deps.sendProvider, env, nowMs, fetchImpl: opts.fetchImpl, writeEnabled: write.enabled })
+        : action === 'auto_test' ? await autoTest(body, { db, provider: deps.sendProvider, env, nowMs, fetchImpl: opts.fetchImpl, writeEnabled: write.enabled, kakao, kakaoOpts: opts })
         : action === 'optout_add' ? await optoutAdd(body, { db }) : await optoutDelete(body, { db });
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '처리하지 못했습니다.'); }
