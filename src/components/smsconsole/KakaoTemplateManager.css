@@ -160,3 +160,8 @@
 .ktm-light::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
 .ktm-light--on { background: #dff5e5; color: #12803a; }
 .ktm-light--off { background: #fde3e1; color: #d12c20; }
+.ktm-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 알림톡 목록 카드는 두 줄: 1줄 = 제목(말줄임) + 오른쪽 상태·최근 7일·⋮, 2줄 = 칩. 안쪽 위아래 여백도 줄였다 */
+.ktm-card--slim .ktm-card-main { gap: 2px 8px; padding: 4px 4px 4px 12px; min-height: 34px; }
+.ktm-card--slim .ktm-card-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ktm-card--slim .ktm-card-badges { flex: 0 0 auto; flex-wrap: nowrap; white-space: nowrap; }

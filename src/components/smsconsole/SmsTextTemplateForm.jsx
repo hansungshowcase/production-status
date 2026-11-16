@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
+import { getKstToday } from '../../utils/dateUtils.js';
 import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
@@ -37,6 +38,7 @@ function conditionResult(f) {
   const kind = f.autoKind;
   if (!kind) return '';
   const entry = { autoKind: kind };
+  if (f.ataTemplate) entry.autoAtaTemplate = f.ataTemplate;
   if (isImmediateKind(kind)) {
     Object.assign(entry, { autoStep: kind === AUTO_KIND_ORDER_CREATED ? '' : f.step, autoAudience: f.audience === AUDIENCE_STAFF ? AUDIENCE_STAFF : 'customer', autoStaffCount: f.staff.length });
   } else if (isDateKind(kind)) {
@@ -46,7 +48,7 @@ function conditionResult(f) {
   } else if (kind === AUTO_KIND_LEAD_PLUS) {
     const leadDays = normalizeLeadDays(f.days);
     if (leadDays === null) return '';
-    Object.assign(entry, { autoDays: leadDays, autoAtaTemplate: f.ataTemplate });
+    Object.assign(entry, { autoDays: leadDays });
   } else if (kind !== AUTO_KIND_MEMBER_JOINED) {
     const dayCount = normalizeDays(f.days);
     if (dayCount === null) return '';
@@ -82,6 +84,10 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [staff, setStaff] = useState(v0.staff);
   const [ataTemplate, setAtaTemplate] = useState(v0.ataTemplate);
   const [sendTime, setSendTime] = useState(v0.sendTime); // '' = 안 골랐음(칸에는 기본값이 보이고 저장 때는 빈 값)
+  const [catchupOn, setCatchupOn] = useState(v0.catchupOn); // 이미 출고된 주문에도 한 번 보내기(기본 꺼짐)
+  const [catchupFrom, setCatchupFrom] = useState(v0.catchupFrom); // 출고일 시작일(오늘까지)
+  const [catchupAt, setCatchupAt] = useState(v0.catchupAt); // 보낼 시각 'YYYY-MM-DDTHH:MM'(KST)
+  const [catchupInfo, setCatchupInfo] = useState({ loading: false, error: '', data: null });
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
   const [adMark, setAdMark] = useState(true);
@@ -105,8 +111,25 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const leadKind = autoKind === AUTO_KIND_LEAD_PLUS;
   const adOn = isAdKind(autoKind, ataTemplate) && adMark;
   const outBody = adOn ? withAdFormat(body) : body;
-  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
-  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime]);
+  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt });
+  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime, catchupOn, catchupFrom, catchupAt]);
+  // 이미 출고된 주문 1회 발송 미리보기(읽기만): 켜져 있고 출고 완료 후 + 알림톡일 때 출고일 범위가 바뀌면 건수·비용·잔액을 다시 읽는다
+  const catchupShown = autoKind === AUTO_KIND && Boolean(ataTemplate) && catchupOn;
+  const stageId = stages.find(item => item.key === activeKey)?.id;
+  useEffect(() => {
+    if (!catchupShown) { setCatchupInfo({ loading: false, error: '', data: null }); return undefined; }
+    let alive = true;
+    setCatchupInfo(prev => ({ ...prev, loading: true, error: '' }));
+    fetchSmsConsole('catchup_preview', { from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId })
+      .then(out => { if (!alive) return; setCatchupInfo({ loading: false, error: '', data: out }); if (!catchupFrom && out?.oldest_ship_date) setCatchupFrom(out.oldest_ship_date); })
+      .catch(err => { if (alive) setCatchupInfo({ loading: false, error: err.message || '미리보기를 불러오지 못했습니다.', data: null }); });
+    return () => { alive = false; };
+  }, [catchupShown, catchupFrom, stageId]);
+  const toggleCatchup = on => {
+    setCatchupOn(on);
+    if (on && !catchupAt) { const next = new Date(Date.parse(`${getKstToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10); setCatchupAt(`${next}T09:00`); } // 기본 보낼 시각: 내일 오전 9시
+  };
+  const pickAta = value => { setAtaTemplate(value); if (value) { setAudience('customer'); setStaff([]); } else setCatchupOn(false); };
   const insertVar = varName => {
     const el = bodyRef.current;
     const at = el ? [el.selectionStart, el.selectionEnd] : [body.length, body.length];
@@ -127,14 +150,15 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const { info } = check;
   const conditionText = conditionResult({ autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
+  const won = value => (value === null || value === undefined ? '확인 못 함' : `${Number(value).toLocaleString('ko-KR')}원`);
   const showTime = hasSendTime(autoKind, days);
 
   // ---- 단계(같은 흐름의 문구 여러 개) ----
-  const collect = () => ({ name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
+  const collect = () => ({ name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime, catchupOn, catchupFrom, catchupAt });
   const applyValues = v => {
     setName(v.name); setBody(v.body); setImages(v.images); setAutoKind(v.autoKind); setDays(v.days); setSendFrom(v.sendFrom); setRepeat(v.repeat); setInterval(v.interval);
     setOffsetDir(v.offsetDir); setOffsetDays(v.offsetDays); setUnlessStep(v.unlessStep); setUnlessMode(v.unlessMode); setDaily(v.daily); setWeekdays(v.weekdays);
-    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setImageError('');
+    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setImageError('');
   };
   const forms = stages.map(item => (item.key === activeKey ? collect() : item.form));
   const dupSet = duplicateStages(forms);
@@ -192,7 +216,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     if (multi && clash) { failAt(clash.i, textFormStopText('dup')); return; }
     const outOf = f => (isAdKind(f.autoKind, f.ataTemplate) && adMark ? withAdFormat(f.body) : f.body);
     for (const { f, i } of pick) {
-      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step });
+      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step, ataTemplate: f.ataTemplate, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt });
       if (!chk.ok) { failAt(i, textFormStopText(chk.reason)); return; }
     }
     setBusy(true);
@@ -207,7 +231,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           imgs = f.images;
           if (merge && f.images.length >= 2) { made = await mergeImages(f.images); imgs = [made]; }
         }
-        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime } }));
+        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
         last = out.item;
         setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
       } catch (err) {
@@ -251,7 +275,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         <textarea ref={bodyRef} rows={autoKind ? 4 : 6}value={body} onChange={event => setBody(event.target.value)} />
       </label>
       <div className="stf-meta">
-        <span className="stf-vars">{autoVariables(autoKind, audience).map(item => <button key={item} type="button" className="ktm-btn stf-var" onClick={() => insertVar(item)}>{item}</button>)}</span>
+        <span className="stf-vars">{autoVariables(autoKind, audience, ataTemplate).map(item => <button key={item} type="button" className="ktm-btn stf-var" onClick={() => insertVar(item)}>{item}</button>)}</span>
         <span className="stf-count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}{bodyVarNames(outBody).length ? ` · 변수 채우면 약 ${textInfo(previewFill(outBody)).bytes}바이트${textInfo(previewFill(outBody)).type ? `(${textInfo(previewFill(outBody)).type})` : ''}` : ''}</span>
       </div>
       <div className="stf-row">
@@ -306,8 +330,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <span className="stf-cells">
               <select value={audience} aria-label="받는 사람" onChange={event => setAudience(event.target.value)}>
                 <option value="customer">고객</option>
-                <option value={AUDIENCE_STAFF}>직원</option>
-                {dateKind ? <option value={AUDIENCE_SALES}>영업담당</option> : null}
+                {ataTemplate ? null : <option value={AUDIENCE_STAFF}>직원</option>}
+                {dateKind && !ataTemplate ? <option value={AUDIENCE_SALES}>영업담당</option> : null}
               </select>
               {audience === AUDIENCE_STAFF ? meta.staff.map(person => (
                 <button key={person.id} type="button" className={`ktm-btn stf-staff${staff.includes(person.id) ? ' is-active' : ''}`} aria-pressed={staff.includes(person.id)} onClick={() => toggleStaff(person.id)}>{person.name}</button>
@@ -341,7 +365,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </span>
           </div>
         ) : null}
-        {(dayKind && !(autoKind === AUTO_KIND && ataTemplate)) || dateKind ? (
+        {(dayKind && !ataTemplate) || dateKind ? (
           <div className="stf-line">
             <span className="stf-tag">반복</span>
             <span className="stf-cells">
@@ -356,12 +380,12 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </span>
           </div>
         ) : null}
-        {leadKind || isAdKind(autoKind) ? (
+        {autoKind ? (
           <div className="stf-line">
             <span className="stf-tag">수단</span>
             <span className="stf-cells">
-              {leadKind || autoKind === AUTO_KIND ? (
-                <select value={ataTemplate} aria-label="알림톡" onChange={event => setAtaTemplate(event.target.value)}>
+              {autoKind ? (
+                <select value={ataTemplate} aria-label="알림톡" onChange={event => pickAta(event.target.value)}>
                   <option value="">문자로</option>
                   {ataTemplate && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{`목록에 없는 알림톡 (…${ataTemplate.slice(-4)})`}</option> : null}
                   {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -369,6 +393,41 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               ) : null}
               {isAdKind(autoKind, ataTemplate) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
             </span>
+          </div>
+        ) : null}
+        {autoKind === AUTO_KIND && ataTemplate ? (
+          <div className="stf-line">
+            <span className="stf-tag">1회 발송</span>
+            <span className="stf-cells">
+              <label><input type="checkbox" className="stf-check" checked={catchupOn} onChange={event => toggleCatchup(event.target.checked)} />이미 출고된 주문에도 한 번 보내기</label>
+            </span>
+          </div>
+        ) : null}
+        {catchupShown ? (
+          <div className="stf-catchup" aria-label="이미 출고된 주문 1회 발송">
+            <div className="stf-cells">
+              <span>출고일</span>
+              <input type="date" className="stf-from" value={catchupFrom} max={getKstToday()} aria-label="출고일 시작일" onChange={event => setCatchupFrom(event.target.value)} />
+              <span>부터 오늘까지, 보낼 시각</span>
+              <input type="datetime-local" className="stf-from" value={catchupAt} aria-label="보낼 시각" onChange={event => setCatchupAt(event.target.value)} />
+            </div>
+            {catchupInfo.error ? <p className="ktm-alert" role="alert">{catchupInfo.error}</p> : null}
+            {catchupInfo.data ? (
+              <div className="stf-cu-box" role="status">
+                <p className="stf-cu-head">대상 미리보기{catchupInfo.loading ? ' (갱신 중…)' : ''} · 수신거부·이미 보낸 번호 제외</p>
+                <ul className="stf-cu-list">
+                  {catchupInfo.data.ranges.filter(range => range.key !== 'all' || range.from).map(range => (
+                    <li key={range.key}>
+                      <button type="button" className={`ktm-btn stf-cu-pick${range.key === 'selected' ? ' is-active' : ''}`} disabled={!range.from || range.key === 'selected'} onClick={() => setCatchupFrom(range.from)}>{range.key === 'selected' ? '고른 범위' : range.label}</button>
+                      <span>{range.from ? `${range.from} ~ ${catchupInfo.data.today}` : '-'} · <b>{range.count}건</b> · 예상 비용 {won(range.cost)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · 알림톡 1건 {won(catchupInfo.data.unit)} · 하루 {catchupInfo.data.daily_max}건까지(넘으면 다음 날 이어서{catchupInfo.data.days_needed > 1 ? `, 약 ${catchupInfo.data.days_needed}일` : ''})</p>
+                {catchupInfo.data.balance_short ? <p className="ktm-alert" role="alert">잔액이 예상 비용보다 적습니다. 충전 후 보내세요(발송은 막지 않습니다).</p> : null}
+                <p className="stf-cu-foot">템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다. 나중 자동 발송과 같은 번호에는 겹쳐 보내지 않습니다.</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {conditionText ? <p className="stf-result" aria-label="발송 조건">{conditionText}</p> : null}

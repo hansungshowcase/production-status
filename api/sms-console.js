@@ -13,8 +13,9 @@ import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplat
 import { STEPS } from './_lib/steps.js';
 import { cafe24Connected } from './_lib/cafe24.js';
 import { autoStatus, autoTest, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
+import { catchupPreview } from './_lib/smsEventSend.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts', 'catchup_preview']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
@@ -145,6 +146,12 @@ async function handleGet(req, res, ctx) {
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '자동 발송 현황을 불러오지 못했습니다.'); }
   }
+  if (resource === 'catchup_preview') { // 이미 출고된 주문 1회 발송 미리보기(읽기만): 출고일 범위별 건수·예상 비용·잔액. 번호는 돌려주지 않는다
+    try {
+      const out = await catchupPreview(deps.db || getDb(), { from: String(queryValue(req.query?.from) || ''), templateId: queryValue(req.query?.id) || null, nowMs, env: deps.env || process.env, provider: deps.sendProvider, kakao, kakaoOpts: opts });
+      return res.status(200).json(out);
+    } catch { return fail(res, 500, '미리보기를 불러오지 못했습니다.'); }
+  }
   if (resource === 'auto_meta') { // 번호 없이 공정 이름·직원 이름만
     let connected = false; // 카페24 연결 여부(환경 변수가 없으면 DB 를 보지 않고 false)
     try { connected = await cafe24Connected(deps.db || getDb(), deps.env || process.env); } catch { connected = false; }
@@ -248,7 +255,7 @@ async function handlePost(req, res, ctx) {
     try {
       const db = deps.db || getDb();
       const env = deps.env || process.env;
-      const out = action === 'auto_toggle' ? await autoToggle(body, { db, provider: deps.sendProvider, env, nowMs })
+      const out = action === 'auto_toggle' ? await autoToggle(body, { db, provider: deps.sendProvider, env, nowMs, kakao, kakaoOpts: opts })
         : action === 'auto_test' ? await autoTest(body, { db, provider: deps.sendProvider, env, nowMs, fetchImpl: opts.fetchImpl, writeEnabled: write.enabled })
         : action === 'optout_add' ? await optoutAdd(body, { db }) : await optoutDelete(body, { db });
       return res.status(out.status).json(out.body);

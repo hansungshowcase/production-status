@@ -19,7 +19,7 @@ import './SmsTemplateList.css';
 
 // 문자 템플릿: 자동 문자 문구 카탈로그를 카드로 보여 준다(조회만).
 // channel 'kakao': 알림톡 템플릿 화면 위에 끼워 넣는 모드(알림톡이 붙은 자동 발송 흐름만 그린다)
-export default function SmsTemplateList({ active, onSendText, openNew, onNewHandled, channel = 'sms' }) {
+export default function SmsTemplateList({ active, onSendText, openNew, onNewHandled, channel = 'sms', ataPreset = '' }) {
   const isKakao = channel === 'kakao';
   const [state, setState] = useState({ loaded: false, error: '', items: [] });
   const [recipients, setRecipients] = useState(null); // 직원 문자 관리의 등록 직원(못 받으면 null — 조건만 보임)
@@ -73,9 +73,10 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     }
   };
   // 옛 주소(mode=new&kind=sms)로 들어오면 등록 팝업을 연 채로 보여 준다
-  useEffect(() => { if (active && openNew) { setAdding(true); onNewHandled?.(); } }, [active, openNew]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 알림톡 상세에서 들어오면(ata 주소) 출고 완료 후 + 그 알림톡이 골라진 새 등록 팝업을 연다(저장은 사장님이 직접)
   const [editInit, setEditInit] = useState(null); // 고치는 문구의 양식 초기값(단건 조회)
   const [formOpts, setFormOpts] = useState({}); // 같은 흐름의 문구(siblings)와 새 단계 여부(startNew)
+  useEffect(() => { if (active && openNew) { if (ataPreset) setEditInit({ id: undefined, autoKind: 'ship_plus_days', days: '2', ataTemplate: ataPreset }); setAdding(true); onNewHandled?.(); } }, [active, openNew]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadInit = (id) => fetchSmsConsole('text_template', { id }).then((res) => formInitialFromItem(res?.item));
   const editMine = (entry, flow = null) => {
     setMineError('');
@@ -351,7 +352,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       </div>
       {body}
       {adding ? (
-        <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
+        <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit?.id ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
           <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
         </SmsModal>
       ) : null}

@@ -79,7 +79,7 @@ test('저장: 출고 완료 후 + 알림톡은 정보성(info)으로 알림톡 �
   assert.equal((await saveTextTemplate(db, { name: 'e', body: '#{고객명}님 이벤트 안내', auto: { kind: 'ship_plus_days', days: 3, ata_template: 'KA01TP1' } }, { staff: [] })).status, 201);
 });
 
-test('저장: 문자로 고르면 지금과 같다(광고 문구·알림톡 칸 없음), 주문 등록 후는 알림톡 칸을 받지 않는다', async () => {
+test('저장: 문자로 고르면 지금과 같다(광고 문구·알림톡 칸 없음), 주문 등록 후도 알림톡을 고르면 정보성으로 저장된다', async () => {
   const saved = [];
   const db = saveDb(saved);
   reset();
@@ -87,9 +87,12 @@ test('저장: 문자로 고르면 지금과 같다(광고 문구·알림톡 칸 
   assert.equal(sms.status, 201);
   assert.deepEqual([saved[0].auto_msg_type, saved[0].auto_ata_template], ['ad', '']);
   assert.equal('auto_ata_template' in sms.body.item, false);
-  const ordered = await saveTextTemplate(db, { name: 'b', body: AD_BODY, auto: { kind: 'order_plus_days', days: 3, ata_template: 'KA01TP1' } }, { staff: [] });
+  const ordered = await saveTextTemplate(db, { name: 'b', body: BODY, auto: { kind: 'order_plus_days', days: 3, ata_template: 'KA01TP1' } }, { staff: [] });
   assert.equal(ordered.status, 201);
-  assert.deepEqual([saved[1].auto_msg_type, saved[1].auto_ata_template], ['ad', '']);
+  assert.deepEqual([saved[1].auto_msg_type, saved[1].auto_ata_template], ['info', 'KA01TP1']);
+  const orderedSms = await saveTextTemplate(db, { name: 'c', body: AD_BODY, auto: { kind: 'order_plus_days', days: 3 } }, { staff: [] });
+  assert.deepEqual([saved[2].auto_msg_type, saved[2].auto_ata_template], ['ad', '']);
+  assert.equal(orderedSms.status, 201);
 });
 
 test('대상 계산: 출고일+N 이 오늘인 출고 건만 알림톡(문자 대체 끔)으로 나가고, 지난·아직인 출고분·미출고·비 010 번호는 제외, 다시 돌려도 중복 없음', async () => {
@@ -155,10 +158,11 @@ test('켜기: 알림톡 승인·변수가 맞아야 켜지고 켠 시각(auto_en
 test('화면 모델: 알림톡을 고르면 저장 본문에 ata_template 이 실리고 광고 표기 대상이 아니며, 문자로면 지금과 같다', () => {
   assert.deepEqual(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'ship_plus_days', days: '3', ataTemplate: 'KA01' } }).auto, { kind: 'ship_plus_days', days: 3, ata_template: 'KA01' });
   assert.equal('ata_template' in buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'ship_plus_days', days: '3', ataTemplate: '' } }).auto, false);
-  assert.equal('ata_template' in buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'order_plus_days', days: '3', ataTemplate: 'KA01' } }).auto, false);
+  assert.equal(buildSaveBody({ name: 'a', body: 'b', auto: { kind: 'order_plus_days', days: '3', ataTemplate: 'KA01' } }).auto.ata_template, 'KA01');
   assert.equal(isAdKind('ship_plus_days'), true);
   assert.equal(isAdKind('ship_plus_days', 'KA01'), false);
-  assert.equal(isAdKind('order_plus_days', 'KA01'), true);
+  assert.equal(isAdKind('order_plus_days', 'KA01'), false);
+  assert.equal(isAdKind('order_plus_days'), true);
   assert.match(autoConditionLine({ autoKind: 'ship_plus_days', autoDays: 3, autoAtaTemplate: 'KA01' }), /알림톡/);
   assert.doesNotMatch(autoConditionLine({ autoKind: 'ship_plus_days', autoDays: 3 }), /알림톡/);
 });

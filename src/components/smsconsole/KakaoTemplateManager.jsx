@@ -222,6 +222,9 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <h3 className="ktm-detail-name">{selected.name}</h3>
           <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
         </div>
+        <div className="ktm-detail-actions">
+          <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onRoute({ mode: 'new', tpl: '', kind: 'sms', ata: selected.id })}>이 알림톡으로 자동 발송 설정</button>
+        </div>
         <KakaoTemplatePreview template={{
           name: selected.name, content: selected.content, emphasizeType: selected.emphasizeType,
           emphasizeTitle: selected.emphasizeTitle, emphasizeSubtitle: selected.emphasizeSubtitle,
@@ -273,6 +276,13 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     const lightOff = Boolean(extras && extras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
     const light = lightOff ? 'off' : (linked || (used ?? 0) > 0 ? 'on' : '');
     const picked = item.id === selectedId; // 채널·날짜·보내는 곳·종류 칩은 고른 줄에서만 보인다(목록이 위아래로 길어지지 않게)
+    // 카드는 두 줄: 1줄 = 제목 + 오른쪽 상태·최근 7일·⋮, 2줄 = 칩. 드물게 붙는 보조 배지는 2줄 쪽으로 보낸다(1줄이 길어지지 않게)
+    const extraBadges = item.program_use || (extras && extras.replaced7 > 0) ? (
+      <>
+        {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림에 사용</span> : null}
+        {extras && extras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {extras.replaced7}건</span> : null}
+      </>
+    ) : null;
     return (
       <li key={item.id} className={`ktm-card ktm-card--slim${item.id === selectedId ? ' is-selected' : ''}`}>
         <button type="button" className="ktm-card-main" onClick={() => { setNotice(null); onRoute({ tpl: item.id, mode: '' }); }} aria-current={item.id === selectedId ? 'true' : undefined}>
@@ -283,14 +293,13 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
               <span className="ktm-date">{formatDate(item.dateCreated)}</span>
               {extras ? <span className="ktm-chip ktm-chip--sender">{extras.sender}</span> : null}
               {extras ? <span className="ktm-chip">{extras.kind}</span> : null}
+              {extraBadges}
             </span>
-          ) : null}
+          ) : extraBadges ? <span className="ktm-card-meta">{extraBadges}</span> : null}
           <span className="ktm-card-badges">
             {light ? <span className={`ktm-light ktm-light--${light}`}>{light === 'on' ? '켜짐' : '꺼짐'}</span> : null}
             <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
             {badge ? <span className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span> : null}
-            {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림에 사용</span> : null}
-            {extras && extras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {extras.replaced7}건</span> : null}
           </span>
         </button>
         <div className="ktm-menu-wrap">

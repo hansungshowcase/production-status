@@ -9,14 +9,15 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '' }) {
+  const audience = ataTemplate ? 'customer' : audienceIn; // 알림톡은 고객에게만 간다
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
   if (!trimmed) return { ok: false, reason: 'name', info };
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
-  { const allowed = autoVariables(autoKind, audience); if (bodyVarNames(body).some(item => !allowed.includes(item))) return { ok: false, reason: 'info_unknown_var', info }; }
+  { const allowed = autoVariables(autoKind, audience, ataTemplate); if (bodyVarNames(body).some(item => !allowed.includes(item))) return { ok: false, reason: 'info_unknown_var', info }; }
   if (isImmediateKind(autoKind)) {
     if (autoKind !== AUTO_KIND_ORDER_CREATED && !step) return { ok: false, reason: 'step', info };
     if (audience === AUDIENCE_STAFF && !(Array.isArray(staff) && staff.length)) return { ok: false, reason: 'staff', info };
@@ -33,6 +34,11 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     const times = normalizeRepeat(repeat ?? '1');
     if (times === null) return { ok: false, reason: 'repeat', info };
     if (times >= 2 && normalizeInterval(interval ?? '30') === null) return { ok: false, reason: 'interval', info };
+  }
+  if (catchupOn && autoKind === AUTO_KIND && ataTemplate) { // 이미 출고된 주문에 한 번 보내기: 출고일 시작일 + 보낼 시각(날짜·시각, 08~20시)
+    if (!normalizeSendFrom(catchupFrom)) return { ok: false, reason: 'catchup_from', info };
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(String(catchupAt || ''));
+    if (!m || normalizeSendFrom(m[1]) === null || Number(m[2]) < 8 || Number(m[2]) > 20) return { ok: false, reason: 'catchup_at', info };
   }
   return { ok: true, reason: '', info };
 }
@@ -74,8 +80,8 @@ export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIA
 export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
 // 광고 문구로 저장되는 종류(서버 auto_msg_type 'ad' = 출고 완료 후·주문 등록 후)
-// 출고 완료 후 + 알림톡을 고르면 광고가 아니라 정보성 알림톡이다(ataTemplate 를 넘기면 광고 표기 대상에서 뺀다)
-export const isAdKind = (kind, ataTemplate = '') => (kind === AUTO_KIND && !ataTemplate) || kind === AUTO_KIND_ORDER;
+// 출고 완료 후·주문 등록 후 + 알림톡을 고르면 광고가 아니라 정보성 알림톡이다(ataTemplate 를 넘기면 광고 표기 대상에서 뺀다)
+export const isAdKind = (kind, ataTemplate = '') => (kind === AUTO_KIND || kind === AUTO_KIND_ORDER) && !ataTemplate;
 const AD_OPTOUT_LINE = '무료수신거부 080-500-4233';
 const AD_OPTOUT_RE = /무료\s*수신\s*거부[^\n]*080[-\d]{7,}/;
 // 광고 표기: 맨 앞 "(광고)"와 080 무료수신거부 줄이 없으면 붙인 본문을 돌려준다(있으면 그대로). 서버 adCheck 를 통과하는 모양.
@@ -126,7 +132,8 @@ const offsetText = (offset, daily) => {
 };
 
 // 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
-export function autoVariables(kind, audience) {
+export function autoVariables(kind, audience, ataTemplate = '') {
+  if (ataTemplate && AUTO_KINDS.includes(kind)) return ['고객명']; // 알림톡은 변수가 고객명 하나(모든 조건 공통)
   if (kind === AUTO_KIND_MEMBER_JOINED) return [];
   if (kind === AUTO_KIND_LEAD_PLUS) return ['고객명'];
   if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) || !kind ? ['고객명'] : [];
@@ -195,6 +202,9 @@ export function textFormStopText(reason) {
   if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
   if (reason === 'lead_source_not_connected') return '가입·문의 정보 연결이 아직 안 됐습니다.';
   if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
+  if (reason === 'ata_customer_only') return '알림톡은 고객에게만 보낼 수 있습니다';
+  if (reason === 'catchup_from') return '이미 출고된 주문의 출고일 시작일을 날짜로 넣어 주세요';
+  if (reason === 'catchup_at') return '한 번 보낼 시각을 날짜와 오전 8시~오후 8시 사이로 넣어 주세요';
   if (reason === 'staff') return '받을 직원을 한 명 이상 골라 주세요';
   if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
   if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
@@ -207,15 +217,16 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
-    if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind };
+    const ata = a.ataTemplate ? { ata_template: String(a.ataTemplate) } : {}; // 알림톡을 고르면 모든 조건에서 받는 사람은 고객
+    if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind, ...ata };
     if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || '') };
     if (isImmediateKind(a.kind)) {
-      const staffAudience = a.audience === AUDIENCE_STAFF;
-      return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [] };
+      const staffAudience = a.audience === AUDIENCE_STAFF && !a.ataTemplate;
+      return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [], ...ata };
     }
     if (isDateKind(a.kind)) {
-      const staffAudience = a.audience === AUDIENCE_STAFF;
-      const salesAudience = a.audience === AUDIENCE_SALES;
+      const staffAudience = a.audience === AUDIENCE_STAFF && !a.ataTemplate;
+      const salesAudience = a.audience === AUDIENCE_SALES && !a.ataTemplate;
       const daily = dirDaily(a.offsetDir, a.daily);
       return {
         kind: a.kind,
@@ -226,10 +237,12 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
         ...(a.unlessStep && a.unlessMode === 'started' ? { unless_mode: 'started' } : {}),
         audience: staffAudience ? AUDIENCE_STAFF : (salesAudience ? AUDIENCE_SALES : 'customer'),
         staff: staffAudience && Array.isArray(a.staff) ? a.staff : [],
+        ...ata,
       };
     }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
-    if (a.kind === AUTO_KIND && a.ataTemplate) out.ata_template = String(a.ataTemplate);
+    if (a.ataTemplate) out.ata_template = String(a.ataTemplate);
+    if (a.kind === AUTO_KIND && a.ataTemplate && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
     if (a.repeat !== undefined) out.repeat = normalizeRepeat(a.repeat) ?? AUTO_DEFAULT_REPEAT;
     if (a.interval !== undefined) out.interval = normalizeInterval(a.interval) ?? AUTO_DEFAULT_INTERVAL;
@@ -275,6 +288,7 @@ export function formValuesFromItem(item) {
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
     daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
     staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '',
+    catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '',
   };
 }
 // 단계 순서값(일수 오름차순에 쓴다). 즉시형·회원가입 시는 0, 입력이 올바르지 않으면 null.
@@ -338,13 +352,15 @@ export const hasStageRow = (kind, hasSiblings) => Boolean(hasSiblings) || AUTO_K
 export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
+  entry.autoAtaTemplate ? '알림톡' : '',
 ) : isDateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset, entry.autoDaily)}`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
   entry.autoWeekdays ? '평일만' : '',
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
   entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
-) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객'
+  entry.autoAtaTemplate ? '알림톡' : '',
+) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객', entry.autoAtaTemplate ? '알림톡' : ''
 ) : entry?.autoKind === AUTO_KIND_LEAD_PLUS ? joinDot(
   Number(entry.autoDays) > 0 ? `가입·문의 후 ${Number(entry.autoDays)}일 뒤` : '가입·문의 당일',
   Number(entry.autoDays) > 0 ? (sendTimeLabel(entry.autoSendTime) || '오전 9시 30분') : '',
@@ -354,7 +370,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
   '고객',
-  entry.autoKind === AUTO_KIND && entry.autoAtaTemplate ? '알림톡' : '',
+  entry.autoAtaTemplate ? '알림톡' : '',
   entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
 ) : '');
@@ -447,6 +463,7 @@ export function myTextSection(items) {
       autoKind: AUTO_KINDS.includes(item.auto_kind) ? item.auto_kind : '',
       autoDays: Number(item.auto_days) || 0,
       autoAtaTemplate: String(item.auto_ata_template || ''),
+      autoCatchupAt: String(item.auto_catchup_at || ''),
       autoSendFrom: String(item.auto_send_from || '').slice(0, 10),
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
@@ -483,6 +500,7 @@ export function formInitialFromItem(item) {
     autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
     days: item?.auto_kind === AUTO_KIND_LEAD_PLUS ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
     ataTemplate: String(item?.auto_ata_template || ''),
+    catchupOn: Boolean(item?.auto_catchup_at), catchupFrom: String(item?.auto_catchup_from || ''), catchupAt: String(item?.auto_catchup_at || ''),
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
     repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),
     interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),

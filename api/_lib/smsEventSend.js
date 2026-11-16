@@ -7,7 +7,7 @@ import { getSendProvider } from './sendProvider.js';
 import { staffDirectory, multiPartTimeShort, templateVariableNames, waitBeforePart } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
-import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, isShipAta, LEAD_KINDS, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
+import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, LEAD_KINDS, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
@@ -32,6 +32,8 @@ const SHIP_OR_DUE_SQL = "COALESCE(NULLIF(o.ship_scheduled_date, ''), NULLIF(o.du
 const PROCESS_COLUMN = Object.freeze({ process_started: 'started_at', process_completed: 'completed_at' });
 const WINDOW_MS = 24 * 3600000; // 즉시형 사건 창: [max(켠 시각, 지금 − 24시간), 지금]
 const KEY_CHUNK = 200;
+const CATCHUP_LIMIT = 5000; // 이미 출고된 주문 1회 발송(따라잡기)의 한 번 조회 상한(번호 기준 중복 제거 전)
+const AUTO_KIND_SHIP = 'ship_plus_days';
 const ORDER_COLUMNS = 'o.id, o.phone, o.client_name, o.order_date, o.due_date, o.ship_scheduled_date, o.product_type, o.door_type, o.width, o.depth, o.height, o.quantity, o.sales_person';
 export const CUSTOMER_VARS = Object.freeze(['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크']);
 export const STAFF_VARS = Object.freeze([...CUSTOMER_VARS, '제품']);
@@ -120,7 +122,7 @@ export function eventExampleText(part, template) {
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -132,6 +134,7 @@ export async function loadEventTemplate(db, id) {
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
     auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '',
+    auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_done: Boolean(row.auto_catchup_done_at),
   };
 }
 
@@ -200,23 +203,107 @@ async function leadCandidatesFor(db, template, { nowMs, preview }) {
   return items;
 }
 
-// 출고 완료 후 N일 + 알림톡 후보(읽기만): 출고 대상 조회(findTargets)를 하루짜리 창으로 재사용. KST 출고일 + N일 == 오늘이고,
-// 출고일 + N일 이 켠 날 이상인 것만(켜기 전에 이미 지난 출고분은 보내지 않는다). 수신거부 번호 제외. 키 = 해시:ship (번호당 평생 1번).
-async function shipCandidatesFor(db, template, { nowMs, preview }) {
+// 출고·주문 후 N일 + 알림톡 후보(읽기만): 대상 조회(findTargets)를 하루짜리 창으로 재사용. KST 기준일(출고일·주문일) + N일 == 오늘이고,
+// 기준일 + N일 이 켠 날 이상인 것만(켜기 전에 이미 지난 분은 보내지 않는다). 수신거부 번호 제외. 키 = 해시:ship | 해시:order (번호당 평생 1번).
+// 출고 완료 후는 '이미 출고된 주문 1회 발송'(catchup)이 켜져 시각이 됐으면 출고일 범위의 출고분도 같은 키(해시:ship)로 더한다 → 나중 자동 발송과 겹치지 않는다.
+const dayWord = template => (template.auto_kind === AUTO_KIND_SHIP ? 'ship' : 'order');
+async function optoutHashes(db) {
+  await ensureAutoSchema(db);
+  return new Set(((await db.execute({ sql: 'SELECT phone_hash FROM sms_optouts', args: [] })).rows || []).map(row => row.phone_hash));
+}
+async function dayCandidatesFor(db, template, { nowMs, preview, catchupOnly }) {
   const enabledMs = preview ? nowMs : Date.parse(template.auto_enabled_at || '');
   const days = Number(template.auto_days) || 0;
-  if (!Number.isFinite(enabledMs) || days < 1) return [];
   const today = kstDate(nowMs);
-  await ensureAutoSchema(db);
-  const optouts = new Set(((await db.execute({ sql: 'SELECT phone_hash FROM sms_optouts', args: [] })).rows || []).map(row => row.phone_hash));
+  const word = dayWord(template);
+  const optouts = await optoutHashes(db);
   const items = [];
-  for (const target of await findTargets(db, { nowMs, days, startDate: addDays(today, -days), kind: 'ship_plus_days' })) {
-    if (addDays(target.shipDate, days) !== today || addDays(target.shipDate, days) < kstDate(enabledMs)) continue;
-    if (optouts.has(autoPhoneHash(target.phone))) continue;
-    const hash = hashOf(target.phone);
-    items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: 'ship', key: `${hash}:ship`, vars: { 고객명: cleanValue(target.name).slice(0, 20) || '고객' } });
+  const keys = new Set();
+  if (!catchupOnly && Number.isFinite(enabledMs) && days >= 1) {
+    for (const target of await findTargets(db, { nowMs, days, startDate: addDays(today, -days), kind: template.auto_kind })) {
+      if (addDays(target.shipDate, days) !== today || addDays(target.shipDate, days) < kstDate(enabledMs)) continue;
+      if (optouts.has(autoPhoneHash(target.phone))) continue;
+      const hash = hashOf(target.phone);
+      keys.add(`${hash}:${word}`);
+      items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: word, key: `${hash}:${word}`, vars: { 고객명: cleanValue(target.name).slice(0, 20) || '고객' } });
+    }
+  }
+  if (catchupActive(template, nowMs)) {
+    for (const target of await catchupTargets(db, { from: template.auto_catchup_from, to: today })) {
+      if (optouts.has(autoPhoneHash(target.phone))) continue;
+      const hash = hashOf(target.phone);
+      const key = `${hash}:ship`;
+      if (keys.has(key)) continue;
+      keys.add(key);
+      items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: 'ship', key, catchup: true, vars: { 고객명: cleanValue(target.name).slice(0, 20) || '고객' } });
+    }
   }
   return items;
+}
+
+// 이미 출고된 주문 1회 발송(따라잡기): 켜져 있고 승인 알림톡이 걸린 출고 완료 후 문구 + 범위·시각이 있고 아직 안 끝났고 지정 시각(KST)이 지났으면 true.
+// 날짜가 지난 뒤에는 매일 그 시각(시·분) 이후에만 이어서 보낸다(상한을 넘은 몫이 다음 날로 이월된다).
+export function catchupActive(template, nowMs) {
+  if (!template?.auto_enabled || template.auto_kind !== AUTO_KIND_SHIP || !template.auto_ata_template) return false;
+  if (!template.auto_catchup_from || !template.auto_catchup_at || template.auto_catchup_done) return false;
+  const at = Date.parse(`${template.auto_catchup_at}:00+09:00`);
+  if (!Number.isFinite(at) || nowMs < at) return false;
+  return kstMinutes(nowMs) >= Number(template.auto_catchup_at.slice(11, 13)) * 60 + Number(template.auto_catchup_at.slice(14, 16));
+}
+// 출고일이 [from, to] 인 출고 완료 주문의 010 번호(번호당 1건, 오래된 출고일 순). orders 는 읽기만 한다.
+async function catchupTargets(db, { from, to }) {
+  const out = await db.execute({
+    sql: `SELECT id, phone, client_name, LEFT(ship_date, 10) AS ship_day FROM orders
+      WHERE status = 'shipped' AND ship_date IS NOT NULL AND LEFT(ship_date, 10) >= ? AND LEFT(ship_date, 10) <= ?
+      ORDER BY ship_date ASC, id ASC LIMIT ${CATCHUP_LIMIT}`,
+    args: [from, to],
+  });
+  const seen = new Set();
+  const targets = [];
+  for (const row of out.rows || []) {
+    const phone = digits(row.phone);
+    if (!TARGET_RE.test(phone) || seen.has(phone)) continue;
+    seen.add(phone);
+    targets.push({ orderId: Number(row.id), phone, name: row.client_name, shipDate: row.ship_day });
+  }
+  return targets;
+}
+async function doneKeys(db, templateId, keys) {
+  const done = new Set();
+  for (let i = 0; i < keys.length; i += KEY_CHUNK) {
+    const chunk = keys.slice(i, i + KEY_CHUNK);
+    for (const row of (await db.execute({ sql: `SELECT dedupe_key FROM sms_event_sends WHERE template_id = ? AND dedupe_key IN (${placeholders(chunk)})`, args: [templateId, ...chunk] })).rows || []) done.add(row.dedupe_key);
+  }
+  return done;
+}
+// 따라잡기 미리보기(읽기만): 범위별 보낼 번호 수·예상 비용(알림톡 단가 × 건수)·현재 잔액. 번호 자체는 돌려주지 않는다. 수신거부·이미 보낸(이 문구로) 번호는 뺀다.
+export async function catchupPreview(db, { from, templateId = null, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts } = {}) {
+  const today = kstDate(nowMs);
+  await ensureEventSchema(db);
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) ? String(from) : today;
+  const optouts = await optoutHashes(db);
+  const all = [];
+  for (const target of await catchupTargets(db, { from: '1970-01-01', to: today })) {
+    if (optouts.has(autoPhoneHash(target.phone))) continue;
+    all.push({ ...target, key: `${hashOf(target.phone)}:ship` });
+  }
+  const done = templateId ? await doneKeys(db, Number(templateId), all.map(item => item.key)) : new Set();
+  const open = all.filter(item => !done.has(item.key));
+  const vendor = provider || getSendProvider();
+  const estimate = count => (typeof vendor?.estimateKakao === 'function' ? (Number(vendor.estimateKakao({ count }, env)?.total) ?? null) : null);
+  const count = fromDate => open.filter(item => item.shipDate >= fromDate).length;
+  const oldest = open.length ? open[0].shipDate : '';
+  const ranges = [
+    { key: 'selected', label: '고른 범위', from: start, count: count(start) },
+    { key: 'd30', label: '최근 30일', from: addDays(today, -30), count: count(addDays(today, -30)) },
+    { key: 'd90', label: '최근 90일', from: addDays(today, -90), count: count(addDays(today, -90)) },
+    { key: 'all', label: '가장 오래된 출고일부터', from: oldest, count: open.length },
+  ].map(range => ({ ...range, cost: estimate(range.count) }));
+  let balance = null;
+  try { const value = await kakao.getBalance(kakaoOpts); balance = Number.isFinite(value) ? value : null; } catch { balance = null; }
+  const dailyMax = infoMaxPerDay(env);
+  const picked = ranges[0];
+  return { today, oldest_ship_date: oldest, ranges, unit: estimate(1), balance, daily_max: dailyMax, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
 }
 
 // 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
@@ -249,8 +336,8 @@ async function instantCandidates(db, template, { nowMs, staff, preview }) {
 }
 
 // 오늘 대상(이미 선점한 것 제외 전). 납기일/출고예정일 칸이 오늘 − offset 인 진행 중 주문만(당일만, 뒤늦게 보내지 않음).
-async function candidates(db, template, { nowMs, staff, preview, warn }) {
-  if (isShipAta(template)) return shipCandidatesFor(db, template, { nowMs, preview });
+async function candidates(db, template, { nowMs, staff, preview, warn, catchupOnly }) {
+  if (isDayAta(template)) return dayCandidatesFor(db, template, { nowMs, preview, catchupOnly });
   if (isInstantKind(template.auto_kind)) return instantCandidates(db, template, { nowMs, staff, preview });
   if (isLeadKind(template.auto_kind)) return leadCandidatesFor(db, template, { nowMs, preview });
   if (!isEventKind(template.auto_kind)) return [];
@@ -281,7 +368,7 @@ async function candidates(db, template, { nowMs, staff, preview, warn }) {
 async function pending(db, template, deps) {
   const items = await candidates(db, template, deps);
   if (!items.length) return [];
-  if (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isShipAta(template) || template.auto_daily) { // 즉시형·매일 반복: 후보 키만 IN 조회(문구 기록 전체를 읽지 않는다)
+  if (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template) || template.auto_daily) { // 즉시형·매일 반복: 후보 키만 IN 조회(문구 기록 전체를 읽지 않는다)
     const done = new Set();
     const keys = items.map(item => item.key);
     for (let i = 0; i < keys.length; i += KEY_CHUNK) {
@@ -318,6 +405,9 @@ export async function ataReady(templateId, { kakao = kakaoTemplates, kakaoOpts, 
   } catch { return { ok: false, pfId: '' }; }
 }
 
+// 알림톡 변수는 #{고객명} 하나: 주문 행이 있으면 그 이름, 없으면(가입 시 등) '고객'
+const ataVars = item => item.vars || { 고객명: cleanValue(item.order?.client_name).slice(0, 20) || '고객' };
+
 // ---- 문구 1개 실행 ----
 export async function runEventSend(template, deps = {}) {
   const { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, staff, warn = console.warn, sleep } = deps;
@@ -331,7 +421,8 @@ export async function runEventSend(template, deps = {}) {
   if (!isInfoTemplate(template)) return { ...out, reason: 'no_auto' };
   if (isEventKind(template.auto_kind) && template.auto_weekdays && kstWeekend(nowMs)) return { ...out, reason: 'weekend' }; // 평일만: KST 토·일 무동작
   const lead = isLeadKind(template.auto_kind);
-  const ata = (lead || isShipAta(template)) && Boolean(template.auto_ata_template); // 알림톡 갈래: sendKakaoEach (문자는 sendEach)
+  const ata = isAtaTemplate(template); // 알림톡 갈래(모든 조건): sendKakaoEach (문자는 sendEach)
+  if (ata && template.auto_audience !== 'customer') return { ...out, reason: 'info_check' }; // 알림톡은 고객에게만
   if (lead && template.auto_days >= 1 && kstMinutes(nowMs) < (sendTimeMinutes(template.auto_send_time) ?? LEAD_FROM_MINUTE)) return { ...out, reason: 'early' }; // 1일 이상 단계는 문구의 발송 시각(없으면 KST 09:30) 부터
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
   if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience, template.auto_kind, ata)) return { ...out, reason: 'info_check' };
@@ -347,7 +438,10 @@ export async function runEventSend(template, deps = {}) {
     await pollSignups(db, { env, fetchImpl, nowMs, warn });
   }
   const today = kstDate(nowMs);
-  const eligible = await pending(db, template, { nowMs, staff, warn });
+  const eligible = await pending(db, template, { nowMs, staff, warn, catchupOnly: deps.catchupOnly === true });
+  if (catchupActive(template, nowMs) && !eligible.some(item => item.catchup)) { // 이미 출고된 주문 1회 발송: 남은 대상이 없으면 끝(다시 돌지 않는다)
+    try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_done_at = NOW() WHERE id = ? AND auto_catchup_done_at IS NULL RETURNING id', args: [template.id] }); } catch { warn('[sms-event] 1회 발송 완료 표시 실패'); }
+  }
   out.targets = eligible.length;
   if (!eligible.length) return { ...out, ran: true };
 
@@ -416,7 +510,7 @@ export async function runEventSend(template, deps = {}) {
     if (stop) { partStatus.push('skipped'); continue; }
     await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
     if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
-    const messages = ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: entry.item.vars })) : active.map(entry => {
+    const messages = ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataVars(entry.item) })) : active.map(entry => {
       const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
       if (part.image >= 0) message.fileId = fileIds[part.image];
       return message;
@@ -464,7 +558,8 @@ export async function runEventSendAll(deps = {}) {
 export async function runInstantSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
-  const sql = `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN (${[...INSTANT_KINDS, ...LEAD_KINDS].map(kind => `'${kind}'`).join(', ')}) ORDER BY id ASC`;
+  // 즉시형·가입·문의 문구 + (이미 출고된 주문 1회 발송이 걸려 아직 안 끝난 출고 완료 후 알림톡 문구: 5분 크론이 지정 시각에 1번 실행)
+  const sql = `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND (auto_kind IN (${[...INSTANT_KINDS, ...LEAD_KINDS].map(kind => `'${kind}'`).join(', ')}) OR (auto_kind = 'ship_plus_days' AND COALESCE(auto_ata_template, '') <> '' AND COALESCE(auto_catchup_at, '') <> '' AND auto_catchup_done_at IS NULL)) ORDER BY id ASC`;
   let list;
   try { list = await db.execute({ sql, args: [] }); } catch (error) {
     if (error?.code !== '42703' && error?.code !== '42P01') throw error; // 표·칸이 아직 없으면 만든 뒤 한 번 더
@@ -487,7 +582,7 @@ export async function runInstantSendAll(deps = {}) {
       try { await pollSignups(db, { env: deps.env || process.env, fetchImpl: deps.fetchImpl, nowMs, warn }); } catch { warn('[sms-event] 카페24 보충 조회 실패'); }
     }
     total.templates += 1;
-    const result = await runEventSend(template, { ...deps, deadline });
+    const result = await runEventSend(template, { ...deps, deadline, catchupOnly: template.auto_kind === AUTO_KIND_SHIP }); // 출고 문구는 평소 발송 시각을 지키려고 1회 발송 몫만 보낸다
     if (result.reason && !result.ran) total.skipped += 1;
     for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
   }
@@ -502,7 +597,7 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends WHERE template_id = ? GROUP BY status', args: [id] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
   const sent7 = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_event_sends WHERE template_id = ? AND status = 'sent' AND kst_date >= ?", args: [id, addDays(today, -6)] })).rows?.[0]?.n) || 0;
-  const todayTargets = (await pending(db, template, { nowMs, staff, preview: (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isShipAta(template)) && !template.auto_enabled })).length;
+  const todayTargets = (await pending(db, template, { nowMs, staff, preview: previewMode(template) })).length;
   return reply(200, {
     enabled: template.auto_enabled && autoOn(env), days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
     failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'), last_sent_date: sums.find(row => row.status === 'sent')?.last || '',
@@ -511,17 +606,19 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
 }
 
 const needsStep = kind => kind === 'process_started' || kind === 'process_completed';
+const previewMode = template => (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template)) && !template.auto_enabled; // 켜기 전 미리 보기
 export function eventBlockedReason(template) {
   if (!isInfoTemplate(template)) return 'no_auto';
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return 'no_step';
   if (template.auto_audience === 'staff' && !template.auto_staff.length) return 'no_staff';
-  return infoCheck(template.body, template.auto_audience, template.auto_kind, (isLeadKind(template.auto_kind) || isShipAta(template)) && Boolean(template.auto_ata_template));
+  if (isAtaTemplate(template) && template.auto_audience !== 'customer') return 'ata_customer_only';
+  return infoCheck(template.body, template.auto_audience, template.auto_kind, isAtaTemplate(template));
 }
 
 // 기존 고객·직원 알림과 같은 조건일 때만 true(기준일형은 기존 납기·출고일 알림이 있어 항상 true)
 function instantOverlap(template) {
   const { auto_kind: kind, auto_step: step, auto_audience: audience } = template;
-  if (isLeadKind(kind) || isShipAta(template)) return false; // 기존 알림이 없다
+  if (isLeadKind(kind) || isDayAta(template)) return false; // 기존 알림이 없다
   if (!isInstantKind(kind)) return true;
   if (kind === 'member_joined') return false; // 기존 알림이 없다
   if (kind === 'order_created') return audience !== 'staff';
@@ -540,15 +637,14 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   const blocked = eventBlockedReason(template);
   if (blocked) {
     const message = blocked === 'no_staff' ? '받는 직원을 1명 이상 골라야 켤 수 있습니다.' : blocked === 'no_auto' ? '자동 발송이 설정된 문구가 아닙니다.'
-      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'info_unknown_var' && template.auto_kind === 'member_joined' ? INFO_CHECK_MESSAGE.info_unknown_var : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
+      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'ata_customer_only' ? '알림톡은 고객에게만 보낼 수 있습니다.' : blocked === 'info_unknown_var' && template.auto_kind === 'member_joined' ? INFO_CHECK_MESSAGE.info_unknown_var : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
     return errorReply(400, message, { reason: blocked });
   }
   if (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env))) return errorReply(400, '카페24 연결이 아직 안 됐습니다.', { reason: 'cafe24_not_connected' });
   if (isLeadKind(template.auto_kind)) {
     if (!(await leadSourcesConnected(db, env))) return errorReply(400, '가입·문의 정보 연결이 아직 안 됐습니다.', { reason: 'lead_source_not_connected' });
-    if (template.auto_ata_template && !(await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env })).ok) return errorReply(400, '알림톡 템플릿이 승인 상태가 아니거나 고객명 외 변수가 있습니다.', { reason: 'ata_not_ready' });
   }
-  if (isShipAta(template) && !(await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env })).ok) return errorReply(400, '알림톡 템플릿이 승인 상태가 아니거나 고객명 외 변수가 있습니다.', { reason: 'ata_not_ready' });
+  if (isAtaTemplate(template) && !(await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env })).ok) return errorReply(400, '알림톡 템플릿이 승인 상태가 아니거나 고객명 외 변수가 있습니다.', { reason: 'ata_not_ready' });
   const todayKind = template.auto_kind === 'member_joined' || (template.auto_kind === 'lead_plus_days' && Number(template.auto_days) === 0);
   if (todayKind) { // 가입 당일에 나가는 문구는 동시에 둘 이상 켜지 않는다(설계 19-7)
     const clash = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND id <> ? AND (auto_kind = 'member_joined' OR (auto_kind = 'lead_plus_days' AND auto_days = 0)) LIMIT 1", args: [template.id] });
@@ -557,16 +653,17 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   if (!autoOn(env)) return errorReply(503, '자동 발송이 꺼져 있습니다.');
   if (body.dry_run === true) {
     const vendor = provider || getSendProvider();
-    const parts = buildEventParts(template, template.images.length);
-    const targets = (await pending(db, template, { nowMs, staff, preview: (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isShipAta(template)) && !template.auto_enabled })).length; // 즉시형 켜기 전: 최근 24시간 사건 기준 미리 보기(읽기만)
+    const parts = buildEventParts(template, isAtaTemplate(template) ? 0 : template.images.length);
+    const targets = (await pending(db, template, { nowMs, staff, preview: previewMode(template) })).length; // 즉시형 켜기 전: 최근 24시간 사건 기준 미리 보기(읽기만)
     const leadKind = isLeadKind(template.auto_kind);
     const dailyMax = leadKind ? leadMaxPerDay(env) : infoMaxPerDay(env);
     const people = Math.min(targets, dailyMax);
-    const cost = (leadKind || isShipAta(template)) && template.auto_ata_template ? (typeof vendor?.estimateKakao === 'function' ? Number(vendor.estimateKakao({ count: people }, env)?.total) || 0 : null) : vendor ? costOf(vendor, parts, people, env) : null;
-    return reply(200, { ok: true, targets, parts: parts.length, cost, daily_max: dailyMax, overlap: instantOverlap(template) });
+    const cost = isAtaTemplate(template) ? (typeof vendor?.estimateKakao === 'function' ? Number(vendor.estimateKakao({ count: people }, env)?.total) || 0 : null) : vendor ? costOf(vendor, parts, people, env) : null;
+    const catchup = template.auto_kind === AUTO_KIND_SHIP && isAtaTemplate(template) && template.auto_catchup_from ? await catchupPreview(db, { from: template.auto_catchup_from, templateId: template.id, nowMs, env, provider, kakao, kakaoOpts }) : undefined;
+    return reply(200, { ok: true, targets, parts: parts.length, cost, daily_max: dailyMax, overlap: instantOverlap(template), ...(catchup ? { catchup } : {}) });
   }
   const startDate = kstDate(nowMs);
-  if (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isShipAta(template)) { // 켠 시각 = NOW(). 이 시각 이전 사건은 보내지 않는다.
+  if (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template)) { // 켠 시각 = NOW(). 이 시각 이전 사건은 보내지 않는다.
     await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = true, auto_start_date = ?, auto_enabled_at = NOW() WHERE id = ? RETURNING id', args: [startDate, template.id] });
     return reply(200, { ok: true, enabled: true, start_date: startDate });
   }

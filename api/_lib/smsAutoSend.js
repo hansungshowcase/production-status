@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
-import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isEventKind, isInfoTemplate, isShipAta, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
@@ -113,7 +113,7 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -125,6 +125,7 @@ async function loadTemplate(db, id) {
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '', auto_send_time: row.auto_send_time || '', auto_ata_template: row.auto_ata_template || '',
+    auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_done: Boolean(row.auto_catchup_done_at),
   };
 }
 
@@ -206,7 +207,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   const shared = typeof deadline === 'number';
   const endAt = shared ? deadline : startedAt + TIME_BUDGET_MS;
   const timeShort = () => shared && endAt - tick() < SEND_RESERVE_MS;
-  if (template.auto_msg_type === 'info' || isShipAta(template)) return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep, kakao, kakaoOpts }); // 안내 문구는 새 모듈
+  if (template.auto_msg_type === 'info' || isDayAta(template)) return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep, kakao, kakaoOpts }); // 안내 문구는 새 모듈
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   const settings = autoSettings(env);
   if (!template.auto_enabled || !settings.on) return { ...out, reason: 'off' }; // ①
@@ -380,7 +381,7 @@ function costOf(vendor, parts, people, env) {
 }
 
 // action auto_toggle { id, enabled, dry_run }
-export async function autoToggle(body, { db, provider, env = process.env, nowMs = Date.now() } = {}) {
+export async function autoToggle(body, { db, provider, env = process.env, nowMs = Date.now(), kakao, kakaoOpts } = {}) {
   const id = Number(body?.id);
   if (!(Number.isInteger(id) && id > 0)) return errorReply(400, '올바른 문구가 아닙니다.');
   if (typeof body.enabled !== 'boolean') return errorReply(400, '올바른 요청이 아닙니다.');
@@ -392,7 +393,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
     await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = false WHERE id = ? RETURNING id', args: [id] });
     return reply(200, { ok: true, enabled: false, start_date: template.auto_start_date || '' });
   }
-  if (isInfoTemplate(template)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs }); } // 안내 문구는 새 모듈
+  if (isInfoTemplate(template)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs, kakao, kakaoOpts }); } // 안내 문구는 새 모듈
   if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
   const blocked = adCheck(template.body);
   if (blocked) return errorReply(400, blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.', { reason: blocked });

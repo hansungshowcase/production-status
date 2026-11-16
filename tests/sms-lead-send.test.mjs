@@ -186,8 +186,11 @@ test('저장: lead 는 일수 0 허용·고객명만·알림톡 칸 저장, 광�
     assert.equal(a.body.item.auto_ata_template, 'KA01TP1');
     assert.equal((await saveTextTemplate(db, { name: 'b', body: BODY, auto: { kind: 'lead_plus_days', days: 366 } }, { staff: [] })).status, 400);
     assert.equal((await saveTextTemplate(db, { name: 'c', body: '할인 안내', auto: { kind: 'lead_plus_days', days: 3 } }, { staff: [] })).status, 400);
+    // 2026-11-16: 모든 조건에서 알림톡을 고를 수 있다 — 고르면 고객명만 허용(주문 변수는 거절), 문자로면 알림톡 칸이 빈 값
     const other = await saveTextTemplate(db, { name: 'd', body: '#{주문번호} 안내', auto: { kind: 'order_created', ata_template: 'KA01TP1' } }, { staff: [] });
-    assert.equal(other.status, 201); assert.equal(saved[1] ? saved[1].auto_ata_template : saved.at(-1).auto_ata_template, '');
+    assert.equal(other.status, 400); assert.equal(other.body.reason, 'info_unknown_var');
+    const sms = await saveTextTemplate(db, { name: 'e', body: '#{주문번호} 안내', auto: { kind: 'order_created' } }, { staff: [] });
+    assert.equal(sms.status, 201); assert.equal(saved.at(-1).auto_ata_template, '');
   })();
 });
 
