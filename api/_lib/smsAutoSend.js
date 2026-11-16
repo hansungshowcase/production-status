@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
-import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isEventKind, isInfoKind, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND, AUTO_LIMITS, isAutoKind, isEventKind, isInfoTemplate, isShipAta, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
@@ -111,7 +111,7 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_send_time FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -122,7 +122,7 @@ async function loadTemplate(db, id) {
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
-    auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '', auto_send_time: row.auto_send_time || '',
+    auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '', auto_send_time: row.auto_send_time || '', auto_ata_template: row.auto_ata_template || '',
   };
 }
 
@@ -199,12 +199,12 @@ const placeholders = list => list.map(() => '?').join(', ');
 
 // ---- 자동 발송 1개 문구 실행(설계 3절 ①~⑧ 순서 그대로) ----
 // deadline: runAutoSendAll 이 만든 전체 마감 시각(tick 기준). 없으면(단독 실행) 이 문구만 TIME_BUDGET_MS.
-export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, sleep } = {}) {
+export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, sleep, kakao, kakaoOpts } = {}) {
   const startedAt = tick();
   const shared = typeof deadline === 'number';
   const endAt = shared ? deadline : startedAt + TIME_BUDGET_MS;
   const timeShort = () => shared && endAt - tick() < SEND_RESERVE_MS;
-  if (template.auto_msg_type === 'info') return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep }); // 안내 문구는 새 모듈
+  if (template.auto_msg_type === 'info' || isShipAta(template)) return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep, kakao, kakaoOpts }); // 안내 문구는 새 모듈
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   const settings = autoSettings(env);
   if (!template.auto_enabled || !settings.on) return { ...out, reason: 'off' }; // ①
@@ -350,7 +350,7 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
   await ensureAutoSchema(db);
   const template = await loadTemplate(db, templateId);
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
-  if (isInfoKind(template.auto_kind)) return eventStatus(db, template, { nowMs, env }); // 안내 문구는 새 모듈
+  if (isInfoTemplate(template)) return eventStatus(db, template, { nowMs, env }); // 안내 문구는 새 모듈
   const today = kstDate(nowMs);
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_auto_sends WHERE template_id = ? GROUP BY status', args: [templateId] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
@@ -390,7 +390,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
     await db.execute({ sql: 'UPDATE sms_text_templates SET auto_enabled = false WHERE id = ? RETURNING id', args: [id] });
     return reply(200, { ok: true, enabled: false, start_date: template.auto_start_date || '' });
   }
-  if (isInfoKind(template.auto_kind)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs }); } // 안내 문구는 새 모듈
+  if (isInfoTemplate(template)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs }); } // 안내 문구는 새 모듈
   if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
   const blocked = adCheck(template.body);
   if (blocked) return errorReply(400, blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.', { reason: blocked });
@@ -424,7 +424,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
   const vendor = provider || getSendProvider();
   if (!vendor || typeof vendor.sendEach !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
-  const info = isInfoKind(template.auto_kind); // 안내 문구는 예시 값으로 치환
+  const info = isInfoTemplate(template); // 안내 문구는 예시 값으로 치환
   const parts = info ? buildEventParts(template, template.images.length) : buildParts(template, template.images.length);
   const cost = costOf(vendor, parts, 1, env);
   if (dryRun) return reply(200, { ok: true, dry_run: true, parts: parts.length, cost });

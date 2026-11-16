@@ -21,6 +21,9 @@ export const LEAD_KINDS = Object.freeze(['lead_plus_days']);
 export const isLeadKind = kind => LEAD_KINDS.includes(kind);
 export const isInfoKind = kind => isEventKind(kind) || isInstantKind(kind) || isLeadKind(kind);
 export const isAnyAutoKind = kind => isAutoKind(kind) || isInfoKind(kind);
+// 출고 완료 후 N일에 알림톡 수단을 고른 문구(2026-11-16): 광고 문자가 아니라 정보성 알림톡으로 나가며 안내(info) 발송 경로(smsEventSend)를 탄다.
+export const isShipAta = template => template?.auto_kind === AUTO_KIND && Boolean(template.auto_ata_template);
+export const isInfoTemplate = template => isInfoKind(template?.auto_kind) || isShipAta(template);
 export const OFFSET_MAX = 365;
 const STAFF_CAP = 30;
 // 고객 대상 안내 문구 검사: 주문 변수가 하나 이상 있어야 하고 광고 낱말이 없어야 한다. '' 이면 통과.
@@ -31,7 +34,7 @@ const INFO_VARS = Object.freeze({ customer: ['고객명', '주문번호', '규�
 const hasUnknownVar = (text, audience) => [...text.matchAll(/#\{([^}]*)\}/g)].some(match => !INFO_VARS[audience].includes(match[1]));
 export function infoCheck(body, audience = 'customer', kind = '', ata = false) {
   const text = String(body ?? '');
-  if (kind === 'lead_plus_days') { // 가입·문의 후: 고객명만 허용, 주문 변수 필수 면제, 광고 낱말 검사는 문자일 때만(알림톡은 카카오 검수 본문)
+  if (kind === 'lead_plus_days' || (kind === AUTO_KIND && ata)) { // 가입·문의 후(출고 완료 후 알림톡도 같다): 고객명만 허용, 주문 변수 필수 면제, 광고 낱말 검사는 문자일 때만(알림톡은 카카오 검수 본문)
     if ([...text.matchAll(/#\{([^}]*)\}/g)].some(match => match[1] !== '고객명')) return 'info_unknown_var';
     return !ata && AD_WORD_RE.test(text) ? 'info_has_ad_words' : '';
   }
@@ -100,7 +103,7 @@ function autoFields(row) {
     auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer', auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
     ...(isEventKind(row.auto_kind) ? { auto_daily: String(row.auto_daily || ''), auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed' } : {}),
     ...(row.auto_step ? { auto_step: String(row.auto_step) } : {}),
-    ...(isLeadKind(row.auto_kind) ? { auto_ata_template: String(row.auto_ata_template || '') } : {}),
+    ...(isLeadKind(row.auto_kind) || isShipAta(row) ? { auto_ata_template: String(row.auto_ata_template || '') } : {}),
     ...(row.auto_send_time ? { auto_send_time: String(row.auto_send_time) } : {}),
   };
 }
@@ -160,6 +163,15 @@ function readAutoBase(input, staff) {
   const days = Number(input.auto.days);
   const when = input.auto.kind === AUTO_KIND ? '출고' : '주문';
   if (!(Number.isInteger(days) && days >= 1 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `${when} 후 일수는 1~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
+  if (input.auto.kind === AUTO_KIND) { // 출고 완료 후 N일 + 알림톡: 정보성 알림톡. 시작일·반복 없이 번호당 1번(가입·문의 갈래와 같은 본문 검증)
+    const ata = typeof input.auto.ata_template === 'string' ? input.auto.ata_template.trim() : '';
+    if (ata) {
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(ata)) return { error: '알림톡 템플릿이 올바르지 않습니다.' };
+      const blocked = infoCheck(typeof input.body === 'string' ? input.body : '', 'customer', AUTO_KIND, true);
+      if (blocked) return { error: INFO_CHECK_MESSAGE[blocked], reason: blocked };
+      return { kind: AUTO_KIND, days, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, msg_type: 'info', ata };
+    }
+  }
   const rawFrom = input.auto.send_from;
   let sendFrom = null;
   if (rawFrom !== undefined && rawFrom !== null && rawFrom !== '') {
@@ -235,7 +247,7 @@ function readImage(input) {
 
 // 저장한 새 칸 값 → 응답(auto_*) / DB 행 모양. 저장 직후 응답은 방금 검증한 값을 그대로 쓴다.
 const newAutoColumns = auto => ({ auto_send_time: auto.send_time || '', auto_offset: auto.offset, auto_unless_step: auto.unless_step, auto_audience: auto.audience, auto_staff: auto.staff, auto_msg_type: auto.msg_type, auto_step: auto.step, auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode, auto_ata_template: auto.ata || '' });
-const newAutoFields = auto => ({ ...(auto.send_time ? { auto_send_time: auto.send_time } : {}), auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type, ...(auto.step ? { auto_step: auto.step } : {}), ...(isEventKind(auto.kind) ? { auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode } : {}), ...(isLeadKind(auto.kind) ? { auto_ata_template: auto.ata || '' } : {}) });
+const newAutoFields = auto => ({ ...(auto.send_time ? { auto_send_time: auto.send_time } : {}), auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type, ...(auto.step ? { auto_step: auto.step } : {}), ...(isEventKind(auto.kind) ? { auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode } : {}), ...(isLeadKind(auto.kind) || (auto.kind === AUTO_KIND && auto.ata) ? { auto_ata_template: auto.ata || '' } : {}) });
 
 export async function listTextTemplates(db) {
   await ensureTextTemplateSchema(db);

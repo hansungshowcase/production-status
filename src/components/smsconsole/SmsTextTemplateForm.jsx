@@ -103,7 +103,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const immKind = isImmediateKind(autoKind);
   const dayKind = Boolean(autoKind) && !dateKind && !immKind && autoKind !== AUTO_KIND_MEMBER_JOINED && autoKind !== AUTO_KIND_LEAD_PLUS;
   const leadKind = autoKind === AUTO_KIND_LEAD_PLUS;
-  const adOn = isAdKind(autoKind) && adMark;
+  const adOn = isAdKind(autoKind, ataTemplate) && adMark;
   const outBody = adOn ? withAdFormat(body) : body;
   const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step });
   useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime]);
@@ -190,7 +190,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setStages(prev => prev.map(item => (item.failed ? { ...item, failed: false } : item)));
     const clash = pick.find(({ i }) => dupSet.has(i));
     if (multi && clash) { failAt(clash.i, textFormStopText('dup')); return; }
-    const outOf = f => (isAdKind(f.autoKind) && adMark ? withAdFormat(f.body) : f.body);
+    const outOf = f => (isAdKind(f.autoKind, f.ataTemplate) && adMark ? withAdFormat(f.body) : f.body);
     for (const { f, i } of pick) {
       const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step });
       if (!chk.ok) { failAt(i, textFormStopText(chk.reason)); return; }
@@ -341,7 +341,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </span>
           </div>
         ) : null}
-        {dayKind || dateKind ? (
+        {(dayKind && !(autoKind === AUTO_KIND && ataTemplate)) || dateKind ? (
           <div className="stf-line">
             <span className="stf-tag">반복</span>
             <span className="stf-cells">
@@ -360,14 +360,14 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           <div className="stf-line">
             <span className="stf-tag">수단</span>
             <span className="stf-cells">
-              {leadKind ? (
+              {leadKind || autoKind === AUTO_KIND ? (
                 <select value={ataTemplate} aria-label="알림톡" onChange={event => setAtaTemplate(event.target.value)}>
                   <option value="">문자로</option>
                   {ataTemplate && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{`목록에 없는 알림톡 (…${ataTemplate.slice(-4)})`}</option> : null}
                   {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               ) : null}
-              {isAdKind(autoKind) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
+              {isAdKind(autoKind, ataTemplate) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
             </span>
           </div>
         ) : null}
