@@ -200,7 +200,7 @@ test('사진 2장 → 사진 올리기 2번·발송 호출 3번(받는 사람 �
   const [first, second, third] = provider.calls.send;
   assert.equal(first.messages.length, 3);
   assert.deepEqual(first.messages.map(m => m.fileId), ['F1', 'F1', 'F1']);
-  assert.ok(first.messages.every(m => m.text === '') && second.messages.every(m => m.fileId === 'F2' && m.text === ''));
+  assert.ok([...first.messages, ...second.messages].every(m => m.text === '(광고) 한성쇼케이스\n무료수신거부 080-123-4567') && second.messages.every(m => m.fileId === 'F2'));
   assert.ok(third.messages.every(m => !m.fileId && m.text.startsWith('(광고)') && m.text.includes('080-123-4567')));
   assert.ok(third.messages.some(m => m.text.includes('김철수 대표님')) && third.messages.some(m => m.text.includes('이영희 대표님')));
   assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'sent', 'sent']);
@@ -337,7 +337,7 @@ test('내 번호로 시험: 번호 1개만, 같은 키 재요청은 다시 안 �
   const sent = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
   assert.deepEqual(sent.body.part_status, ['sent', 'sent', 'sent']);
   assert.ok(provider.calls.send.every(c => c.messages.length === 1));
-  assert.ok(provider.calls.send[0].messages[0].text === '' && provider.calls.send[2].messages[0].text.includes('고객 대표님'));
+  assert.ok(!provider.calls.send[0].messages[0].text.includes('고객 대표님') && provider.calls.send[2].messages[0].text.includes('고객 대표님'));
   const again = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
   assert.equal(again.body.duplicate, true);
   assert.equal(provider.calls.send.length, 3);

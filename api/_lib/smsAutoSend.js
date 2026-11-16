@@ -99,10 +99,13 @@ const fillName = (body, name) => String(body).replace(/#\{고객명\}/g, cleanNa
 // 통 구성(MMS 1통에 사진 1장): 사진 2장 이상이면 사진 N통 + 본문 1통, 사진 1장이면 사진+본문 1통, 사진이 없으면 본문만 1통.
 export function buildParts(template, imageCount) {
   // 2026-11-16 사장님 "이미지 순서에 맞게 날라오고 그리고 본문이 날라와야지", "아니 이미지먼저보내고 본문 보낼 수 없니":
-  // 사진이 2장 이상이면 사진만 등록 순서대로 한 통씩 먼저 보내고(글 없음), 본문은 맨 끝에 글만 한 통으로 한 번 보낸다.
+  // 사진이 2장 이상이면 사진을 등록 순서대로 한 통씩 먼저 보내고, 본문은 맨 끝에 글만 한 통으로 한 번 보낸다.
   // 사진이 1장이면 종전대로 사진+본문 1통, 사진이 없으면 본문만 1통.
+  // 사진 통의 글: 쏠라피가 글 없는 사진 문자를 거절한다(1010 text 필수, 2026-11-16 실측). 그래서 광고 표기와 수신거부 한 줄만 붙인다.
   if (imageCount < 2) return [{ index: 0, image: imageCount > 0 ? 0 : -1, short: false, text: null }];
-  const photos = Array.from({ length: imageCount }, (_, i) => ({ index: i, image: i, short: true, text: '' }));
+  const tail = optoutLineOf(template.body);
+  const shortText = `(광고) 한성쇼케이스${tail ? `\n${tail}` : ''}`;
+  const photos = Array.from({ length: imageCount }, (_, i) => ({ index: i, image: i, short: true, text: shortText }));
   return [...photos, { index: imageCount, image: -1, short: false, text: null }];
 }
 const partText = (part, template, name) => (part.short ? part.text : fillName(String(template.body).trim(), name));
