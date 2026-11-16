@@ -190,54 +190,54 @@ test('야간·꺼짐·광고 형식 불일치면 선점도 발송도 업로드�
   assert.equal(adCheck('(광고) 안녕\n무료수신거부 번호 안내'), 'no_optout_080');
 });
 
-test('사진 2장 → 사진 올리기 2번·발송 호출 2번(받는 사람 수와 무관), 사진 순서대로 가고 본문은 마지막 통에 한 번만(2026-11-16 사장님)', async () => {
+test('사진 2장 → 사진 올리기 2번·발송 호출 3번(받는 사람 수와 무관), 사진만 순서대로 먼저 가고 본문은 맨 끝에 글만 한 통(2026-11-16 사장님)', async () => {
   const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31', '김철수'), order(2, '010-5555-6666', '2026-10-30', '이영희'), order(3, '010-7777-8888', '2026-10-29')] });
   const provider = fakeProvider();
   const out = await run(db, provider);
   assert.equal(out.sent, 3);
   assert.equal(provider.calls.upload.length, 2);
-  assert.equal(provider.calls.send.length, 2);
-  const [first, second] = provider.calls.send;
+  assert.equal(provider.calls.send.length, 3);
+  const [first, second, third] = provider.calls.send;
   assert.equal(first.messages.length, 3);
   assert.deepEqual(first.messages.map(m => m.fileId), ['F1', 'F1', 'F1']);
-  assert.ok(first.messages.every(m => m.text.startsWith('(광고) 한성쇼케이스') && m.text.includes('080-123-4567') && !m.text.includes('대표님') && !m.text.includes('1/2')));
-  assert.ok(second.messages.every(m => m.fileId === 'F2'));
-  assert.ok(second.messages.some(m => m.text.includes('김철수 대표님')) && second.messages.some(m => m.text.includes('이영희 대표님')));
-  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'sent']);
+  assert.ok(first.messages.every(m => m.text === '') && second.messages.every(m => m.fileId === 'F2' && m.text === ''));
+  assert.ok(third.messages.every(m => !m.fileId && m.text.startsWith('(광고)') && m.text.includes('080-123-4567')));
+  assert.ok(third.messages.some(m => m.text.includes('김철수 대표님')) && third.messages.some(m => m.text.includes('이영희 대표님')));
+  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'sent', 'sent']);
   assert.equal(buildParts({ name: 'n', body: BODY }, 0).length, 1);
 });
 
-test('여러 통은 통 사이에 기다린다: 통 2개면 sleep 1번(0통째 뒤·1통째 앞), 통 1개면 0번, 값 0이면 기다림 없음', async () => {
+test('여러 통은 통 사이에 기다린다: 사진 2장이면 통 3개(사진·사진·본문)라 sleep 2번, 통 1개면 0번, 값 0이면 기다림 없음', async () => {
   const trace = [];
   const tracedProvider = () => { const p = fakeProvider(); const send = p.sendEach; p.sendEach = async input => { trace.push(`send${p.calls.send.length}`); return send(input); }; return p; };
   const sleep = async ms => { trace.push(`sleep${ms}`); };
   const out = await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), tracedProvider(), { sleep });
   assert.equal(out.sent, 1);
-  assert.deepEqual(trace, ['send0', 'sleep15000', 'send1']);
+  assert.deepEqual(trace, ['send0', 'sleep15000', 'send1', 'sleep15000', 'send2']);
   trace.length = 0;
   const viaTest = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-gap-0001' }, { db: setup(), provider: tracedProvider(), env: { ...ENV, SMS_PART_GAP_MS: '3000' }, nowMs: NOW, sleep });
-  assert.deepEqual(viaTest.body.part_status, ['sent', 'sent']);
-  assert.deepEqual(trace, ['send0', 'sleep3000', 'send1']);
+  assert.deepEqual(viaTest.body.part_status, ['sent', 'sent', 'sent']);
+  assert.deepEqual(trace, ['send0', 'sleep3000', 'send1', 'sleep3000', 'send2']);
   trace.length = 0;
   await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')], template: { images: JSON.stringify([JPG]) } }), tracedProvider(), { sleep });
   assert.deepEqual(trace, ['send0']);
   trace.length = 0;
   await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), tracedProvider(), { sleep, env: { ...ENV, SMS_PART_GAP_MS: '0' } });
-  assert.deepEqual(trace, ['send0', 'send1']);
+  assert.deepEqual(trace, ['send0', 'send1', 'send2']);
   trace.length = 0;
   await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), tracedProvider(), { sleep, env: { ...ENV, SMS_PART_GAP_MS: 'abc' } });
-  assert.deepEqual(trace, ['send0', 'sleep15000', 'send1']);
+  assert.deepEqual(trace, ['send0', 'sleep15000', 'send1', 'sleep15000', 'send2']);
 });
 
 test('여러 통 문구는 남은 시간이 모자라면 선점·업로드·발송 0으로 통째로 건너뛰고, 충분하면 나간다', async () => {
   const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
   const provider = fakeProvider();
-  const out = await run(db, provider, { tick: () => 1000, deadline: 30000 }); // 남은 29초 < 15+10+5 = 30초
+  const out = await run(db, provider, { tick: () => 1000, deadline: 50000 }); // 통 3개: 남은 49초 < 30+15+5 = 50초
   assert.equal(out.reason, 'time');
   assert.equal(out.claimed, 0);
   assert.equal(provider.calls.upload.length + provider.calls.send.length, 0);
   assert.ok(!db.state.sql.some(s => s.startsWith('INSERT INTO sms_auto_sends')));
-  const ok = await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), fakeProvider(), { tick: () => 1000, deadline: 31000, sleep: async () => {} });
+  const ok = await run(setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }), fakeProvider(), { tick: () => 1000, deadline: 51000, sleep: async () => {} });
   assert.equal(ok.sent, 1);
 });
 
@@ -248,7 +248,7 @@ test('1통째가 실패하면 2통째는 0, 불확실·일부 실패·시간 초
   let out = await run(db, provider);
   assert.equal(provider.calls.send.length, 1);
   assert.equal(out.failed, 2);
-  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['failed', 'skipped']);
+  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['failed', 'skipped', 'skipped']);
 
   db = setup({ orders });
   provider = fakeProvider({ sendResults: [{ accepted: 0, failed: 0, groupId: null, uncertain: true, error: '확인 못 함' }] });
@@ -267,10 +267,10 @@ test('1통째가 실패하면 2통째는 0, 불확실·일부 실패·시간 초
   db = setup({ orders });
   provider = fakeProvider();
   let t = 0;
-  out = await run(db, provider, { tick: () => (t += 25000) }); // 1통째 뒤 70초 마감 초과(마감 70초로 올린 데 맞춰 시계 간격만 조정)
+  out = await run(db, provider, { tick: () => (t += t < 15000 ? 5000 : 100000) }); // 시작·시간 검사·1통째까지는 5초씩, 그 뒤 마감 70초 초과(통 3개에 맞춤)
   assert.equal(provider.calls.send.length, 1);
   assert.equal(out.uncertain, 2);
-  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'skipped']);
+  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['sent', 'skipped', 'skipped']);
 });
 
 test('하루 지난 claimed 는 uncertain 으로 바꾸고 다시 보내지 않는다(크론 전체)', async () => {
@@ -290,7 +290,7 @@ test('켜기: (광고)·080 검사로 거절, dry_run 은 대상·통 수·비�
   assert.equal(out.body.reason, 'no_ad_prefix');
   db.state.tpl.body = BODY;
   const dry = await autoToggle({ id: 7, enabled: true, dry_run: true }, { db, provider: fakeProvider(), env: ENV, nowMs: NOW });
-  assert.deepEqual({ ok: dry.body.ok, targets: dry.body.targets, parts: dry.body.parts, cost: dry.body.cost }, { ok: true, targets: 1, parts: 2, cost: 220 });
+  assert.deepEqual({ ok: dry.body.ok, targets: dry.body.targets, parts: dry.body.parts, cost: dry.body.cost }, { ok: true, targets: 1, parts: 3, cost: 265 });
   assert.equal(db.state.tpl.auto_enabled, false);
   const on = await autoToggle({ id: 7, enabled: true }, { db, provider: fakeProvider(), env: ENV, nowMs: NOW });
   assert.deepEqual(on.body, { ok: true, enabled: true, start_date: '2026-10-31' });
@@ -332,17 +332,17 @@ test('내 번호로 시험: 번호 1개만, 같은 키 재요청은 다시 안 �
   const provider = fakeProvider();
   const deps = { db, provider, env: ENV, nowMs: NOW };
   const dry = await autoTest({ id: 7, to: '010-1234-4237', dry_run: true }, deps);
-  assert.deepEqual({ parts: dry.body.parts, cost: dry.body.cost }, { parts: 2, cost: 220 });
+  assert.deepEqual({ parts: dry.body.parts, cost: dry.body.cost }, { parts: 3, cost: 265 });
   assert.equal((await autoTest({ id: 7, to: '12', idempotencyKey: 'key-0001-aaaa' }, deps)).status, 400);
   const sent = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
-  assert.deepEqual(sent.body.part_status, ['sent', 'sent']);
+  assert.deepEqual(sent.body.part_status, ['sent', 'sent', 'sent']);
   assert.ok(provider.calls.send.every(c => c.messages.length === 1));
-  assert.ok(!provider.calls.send[0].messages[0].text.includes('고객 대표님') && provider.calls.send[1].messages[0].text.includes('고객 대표님'));
+  assert.ok(provider.calls.send[0].messages[0].text === '' && provider.calls.send[2].messages[0].text.includes('고객 대표님'));
   const again = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0001-aaaa' }, deps);
   assert.equal(again.body.duplicate, true);
-  assert.equal(provider.calls.send.length, 2);
+  assert.equal(provider.calls.send.length, 3);
   // 시험 발송은 넣은 번호 1개로만 가므로 밤에도 된다(고객 자동 발송의 야간 금지는 따로 시험한다)
-  assert.deepEqual((await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0002-bbbb' }, { ...deps, nowMs: NIGHT })).body.part_status, ['sent', 'sent']);
+  assert.deepEqual((await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-0002-bbbb' }, { ...deps, nowMs: NIGHT })).body.part_status, ['sent', 'sent', 'sent']);
   assert.ok(!db.state.sql.some(s => s.startsWith('INSERT INTO sms_auto_sends')));
 });
 

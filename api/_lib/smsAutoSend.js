@@ -96,17 +96,14 @@ const cleanName = value => {
 };
 const fillName = (body, name) => String(body).replace(/#\{고객명\}/g, cleanName(name));
 
-// 통 구성: 사진 N장이면 N통(MMS 1통에 사진 1장). 1통째 = 본문 + 사진1, 2통째부터 = 사진 + 짧은 글. 사진이 없으면 본문만 1통.
+// 통 구성(MMS 1통에 사진 1장): 사진 2장 이상이면 사진 N통 + 본문 1통, 사진 1장이면 사진+본문 1통, 사진이 없으면 본문만 1통.
 export function buildParts(template, imageCount) {
-  const n = Math.max(1, imageCount);
-  // 2026-11-16 사장님 "이미지 순서에 맞게 날라오고 그리고 본문이 날라와야지", "무슨 문구가 3번 오냐":
-  // 사진이 등록 순서대로 먼저 가고 본문은 마지막 통에 한 번만 붙는다. 앞 통의 글은 광고 표기와 수신거부 한 줄뿐(문구 이름·1/2 같은 글은 넣지 않는다).
-  const tail = optoutLineOf(template.body);
-  const shortText = `(광고) 한성쇼케이스${tail ? `\n${tail}` : ''}`;
-  return Array.from({ length: n }, (_, i) => {
-    const short = i < n - 1;
-    return { index: i, image: imageCount > 0 ? i : -1, short, text: short ? shortText : null };
-  });
+  // 2026-11-16 사장님 "이미지 순서에 맞게 날라오고 그리고 본문이 날라와야지", "아니 이미지먼저보내고 본문 보낼 수 없니":
+  // 사진이 2장 이상이면 사진만 등록 순서대로 한 통씩 먼저 보내고(글 없음), 본문은 맨 끝에 글만 한 통으로 한 번 보낸다.
+  // 사진이 1장이면 종전대로 사진+본문 1통, 사진이 없으면 본문만 1통.
+  if (imageCount < 2) return [{ index: 0, image: imageCount > 0 ? 0 : -1, short: false, text: null }];
+  const photos = Array.from({ length: imageCount }, (_, i) => ({ index: i, image: i, short: true, text: '' }));
+  return [...photos, { index: imageCount, image: -1, short: false, text: null }];
 }
 const partText = (part, template, name) => (part.short ? part.text : fillName(String(template.body).trim(), name));
 
