@@ -13,7 +13,7 @@ const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.js
 const SendPanel = lazy(() => import('../components/smsconsole/SendPanel.jsx'));
 const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
 const SmsTemplateList = lazy(() => import('../components/smsconsole/SmsTemplateList.jsx'));
-const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode', 'template', 'kind', 'text', 'ata'];
+const CONSOLE_QUERY_KEYS = ['menu', 'aud', 'ch', 'tpl', 'mode', 'template', 'kind', 'text', 'ata', 'sedit'];
 const PANE_LOADING = <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
 export default function SmsHistoryPage() {
@@ -55,6 +55,7 @@ export default function SmsHistoryPage() {
     if (next.menu === 'send' && /^\d{1,12}$/.test(String(next.text || ''))) params.set('text', String(next.text));
     // 알림톡 템플릿 상세의 '이 알림톡으로 자동 발송 설정': 문자 템플릿 등록 팝업을 이 알림톡이 수단으로 골라진 채 연다
     if (next.menu === 'templates' && next.mode === 'new' && /^[A-Za-z0-9_-]{1,64}$/.test(String(next.ata || ''))) params.set('ata', String(next.ata));
+    if (next.menu === 'templates' && next.mode === 'new' && /^\d{1,12}$/.test(String(next.sedit || ''))) params.set('sedit', String(next.sedit)); // 알림톡 상세의 연결된 자동 발송 줄 → 그 문구 수정 팝업
     setSearchParams(params, { replace });
   }, [searchParams, setSearchParams]);
 
@@ -134,7 +135,7 @@ export default function SmsHistoryPage() {
             <Suspense fallback={PANE_LOADING}>
               {(tplSeen.sms || tplKind === 'sms') && (
                 <div hidden={tplKind !== 'sms'}>
-                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} onSendText={id => selectMenu('send', { text: id })} openNew={oldSmsNew} ataPreset={oldSmsNew ? (searchParams.get('ata') || '') : ''} onNewHandled={() => patchState({ mode: '', ch: 'sms' })} />
+                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} onSendText={id => selectMenu('send', { text: id })} openNew={oldSmsNew} ataPreset={oldSmsNew ? (searchParams.get('ata') || '') : ''} editPreset={oldSmsNew ? (searchParams.get('sedit') || '') : ''} onNewHandled={() => patchState({ mode: '', ch: 'sms' })} />
                 </div>
               )}
               {(tplSeen.kakao || tplKind === 'kakao') && (

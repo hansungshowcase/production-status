@@ -358,3 +358,11 @@ test('화면 모델 검증: 알림톡이면 고객명 밖 변수 거절·직원 
   assert.equal(validateTextForm(form({ catchupOn: false, catchupFrom: '', catchupAt: '' })).ok, true);
   assert.match(textFormStopText('catchup_from'), /출고일/); assert.match(textFormStopText('catchup_at'), /시각/);
 });
+
+test('알림톡 상세 연결 줄: 조건 이름·1회·시각·켜짐/꺼짐·일괄 발송 예약·최근 7일 건수', async () => {
+  const { ataLinkLine, myTextSection } = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const [entry] = myTextSection([{ id: 5, name: '리뷰', body: 'b', auto_kind: 'ship_plus_days', auto_days: 2, auto_enabled: true, auto_ata_template: 'KA01', auto_send_time: '10:00', auto_catchup_from: '2026-05-26', auto_catchup_at: '2026-11-17T09:00', auto_catchup_done: false }]).items;
+  assert.equal(ataLinkLine(entry, { enabled: true, sent_7d: 4 }), '출고 완료 후 2일 뒤 · 오전 10:00 · 1회 · 켜짐 · 일괄 2026-11-17 09:00 · 출고일 2026-05-26~오늘 · 최근 7일 4건');
+  const [off] = myTextSection([{ id: 6, name: 'x', body: 'b', auto_kind: 'due_date', auto_offset: -2, auto_enabled: false, auto_ata_template: 'KA01' }]).items;
+  assert.match(ataLinkLine(off, null), /^납기일 2일 전 · .*1회 · 꺼짐$/);
+});

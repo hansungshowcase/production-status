@@ -387,6 +387,18 @@ export function autoConditionParts(entry) {
   return parts;
 }
 
+// 알림톡 템플릿 상세의 '자동 발송 조건' 한 줄: 조건 이름 · 회차(알림톡 갈래는 번호당 1회) · 보내는 시각 · 켜짐/꺼짐 · 이미 출고분 일괄 발송 예약 · 최근 7일 건수
+// entry = myTextSection 항목, status = resource=auto_status 응답(없으면 건수 칸을 뺀다)
+export function ataLinkLine(entry, status) {
+  const parts = autoConditionLine(entry).split(' · ').filter(Boolean).filter((text) => text !== '알림톡' && text !== '고객');
+  const when = parts.shift() || '';
+  const timeText = parts.length ? parts.join(' · ') : '';
+  const on = status ? Boolean(status.enabled) : Boolean(entry.autoEnabled);
+  const catchup = entry.autoKind === AUTO_KIND && entry.autoCatchupAt
+    ? `일괄 ${entry.autoCatchupAt.replace('T', ' ')} · 출고일 ${entry.autoCatchupFrom || '처음'}~오늘${entry.autoCatchupDone ? ' (완료)' : ''}` : '';
+  return joinDot(when, timeText, '1회', on ? '켜짐' : '꺼짐', catchup, status ? `최근 7일 ${Number(status.sent_7d) || 0}건` : '');
+}
+
 // 현황 한 줄 (resource=auto_status 응답)
 export function autoStatusLine(status) {
   if (!status) return '';
@@ -464,6 +476,8 @@ export function myTextSection(items) {
       autoDays: Number(item.auto_days) || 0,
       autoAtaTemplate: String(item.auto_ata_template || ''),
       autoCatchupAt: String(item.auto_catchup_at || ''),
+      autoCatchupFrom: String(item.auto_catchup_from || ''),
+      autoCatchupDone: Boolean(item.auto_catchup_done),
       autoSendFrom: String(item.auto_send_from || '').slice(0, 10),
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
