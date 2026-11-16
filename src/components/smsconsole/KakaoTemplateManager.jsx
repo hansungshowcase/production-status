@@ -266,10 +266,12 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     const actions = [...(item.status === 'APPROVED' && onSend ? ['send'] : []), ...availableActions(item)];
     const isOpen = menuId === item.id;
     const extras = templateExtras(item.id, sent);
-    // 신호등(2026-11-16 사장님): 승인됐고 꺼지지 않았으며 최근 7일 발송이 있거나 프로그램 알림에 쓰이면 켜짐, 발송이 없거나 꺼졌거나 승인 전이면 꺼짐, 건수를 못 읽었으면 표시 없음
+    // 신호등(2026-11-16 사장님): 승인됐고, 보내는 곳(프로그램·메이크·연동)에 연결돼 켜져 있거나 최근 7일 발송이 있으면 켜짐.
+    // 연결된 곳이 꺼졌거나, 승인 전이거나, 연결된 곳도 최근 발송도 없으면 꺼짐. 연결도 없고 건수도 못 읽었으면 표시 없음
     const used = usageCount(usage, item.id);
-    const lightOff = Boolean(extras && extras.off) || item.status !== 'APPROVED' || (used === 0 && !item.program_use);
-    const light = lightOff ? 'off' : ((used ?? 0) > 0 || item.program_use ? 'on' : '');
+    const linked = Boolean(item.program_use || extras);
+    const lightOff = Boolean(extras && extras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
+    const light = lightOff ? 'off' : (linked || (used ?? 0) > 0 ? 'on' : '');
     const picked = item.id === selectedId; // 채널·날짜·보내는 곳·종류 칩은 고른 줄에서만 보인다(목록이 위아래로 길어지지 않게)
     return (
       <li key={item.id} className={`ktm-card ktm-card--slim${item.id === selectedId ? ' is-selected' : ''}`}>
@@ -332,7 +334,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
                       </span>
                     ) : null}
                     <span className="ktm-card-badges">
-                      {entry.active === false || entry.count === 0 ? <span className="ktm-light ktm-light--off">꺼짐</span> : (entry.count > 0 ? <span className="ktm-light ktm-light--on">켜짐</span> : null)}
+                      {entry.active === false ? <span className="ktm-light ktm-light--off">꺼짐</span> : <span className="ktm-light ktm-light--on">켜짐</span>}
                       {entry.count === null ? <span className="ktm-badge ktm-badge--muted">사용 여부 확인 못 함</span>
                         : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
                       {entry.ad ? <span className="ktm-badge ktm-badge--info">광고</span> : null}
