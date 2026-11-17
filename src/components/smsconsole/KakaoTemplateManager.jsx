@@ -3,7 +3,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
 import SmsModal from './SmsModal.jsx';
-import { KIND_KAKAO, ataLinkLine, myTextSection } from './smsTextTemplateFormModel.js';
+import { KIND_KAKAO, ataLinkLine, linkedTextEntries } from './smsTextTemplateFormModel.js';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
   isValidRename, readOnlyAudienceSections, readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras, usageBadge, usageCount,
@@ -88,12 +88,24 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     let alive = true;
     setLinked({ id: selectedId, loading: true, error: '', rows: [] });
     fetchSmsConsole('text_templates').then(async (res) => {
-      const entries = (myTextSection((Array.isArray(res?.items) ? res.items : []).filter((item) => item.auto_ata_template === selectedId))?.items) || [];
+      const entries = linkedTextEntries(res?.items, selectedId);
       const rows = await Promise.all(entries.map(async (entry) => ({ entry, status: await fetchSmsConsole('auto_status', { id: entry.id }).catch(() => null) })));
       if (alive) setLinked({ id: selectedId, loading: false, error: '', rows });
     }).catch((err) => { if (alive) setLinked({ id: selectedId, loading: false, error: err.message || '불러오지 못했습니다.', rows: [] }); });
     return () => { alive = false; };
   }, [active, selectedId]);
+
+  // 이 알림톡으로 이미 만든 문구가 있으면 새로 만들지 않고 그 문구 수정 창을 연다(여러 개면 첫 번째). 없을 때만 새 문구.
+  const openAutoSetting = async (ataId) => {
+    let found = [];
+    try { found = linkedTextEntries((await fetchSmsConsole('text_templates'))?.items, ataId); } catch { found = []; }
+    if (found.length) {
+      setNotice({ kind: 'ok', text: '이미 연결된 문구를 엽니다' });
+      onRoute({ mode: 'new', tpl: '', kind: 'sms', sedit: found[0].id });
+      return;
+    }
+    onRoute({ mode: 'new', tpl: '', kind: 'sms', ata: ataId });
+  };
 
   const loadTemplates = useCallback(async () => {
     setTplState((prev) => ({ ...prev, loading: true, error: null }));
@@ -257,7 +269,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
         </div>
         <div className="ktm-detail-actions">
-          <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onRoute({ mode: 'new', tpl: '', kind: 'sms', ata: selected.id })}>이 알림톡으로 자동 발송 설정</button>
+          <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => openAutoSetting(selected.id)}>이 알림톡으로 자동 발송 설정</button>
         </div>
         <section className="ktm-linked" aria-label="자동 발송 조건">
           <h4 className="ktm-linked-head">자동 발송 조건</h4>

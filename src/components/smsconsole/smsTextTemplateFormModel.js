@@ -391,6 +391,13 @@ export function autoConditionParts(entry) {
   return parts;
 }
 
+// 일괄 발송이 통째 실패로 멈췄을 때 화면 문구(resource=auto_status 의 catchup_paused·catchup_error). 멈추지 않았으면 빈 문자열.
+export function catchupPausedText(status) {
+  if (!status?.catchup_paused) return '';
+  const why = String(status.catchup_error || '').trim() || '사유를 알 수 없습니다';
+  return `일괄 발송이 멈췄습니다: ${why}. 확인 후 다시 저장하면 이어서 보냅니다.`;
+}
+
 // 알림톡 템플릿 상세의 '자동 발송 조건' 한 줄: 조건 이름 · 회차(알림톡 갈래는 번호당 1회) · 보내는 시각 · 켜짐/꺼짐 · 이미 출고분 일괄 발송 예약 · 최근 7일 건수
 // entry = myTextSection 항목, status = resource=auto_status 응답(없으면 건수 칸을 뺀다)
 export function ataLinkLine(entry, status) {
@@ -400,7 +407,7 @@ export function ataLinkLine(entry, status) {
   const on = status ? Boolean(status.enabled) : Boolean(entry.autoEnabled);
   const catchup = entry.autoKind === AUTO_KIND && entry.autoCatchupAt
     ? `일괄 ${entry.autoCatchupAt.replace('T', ' ')} · 출고일 ${entry.autoCatchupFrom || '처음'}~오늘${entry.autoCatchupDone ? ' (완료)' : ''}` : '';
-  return joinDot(when, timeText, '1회', on ? '켜짐' : '꺼짐', catchup, status ? `최근 7일 ${Number(status.sent_7d) || 0}건` : '');
+  return joinDot(when, timeText, '1회', on ? '켜짐' : '꺼짐', catchup, status ? `최근 7일 ${Number(status.sent_7d) || 0}건` : '', catchupPausedText(status));
 }
 
 // 현황 한 줄 (resource=auto_status 응답)
@@ -413,6 +420,7 @@ export function autoStatusLine(status) {
     `누적 ${Number(status.sent_total) || 0}`,
     `확인 필요 ${Number(status.uncertain_total) || 0}`,
     `마지막 ${shortDate(status.last_sent_date) || '없음'}`,
+    catchupPausedText(status),
   );
 }
 
@@ -465,6 +473,13 @@ export function ensureAutoSection(sections, autoCount) {
 export const photoBadgeText = (entry) => (entry.imageCount > 1 || entry.autoKind ? `사진 ${entry.imageCount}장` : '사진');
 
 // 목록 응답 items → '내 문구' 묶음. 0개면 null(묶음 자체가 안 보인다).
+// 이 알림톡(ataId)을 auto_ata_template 으로 쓰는 문자 문구들(text_templates 응답 items 기준, 응답 순서 그대로). 상세 화면의 '이 알림톡으로 자동 발송 설정'이 새로 만들기 전에 기존 연결 문구를 찾는 데 쓴다.
+export function linkedTextEntries(items, ataId) {
+  const id = String(ataId || '');
+  if (!id) return [];
+  return (myTextSection((Array.isArray(items) ? items : []).filter(item => item && item.auto_ata_template === id))?.items) || [];
+}
+
 export function myTextSection(items) {
   const list = Array.isArray(items) ? items : [];
   if (list.length === 0) return null;

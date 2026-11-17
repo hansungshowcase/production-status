@@ -200,9 +200,9 @@ test('따라잡기 대상 범위: 출고일 시작일~오늘, 미출고·비 010
     order(8, '010-2222-3333', '2026-11-19', '사'),
   ];
   const db = fakeDb({ orders, optouts: [phoneHash('01099990000')] }); const provider = fakeProvider();
-  const out = await go(db, provider, catchupTpl({ auto_days: 30 }));
+  const out = await go(db, provider, catchupTpl({ auto_days: 1 })); // 범위 끝 = 오늘 − 1일(11-19)
   assert.equal(out.sent, 3);
-  assert.deepEqual(provider.calls.kakao[0].messages.map(m => m.to), ['01011112222', '01033334444', '01022223333']);
+  assert.deepEqual(provider.calls.kakao[0].messages.map(m => m.to).sort(), ['01011112222', '01022223333', '01033334444']); // 출고 1일째(11-19)인 번호 8 은 평소 대상으로 먼저 실려 순서만 달라진다
   assert.ok(provider.calls.kakao[0].messages.every(m => m.templateId === 'KA01TP1'));
   assert.equal(provider.calls.each.length, 0);
 });
@@ -278,7 +278,7 @@ test('5분 크론(runInstantSendAll): 1회 발송 문구는 그 몫만 보내고
   const execute = db.execute.bind(db);
   db.execute = async q => {
     const t = q.sql.replace(/\s+/g, ' ').trim();
-    if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset')) return { rows: [{ id: 31, name: template.name, body: template.body, auto_kind: 'ship_plus_days', auto_enabled: true, auto_days: 3, auto_ata_template: 'KA01TP1', auto_enabled_at: template.auto_enabled_at, auto_catchup_from: '2026-11-18', auto_catchup_at: '2026-11-20T09:00', auto_audience: 'customer' }] };
+    if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset')) return { rows: [{ id: 31, name: template.name, body: template.body, auto_kind: 'ship_plus_days', auto_enabled: true, auto_days: 1, auto_ata_template: 'KA01TP1', auto_enabled_at: template.auto_enabled_at, auto_catchup_from: '2026-11-18', auto_catchup_at: '2026-11-20T09:00', auto_audience: 'customer' }] };
     return execute(q);
   };
   reset();

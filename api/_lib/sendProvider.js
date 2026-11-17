@@ -176,7 +176,8 @@ solapi.sendKakaoEach = async function sendKakaoEach({ from, pfId, messages, disa
   const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
   const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
   const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
-  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
+  const failedTo = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.map(item => String(item?.to ?? '').replace(/\D/g, '')).filter(Boolean) : []; // 실패 번호(있을 때만 자동 발송이 그 번호 행만 failed 로 기록)
+  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '', ...(failedTo.length ? { failedTo } : {}) };
 };
 
 const PROVIDERS = { solapi };

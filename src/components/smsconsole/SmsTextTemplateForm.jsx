@@ -121,11 +121,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     if (!catchupShown) { setCatchupInfo({ loading: false, error: '', data: null }); return undefined; }
     let alive = true;
     setCatchupInfo(prev => ({ ...prev, loading: true, error: '' }));
-    fetchSmsConsole('catchup_preview', { from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId })
+    fetchSmsConsole('catchup_preview', { from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId, days: Number(days) || 0 })
       .then(out => { if (!alive) return; setCatchupInfo({ loading: false, error: '', data: out }); if (!catchupFrom && out?.oldest_ship_date) setCatchupFrom(out.oldest_ship_date); })
       .catch(err => { if (alive) setCatchupInfo({ loading: false, error: err.message || '미리보기를 불러오지 못했습니다.', data: null }); });
     return () => { alive = false; };
-  }, [catchupShown, catchupFrom, stageId]);
+  }, [catchupShown, catchupFrom, stageId, days]);
   const toggleCatchup = on => {
     setCatchupOn(on);
     if (on && !catchupAt) { const next = new Date(Date.parse(`${getKstToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10); setCatchupAt(`${next}T09:00`); } // 기본 보낼 시각: 내일 오전 9시
@@ -414,7 +414,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <div className="stf-cells">
               <span>출고일</span>
               <input type="date" className="stf-from" value={catchupFrom} max={getKstToday()} aria-label="출고일 시작일" onChange={event => setCatchupFrom(event.target.value)} />
-              <span>부터 오늘까지, 보낼 시각</span>
+              <span>부터 {Number(days) >= 1 ? `출고 ${Number(days)}일이 지난 주문만(오늘 −${Number(days)}일까지)` : '오늘까지'}, 보낼 시각</span>
               <input type="datetime-local" className="stf-from" value={catchupAt} aria-label="보낼 시각" onChange={event => setCatchupAt(event.target.value)} />
             </div>
             {catchupInfo.error ? <p className="ktm-alert" role="alert">{catchupInfo.error}</p> : null}
@@ -425,13 +425,13 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                   {catchupInfo.data.ranges.filter(range => range.key !== 'all' || range.from).map(range => (
                     <li key={range.key}>
                       <button type="button" className={`ktm-btn stf-cu-pick${range.key === 'selected' ? ' is-active' : ''}`} disabled={!range.from || range.key === 'selected'} onClick={() => setCatchupFrom(range.from)}>{range.key === 'selected' ? '고른 범위' : range.label}</button>
-                      <span>{range.from ? `${range.from} ~ ${catchupInfo.data.today}` : '-'} · <b>{range.count}건</b> · 예상 비용 {won(range.cost)}</span>
+                      <span>{range.from ? `${range.from} ~ ${catchupInfo.data.end_date || catchupInfo.data.today}` : '-'} · <b>{range.count}건</b> · 예상 비용 {won(range.cost)}</span>
                     </li>
                   ))}
                 </ul>
                 <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · 알림톡 1건 {won(catchupInfo.data.unit)} · 일괄 발송은 5분마다 {catchupInfo.data.per_run}건씩, 시작 후 약 {catchupInfo.data.eta_minutes}분 안에 모두 나갑니다(하루 {catchupInfo.data.daily_max}건까지{catchupInfo.data.days_needed > 1 ? `, 넘으면 다음 날 이어서 약 ${catchupInfo.data.days_needed}일` : ''}, 안내 문자 상한과 따로 셉니다)</p>
                 {catchupInfo.data.balance_short ? <p className="ktm-alert" role="alert">잔액이 예상 비용보다 적습니다. 충전 후 보내세요(발송은 막지 않습니다).</p> : null}
-                <p className="stf-cu-foot">템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다. 나중 자동 발송과 같은 번호에는 겹쳐 보내지 않습니다.</p>
+                <p className="stf-cu-foot">템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다. 출고 후 설정한 일수가 지난 주문만 보내고, 그 뒤 출고분은 평소 자동 발송이 그 일수째에 보냅니다. 같은 번호에는 겹쳐 보내지 않습니다.</p>
               </div>
             ) : null}
           </div>
