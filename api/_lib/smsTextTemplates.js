@@ -19,6 +19,7 @@ export const isInstantKind = kind => INSTANT_KINDS.includes(kind);
 // 4단계(설계 19절): 'lead_plus_days' = 가입·문의 후 N일(에어테이블·카페24 접수 기준). 알림톡(auto_ata_template)을 붙일 수 있다.
 export const LEAD_KINDS = Object.freeze(['lead_plus_days']);
 export const isLeadKind = kind => LEAD_KINDS.includes(kind);
+export const LEAD_SOURCES = Object.freeze(['', 'cafe24', 'airtable']); // 가입·문의 후 대상(접수 표 source). ''는 모두
 export const isInfoKind = kind => isEventKind(kind) || isInstantKind(kind) || isLeadKind(kind);
 export const isAnyAutoKind = kind => isAutoKind(kind) || isInfoKind(kind);
 // 출고 완료 후 N일에 알림톡 수단을 고른 문구(2026-11-16): 광고 문자가 아니라 정보성 알림톡으로 나가며 안내(info) 발송 경로(smsEventSend)를 탄다.
@@ -96,7 +97,7 @@ export async function ensureTextTemplateSchema(db) {
   // 출고 후 자동 발송(2026-11-13): 사진 최대 3장(JSON 배열)과 자동 발송 조건·켜짐 상태. 기존 image 칸은 그대로 둔다.
   for (const column of ['images TEXT', 'auto_kind TEXT', 'auto_days INT', 'auto_enabled BOOLEAN NOT NULL DEFAULT false', 'auto_start_date TEXT', 'auto_send_from TEXT', 'auto_repeat INT NOT NULL DEFAULT 1', 'auto_interval INT NOT NULL DEFAULT 30',
     'auto_offset INT NOT NULL DEFAULT 0', 'auto_unless_step TEXT', "auto_audience TEXT NOT NULL DEFAULT 'customer'", 'auto_staff TEXT', "auto_msg_type TEXT NOT NULL DEFAULT 'ad'", 'auto_step TEXT', 'auto_enabled_at TIMESTAMPTZ',
-    "auto_daily TEXT NOT NULL DEFAULT ''", 'auto_weekdays BOOLEAN NOT NULL DEFAULT false', "auto_unless_mode TEXT NOT NULL DEFAULT 'completed'", 'auto_ata_template TEXT', 'auto_send_time TEXT', 'auto_catchup_from TEXT', 'auto_catchup_at TEXT', 'auto_catchup_done_at TIMESTAMPTZ']) {
+    "auto_daily TEXT NOT NULL DEFAULT ''", 'auto_weekdays BOOLEAN NOT NULL DEFAULT false', "auto_unless_mode TEXT NOT NULL DEFAULT 'completed'", 'auto_ata_template TEXT', 'auto_send_time TEXT', 'auto_catchup_from TEXT', 'auto_catchup_at TEXT', 'auto_catchup_done_at TIMESTAMPTZ', "auto_lead_source TEXT NOT NULL DEFAULT ''"]) {
     await db.execute({ sql: `ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS ${column}`, args: [] });
   }
   flags.set('sms.textTemplates', true);
@@ -121,6 +122,7 @@ function autoFields(row) {
     ...(isEventKind(row.auto_kind) ? { auto_daily: String(row.auto_daily || ''), auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed' } : {}),
     ...(row.auto_step ? { auto_step: String(row.auto_step) } : {}),
     ...(isLeadKind(row.auto_kind) || row.auto_ata_template ? { auto_ata_template: String(row.auto_ata_template || '') } : {}),
+    ...(isLeadKind(row.auto_kind) && LEAD_SOURCES.includes(row.auto_lead_source) && row.auto_lead_source ? { auto_lead_source: String(row.auto_lead_source) } : {}),
     ...(isShipAta(row) && row.auto_catchup_at ? { auto_catchup_from: String(row.auto_catchup_from || ''), auto_catchup_at: String(row.auto_catchup_at), auto_catchup_done: Boolean(row.auto_catchup_done_at) } : {}),
     ...(row.auto_send_time ? { auto_send_time: String(row.auto_send_time) } : {}),
   };
@@ -260,11 +262,13 @@ function readEventAuto(auto, staff, body) {
 function readLeadAuto(auto, body) {
   const days = auto.days === undefined || auto.days === null || auto.days === '' ? 0 : Number(auto.days);
   if (!(Number.isInteger(days) && days >= 0 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `가입·문의 후 일수는 0~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
+  const leadSource = auto.lead_source === undefined || auto.lead_source === null ? '' : auto.lead_source; // 대상: ''(가입·문의 모두) · 'cafe24'(회원가입) · 'airtable'(견적 문의)
+  if (!LEAD_SOURCES.includes(leadSource)) return { error: '가입·문의 대상이 올바르지 않습니다.' };
   const picked = readAta(auto, body, auto.kind);
   if (picked.error) return picked;
   const blocked = picked.ata ? '' : infoCheck(body, 'customer', auto.kind, false);
   if (blocked) return { error: INFO_CHECK_MESSAGE[blocked], reason: blocked };
-  return { kind: auto.kind, days, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, msg_type: 'info', ata: picked.ata };
+  return { kind: auto.kind, days, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, msg_type: 'info', ata: picked.ata, lead_source: leadSource };
 }
 
 // 즉시형(주문 등록 시·공정 시작/완료 시): 항상 안내 문구. process_* 는 공정 필수. 일수·오프셋·미완료 조건·시작일·반복은 쓰지 않는다. 받는 사람·본문 검사는 기준일형과 같다.
@@ -289,8 +293,8 @@ function readImage(input) {
 }
 
 // 저장한 새 칸 값 → 응답(auto_*) / DB 행 모양. 저장 직후 응답은 방금 검증한 값을 그대로 쓴다.
-const newAutoColumns = auto => ({ auto_send_time: auto.send_time || '', auto_offset: auto.offset, auto_unless_step: auto.unless_step, auto_audience: auto.audience, auto_staff: auto.staff, auto_msg_type: auto.msg_type, auto_step: auto.step, auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode, auto_ata_template: auto.ata || '', auto_catchup_from: auto.catchup_from || '', auto_catchup_at: auto.catchup_at || '' });
-const newAutoFields = auto => ({ ...(auto.send_time ? { auto_send_time: auto.send_time } : {}), auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type, ...(auto.step ? { auto_step: auto.step } : {}), ...(isEventKind(auto.kind) ? { auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode } : {}), ...(isLeadKind(auto.kind) || auto.ata ? { auto_ata_template: auto.ata || '' } : {}), ...(auto.kind === AUTO_KIND && auto.ata && auto.catchup_at ? { auto_catchup_from: auto.catchup_from, auto_catchup_at: auto.catchup_at, auto_catchup_done: false } : {}) });
+const newAutoColumns = auto => ({ auto_send_time: auto.send_time || '', auto_offset: auto.offset, auto_unless_step: auto.unless_step, auto_audience: auto.audience, auto_staff: auto.staff, auto_msg_type: auto.msg_type, auto_step: auto.step, auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode, auto_ata_template: auto.ata || '', auto_catchup_from: auto.catchup_from || '', auto_catchup_at: auto.catchup_at || '', auto_lead_source: auto.lead_source || '' });
+const newAutoFields = auto => ({ ...(auto.send_time ? { auto_send_time: auto.send_time } : {}), auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type, ...(auto.step ? { auto_step: auto.step } : {}), ...(isEventKind(auto.kind) ? { auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode } : {}), ...(isLeadKind(auto.kind) || auto.ata ? { auto_ata_template: auto.ata || '' } : {}), ...(isLeadKind(auto.kind) && auto.lead_source ? { auto_lead_source: auto.lead_source } : {}), ...(auto.kind === AUTO_KIND && auto.ata && auto.catchup_at ? { auto_catchup_from: auto.catchup_from, auto_catchup_at: auto.catchup_at, auto_catchup_done: false } : {}) });
 
 export async function listTextTemplates(db) {
   await ensureTextTemplateSchema(db);
@@ -298,7 +302,7 @@ export async function listTextTemplates(db) {
     sql: `SELECT id, name, body,
       ((image IS NOT NULL AND image <> '') OR COALESCE(images, '') NOT IN ('', '[]')) AS has_image,
       CASE WHEN COALESCE(images, '') NOT IN ('', '[]') THEN jsonb_array_length(images::jsonb) WHEN image IS NOT NULL AND image <> '' THEN 1 ELSE 0 END AS image_count,
-      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at
+      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source
       FROM sms_text_templates ORDER BY name ASC`,
     args: [],
   });
@@ -309,7 +313,7 @@ export async function getTextTemplate(db, input) {
   const id = Number(input?.id);
   if (!(Number.isInteger(id) && id > 0)) return bad('올바른 문구가 아닙니다.');
   await ensureTextTemplateSchema(db);
-  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at FROM sms_text_templates WHERE id = ?', args: [id] });
+  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source FROM sms_text_templates WHERE id = ?', args: [id] });
   const row = out.rows?.[0];
   if (!row) return bad('문구를 찾을 수 없습니다.', 404);
   const images = storedImages(row);
@@ -352,7 +356,7 @@ export async function saveTextTemplate(db, input, { staff } = {}) {
         const cols = ['name', 'body']; const args = [name, body.trim()];
         if (photo.base64 && photos.skip) { cols.push('image'); args.push(photo.base64); }
         if (imagesJson) { cols.push('images'); args.push(imagesJson); }
-        if (!auto.skip) { cols.push('auto_kind', 'auto_days', 'auto_send_from', 'auto_repeat', 'auto_interval', 'auto_offset', 'auto_unless_step', 'auto_audience', 'auto_staff', 'auto_msg_type', 'auto_step', 'auto_daily', 'auto_weekdays', 'auto_unless_mode', 'auto_ata_template', 'auto_send_time', 'auto_catchup_from', 'auto_catchup_at'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval, auto.offset, auto.unless_step, auto.audience, auto.staff, auto.msg_type, auto.step, auto.daily, auto.weekdays, auto.unless_mode, auto.ata || '', auto.send_time || '', auto.catchup_from || '', auto.catchup_at || ''); }
+        if (!auto.skip) { cols.push('auto_kind', 'auto_days', 'auto_send_from', 'auto_repeat', 'auto_interval', 'auto_offset', 'auto_unless_step', 'auto_audience', 'auto_staff', 'auto_msg_type', 'auto_step', 'auto_daily', 'auto_weekdays', 'auto_unless_mode', 'auto_ata_template', 'auto_send_time', 'auto_catchup_from', 'auto_catchup_at', 'auto_lead_source'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval, auto.offset, auto.unless_step, auto.audience, auto.staff, auto.msg_type, auto.step, auto.daily, auto.weekdays, auto.unless_mode, auto.ata || '', auto.send_time || '', auto.catchup_from || '', auto.catchup_at || '', auto.lead_source || ''); }
         out = await db.execute({ sql: `INSERT INTO sms_text_templates (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING id`, args });
       } else {
         out = photo.base64
@@ -384,6 +388,7 @@ export async function saveTextTemplate(db, input, { staff } = {}) {
       changed.push("COALESCE(auto_ata_template, '') IS DISTINCT FROM ?"); guardArgs.push(auto.ata || '');
       changed.push("COALESCE(auto_send_time, '') IS DISTINCT FROM ?"); guardArgs.push(auto.send_time || '');
       changed.push("COALESCE(auto_catchup_from, '') IS DISTINCT FROM ?", "COALESCE(auto_catchup_at, '') IS DISTINCT FROM ?"); guardArgs.push(auto.catchup_from || '', auto.catchup_at || '');
+      changed.push("COALESCE(auto_lead_source, '') IS DISTINCT FROM ?"); guardArgs.push(auto.lead_source || '');
     }
     if (!photos.skip) { changed.push("COALESCE(images, '') IS DISTINCT FROM ?"); guardArgs.push(imagesJson || ''); }
     else if (!photo.skip) { changed.push("COALESCE(image, '') IS DISTINCT FROM ?"); guardArgs.push(photo.base64 || ''); }
@@ -396,9 +401,9 @@ export async function saveTextTemplate(db, input, { staff } = {}) {
       const sets = ['name = ?', 'body = ?']; const args = [name, body.trim()];
       if (!photos.skip) { sets.push('images = ?', 'image = NULL'); args.push(imagesJson); }
       else if (!photo.skip) { sets.push('image = ?'); args.push(photo.base64 || null); }
-      if (!auto.skip) { sets.push('auto_kind = ?', 'auto_days = ?', 'auto_send_from = ?', 'auto_repeat = ?', 'auto_interval = ?', 'auto_offset = ?', 'auto_unless_step = ?', 'auto_audience = ?', 'auto_staff = ?', 'auto_msg_type = ?', 'auto_step = ?', 'auto_daily = ?', 'auto_weekdays = ?', 'auto_unless_mode = ?', 'auto_ata_template = ?', 'auto_send_time = ?', "auto_catchup_done_at = CASE WHEN COALESCE(auto_catchup_from, '') IS DISTINCT FROM ? OR COALESCE(auto_catchup_at, '') IS DISTINCT FROM ? THEN NULL ELSE auto_catchup_done_at END", 'auto_catchup_from = ?', 'auto_catchup_at = ?'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval, auto.offset, auto.unless_step, auto.audience, auto.staff, auto.msg_type, auto.step, auto.daily, auto.weekdays, auto.unless_mode, auto.ata || '', auto.send_time || '', auto.catchup_from || '', auto.catchup_at || '', auto.catchup_from || '', auto.catchup_at || ''); if (!auto.kind) sets.push('auto_enabled = false'); }
+      if (!auto.skip) { sets.push('auto_kind = ?', 'auto_days = ?', 'auto_send_from = ?', 'auto_repeat = ?', 'auto_interval = ?', 'auto_offset = ?', 'auto_unless_step = ?', 'auto_audience = ?', 'auto_staff = ?', 'auto_msg_type = ?', 'auto_step = ?', 'auto_daily = ?', 'auto_weekdays = ?', 'auto_unless_mode = ?', 'auto_ata_template = ?', 'auto_send_time = ?', "auto_catchup_done_at = CASE WHEN COALESCE(auto_catchup_from, '') IS DISTINCT FROM ? OR COALESCE(auto_catchup_at, '') IS DISTINCT FROM ? THEN NULL ELSE auto_catchup_done_at END", 'auto_catchup_from = ?', 'auto_catchup_at = ?', 'auto_lead_source = ?'); args.push(auto.kind, auto.days, auto.send_from, auto.repeat, auto.interval, auto.offset, auto.unless_step, auto.audience, auto.staff, auto.msg_type, auto.step, auto.daily, auto.weekdays, auto.unless_mode, auto.ata || '', auto.send_time || '', auto.catchup_from || '', auto.catchup_at || '', auto.catchup_from || '', auto.catchup_at || '', auto.lead_source || ''); if (!auto.kind) sets.push('auto_enabled = false'); }
       args.push(id);
-      const out = await db.execute({ sql: `UPDATE sms_text_templates SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at`, args });
+      const out = await db.execute({ sql: `UPDATE sms_text_templates SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ? RETURNING id, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source`, args });
       returned = out.rows?.[0] || null;
     } else if (photo.skip) await db.execute({ sql: 'UPDATE sms_text_templates SET name = ?, body = ?, updated_at = NOW() WHERE id = ? RETURNING id', args: [name, body.trim(), id] });
     else await db.execute({ sql: 'UPDATE sms_text_templates SET name = ?, body = ?, image = ?, updated_at = NOW() WHERE id = ? RETURNING id', args: [name, body.trim(), photo.base64 || null, id] });

@@ -76,6 +76,10 @@ export const AUTO_KIND_PROCESS_COMPLETED = 'process_completed';
 export const IMMEDIATE_KINDS = [AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED];
 export const AUTO_KIND_MEMBER_JOINED = 'member_joined';
 export const AUTO_KIND_LEAD_PLUS = 'lead_plus_days';
+// 가입·문의 후 대상(접수 표 source): ''(가입·문의 모두) · 'cafe24'(회원가입) · 'airtable'(견적 문의)
+export const LEAD_SOURCES = ['', 'cafe24', 'airtable'];
+export const LEAD_SOURCE_OPTION_LABEL = { '': '가입·문의 모두', cafe24: '회원가입만', airtable: '견적 문의만' };
+export const LEAD_SOURCE_FLOW_LABEL = { '': '가입·문의', cafe24: '회원가입', airtable: '견적 문의' };
 export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS];
 export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
@@ -219,7 +223,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
     const ata = a.ataTemplate ? { ata_template: String(a.ataTemplate) } : {}; // 알림톡을 고르면 모든 조건에서 받는 사람은 고객
     if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind, ...ata };
-    if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || '') };
+    if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || ''), ...(a.leadSource === 'cafe24' || a.leadSource === 'airtable' ? { lead_source: a.leadSource } : {}) };
     if (isImmediateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF && !a.ataTemplate;
       return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [], ...ata };
@@ -288,7 +292,7 @@ export function formValuesFromItem(item) {
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
     daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
     staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '',
-    catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '',
+    catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
   };
 }
 // 단계 순서값(일수 오름차순에 쓴다). 즉시형·회원가입 시는 0, 입력이 올바르지 않으면 null.
@@ -311,7 +315,7 @@ export function stageLabel(f) {
 export function duplicateStages(forms) {
   const seen = new Map();
   // 날짜 기준은 공정 조건이 다르면 다른 단계다. 즉시형(주문 등록 시·공정 시작/완료 시·회원가입 시)은 공정·받는 사람까지 같으면 중복이다(둘 다 발송됨).
-  forms.forEach((f, i) => { const n = stageOrder(f); if (n === null) return; const imm = isImmediateKind(f.autoKind) || f.autoKind === AUTO_KIND_MEMBER_JOINED; const key = imm ? `${f.autoKind}|${f.step || ''}|${f.audience || ''}|${[...(f.staff || [])].sort().join(',')}` : `${f.autoKind}|${n}|${f.unlessStep || ''}`; seen.set(key, [...(seen.get(key) || []), i]); });
+  forms.forEach((f, i) => { const n = stageOrder(f); if (n === null) return; const imm = isImmediateKind(f.autoKind) || f.autoKind === AUTO_KIND_MEMBER_JOINED; const key = imm ? `${f.autoKind}|${f.step || ''}|${f.audience || ''}|${[...(f.staff || [])].sort().join(',')}` : `${f.autoKind}|${n}|${f.unlessStep || ''}${f.autoKind === AUTO_KIND_LEAD_PLUS && f.leadSource ? `|${f.leadSource}` : ''}`; seen.set(key, [...(seen.get(key) || []), i]); });
   const out = new Set();
   seen.forEach((list) => { if (list.length > 1) list.forEach((i) => out.add(i)); });
   return out;
@@ -362,7 +366,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   entry.autoAtaTemplate ? '알림톡' : '',
 ) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객', entry.autoAtaTemplate ? '알림톡' : ''
 ) : entry?.autoKind === AUTO_KIND_LEAD_PLUS ? joinDot(
-  Number(entry.autoDays) > 0 ? `가입·문의 후 ${Number(entry.autoDays)}일 뒤` : '가입·문의 당일',
+  Number(entry.autoDays) > 0 ? `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || '']} 후 ${Number(entry.autoDays)}일 뒤` : `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || '']} 당일`,
   Number(entry.autoDays) > 0 ? (sendTimeLabel(entry.autoSendTime) || '오전 9시 30분') : '',
   '고객',
   entry.autoAtaTemplate ? '알림톡' : '',
@@ -475,6 +479,7 @@ export function myTextSection(items) {
       autoKind: AUTO_KINDS.includes(item.auto_kind) ? item.auto_kind : '',
       autoDays: Number(item.auto_days) || 0,
       autoAtaTemplate: String(item.auto_ata_template || ''),
+      autoLeadSource: LEAD_SOURCES.includes(item.auto_lead_source) ? item.auto_lead_source : '',
       autoCatchupAt: String(item.auto_catchup_at || ''),
       autoCatchupFrom: String(item.auto_catchup_from || ''),
       autoCatchupDone: Boolean(item.auto_catchup_done),
@@ -514,6 +519,7 @@ export function formInitialFromItem(item) {
     autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
     days: item?.auto_kind === AUTO_KIND_LEAD_PLUS ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
     ataTemplate: String(item?.auto_ata_template || ''),
+    leadSource: LEAD_SOURCES.includes(item?.auto_lead_source) ? item.auto_lead_source : '',
     catchupOn: Boolean(item?.auto_catchup_at), catchupFrom: String(item?.auto_catchup_from || ''), catchupAt: String(item?.auto_catchup_at || ''),
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
     repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),

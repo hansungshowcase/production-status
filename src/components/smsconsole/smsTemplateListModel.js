@@ -1,7 +1,7 @@
 import {
   EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
-import { autoConditionParts } from './smsTextTemplateFormModel.js';
+import { autoConditionParts, LEAD_SOURCE_FLOW_LABEL } from './smsTextTemplateFormModel.js';
 import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
@@ -203,7 +203,7 @@ export function conditionGroup(row) {
   const text = row?.autoKind ? autoConditionParts(row).when : `${row?.trigger || ''} ${row?.name || ''}`;
   if (!row?.autoKind && row?.preview !== undefined) return '조건 없음';
   // 순서가 뜻이다: '주문의'(문의 아님)·'작업지시서'(공정 아님)·날짜 기준 직원 알림(공정 미완료 조건이 붙어도 날짜 묶음)
-  if (/회원 ?가입|견적문의|가입·문의/.test(text)) return '가입·문의';
+  if (/회원 ?가입|견적 ?문의|가입·문의/.test(text)) return '가입·문의';
   if (/주문 (생성|등록|접수|결제)/.test(text)) return '주문 등록';
   if (/납기|출고 ?예정|출고 \d|미출고/.test(text)) return '납기·출고예정일';
   if (/출고 ?완료/.test(text)) return '출고 완료';
@@ -240,7 +240,7 @@ export function groupFlows(entries, enabledOf = (entry) => Boolean(entry.autoEna
   const byKey = new Map();
   (Array.isArray(entries) ? entries : []).forEach((entry) => {
     if (!entry?.autoKind) { out.push({ key: `m-${entry?.id}`, single: true, entry, steps: [] }); return; }
-    const key = `${entry.autoKind}|${entry.autoAudience || 'customer'}|${entry.autoStep || ''}`;
+    const key = `${entry.autoKind}|${entry.autoAudience || 'customer'}|${entry.autoStep || ''}${entry.autoKind === 'lead_plus_days' && entry.autoLeadSource ? `|${entry.autoLeadSource}` : ''}`;
     let flow = byKey.get(key);
     if (!flow) {
       flow = { key, single: false, steps: [] };
@@ -254,7 +254,7 @@ export function groupFlows(entries, enabledOf = (entry) => Boolean(entry.autoEna
     flow.steps.sort((a, b) => (stepDays(a) - stepDays(b)) || String(a.name || '').localeCompare(String(b.name || ''), 'ko', { numeric: true }));
     const first = flow.steps[0];
     const parts = autoConditionParts(first);
-    flow.label = `${FLOW_LABELS[first.autoKind] || ''}${first.autoStep ? `(${first.autoStep})` : ''}`;
+    flow.label = `${first.autoKind === 'lead_plus_days' && first.autoLeadSource ? `${LEAD_SOURCE_FLOW_LABEL[first.autoLeadSource]} 후` : (FLOW_LABELS[first.autoKind] || '')}${first.autoStep ? `(${first.autoStep})` : ''}`;
     flow.who = parts.who;
     flow.via = flow.steps.some((step) => step.autoAtaTemplate) ? '알림톡' : '';
     const times = [...new Set(flow.steps.map((step) => String(step.autoSendTime || '')).filter(Boolean))];

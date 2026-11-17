@@ -55,6 +55,17 @@ test('접수 표: 같은 출처·키는 중복 거절, 휴대폰 형식이 아�
   assert.equal(one.joinedAtMs, NOW);
 });
 
+test('접수 표: 대상(source)을 주면 SQL 에 조건·인자가 붙고, 없으면 예전 SQL 그대로', async () => {
+  const seen = [];
+  const db = { async execute(q) { if (/FROM sms_leads WHERE joined_at/.test(q.sql)) seen.push(q); return { rows: [] }; } };
+  const range = { fromIso: 'A', toIso: 'B' };
+  await leadCandidates(db, { ...range, source: 'airtable' });
+  await leadCandidates(db, range);
+  await leadCandidates(db, { ...range, source: '' });
+  assert.match(seen[0].sql, /AND source = \? ORDER BY/); assert.deepEqual(seen[0].args, ['A', 'B', 'airtable']);
+  for (const q of seen.slice(1)) { assert.doesNotMatch(q.sql, /source = /); assert.deepEqual(q.args, ['A', 'B']); }
+});
+
 test('접수 표: 같은 번호는 cafe24_signups 와 같은 해시, 이름은 60자로 자름', async () => {
   const db = fresh();
   await insertLead(db, { source: 'airtable', key: 'rec1', phone: '01055556666', name: '가'.repeat(100), joinedAtMs: NOW });

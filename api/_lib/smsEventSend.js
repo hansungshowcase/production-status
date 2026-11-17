@@ -130,7 +130,7 @@ export function eventExampleText(part, template) {
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -141,7 +141,7 @@ export async function loadEventTemplate(db, id) {
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
-    auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '',
+    auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '', auto_lead_source: row.auto_lead_source || '',
     auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_done: Boolean(row.auto_catchup_done_at),
   };
 }
@@ -200,7 +200,7 @@ async function leadCandidatesFor(db, template, { nowMs, preview }) {
   }
   const seen = new Set();
   const items = [];
-  for (const row of await leadCandidates(db, { fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() })) {
+  for (const row of await leadCandidates(db, { fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString(), source: template.auto_lead_source })) {
     const joinDay = kstDate(row.joinedAtMs);
     if (days > 0 && addDays(joinDay, days) !== today) continue;
     const key = `${row.hash}:lead:${joinDay}:d${days}`;

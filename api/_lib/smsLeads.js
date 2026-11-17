@@ -51,11 +51,12 @@ export async function insertLead(db, { source, key, phone, name, joinedAtMs }) {
 }
 
 // 발송 후보: 창 안의 접수 중 번호가 남아 있는 것(읽기만). 번호를 못 푸는 행은 건너뛰고, 이름을 못 풀면 빈 값.
-export async function leadCandidates(db, { fromIso, toIso }) {
+export async function leadCandidates(db, { fromIso, toIso, source }) {
   await ensureLeadSchema(db);
+  const onlySource = source === 'cafe24' || source === 'airtable' ? source : ''; // 대상 가르기: 없으면 전체
   const rows = (await db.execute({
-    sql: 'SELECT id, phone_hash, phone_last4, phone_enc, name_enc, joined_at FROM sms_leads WHERE joined_at >= ? AND joined_at <= ? AND phone_enc IS NOT NULL ORDER BY id ASC LIMIT 2000',
-    args: [fromIso, toIso],
+    sql: 'SELECT id, phone_hash, phone_last4, phone_enc, name_enc, joined_at FROM sms_leads WHERE joined_at >= ? AND joined_at <= ? AND phone_enc IS NOT NULL' + (onlySource ? ' AND source = ?' : '') + ' ORDER BY id ASC LIMIT 2000',
+    args: onlySource ? [fromIso, toIso, onlySource] : [fromIso, toIso],
   })).rows || [];
   const list = [];
   for (const row of rows) {

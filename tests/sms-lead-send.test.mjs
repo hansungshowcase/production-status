@@ -194,6 +194,26 @@ test('저장: lead 는 일수 0 허용·고객명만·알림톡 칸 저장, 광�
   })();
 });
 
+test('저장: lead 의 대상(auto_lead_source) — airtable 저장, 다른 조건은 빈 값, 허용 밖은 거절', async () => {
+  const saved = [];
+  const db = { async execute({ sql, args }) {
+    const t = sql.replace(/\s+/g, ' ').trim();
+    if (/^(CREATE|ALTER)/.test(t)) return { rows: [] };
+    if (t.startsWith('SELECT id FROM sms_text_templates WHERE name')) return { rows: [] };
+    if (t.startsWith('SELECT COUNT(*)')) return { rows: [{ n: 0 }] };
+    if (t.startsWith('INSERT INTO sms_text_templates')) { const cols = /\(([^)]*)\) VALUES/.exec(t)[1].split(',').map(c => c.trim()); const row = {}; cols.forEach((c, i) => { row[c] = args[i]; }); saved.push(row); return { rows: [{ id: saved.length }] }; }
+    throw new Error(`예상 못 한 SQL ${t}`);
+  } };
+  reset();
+  const lead = await saveTextTemplate(db, { name: 'a', body: BODY, auto: { kind: 'lead_plus_days', days: 0, lead_source: 'airtable' } }, { staff: [] });
+  assert.equal(lead.status, 201); assert.equal(saved[0].auto_lead_source, 'airtable'); assert.equal(lead.body.item.auto_lead_source, 'airtable');
+  const plain = await saveTextTemplate(db, { name: 'b', body: BODY, auto: { kind: 'lead_plus_days', days: 0 } }, { staff: [] });
+  assert.equal(plain.status, 201); assert.equal(saved[1].auto_lead_source, ''); assert.equal('auto_lead_source' in plain.body.item, false);
+  const other = await saveTextTemplate(db, { name: 'c', body: '#{주문번호} 안내', auto: { kind: 'order_created', lead_source: 'airtable' } }, { staff: [] });
+  assert.equal(other.status, 201); assert.equal(saved[2].auto_lead_source, '');
+  assert.equal((await saveTextTemplate(db, { name: 'd', body: BODY, auto: { kind: 'lead_plus_days', days: 0, lead_source: 'x' } }, { staff: [] })).status, 400);
+});
+
 test('sendKakaoEach: send-many 1번, 받는 사람마다 변수, 문자 대체 기본 끔', async () => {
   const prev = { k: process.env.SOLAPI_API_KEY, s: process.env.SOLAPI_API_SECRET };
   process.env.SOLAPI_API_KEY = 'k'; process.env.SOLAPI_API_SECRET = 's';

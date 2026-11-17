@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
 import { getKstToday } from '../../utils/dateUtils.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow } from './smsTextTemplateFormModel.js';
+import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -48,7 +48,7 @@ function conditionResult(f) {
   } else if (kind === AUTO_KIND_LEAD_PLUS) {
     const leadDays = normalizeLeadDays(f.days);
     if (leadDays === null) return '';
-    Object.assign(entry, { autoDays: leadDays });
+    Object.assign(entry, { autoDays: leadDays, autoLeadSource: f.leadSource || '' });
   } else if (kind !== AUTO_KIND_MEMBER_JOINED) {
     const dayCount = normalizeDays(f.days);
     if (dayCount === null) return '';
@@ -83,6 +83,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [audience, setAudience] = useState(v0.audience);
   const [staff, setStaff] = useState(v0.staff);
   const [ataTemplate, setAtaTemplate] = useState(v0.ataTemplate);
+  const [leadSource, setLeadSource] = useState(v0.leadSource || ''); // 가입·문의 후 대상: '' 모두 · cafe24 회원가입 · airtable 견적 문의
   const [sendTime, setSendTime] = useState(v0.sendTime); // '' = 안 골랐음(칸에는 기본값이 보이고 저장 때는 빈 값)
   const [catchupOn, setCatchupOn] = useState(v0.catchupOn); // 이미 출고된 주문에도 한 번 보내기(기본 꺼짐)
   const [catchupFrom, setCatchupFrom] = useState(v0.catchupFrom); // 출고일 시작일(오늘까지)
@@ -112,7 +113,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const adOn = isAdKind(autoKind, ataTemplate) && adMark;
   const outBody = adOn ? withAdFormat(body) : body;
   const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt });
-  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime, catchupOn, catchupFrom, catchupAt]);
+  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime, catchupOn, catchupFrom, catchupAt, leadSource]);
   // 이미 출고된 주문 1회 발송 미리보기(읽기만): 켜져 있고 출고 완료 후 + 알림톡일 때 출고일 범위가 바뀌면 건수·비용·잔액을 다시 읽는다
   const catchupShown = autoKind === AUTO_KIND && Boolean(ataTemplate) && catchupOn;
   const stageId = stages.find(item => item.key === activeKey)?.id;
@@ -149,16 +150,16 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const mergePending = wantMerge && !mergeFailed && !merged;
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const { info } = check;
-  const conditionText = conditionResult({ autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
+  const conditionText = conditionResult({ leadSource, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
   const won = value => (value === null || value === undefined ? '확인 못 함' : `${Number(value).toLocaleString('ko-KR')}원`);
   const showTime = hasSendTime(autoKind, days);
 
   // ---- 단계(같은 흐름의 문구 여러 개) ----
-  const collect = () => ({ name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime, catchupOn, catchupFrom, catchupAt });
+  const collect = () => ({ leadSource, name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime, catchupOn, catchupFrom, catchupAt });
   const applyValues = v => {
     setName(v.name); setBody(v.body); setImages(v.images); setAutoKind(v.autoKind); setDays(v.days); setSendFrom(v.sendFrom); setRepeat(v.repeat); setInterval(v.interval);
     setOffsetDir(v.offsetDir); setOffsetDays(v.offsetDays); setUnlessStep(v.unlessStep); setUnlessMode(v.unlessMode); setDaily(v.daily); setWeekdays(v.weekdays);
-    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setImageError('');
+    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setLeadSource(v.leadSource || ''); setImageError('');
   };
   const forms = stages.map(item => (item.key === activeKey ? collect() : item.form));
   const dupSet = duplicateStages(forms);
@@ -231,7 +232,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           imgs = f.images;
           if (merge && f.images.length >= 2) { made = await mergeImages(f.images); imgs = [made]; }
         }
-        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
+        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { leadSource: f.leadSource, kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
         last = out.item;
         setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
       } catch (err) {
@@ -309,6 +310,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </select>
             {dayKind || leadKind ? <input type="text" inputMode="numeric" className="stf-days" value={days} maxLength={3} aria-label="일수" onChange={event => setDays(event.target.value)} /> : null}
             {dayKind || leadKind ? <span>일 뒤</span> : null}
+            {leadKind ? (
+              <select value={leadSource} aria-label="대상" onChange={event => setLeadSource(event.target.value)}>
+                {LEAD_SOURCES.map(source => <option key={source} value={source}>{LEAD_SOURCE_OPTION_LABEL[source]}</option>)}
+              </select>
+            ) : null}
             {dateKind && offsetDir !== 'same' ? <input type="text" inputMode="numeric" className="stf-days" value={offsetDays} maxLength={3} aria-label="일수" onChange={event => setOffsetDays(event.target.value)} /> : null}
             {dateKind ? (
               <select value={offsetDir} aria-label="기준 방향" onChange={event => setOffsetDir(event.target.value)}>

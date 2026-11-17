@@ -130,6 +130,13 @@ test('조건 거르기 분류: 내 문구는 autoKind, 항목은 조건 글·이
   assert.equal(CONDITION_GROUPS.at(-1), '조건 없음');
 });
 
+test('흐름 묶기: 대상이 다른 가입·문의 문구는 다른 흐름 — 회원가입 후·견적 문의 후, 대상이 없으면 예전 이름', () => {
+  const mkLead = (id, source) => ({ id, name: id, autoKind: 'lead_plus_days', autoDays: 0, autoAudience: 'customer', autoLeadSource: source });
+  const flows = groupFlows([mkLead('a', 'cafe24'), mkLead('b', 'airtable'), mkLead('c', '')]);
+  assert.deepEqual(flows.map((f) => f.label), ['회원가입 후', '견적 문의 후', '가입·문의 후']);
+  assert.equal(new Set(flows.map((f) => f.key)).size, 3);
+});
+
 test('흐름 묶기: 가입·문의 10 + 출고 2 + 조건 없음 1 → 흐름 2 + 단일 1, 일수 순, 켜짐 수', () => {
   const lead = [40, 0, 2, 3, 4, 5, 6, 7, 8, 20].map((d) => ({ id: `l${d}`, name: `${d}일`, autoKind: 'lead_plus_days', autoDays: d, autoAudience: 'customer', autoEnabled: d === 2, autoAtaTemplate: d === 3 ? 'T' : '' }));
   const ship = [20, 3].map((d) => ({ id: `s${d}`, name: `출고 ${d}`, autoKind: 'ship_plus_days', autoDays: d, autoAudience: 'customer', autoEnabled: false }));
