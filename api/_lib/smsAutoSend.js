@@ -6,13 +6,8 @@ import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
 import { AUTO_KIND, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
-<<<<<<< Updated upstream
-import { bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
-import { ataReady, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
-=======
 import { bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
-import { ataReady, buildEventParts, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
->>>>>>> Stashed changes
+import { ataReady, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
