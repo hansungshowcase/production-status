@@ -136,7 +136,7 @@ const MILESTONE_LABELS = [
   [/^ordered$/, '주문 접수'], [/^started$/, '제작 시작'], [/^packed$/, '포장 완료'], [/^shipped$/, '출고 완료'],
   [/^rescheduled/, '일정 변경'], [/^review:blog$/, '리뷰 이벤트(블로그)'], [/^review:sns$/, '리뷰 이벤트(SNS)'],
   [/^internal_assembly_daily$/, '조립 팀원 알림'], [/^internal_overdue_/, '지연 알림'],
-  [/^internal_ship_day$/, '출고일 알림'], [/^sms_delivery_/, '수신 이상 경고'], [/^internal_/, '생산 알림'],
+  [/^internal_ship_day$/, '출고일 알림'], [/^sms_delivery_/, '수신 이상 경고'], [/^solapi_health_/, '연동 이상 경고'], [/^internal_/, '생산 알림'],
 ];
 function milestoneCategory(milestone) {
   for (const [pattern, label] of MILESTONE_LABELS) if (pattern.test(milestone)) return label;
@@ -183,7 +183,7 @@ export function classifyAudience(entry, dbRow, source = null) {
     if (milestone === 'chonbe_alert') {
       audience = sales.has(phone) ? 'staff' : 'other';
       category = audience === 'staff' ? '분체 알림(영업)' : '분체 알림(기타 수신)';
-    } else if (milestone.startsWith('internal_') || milestone.startsWith('sms_delivery_')) audience = 'staff';
+    } else if (milestone.startsWith('internal_') || milestone.startsWith('sms_delivery_') || milestone.startsWith('solapi_health_')) audience = 'staff';
     return { audience, category, name: dbRow.recipient_name || staffName || null, matched: true };
   }
   if (reviewCategory) return { audience: staffName ? 'staff' : 'customer', category: reviewCategory, name: staffName, matched: false };
