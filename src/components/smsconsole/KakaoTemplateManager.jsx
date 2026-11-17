@@ -246,6 +246,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       <dl className="ktm-info">
         <dt>보내는 곳</dt><dd>{entry.sender}</dd>
         <dt>종류</dt><dd>{entry.kind} · {entry.channel === 'BMS' ? '브랜드메시지·친구톡' : '알림톡'}</dd>
+        {entry.who ? <><dt>대상</dt><dd>{entry.who}</dd></> : null}
         {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
         {entry.scenario ? <><dt>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{entry.scenario}</dd></> : null}
       </dl>
@@ -258,6 +259,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     if (!selectedId) return <div className="ktm-empty">왼쪽에서 템플릿을 고르면 미리보기가 보입니다.</div>;
     if (!selected) return <div className="ktm-empty">선택한 템플릿을 찾을 수 없습니다. 삭제되었거나 이 화면에서 볼 수 없는 템플릿입니다.</div>;
     const info = statusInfo(selected.status);
+    const selectedExt = templateExtras(selected.id, sent); // 메이크 등 밖에서 보내는 템플릿이면 그 발송 조건·대상
     const comments = (Array.isArray(selected.comments) ? selected.comments : [])
       .slice().sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0)).slice(0, 3);
     const variables = Array.isArray(selected.variables) ? selected.variables : [];
@@ -273,9 +275,17 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
         </div>
         <section className="ktm-linked" aria-label="자동 발송 조건">
           <h4 className="ktm-linked-head">자동 발송 조건</h4>
+          {selectedExt ? (
+            <dl className="ktm-info">
+              <dt>보내는 곳</dt><dd>{selectedExt.sender}</dd>
+              {selectedExt.who ? <><dt>대상</dt><dd>{selectedExt.who}</dd></> : null}
+              {selectedExt.trigger ? <><dt>언제 나가나</dt><dd>{selectedExt.trigger}</dd></> : null}
+              {selectedExt.scenario ? <><dt>{selectedExt.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{selectedExt.scenario}</dd></> : null}
+            </dl>
+          ) : null}
           {linked.id !== selected.id || linked.loading ? <p className="ktm-linked-empty">불러오는 중…</p>
             : linked.error ? <p className="ktm-linked-empty">{linked.error}</p>
-              : linked.rows.length === 0 ? <p className="ktm-linked-empty">연결된 자동 발송 없음</p>
+              : linked.rows.length === 0 ? (selectedExt ? null : <p className="ktm-linked-empty">연결된 자동 발송 없음</p>)
                 : (
                   <ul className="ktm-linked-list">
                     {linked.rows.map(({ entry, status }) => (

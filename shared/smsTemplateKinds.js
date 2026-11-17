@@ -511,7 +511,7 @@ export function templateMeta(templateId) {
   const programKey = PROGRAM_TEMPLATE_IDS[id];
   if (programKey) return { key: programKey, kind: kindOfCatalogId(programKey), sender: SENDERS.program, ad: false, active: true, audience: '고객' };
   const entry = EXTERNAL_TEMPLATES.find(item => item.match.templateId === id);
-  return entry ? { key: entry.key, kind: entry.kind, sender: entry.sender, ad: entry.ad, active: entry.active, audience: entry.audience || '고객' } : null;
+  return entry ? { key: entry.key, kind: entry.kind, sender: entry.sender, ad: entry.ad, active: entry.active, audience: entry.audience || '고객', trigger: entry.trigger || '', who: entry.who || '', scenario: entry.scenario || '' } : null;
 }
 
 // ---------- 대상(고객 전용 / 직원 전용)으로 먼저 묶기 ----------

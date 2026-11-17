@@ -177,7 +177,8 @@ test('알림톡 모델: 읽기 전용 구역은 목록에 없는 브랜드메시
   assert.deepEqual(readOnlyKakaoItems(listed, sent, { status: 'in_use' }).map(i => i.id), ['review_blog', 'event_free_support']);
   assert.deepEqual(readOnlyKakaoItems(listed, sent, { status: 'APPROVED' }), []);
   const extras = templateExtras(TID.youtube, sent);
-  assert.deepEqual(extras, { sender: SENDERS.make, kind: '이벤트·혜택', replaced7: 0, off: false });
+  assert.deepEqual({ sender: extras.sender, kind: extras.kind, replaced7: extras.replaced7, off: extras.off }, { sender: SENDERS.make, kind: '이벤트·혜택', replaced7: 0, off: false });
+  assert.ok(extras.trigger.includes('17:59') && extras.who && extras.scenario); // 상세 창의 발송 조건·대상
   assert.equal(templateExtras('KA01TP_none', sent), null);
 });
 

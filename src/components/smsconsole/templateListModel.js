@@ -150,7 +150,7 @@ export function templateExtras(templateId, sent = null) {
   const meta = templateMeta(templateId);
   if (!meta) return null;
   const group = (Array.isArray(sent) ? sent : []).find((row) => row.key === meta.key);
-  return { sender: meta.sender, kind: meta.kind, replaced7: group?.replaced7 || 0, off: meta.active === false };
+  return { sender: meta.sender, kind: meta.kind, replaced7: group?.replaced7 || 0, off: meta.active === false, trigger: meta.trigger || '', who: meta.who || '', scenario: meta.scenario || '' };
 }
 
 // 알림톡 템플릿의 대상·종류: ① 보낸 묶음·외부 문구 표·제작현황 표(템플릿 ID) ② KAKAO_TEMPLATE_AUDIENCE ③ 모르면 { audience: '', kind: '' } (분류 안 됨)
@@ -191,7 +191,7 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
     out.push({
       id: entry.key, name: entry.name, sender: entry.sender, kind: entry.kind, audience: entry.audience || '고객', channel: entry.channel, ad: Boolean(entry.ad || group?.ad),
       active: entry.active !== false, count: group ? group.count7 : (sentKnown ? 0 : null), trigger: entry.trigger || '', scenario: entry.scenario || '',
-      body: entry.body || '', image: entry.image || '', order: index,
+      body: entry.body || '', image: entry.image || '', who: entry.who || '', order: index,
     });
   });
   let extra = 0;
