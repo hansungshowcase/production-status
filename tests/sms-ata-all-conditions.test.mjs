@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { _resetAutoSchemaForTest, phoneHash, runAutoSend } from '../api/_lib/smsAutoSend.js';
-import { ATA_CONDITIONS, _resetTextTemplateSchemaForTest, isAtaTemplate, isInfoTemplate, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
+import { ATA_CONDITIONS, _resetTextTemplateSchemaForTest, isAtaTemplate, isInfoTemplate, readCatchup, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
 import { _resetEventSchemaForTest, catchupActive, catchupPreview, eventToggleOn, runEventSend, runInstantSendAll } from '../api/_lib/smsEventSend.js';
 import { AUTO_KINDS, autoConditionLine, buildSaveBody, isAdKind, validateTextForm, textFormStopText } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
@@ -399,6 +399,44 @@ test('F: 일괄 발송 전용 상한은 환경값(SMS_CATCHUP_MAX_PER_DAY)으로
   assert.deepEqual(day1, [100, 50, 0, 0]); // 하루 150건
   const day2 = (await go(db, provider, tpl, { nowMs: NOW + DAY, env })).claimed;
   assert.equal(day2, 100);
+});
+
+test('F: 문구별 하루 최대(auto_catchup_daily) 50 → 하루 50건만 나가고 다음 날 이어진다, 전역 상한이 더 작으면 그쪽을 따른다', async () => {
+  const db = fakeDb({ orders: bulkOrders(120) }); const provider = fakeProvider();
+  const tpl = catchupTpl({ auto_catchup_from: '2026-05-01', auto_catchup_daily: 50 });
+  const day1 = [];
+  for (let run = 0; run < 3; run += 1) day1.push((await go(db, provider, tpl, { nowMs: NOW + run * 5 * 60000 })).claimed);
+  assert.deepEqual(day1, [50, 0, 0]); // 하루 50건
+  assert.equal((await go(db, provider, tpl, { nowMs: NOW + DAY })).claimed, 50);
+  assert.equal((await go(db, provider, tpl, { nowMs: NOW + 2 * DAY })).claimed, 20);
+  const small = fakeDb({ orders: bulkOrders(20) });
+  const capped = await go(small, fakeProvider(), tpl, { env: { ...ENV, SMS_CATCHUP_MAX_PER_DAY: '5' } });
+  assert.equal(capped.claimed, 5); // min(50, 전역 5)
+});
+
+test('F: 하루 최대 미리보기 일수 = 올림(건수/하루 상한), 값이 없으면 전역 상한 그대로', async () => {
+  const db = fakeDb({ orders: bulkOrders(429) });
+  reset();
+  const own = await catchupPreview(db, { from: '2026-05-01', nowMs: NOW, env: ENV, provider: fakeProvider(), kakao: fakeKakao({}, 100000), dailyCap: 50 });
+  assert.equal(own.daily_max, 50); assert.equal(own.days_needed, 9);
+  const none = await catchupPreview(db, { from: '2026-05-01', nowMs: NOW, env: ENV, provider: fakeProvider(), kakao: fakeKakao({}, 100000) });
+  assert.equal(none.daily_max, 1000); assert.equal(none.days_needed, 1);
+});
+
+test('F: 하루 최대 입력 검사(1~1000, 비움 허용)와 저장 본문·읽기', () => {
+  assert.equal(readCatchup({ from: '2026-05-26', at: '2026-11-18T09:00', daily: 50 }).catchup_daily, 50);
+  assert.equal(readCatchup({ from: '2026-05-26', at: '2026-11-18T09:00' }).catchup_daily, null);
+  assert.equal(readCatchup({ from: '2026-05-26', at: '2026-11-18T09:00', daily: '' }).catchup_daily, null);
+  for (const bad of [0, 1001, 2.5, 'x', -3]) assert.equal(readCatchup({ from: '2026-05-26', at: '2026-11-18T09:00', daily: bad }).reason, 'catchup_daily');
+  const base = { name: 'n', body: BODY, autoKind: 'ship_plus_days', days: '2', ataTemplate: 'KA01TP1', catchupOn: true, catchupFrom: '2026-05-26', catchupAt: '2026-11-18T09:00' };
+  assert.equal(validateTextForm({ ...base, catchupDaily: '50' }).ok, true);
+  assert.equal(validateTextForm({ ...base, catchupDaily: '' }).ok, true);
+  assert.equal(validateTextForm({ ...base, catchupDaily: '0' }).reason, 'catchup_daily');
+  assert.equal(validateTextForm({ ...base, catchupDaily: '1001' }).reason, 'catchup_daily');
+  const body = buildSaveBody({ id: 1, name: 'n', body: BODY, images: [], auto: { kind: 'ship_plus_days', days: '2', ataTemplate: 'KA01TP1', catchupOn: true, catchupFrom: '2026-05-26', catchupAt: '2026-11-18T09:00', catchupDaily: '50' } });
+  assert.equal(body.auto.catchup.daily, 50);
+  const none = buildSaveBody({ id: 1, name: 'n', body: BODY, images: [], auto: { kind: 'ship_plus_days', days: '2', ataTemplate: 'KA01TP1', catchupOn: true, catchupFrom: '2026-05-26', catchupAt: '2026-11-18T09:00', catchupDaily: '' } });
+  assert.equal('daily' in none.auto.catchup, false);
 });
 
 test('F: 안내 상한은 일괄 발송분에 깎이지 않고, 일괄 발송도 안내 문자 때문에 막히지 않는다', async () => {

@@ -59,6 +59,8 @@ export const leadMaxPerDay = (env = process.env) => intEnv(env.SMS_AUTO_LEAD_MAX
 // 이미 출고된 주문 1회 발송(따라잡기) 전용 상한: 안내 하루 상한(200)과 따로 센다(2026-11-16 사장님 "하루에 다 보내"). 기본 1000 = 쏠라피 일일 한도.
 // 크론 1회(5분)에는 CATCHUP_PER_RUN 건까지만 한 번의 send-many 로 보낸다(쏠라피 요청 8초 제한 안, 다시 보내지 않는 POST 라 한 번에 크게 보내지 않는다).
 export const catchupMaxPerDay = (env = process.env) => intEnv(env.SMS_CATCHUP_MAX_PER_DAY, DEFAULT_CATCHUP_MAX_PER_DAY);
+// 문구별 하루 최대(auto_catchup_daily)가 있으면 전역 상한과 둘 중 작은 값, 없으면 전역 상한.
+export const catchupDailyCap = (own, env = process.env) => { const global = catchupMaxPerDay(env); const n = Math.floor(Number(own)); return n > 0 ? Math.min(n, global) : global; };
 export const catchupPerRun = (env = process.env) => intEnv(env.SMS_CATCHUP_PER_RUN, DEFAULT_CATCHUP_PER_RUN);
 const NOT_CATCHUP = " AND COALESCE(kind, '') <> 'catchup'"; // 안내 상한 계산에서 일괄 발송분을 뺀다
 export const kstMinutes = nowMs => { const d = new Date(nowMs + 9 * 3600000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
@@ -131,7 +133,7 @@ export function eventExampleText(part, template) {
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -143,7 +145,7 @@ export async function loadEventTemplate(db, id) {
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
     auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '', auto_lead_source: row.auto_lead_source || '',
-    auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_done: Boolean(row.auto_catchup_done_at),
+    auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_daily: Number(row.auto_catchup_daily) > 0 ? Number(row.auto_catchup_daily) : 0, auto_catchup_done: Boolean(row.auto_catchup_done_at),
     auto_catchup_paused: Boolean(row.auto_catchup_paused_at), auto_catchup_error: row.auto_catchup_error || '', auto_ata_fail_at: row.auto_ata_fail_at ? new Date(row.auto_ata_fail_at).toISOString() : '',
   };
 }
@@ -290,7 +292,7 @@ async function doneKeys(db, templateId, keys) {
   return done;
 }
 // 따라잡기 미리보기(읽기만): 범위별 보낼 번호 수·예상 비용(알림톡 단가 × 건수)·현재 잔액. 번호 자체는 돌려주지 않는다. 수신거부·이미 보낸(이 문구로) 번호는 뺀다.
-export async function catchupPreview(db, { from, templateId = null, days = 0, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts, bms = false } = {}) {
+export async function catchupPreview(db, { from, templateId = null, days = 0, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts, bms = false, dailyCap = 0 } = {}) {
   const today = kstDate(nowMs);
   const end = catchupEnd(today, days); // 출고 N일이 지난 주문만
   await ensureEventSchema(db);
@@ -316,10 +318,10 @@ export async function catchupPreview(db, { from, templateId = null, days = 0, no
   ].map(range => ({ ...range, cost: estimate(range.count) }));
   let balance = null;
   try { const value = await kakao.getBalance(kakaoOpts); balance = Number.isFinite(value) ? value : null; } catch { balance = null; }
-  const dailyMax = catchupMaxPerDay(env); // 일괄 발송 전용 하루 상한(안내 상한과 따로)
+  const dailyMax = catchupDailyCap(dailyCap, env); // 일괄 발송 전용 하루 상한(안내 상한과 따로)
   const perRun = catchupPerRun(env);
   const picked = ranges[0];
-  return { today, end_date: end, days: Math.max(0, Number(days) || 0), oldest_ship_date: oldest, ranges, unit: estimate(1), ...(bms ? { bms: true, fallback_unit: Number(vendor?.estimateBms?.({ count: 1 }, env)?.fallback_unit) || null } : {}), balance, daily_max: dailyMax, per_run: perRun, eta_minutes: picked.count ? Math.max(0, Math.ceil(picked.count / perRun) - 1) * 5 : 0, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
+  return { today, end_date: end, days: Math.max(0, Number(days) || 0), oldest_ship_date: oldest, ranges, unit: estimate(1), ...(bms ? { bms: true, fallback_unit: Number(vendor?.estimateBms?.({ count: 1 }, env)?.fallback_unit) || null } : {}), balance, daily_max: dailyMax, per_run: perRun, eta_minutes: picked.count ? Math.max(0, Math.ceil((Number(dailyCap) > 0 ? Math.min(picked.count, dailyMax) : picked.count) / perRun) - 1) * 5 : 0, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
 }
 
 // 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
@@ -476,16 +478,19 @@ export async function runEventSend(template, deps = {}) {
     pfId = ready.pfId;
   }
   const max = lead ? leadMaxPerDay(env) : infoMaxPerDay(env);
-  const catchupMax = catchupMaxPerDay(env);
+  const catchupGlobal = catchupMaxPerDay(env);
+  const catchupOwn = Number(template.auto_catchup_daily) > 0 ? catchupDailyCap(template.auto_catchup_daily, env) : 0; // 문구별 하루 최대(없으면 0 = 전역 상한만)
   const countToday = async sql => Number((await db.execute({ sql, args: [today] })).rows?.[0]?.n) || 0;
   const infoSql = `SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?${leadFilter(lead)}${NOT_CATCHUP}`;
   const catchupSql = "SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ? AND kind = 'catchup'";
+  const catchupOwnSql = `${catchupSql} AND template_id = ${Number(template.id)}`;
   const normalItems = eligible.filter(item => !item.catchup);
   const catchupItems = eligible.filter(item => item.catchup);
   const usedToday = await countToday(infoSql);
   const catchupUsed = catchupItems.length ? await countToday(catchupSql) : 0;
+  const catchupOwnUsed = catchupOwn && catchupItems.length ? await countToday(catchupOwnSql) : 0;
   // 일괄 발송분은 자기 상한(하루 catchupMax)과 크론 1회 묶음(catchupPerRun)만 따르고, 안내 상한을 쓰지도 깎지도 않는다.
-  const picked = [...normalItems.slice(0, Math.max(0, max - usedToday)), ...catchupItems.slice(0, Math.max(0, Math.min(catchupPerRun(env), catchupMax - catchupUsed)))];
+  const picked = [...normalItems.slice(0, Math.max(0, max - usedToday)), ...catchupItems.slice(0, Math.max(0, Math.min(catchupPerRun(env), catchupGlobal - catchupUsed, catchupOwn ? catchupOwn - catchupOwnUsed : Infinity)))];
   if (picked.length < eligible.length) warn('[sms-event] 하루 상한·묶음으로 못 보낸 건수', eligible.length - picked.length);
   if (!picked.length) return { ...out, ran: true, reason: 'cap' };
 
@@ -528,7 +533,7 @@ export async function runEventSend(template, deps = {}) {
     active = active.filter(entry => !drop.includes(entry));
   };
   await trim(active.filter(entry => !entry.item.catchup), await countToday(infoSql), max);
-  if (claimedCatchup.length) await trim(active.filter(entry => entry.item.catchup), await countToday(catchupSql), catchupMax);
+  if (claimedCatchup.length) { await trim(active.filter(entry => entry.item.catchup), await countToday(catchupSql), catchupGlobal); if (catchupOwn) await trim(active.filter(entry => entry.item.catchup), await countToday(catchupOwnSql), catchupOwn); }
   out.claimed = active.length;
   out.ran = true;
   if (!active.length) return out;
@@ -737,7 +742,7 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
     const bmsOn = isBmsTemplate(template);
     const kakaoEstimate = bmsOn ? vendor?.estimateBms : vendor?.estimateKakao;
     const cost = isAtaTemplate(template) ? (typeof kakaoEstimate === 'function' ? Number(kakaoEstimate.call(vendor, { count: people }, env)?.total) || 0 : null) : vendor ? costOf(vendor, parts, people, env) : null;
-    const catchup = template.auto_kind === AUTO_KIND_SHIP && isAtaTemplate(template) && template.auto_catchup_from ? await catchupPreview(db, { from: template.auto_catchup_from, templateId: template.id, days: template.auto_days, nowMs, env, provider, kakao, kakaoOpts, bms: bmsOn }) : undefined;
+    const catchup = template.auto_kind === AUTO_KIND_SHIP && isAtaTemplate(template) && template.auto_catchup_from ? await catchupPreview(db, { from: template.auto_catchup_from, templateId: template.id, days: template.auto_days, nowMs, env, provider, kakao, kakaoOpts, bms: bmsOn, dailyCap: template.auto_catchup_daily }) : undefined;
     const unitInfo = bmsOn && typeof vendor?.estimateBms === 'function' ? vendor.estimateBms({ count: 1 }, env) : null;
     return reply(200, { ok: true, targets, parts: parts.length, cost, ...(unitInfo ? { bms: true, unit: unitInfo.unit, fallback_unit: unitInfo.fallback_unit } : {}), daily_max: dailyMax, overlap: instantOverlap(template), ...(catchup ? { catchup } : {}) });
   }

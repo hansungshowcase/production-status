@@ -114,7 +114,7 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -126,7 +126,7 @@ async function loadTemplate(db, id) {
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: row.auto_msg_type === 'info' ? 'info' : 'ad',
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '', auto_send_time: row.auto_send_time || '', auto_copy_to: row.auto_copy_to || '', auto_ata_template: row.auto_ata_template || '',
-    auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_done: Boolean(row.auto_catchup_done_at),
+    auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_daily: Number(row.auto_catchup_daily) > 0 ? Number(row.auto_catchup_daily) : 0, auto_catchup_done: Boolean(row.auto_catchup_done_at),
     auto_catchup_paused: Boolean(row.auto_catchup_paused_at), auto_catchup_error: row.auto_catchup_error || '', auto_ata_fail_at: row.auto_ata_fail_at ? new Date(row.auto_ata_fail_at).toISOString() : '',
   };
 }

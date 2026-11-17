@@ -15,7 +15,7 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', copyTo = '', imageCount = 0, bmsButtons = [] }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', catchupDaily = '', copyTo = '', imageCount = 0, bmsButtons = [] }) {
   const audience = ataTemplate ? 'customer' : audienceIn; // 알림톡은 고객에게만 간다
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
@@ -51,6 +51,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     if (!normalizeSendFrom(catchupFrom)) return { ok: false, reason: 'catchup_from', info };
     const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(String(catchupAt || ''));
     if (!m || normalizeSendFrom(m[1]) === null || Number(m[2]) < 8 || Number(m[2]) > (isBmsAta(ataTemplate) ? 19 : 20)) return { ok: false, reason: 'catchup_at', info };
+    if (String(catchupDaily ?? '').trim() !== '' && !(/^\d+$/.test(String(catchupDaily).trim()) && Number(catchupDaily) >= 1 && Number(catchupDaily) <= 1000)) return { ok: false, reason: 'catchup_daily', info };
   }
   return { ok: true, reason: '', info };
 }
@@ -221,6 +222,7 @@ export function textFormStopText(reason) {
   if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
   if (reason === 'ata_customer_only') return '알림톡은 고객에게만 보낼 수 있습니다';
   if (reason === 'catchup_from') return '이미 출고된 주문의 출고일 시작일을 날짜로 넣어 주세요';
+  if (reason === 'catchup_daily') return '하루 최대 건수는 1~1000 사이 숫자로 넣어 주세요(비우면 제한 없음)';
   if (reason === 'catchup_at') return '한 번 보낼 시각을 날짜와 오전 8시~오후 8시 사이로 넣어 주세요';
   if (reason === 'bms_images') return '브랜드메시지는 사진을 1장만 보낼 수 있습니다(여러 장은 한 장으로 합쳐 주세요)';
   if (reason === 'bms_too_long') return '브랜드메시지 글자 수를 넘었습니다(이미지와 함께면 400자, 글만이면 1300자)';
@@ -265,7 +267,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
     if (a.ataTemplate) Object.assign(out, ata);
-    if (a.kind === AUTO_KIND && a.ataTemplate && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
+    if (a.kind === AUTO_KIND && a.ataTemplate && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt), ...(String(a.catchupDaily ?? '').trim() ? { daily: Number(a.catchupDaily) } : {}) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
     if (a.repeat !== undefined) out.repeat = normalizeRepeat(a.repeat) ?? AUTO_DEFAULT_REPEAT;
     if (a.interval !== undefined) out.interval = normalizeInterval(a.interval) ?? AUTO_DEFAULT_INTERVAL;
@@ -317,7 +319,7 @@ export function formValuesFromItem(item) {
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
     daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
     staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', bmsButtons: Array.isArray(i.bmsButtons) ? i.bmsButtons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [], sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
-    catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
+    catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', catchupDaily: i.catchupDaily ? String(i.catchupDaily) : '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
   };
 }
 // 단계 순서값(일수 오름차순에 쓴다). 즉시형·회원가입 시는 0, 입력이 올바르지 않으면 null.
@@ -534,6 +536,7 @@ export function myTextSection(items) {
       autoLeadSource: LEAD_SOURCES.includes(item.auto_lead_source) ? item.auto_lead_source : '',
       autoCatchupAt: String(item.auto_catchup_at || ''),
       autoCatchupFrom: String(item.auto_catchup_from || ''),
+      autoCatchupDaily: Number(item.auto_catchup_daily) > 0 ? String(Number(item.auto_catchup_daily)) : '',
       autoCatchupDone: Boolean(item.auto_catchup_done),
       autoSendFrom: String(item.auto_send_from || '').slice(0, 10),
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
@@ -574,7 +577,7 @@ export function formInitialFromItem(item) {
     ataTemplate: String(item?.auto_ata_template || ''),
     bmsButtons: Array.isArray(item?.auto_bms_buttons) ? item.auto_bms_buttons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [],
     leadSource: LEAD_SOURCES.includes(item?.auto_lead_source) ? item.auto_lead_source : '',
-    catchupOn: Boolean(item?.auto_catchup_at), catchupFrom: String(item?.auto_catchup_from || ''), catchupAt: String(item?.auto_catchup_at || ''),
+    catchupOn: Boolean(item?.auto_catchup_at), catchupFrom: String(item?.auto_catchup_from || ''), catchupAt: String(item?.auto_catchup_at || ''), catchupDaily: Number(item?.auto_catchup_daily) > 0 ? String(Number(item.auto_catchup_daily)) : '',
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
     repeat: String(Number(item?.auto_repeat) || AUTO_DEFAULT_REPEAT),
     interval: String(Number(item?.auto_interval) || AUTO_DEFAULT_INTERVAL),
