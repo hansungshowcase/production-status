@@ -160,4 +160,5 @@ test('흐름 묶기: 가입·문의 10 + 출고 2 + 조건 없음 1 → 흐름 2
   assert.equal(isAtaEntry({ autoKind: 'member_joined', autoAtaTemplate: 'KA01' }), true);
   assert.equal(isAtaEntry({ autoKind: 'member_joined', autoAtaTemplate: '' }), false);
   assert.equal(isAtaEntry({ autoKind: '', autoAtaTemplate: '' }), false);
+  assert.equal(isAtaEntry({ autoKind: 'ship_plus_days', autoAtaTemplate: 'BMS_FREE' }), false); // 브랜드메시지는 문자 목록에 보인다
 });

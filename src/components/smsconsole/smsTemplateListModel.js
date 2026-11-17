@@ -223,7 +223,7 @@ const IMMEDIATE_FLOW_KINDS = ['order_created', 'process_started', 'process_compl
 const stepDays = (entry) => (OFFSET_KINDS.includes(entry.autoKind) ? (Number(entry.autoOffset) || 0) : (Number(entry.autoDays) || 0));
 
 // 알림톡 템플릿이 붙은 자동 문구(알림톡 템플릿 화면에서 보인다)
-export const isAtaEntry = (entry) => Boolean(entry?.autoKind && entry?.autoAtaTemplate);
+export const isAtaEntry = (entry) => Boolean(entry?.autoKind && entry?.autoAtaTemplate && entry.autoAtaTemplate !== 'BMS_FREE'); // 브랜드메시지(자유형)는 알림톡이 아니라 문자 목록에 보인다
 
 // 단계 칩 글자: 0 → 당일, N → N일(날짜 기준은 N일 전·N일 지남), 즉시형은 공정 이름 또는 즉시
 export function flowStepText(entry) {
