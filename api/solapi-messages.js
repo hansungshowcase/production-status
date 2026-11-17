@@ -18,7 +18,7 @@ const GROUP_STATUSES = new Set(['all', 'COMPLETE', 'SENDING', 'PENDING', 'SCHEDU
 const CHANNELS = new Set(['all', 'sms', 'kakao']);
 
 function buildMatrix(items) {
-  const blank = () => ({ total: 0, success: 0, pending: 0, failed: 0 });
+  const blank = () => ({ total: 0, success: 0, pending: 0, failed: 0, replaced: 0 });
   const row = () => ({ sms: blank(), kakao: blank(), other: blank() });
   const matrix = { customer: row(), staff: row(), other: row() };
   for (const item of items) {
@@ -26,6 +26,7 @@ function buildMatrix(items) {
     const cell = line[kindOfType(item.type)];
     cell.total += 1;
     if (cell[item.status] !== undefined) cell[item.status] += 1;
+    if (item.replaced_from) cell.replaced += 1;
   }
   return matrix;
 }
@@ -43,7 +44,7 @@ function buildHourly(items) {
 }
 
 const queryValue = value => (Array.isArray(value) ? value[0] : value);
-const emptyCounts = () => ({ total: 0, success: 0, pending: 0, failed: 0 });
+const emptyCounts = () => ({ total: 0, success: 0, pending: 0, failed: 0, replaced: 0 });
 const bad = (res, error) => res.status(400).json({ error });
 
 function kstToday(nowMs) {
@@ -156,7 +157,17 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
 
   const slimGroups = groupResult?.groups || null;
   const groupSources = new Map((slimGroups || []).filter(g => g.groupId).map(g => [g.groupId, groupSource(g.appId)]));
-  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources });
+  // '보내기' 화면 발송은 sms_manual_sends.group_id 로 구분한다(기록 조회가 실패해도 내역은 그대로 나온다)
+  let manualGroupIds = null;
+  try {
+    const manual = await database.execute({
+      sql: `SELECT group_id FROM sms_manual_sends
+             WHERE group_id IS NOT NULL AND (sent_at AT TIME ZONE 'Asia/Seoul')::date = ?::date`,
+      args: [date],
+    });
+    manualGroupIds = new Set((manual.rows || []).map(row => String(row.group_id)));
+  } catch { /* 표가 없거나 조회 실패: 구분 표식 없이 계속 */ }
+  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources, manualGroupIds });
   const matrix = buildMatrix(everything);
   const hourly = buildHourly(everything);
   const all = channel === 'all' ? everything : everything.filter(item => kindOfType(item.type) === channel);

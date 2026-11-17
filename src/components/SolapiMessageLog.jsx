@@ -463,7 +463,7 @@ export default function SolapiMessageLog({
           </button>
           <div className="solapi-log-toolbar__right">
             <span className="solapi-log-summary" title="필터와 관계없이 이 날짜·구분의 전체 건수">
-              하루 합계 · 성공 {summary.success} · 발송중 {summary.pending} · 실패 {summary.failed}
+              하루 합계 · 성공 {summary.success} · 발송중 {summary.pending} · 실패 {summary.failed}{summary.replaced > 0 ? ` · 문자 대체 ${summary.replaced}` : ''}
             </span>
             <label className="solapi-log-size">
               <span className="solapi-log-sr">쪽 크기</span>

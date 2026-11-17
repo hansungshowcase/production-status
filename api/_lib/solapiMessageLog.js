@@ -4,6 +4,7 @@ import { matchReviewCampaign } from './customerReviewCampaigns.js';
 import { INTERNAL_ALERT_CONTACTS, assemblyWorkerPhone } from './internalProductionAlerts.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
+import { classify, SENDERS, UNCLASSIFIED } from '../../shared/smsTemplateKinds.js';
 
 const SOLAPI_URL = 'https://api.solapi.com/messages/v4/list';
 const DAY_MS = 86400000;
@@ -195,15 +196,28 @@ const EXTERNAL_TOPICS = [
   [/주문이 정상|주문(이)? 접수|주문 확인/, '주문 안내'],
   [/출고일|출고 안내|출고되었|출고 예정/, '출고 안내'],
   [/무료 지원 이벤트/, '무료 지원 이벤트'],
+  [/유튜브 인터뷰/, '유튜브 인터뷰'],
   [/리뷰|후기/, '리뷰 안내'],
 ];
 export const SOURCE_NAMES = { AUTO: '쏠라피 자동화', COMM: '스마트스토어 연동', API: '다른 API 프로그램', APP: '쏠라피 앱' };
+// 우리 기록에 없는 발송의 보낸 곳: 문구 표(메이크 등)에서 찾은 이름. 못 찾으면 null.
+function externalSender(entry, source = null) {
+  const { orig, final } = entry;
+  const review = matchReviewCampaign(orig) || matchReviewCampaign(final);
+  const found = classify({
+    type: orig.type, templateId: orig.kakaoOptions?.templateId || final.kakaoOptions?.templateId,
+    subject: orig.subject ?? final.subject, text: orig.text ?? final.text,
+    reviewId: review ? review.id : undefined, source, customFields: orig.customFields,
+  });
+  // 제작현황 문구 판정은 여기서 쓰지 않는다(우리 기록과 맞은 것만 제작현황). 외부 문구 표에서 찾은 것만 이름으로 쓴다.
+  return String(found.key || '').startsWith(`${UNCLASSIFIED}/`) || found.sender === SENDERS.program ? null : (found.sender || null);
+}
 export function externalCategory(entry, source = null) {
   const text = [entry.orig.subject, entry.orig.text, entry.final.subject, entry.final.text].filter(Boolean).join(' ').slice(0, 300);
   const found = EXTERNAL_TOPICS.find(([pattern]) => pattern.test(text));
   const topic = found ? found[1] : /\(광고\)/.test(text) ? '광고 문자' : '기타 고객 문자';
   const fields = entry.orig.customFields || {};
-  const sourceName = SOURCE_NAMES[source] || ((fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
+  const sourceName = externalSender(entry, source) || SOURCE_NAMES[source] || ((fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
     : (fields.hookId || fields.hook_id) ? '쏠라피 자동발송' : '외부 발송');
   return `${topic}(${sourceName})`;
 }
@@ -222,8 +236,8 @@ export function textBytes(text) {
   for (const ch of String(text ?? '')) bytes += ch.codePointAt(0) >= 0x80 ? 2 : 1;
   return bytes;
 }
-function statusText(state, code) {
-  if (state.status === 'success') return '발송완료';
+function statusText(state, code, replaced = false) {
+  if (state.status === 'success') return replaced ? '문자대체 발송' : '발송완료';
   if (state.status === 'failed') return code && /^[12]/.test(code) ? '발송불가' : '발송실패';
   if (/^대체 발송 대기/.test(state.status_label)) return '대체발송대기';
   if (code === '2000') return '발송대기';
@@ -237,7 +251,7 @@ function sourceOf(groupSources, groupId) {
 }
 const nullable = value => (value == null || value === '' ? null : String(value));
 
-export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null } = {}) {
+export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null, manualGroupIds = null } = {}) {
   const index = buildDbIndex(dbRows);
   const items = collapseReplacements(messages).map(entry => {
     const { orig, final, replaced } = entry;
@@ -246,6 +260,10 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
     const kind = classifyAudience(entry, dbRow, source);
     const replacementPossible = !replaced && isKakaoType(orig.type) && orig.kakaoOptions?.disableSms !== true;
     const state = classifyStatus(final, { nowMs, replacementPossible });
+    const groupId = final.groupId || orig.groupId;
+    const senderLabel = (groupId && manualGroupIds?.has(groupId)) ? '보내기 화면'
+      : dbRow ? SENDERS.program : (externalSender(entry, source) || SOURCE_NAMES[source] || SENDERS.unknown);
+    const replacedReason = replaced ? (safeText(orig.reason || null) || (codeOf(orig) ? classifyStatus(orig).status_label : null)) : null;
     let subject = safeText(final.subject ?? dbRow?.message_subject ?? null);
     let text = safeText(final.text);
     // 2026-11-16 사장님 "누르면 어떤 메시지인지 정확히 보여야 해 어떤 이미지인지도": 외부 발송도 본문을 자르지 않는다(링크·전화번호 가림은 그대로)
@@ -260,7 +278,8 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
       replaced_from: replaced ? orig.type : null,
       ...state,
       source,
-      status_text: statusText(state, state.status_code),
+      status_text: statusText(state, state.status_code, replaced),
+      sender_label: senderLabel, replaced_reason: replacedReason,
       reason: safeText(final.reason || null),
       network_name: nullable(final.networkName), country: nullable(final.country),
       auto_type_detect: typeof final.autoTypeDetect === 'boolean' ? final.autoTypeDetect : null,
@@ -278,13 +297,14 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
   return items.sort((a, b) => Date.parse(b.created_at || '') - Date.parse(a.created_at || ''));
 }
 
-const blankCount = () => ({ total: 0, success: 0, pending: 0, failed: 0 });
+const blankCount = () => ({ total: 0, success: 0, pending: 0, failed: 0, replaced: 0 });
 export function countItems(items) {
   const counts = { all: blankCount(), customer: blankCount(), staff: blankCount(), other: blankCount() };
   for (const item of items) {
     for (const key of ['all', item.audience]) {
       counts[key].total += 1;
       counts[key][item.status] += 1;
+      if (item.replaced_from) counts[key].replaced += 1;
     }
   }
   return counts;

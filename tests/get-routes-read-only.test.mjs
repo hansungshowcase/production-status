@@ -131,7 +131,7 @@ test('customer track GET preserves rate limiting and response fields with SELECT
   assert.equal(db.statements.length, 2);
 });
 
-test('solapi message log GET executes only one SELECT and no writes', async () => {
+test('solapi message log GET executes only SELECTs (기록 1 + 보내기 화면 발송 1) and no writes', async () => {
   process.env.SOLAPI_API_KEY = 'test-key';
   process.env.SOLAPI_API_SECRET = 'test-secret';
   try {
@@ -144,7 +144,7 @@ test('solapi message log GET executes only one SELECT and no writes', async () =
     });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body.items, []);
-    assert.equal(db.statements.length, 1);
+    assert.equal(db.statements.length, 2);
   } finally {
     delete process.env.SOLAPI_API_KEY;
     delete process.env.SOLAPI_API_SECRET;

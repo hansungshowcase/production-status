@@ -133,7 +133,7 @@ test('우리 기록에 없는 고객 문자는 본문으로 종류, 연동 표�
   const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
   assert.equal(byId[order.messageId].category, '주문 안내(쏠라피 자동발송)');
   assert.equal(byId[ship.messageId].category, '출고 안내(스마트스토어 연동)');
-  assert.equal(byId[free.messageId].category, '무료 지원 이벤트(외부 발송)');
+  assert.equal(byId[free.messageId].category, '무료 지원 이벤트(메이크)');
   assert.equal(byId[ad.messageId].category, '광고 문자(외부 발송)');
   assert.ok(!JSON.stringify(response.body).includes('customFields'));
 });
@@ -191,7 +191,7 @@ test('상태 6분류', async () => {
   assert.equal(byCode['3040'].status, 'failed');
   assert.match(byCode['3040'].status_label, /발송 실패/);
   assert.equal(byCode['4000'].status, 'success');
-  assert.deepEqual(response.body.counts.all, { total: 6, success: 1, pending: 2, failed: 3 });
+  assert.deepEqual(response.body.counts.all, { total: 6, success: 1, pending: 2, failed: 3, replaced: 0 });
 });
 
 test('대체 발송은 한 건으로 묶이고 최종 상태는 대체 문자 기준', async () => {
@@ -295,7 +295,7 @@ test('쏠라피 실패는 502', async () => {
   assert.equal(response.body.error, '쏠라피 발송내역을 불러오지 못했습니다');
 });
 
-test('같은 날짜 두 번째 호출은 쏠라피 fetch 0회, DB 는 SELECT 1번씩', async () => {
+test('같은 날짜 두 번째 호출은 쏠라피 fetch 0회, DB 는 호출마다 SELECT 2번(기록·보내기 화면 발송)', async () => {
   const messages = [msg({ to: OTHER_PHONE })];
   const fetchImpl = fakeFetch(messages, { groups: [] });
   const db = fakeDb();
@@ -304,7 +304,7 @@ test('같은 날짜 두 번째 호출은 쏠라피 fetch 0회, DB 는 SELECT 1�
   }
   assert.equal(fetchImpl.calls.length, 1);
   assert.equal(fetchImpl.groupCalls.length, 1);
-  assert.equal(db.statements.length, 2);
+  assert.equal(db.statements.length, 4);
   assert.match(fetchImpl.calls[0], /limit=500/);
 });
 
@@ -409,4 +409,44 @@ test('그룹 조회 실패해도 메시지만으로 계속(groups_partial:true, 
   const items = await call({ view: 'messages' }, { messages, fetchOpts: { groupsOk: false } });
   assert.equal(items.response.body.items.length, 2);
   assert.equal(items.response.body.items[0].source, null);
+});
+
+test('알림톡 실패 + 대체 문자 성공: "문자대체 발송"·실패 이유·replaced 숫자, 합계는 그대로', async () => {
+  const ata = msg({ type: 'ATA', statusCode: '3120', groupId: 'GREP2', to: OTHER_PHONE, reason: '카카오톡 미사용자', kakaoOptions: { disableSms: false } });
+  const lms = msg({ type: 'LMS', statusCode: '4000', groupId: 'GREP2', to: OTHER_PHONE, replacement: true, dateCreated: '2026-11-11T02:00:05.000Z' });
+  const plain = msg({ type: 'LMS', statusCode: '4000', to: CUSTOMER_PHONE });
+  const { response } = await call({ view: 'messages' }, { messages: [ata, lms, plain] });
+  const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
+  assert.equal(byId[lms.messageId].status_text, '문자대체 발송');
+  assert.equal(byId[lms.messageId].replaced_reason, '카카오톡 미사용자');
+  assert.equal(byId[plain.messageId].status_text, '발송완료');
+  assert.equal(byId[plain.messageId].replaced_reason, null);
+  assert.equal(response.body.counts.all.replaced, 1);
+  assert.equal(response.body.counts.all.total, 2);
+  assert.equal(response.body.counts.all.success, 2);
+});
+
+test('sender_label: DB 맞음은 제작현황, 외부 표 템플릿은 그 이름, 아무것도 없으면 기존 이름', async () => {
+  const inDb = msg({ to: CUSTOMER_PHONE });
+  const make = msg({ to: OTHER_PHONE, type: 'ATA', text: '유튜브 인터뷰 촬영 혜택 안내', kakaoOptions: { templateId: 'KA01TP260427071128256TBi5mAg9hvT' } });
+  const unknown = msg({ to: OTHER_PHONE, type: 'LMS', text: '아무 문구', groupId: 'GAPI0000001' });
+  const { response } = await call({ view: 'messages' }, {
+    messages: [inDb, make, unknown],
+    rows: [{ milestone: 'shipped', recipient_name: '고객', provider_msgid: inDb.messageId, to_phone: CUSTOMER_PHONE }],
+    fetchOpts: { groups: [SLIM('GAPI0000001', { app: { appId: 'NOT-A-KNOWN-APP' } })] },
+  });
+  const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
+  assert.equal(byId[inDb.messageId].sender_label, '제작현황');
+  assert.equal(byId[make.messageId].sender_label, '메이크');
+  assert.equal(byId[unknown.messageId].sender_label, { AUTO: '쏠라피 자동화', COMM: '스마트스토어 연동', API: '다른 API 프로그램', APP: '쏠라피 앱' }[byId[unknown.messageId].source] || '확인 안 됨');
+  for (const item of response.body.items) assert.ok(item.sender_label);
+});
+
+test('유튜브 인터뷰 본문은 "유튜브 인터뷰(…)", 블로그 리뷰는 예전 분류 그대로', async () => {
+  const youtube = msg({ to: OTHER_PHONE, type: 'ATA', text: '안녕하세요, 대표님.\n문의주신 유튜브 인터뷰 촬영 혜택 안내드립니다.', customFields: { hookId: 'H1' } });
+  const blog = msg({ to: OTHER_PHONE, type: 'BMS_FREE', text: '안녕하세요 대표님 한 달 동안만 진행되는 블로그 리뷰 이벤트입니다 리뷰를', customFields: { hookId: 'H1' } });
+  const { response } = await call({ view: 'messages' }, { messages: [youtube, blog] });
+  const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
+  assert.match(byId[youtube.messageId].category, /^유튜브 인터뷰\(/);
+  assert.match(byId[blog.messageId].category, /^리뷰 안내\(/);
 });

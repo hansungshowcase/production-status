@@ -194,8 +194,10 @@ export default function SolapiMessageDetail({ item, group, checkedAt, onClose })
                   <Field label="구분"><span className={`smd-aud smd-aud-${item.audience || 'other'}`}>{audience}</span></Field>
                   <Field label="종류">{item.category}</Field>
                   <Field label="받는 사람">{item.recipient_name}</Field>
+                  {item.replaced_reason ? <Field label="알림톡 실패 이유">{item.replaced_reason}</Field> : null}
                   <Field label="발송 출처">
-                    {source ? <span className="smd-source" style={{ background: source.bg, color: source.fg }} title={source.title}>{item.source}</span> : '-'}
+                    {source ? <span className="smd-source" style={{ background: source.bg, color: source.fg }} title={item.sender_label || source.title}>{item.source}</span> : '-'}
+                    {item.sender_label ? <span style={{ marginLeft: 6 }}>{item.sender_label}</span> : null}
                   </Field>
                 </dl>
               </div>
