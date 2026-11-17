@@ -235,7 +235,7 @@ export default function KakaoTemplateForm({
       <legend>템플릿 유형</legend>
       <div className="smsc-form__choices">
         <label className="smsc-form__choice">
-          <input id={fid('emphasizeType')} type="radio" name={`${uid}-emp`} checked={!isText} onChange={() => set({ emphasizeType: 'NONE' })} disabled={locked} />
+          <input id={fid('emphasizeType')} type="radio" name={`${uid}-emp`} checked={!isText && !isImage} onChange={() => set({ emphasizeType: 'NONE' })} disabled={locked} />
           <span>기본형</span>
         </label>
         <label className="smsc-form__choice">
