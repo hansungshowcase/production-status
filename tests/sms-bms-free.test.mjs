@@ -249,6 +249,23 @@ test('[내 번호로 브랜드메시지 시험]: 확인 줄은 100원, 발송은
   assert.equal(refused.status, 400); assert.equal(refused.body.error.reason ?? refused.body.reason, 'bms_not_ready'); assert.equal(wrong.calls.bms.length, 0);
 });
 
+test('브랜드메시지 시험: 밤(KST 21:00)에는 확인·발송 모두 안내만, 낮에는 기존대로', async () => {
+  _resetAutoSchemaForTest(); _resetManualSendSchemaForTest();
+  const vendor = provider();
+  const night = Date.parse('2026-11-20T12:00:00Z'); // KST 21:00
+  const body = { id: 7, to: '010-1234-4237', idempotencyKey: 'key-bms-night1' };
+  for (const extra of [{ dry_run: true }, {}]) {
+    const r = await autoTest({ ...body, ...extra }, { db: testDb(), provider: vendor, env: ENV, nowMs: night, kakao: noKakao() });
+    assert.equal(r.status, 400); assert.equal(r.body.error.reason ?? r.body.reason, 'bms_out_of_hours');
+    assert.match(JSON.stringify(r.body), /오전 8시~오후 8시 50분에만/);
+  }
+  assert.equal(vendor.calls.bms.length, 0);
+  const day = await autoTest({ ...body, dry_run: true }, { db: testDb(), provider: vendor, env: ENV, nowMs: NOW, kakao: noKakao() });
+  assert.equal(day.body.ok, true); assert.equal(day.body.bms, true);
+  const sent = await autoTest({ ...body, idempotencyKey: 'key-bms-day0001' }, { db: testDb(), provider: vendor, env: ENV, nowMs: NOW, kakao: noKakao() });
+  assert.equal(sent.body.status, 'sent'); assert.equal(vendor.calls.bms.length, 1);
+});
+
 // ---------- 5. 저장: 글자 수·버튼·사진 올리기 ----------
 function saveDb(saved, { existing = null } = {}) {
   return {

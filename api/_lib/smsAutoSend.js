@@ -6,8 +6,13 @@ import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
 import { AUTO_KIND, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
+<<<<<<< Updated upstream
 import { bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { ataReady, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
+=======
+import { bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
+import { ataReady, buildEventParts, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
+>>>>>>> Stashed changes
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -524,6 +529,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
     const checked = bmsReady(template);
     if (!checked.ok) return errorReply(400, '브랜드메시지 설정(사진·글자 수)이 맞지 않습니다. 문구를 다시 저장해 주세요.', { reason: 'bms_not_ready' });
     pfId = checked.cfg.pfId;
+    if (!bmsTestInWindow(nowMs)) return errorReply(400, '카카오 브랜드메시지는 오전 8시~오후 8시 50분에만 보낼 수 있습니다. 지금 보내면 카톡이 아니라 문자로 갑니다.', { reason: 'bms_out_of_hours' });
   } else if (ata) { // 승인·채널 확인: 못 정하면 보내지 않고 현재 상태를 알려 준다
     const ready = await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env });
     if (!ready.ok) {

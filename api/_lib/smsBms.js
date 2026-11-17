@@ -16,6 +16,8 @@ export const BMS_WINDOW = Object.freeze({ from: 8, to: 20 }); // KST 08시 이�
 export const isBmsTemplate = template => template?.auto_ata_template === BMS_TEMPLATE_ID;
 export const isBmsId = value => value === BMS_TEMPLATE_ID;
 export const bmsInWindow = nowMs => { const hour = new Date(nowMs + 9 * 3600000).getUTCHours(); return hour >= BMS_WINDOW.from && hour < BMS_WINDOW.to; };
+// 시험 발송용: 카카오 실제 발송 가능 시간(KST 08:00 이상 20:50 미만). 이 밖에 보내면 카톡이 실패하고 문자로 대체된다.
+export const bmsTestInWindow = nowMs => { const d = new Date(nowMs + 9 * 3600000); const m = d.getUTCHours() * 60 + d.getUTCMinutes(); return m >= 8 * 60 && m < 20 * 60 + 50; };
 
 const clean = value => String(value ?? '').trim();
 
