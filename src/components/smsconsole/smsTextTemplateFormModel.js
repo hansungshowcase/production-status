@@ -9,7 +9,7 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '' }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', copyTo = '' }) {
   const audience = ataTemplate ? 'customer' : audienceIn; // 알림톡은 고객에게만 간다
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
@@ -34,6 +34,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     const times = normalizeRepeat(repeat ?? '1');
     if (times === null) return { ok: false, reason: 'repeat', info };
     if (times >= 2 && normalizeInterval(interval ?? '30') === null) return { ok: false, reason: 'interval', info };
+    if (!ataTemplate && String(copyTo || '').trim() && !/^01[016789]\d{7,8}$/.test(String(copyTo).replace(/\D/g, ''))) return { ok: false, reason: 'copyTo', info };
   }
   if (catchupOn && autoKind === AUTO_KIND && ataTemplate) { // 이미 출고된 주문에 한 번 보내기: 출고일 시작일 + 보낼 시각(날짜·시각, 08~20시)
     if (!normalizeSendFrom(catchupFrom)) return { ok: false, reason: 'catchup_from', info };
@@ -200,6 +201,7 @@ export function textFormStopText(reason) {
   if (reason === 'sendFrom') return '시작일은 날짜로 넣어 주세요';
   if (reason === 'repeat') return '횟수는 1부터 10 사이로 넣어 주세요';
   if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
+  if (reason === 'copyTo') return '사본 받을 번호는 휴대폰 번호로 넣어 주세요';
   if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
   if (reason === 'step') return '공정을 골라 주세요';
   if (reason === 'dup') return '같은 일수 단계가 있습니다';
@@ -253,7 +255,13 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     return out;
   };
   // 시각은 값이 넘어왔을 때만 싣는다: 시각이 뜻을 갖는 조건이면 고른 값(없으면 빈 값), 그 밖은 빈 값
-  const autoOut = (a) => { const o = autoBody(a); return o.kind && a.sendTime !== undefined ? { ...o, auto_send_time: hasSendTime(a.kind, a.days) && SEND_TIMES.includes(a.sendTime) ? a.sendTime : '' } : o; };
+  const autoOut = (a) => {
+    const o = autoBody(a);
+    if (!o.kind) return o;
+    const r = a.sendTime !== undefined ? { ...o, auto_send_time: hasSendTime(a.kind, a.days) && SEND_TIMES.includes(a.sendTime) ? a.sendTime : '' } : o;
+    // 사본 번호(2026-11-17): 값이 넘어왔을 때만 싣는다. 출고·주문 후 N일 문자(알림톡 제외)만 뜻이 있고 그 밖은 빈 값
+    return a.copyTo !== undefined ? { ...r, auto_copy_to: (a.kind === AUTO_KIND || a.kind === AUTO_KIND_ORDER) && !a.ataTemplate ? String(a.copyTo || '').replace(/\D/g, '') : '' } : r;
+  };
   return {
     ...(id ? { id } : {}),
     name: String(name || '').trim(),
@@ -291,7 +299,7 @@ export function formValuesFromItem(item) {
     repeat: i.repeat || String(AUTO_DEFAULT_REPEAT), interval: i.interval || String(AUTO_DEFAULT_INTERVAL),
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
     daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
-    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '',
+    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
     catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
   };
 }
@@ -377,6 +385,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   entry.autoAtaTemplate ? '알림톡' : '',
   entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
+  entry.autoCopyTo ? `사본 ${String(entry.autoCopyTo).replace(/\D/g, '').slice(-4)}` : '',
 ) : '');
 
 // 발송 조건을 조각으로: { when, who, via, extras[] } — autoConditionLine 과 같은 글을 ' · ' 로 나눠 만든다
@@ -511,6 +520,7 @@ export function myTextSection(items) {
       autoStaffCount: Array.isArray(item.auto_staff) ? item.auto_staff.length : 0,
       autoEnabled: Boolean(item.auto_enabled),
       autoSendTime: SEND_TIMES.includes(item.auto_send_time) ? item.auto_send_time : '',
+      autoCopyTo: String(item.auto_copy_to || ''),
     })),
   };
 }
@@ -549,6 +559,7 @@ export function formInitialFromItem(item) {
     audience: item?.auto_audience === AUDIENCE_STAFF || item?.auto_audience === AUDIENCE_SALES ? item.auto_audience : 'customer',
     staff: Array.isArray(item?.auto_staff) ? item.auto_staff : [],
     sendTime: SEND_TIMES.includes(item?.auto_send_time) ? item.auto_send_time : '',
+    copyTo: String(item?.auto_copy_to || ''),
   };
 }
 

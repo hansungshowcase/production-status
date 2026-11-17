@@ -62,6 +62,7 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
         return { rows: [] };
       }
       if (t.startsWith("UPDATE sms_auto_sends SET status = 'uncertain'")) { for (const r of state.sends.filter(x => x.status === 'claimed' && x.kst_date < args[0])) r.status = 'uncertain'; return { rows: [] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_copy_date = ? WHERE id = ?')) { if ((state.copyDate || '') === args[0]) return { rows: [] }; state.copyDate = args[0]; return { rows: [{ id: args[1] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_enabled = true, auto_start_date')) { state.tpl.auto_enabled = true; state.tpl.auto_start_date = args[0]; return { rows: [{ id: 7 }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_enabled = false WHERE id')) { state.tpl.auto_enabled = false; return { rows: [{ id: 7 }] }; }
       if (t.startsWith('INSERT INTO sms_optouts')) { if (state.optouts.includes(args[0])) return { rows: [] }; state.optouts.push(args[0]); (state.optoutRows ||= []).push({ id: state.optouts.length, phone_last4: args[1], created_at: '2026-11-20T01:00:00Z' }); return { rows: [{ id: state.optouts.length }] }; }
@@ -479,4 +480,54 @@ test('문구 저장: 출고·주문 후 광고형은 고객명 밖의 변수를 
   const bad = await saveTextTemplate(db, { name: '변수', body: `${BODY}\n#{주문번호}`, auto });
   assert.deepEqual([bad.status, bad.body.reason], [400, 'info_unknown_var']);
   assert.equal((await saveTextTemplate(db, { name: '고객명만', body: BODY, auto })).status, 201);
+});
+
+// 사본 번호(2026-11-17): 고객 발송이 1명 이상 나간 날 같은 문자를 사본 번호로 하루 1통
+const COPY = '01077314237';
+const runCopy = (db, provider, copyTo) => runAutoSend({ id: 7, name: db.state.tpl.name, body: BODY, images: [JPG, JPG], auto_kind: 'ship_plus_days', auto_days: 20, auto_enabled: true, auto_start_date: '2026-10-01', auto_repeat: 1, auto_interval: 30, auto_copy_to: copyTo }, { db, provider, env: ENV, nowMs: NOW });
+test('사본: 고객 발송이 나간 날 사본 번호로 같은 통 구성 1번 더, 같은 날 두 번째 실행은 사본 0, 번호가 비면 기존과 같다', async () => {
+  const none = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+  const noneProvider = fakeProvider();
+  const base = await runCopy(none, noneProvider, '');
+  assert.equal(base.copy, undefined);
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+  const provider = fakeProvider();
+  const out = await runCopy(db, provider, COPY);
+  assert.equal(out.sent, 1);
+  assert.equal(out.copy, 'sent');
+  assert.equal(provider.calls.send.length, noneProvider.calls.send.length + 3); // 고객 3통(사진 2·본문) + 사본 3통
+  assert.deepEqual(provider.calls.send.slice(3).map(c => c.messages.map(m => m.to)), [[COPY], [COPY], [COPY]]);
+  assert.equal(provider.calls.send[5].messages[0].text.includes('고객 대표님'), true);
+  assert.equal(db.state.sends.length, 1); // 사본은 sms_auto_sends 에 넣지 않는다
+  db.state.orders.push(order(2, '010-5555-6666', '2026-10-30'));
+  const again = await runCopy(db, provider, COPY);
+  assert.equal(again.sent, 1);
+  assert.equal(again.copy, undefined);
+  assert.equal(provider.calls.send.length, noneProvider.calls.send.length + 3 + 3);
+});
+test('사본 발송이 예외를 던져도 고객 발송 결과·기록은 사본이 없을 때와 같다', async () => {
+  const plain = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+  const plainOut = await runCopy(plain, fakeProvider(), '');
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+  const provider = fakeProvider();
+  const original = provider.sendEach;
+  provider.sendEach = async (input) => { if (input.messages[0].to === COPY) throw new Error('boom'); return original(input); };
+  const out = await runCopy(db, provider, COPY);
+  assert.deepEqual([out.sent, out.failed, out.uncertain, out.claimed], [plainOut.sent, plainOut.failed, plainOut.uncertain, plainOut.claimed]);
+  assert.equal(out.copy, 'failed');
+  assert.deepEqual(db.state.sends.map(r => [r.status, r.part_status]), plain.state.sends.map(r => [r.status, r.part_status]));
+});
+test('문구 저장: 사본 번호는 숫자만 저장, 형식이 틀리면 거절, 사본만 바꿔도 켜짐은 그대로', async () => {
+  const db = setup();
+  const auto = { kind: 'ship_plus_days', days: 20 };
+  const created = await saveTextTemplate(db, { name: '사본', body: BODY, auto: { ...auto, copy_to: '010-7731-4237' } });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.item.auto_copy_to, COPY);
+  assert.equal(db.state.templates[0].auto_copy_to, COPY);
+  const bad = await saveTextTemplate(db, { name: '사본2', body: BODY, auto: { ...auto, copy_to: '02-123-4567' } });
+  assert.deepEqual([bad.status, bad.body.error.message], [400, '사본 받을 번호가 휴대폰 번호 형식이 아닙니다.']);
+  db.state.templates[0].auto_enabled = true;
+  const changed = await saveTextTemplate(db, { id: created.body.item.id, name: '사본', body: BODY, auto: { ...auto, copy_to: '010-1111-2222' } });
+  assert.equal(changed.body.item.auto_enabled, true);
+  assert.equal(changed.body.item.auto_copy_to, '01011112222');
 });

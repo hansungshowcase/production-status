@@ -85,6 +85,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [ataTemplate, setAtaTemplate] = useState(v0.ataTemplate);
   const [leadSource, setLeadSource] = useState(v0.leadSource || ''); // 가입·문의 후 대상: '' 모두 · cafe24 회원가입 · airtable 견적 문의
   const [sendTime, setSendTime] = useState(v0.sendTime); // '' = 안 골랐음(칸에는 기본값이 보이고 저장 때는 빈 값)
+  const [copyTo, setCopyTo] = useState(v0.copyTo || ''); // 사본 받을 번호(자동 발송이 고객에게 나간 날 같은 문자를 하루 1통)
   const [catchupOn, setCatchupOn] = useState(v0.catchupOn); // 이미 출고된 주문에도 한 번 보내기(기본 꺼짐)
   const [catchupFrom, setCatchupFrom] = useState(v0.catchupFrom); // 출고일 시작일(오늘까지)
   const [catchupAt, setCatchupAt] = useState(v0.catchupAt); // 보낼 시각 'YYYY-MM-DDTHH:MM'(KST)
@@ -112,8 +113,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const leadKind = autoKind === AUTO_KIND_LEAD_PLUS;
   const adOn = isAdKind(autoKind, ataTemplate) && adMark;
   const outBody = adOn ? withAdFormat(body) : body;
-  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt });
-  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime, catchupOn, catchupFrom, catchupAt, leadSource]);
+  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt, copyTo });
+  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime, copyTo, catchupOn, catchupFrom, catchupAt, leadSource]);
   // 이미 출고된 주문 1회 발송 미리보기(읽기만): 켜져 있고 출고 완료 후 + 알림톡일 때 출고일 범위가 바뀌면 건수·비용·잔액을 다시 읽는다
   const catchupShown = autoKind === AUTO_KIND && Boolean(ataTemplate) && catchupOn;
   const stageId = stages.find(item => item.key === activeKey)?.id;
@@ -155,11 +156,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const showTime = hasSendTime(autoKind, days);
 
   // ---- 단계(같은 흐름의 문구 여러 개) ----
-  const collect = () => ({ leadSource, name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime, catchupOn, catchupFrom, catchupAt });
+  const collect = () => ({ leadSource, name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime, copyTo, catchupOn, catchupFrom, catchupAt });
   const applyValues = v => {
     setName(v.name); setBody(v.body); setImages(v.images); setAutoKind(v.autoKind); setDays(v.days); setSendFrom(v.sendFrom); setRepeat(v.repeat); setInterval(v.interval);
     setOffsetDir(v.offsetDir); setOffsetDays(v.offsetDays); setUnlessStep(v.unlessStep); setUnlessMode(v.unlessMode); setDaily(v.daily); setWeekdays(v.weekdays);
-    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setLeadSource(v.leadSource || ''); setImageError('');
+    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setCopyTo(v.copyTo || ''); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setLeadSource(v.leadSource || ''); setImageError('');
   };
   const forms = stages.map(item => (item.key === activeKey ? collect() : item.form));
   const dupSet = duplicateStages(forms);
@@ -217,7 +218,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     if (multi && clash) { failAt(clash.i, textFormStopText('dup')); return; }
     const outOf = f => (isAdKind(f.autoKind, f.ataTemplate) && adMark ? withAdFormat(f.body) : f.body);
     for (const { f, i } of pick) {
-      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step, ataTemplate: f.ataTemplate, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt });
+      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step, ataTemplate: f.ataTemplate, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt, copyTo: f.copyTo });
       if (!chk.ok) { failAt(i, textFormStopText(chk.reason)); return; }
     }
     setBusy(true);
@@ -232,7 +233,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           imgs = f.images;
           if (merge && f.images.length >= 2) { made = await mergeImages(f.images); imgs = [made]; }
         }
-        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { leadSource: f.leadSource, kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
+        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { leadSource: f.leadSource, kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime, copyTo: f.copyTo, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
         last = out.item;
         setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
       } catch (err) {
@@ -381,6 +382,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               {dayKind ? <span>번</span> : null}
               {dayKind && Number(repeat) >= 2 ? <input type="text" inputMode="numeric" className="stf-days" value={interval} maxLength={3} aria-label="간격" onChange={event => setInterval(event.target.value)} /> : null}
               {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
+              {dayKind && !ataTemplate ? <span>사본</span> : null}
+              {dayKind && !ataTemplate ? <input type="text" inputMode="tel" className="stf-days" style={{ width: '8.5em' }} value={copyTo} maxLength={13} placeholder="내 번호" aria-label="사본 받을 번호" onChange={event => setCopyTo(event.target.value.replace(/[^\d-]/g, ''))} /> : null}
               {dateKind ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
               {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
             </span>
