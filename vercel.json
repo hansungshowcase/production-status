@@ -22,6 +22,9 @@
     { "path": "/api/cron/sms-auto", "schedule": "0 1 * * *" },
     { "path": "/api/cron/sms-auto-event", "schedule": "*/5 * * * *" }
   ],
+  "redirects": [
+    { "source": "/r", "destination": "https://search.google.com/local/writereview?placeid=ChIJ-bkwLD99fDUR2cot00FbA3c", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ],
