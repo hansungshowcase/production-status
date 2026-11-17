@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
 import { getKstToday } from '../../utils/dateUtils.js';
-import { AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -83,6 +83,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [audience, setAudience] = useState(v0.audience);
   const [staff, setStaff] = useState(v0.staff);
   const [ataTemplate, setAtaTemplate] = useState(v0.ataTemplate);
+  const [bmsButtons, setBmsButtons] = useState(v0.bmsButtons || []); // 브랜드메시지(자유형) 버튼 [{name, link}]
   const [leadSource, setLeadSource] = useState(v0.leadSource || ''); // 가입·문의 후 대상: '' 모두 · cafe24 회원가입 · airtable 견적 문의
   const [sendTime, setSendTime] = useState(v0.sendTime); // '' = 안 골랐음(칸에는 기본값이 보이고 저장 때는 빈 값)
   const [copyTo, setCopyTo] = useState(v0.copyTo || ''); // 사본 받을 번호(자동 발송이 고객에게 나간 날 같은 문자를 하루 1통)
@@ -113,8 +114,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const leadKind = autoKind === AUTO_KIND_LEAD_PLUS;
   const adOn = isAdKind(autoKind, ataTemplate) && adMark;
   const outBody = adOn ? withAdFormat(body) : body;
-  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt, copyTo });
-  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, adMark, sendTime, copyTo, catchupOn, catchupFrom, catchupAt, leadSource]);
+  const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt, copyTo, imageCount: merge && images.length >= 2 ? 1 : images.length, bmsButtons });
+  useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, bmsButtons, adMark, sendTime, copyTo, catchupOn, catchupFrom, catchupAt, leadSource]);
   // 이미 출고된 주문 1회 발송 미리보기(읽기만): 켜져 있고 출고 완료 후 + 알림톡일 때 출고일 범위가 바뀌면 건수·비용·잔액을 다시 읽는다
   const catchupShown = autoKind === AUTO_KIND && Boolean(ataTemplate) && catchupOn;
   const stageId = stages.find(item => item.key === activeKey)?.id;
@@ -122,16 +123,18 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     if (!catchupShown) { setCatchupInfo({ loading: false, error: '', data: null }); return undefined; }
     let alive = true;
     setCatchupInfo(prev => ({ ...prev, loading: true, error: '' }));
-    fetchSmsConsole('catchup_preview', { from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId, days: Number(days) || 0 })
+    fetchSmsConsole('catchup_preview', { bms: isBmsAta(ataTemplate) ? '1' : '', from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId, days: Number(days) || 0 })
       .then(out => { if (!alive) return; setCatchupInfo({ loading: false, error: '', data: out }); if (!catchupFrom && out?.oldest_ship_date) setCatchupFrom(out.oldest_ship_date); })
       .catch(err => { if (alive) setCatchupInfo({ loading: false, error: err.message || '미리보기를 불러오지 못했습니다.', data: null }); });
     return () => { alive = false; };
-  }, [catchupShown, catchupFrom, stageId, days]);
+  }, [catchupShown, catchupFrom, stageId, days, ataTemplate]);
   const toggleCatchup = on => {
     setCatchupOn(on);
     if (on && !catchupAt) { const next = new Date(Date.parse(`${getKstToday()}T00:00:00Z`) + 86400000).toISOString().slice(0, 10); setCatchupAt(`${next}T09:00`); } // 기본 보낼 시각: 내일 오전 9시
   };
-  const pickAta = value => { setAtaTemplate(value); if (value) { setAudience('customer'); setStaff([]); } else setCatchupOn(false); };
+  const pickAta = value => { setAtaTemplate(value); if (value) { setAudience('customer'); setStaff([]); } else setCatchupOn(false); if (value === BMS_TEMPLATE_ID && !bmsButtons.length) setBmsButtons([{ name: '', link: '' }]); };
+  const bmsOn = isBmsAta(ataTemplate);
+  const setBmsButton = (index, patchValue) => setBmsButtons(prev => prev.map((item, i) => (i === index ? { ...item, ...patchValue } : item)));
   const insertVar = varName => {
     const el = bodyRef.current;
     const at = el ? [el.selectionStart, el.selectionEnd] : [body.length, body.length];
@@ -156,11 +159,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const showTime = hasSendTime(autoKind, days);
 
   // ---- 단계(같은 흐름의 문구 여러 개) ----
-  const collect = () => ({ leadSource, name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime, copyTo, catchupOn, catchupFrom, catchupAt });
+  const collect = () => ({ leadSource, name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, bmsButtons, sendTime, copyTo, catchupOn, catchupFrom, catchupAt });
   const applyValues = v => {
     setName(v.name); setBody(v.body); setImages(v.images); setAutoKind(v.autoKind); setDays(v.days); setSendFrom(v.sendFrom); setRepeat(v.repeat); setInterval(v.interval);
     setOffsetDir(v.offsetDir); setOffsetDays(v.offsetDays); setUnlessStep(v.unlessStep); setUnlessMode(v.unlessMode); setDaily(v.daily); setWeekdays(v.weekdays);
-    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setSendTime(v.sendTime); setCopyTo(v.copyTo || ''); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setLeadSource(v.leadSource || ''); setImageError('');
+    setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate); setBmsButtons(v.bmsButtons || []); setSendTime(v.sendTime); setCopyTo(v.copyTo || ''); setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setLeadSource(v.leadSource || ''); setImageError('');
   };
   const forms = stages.map(item => (item.key === activeKey ? collect() : item.form));
   const dupSet = duplicateStages(forms);
@@ -218,7 +221,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     if (multi && clash) { failAt(clash.i, textFormStopText('dup')); return; }
     const outOf = f => (isAdKind(f.autoKind, f.ataTemplate) && adMark ? withAdFormat(f.body) : f.body);
     for (const { f, i } of pick) {
-      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step, ataTemplate: f.ataTemplate, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt, copyTo: f.copyTo });
+      const chk = validateTextForm({ name: f.name, body: outOf(f), autoKind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, audience: f.audience, staff: f.staff, step: f.step, ataTemplate: f.ataTemplate, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt, copyTo: f.copyTo, imageCount: merge && f.images.length >= 2 ? 1 : f.images.length, bmsButtons: f.bmsButtons });
       if (!chk.ok) { failAt(i, textFormStopText(chk.reason)); return; }
     }
     setBusy(true);
@@ -233,7 +236,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           imgs = f.images;
           if (merge && f.images.length >= 2) { made = await mergeImages(f.images); imgs = [made]; }
         }
-        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { leadSource: f.leadSource, kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, sendTime: f.sendTime, copyTo: f.copyTo, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
+        const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { leadSource: f.leadSource, kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, bmsButtons: f.bmsButtons, sendTime: f.sendTime, copyTo: f.copyTo, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt } }));
         last = out.item;
         setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
       } catch (err) {
@@ -394,13 +397,31 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             <span className="stf-tag">수단</span>
             <span className="stf-cells">
               {autoKind ? (
-                <select value={ataTemplate} aria-label="알림톡" onChange={event => pickAta(event.target.value)}>
+                <select value={ataTemplate} aria-label="발송 수단" onChange={event => pickAta(event.target.value)}>
                   <option value="">문자로</option>
-                  {ataTemplate && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{`목록에 없는 알림톡 (…${ataTemplate.slice(-4)})`}</option> : null}
+                  <option value={BMS_TEMPLATE_ID}>브랜드메시지(자유형)</option>
+                  {ataTemplate && ataTemplate !== BMS_TEMPLATE_ID && !meta.ata.some(item => item.id === ataTemplate) ? <option value={ataTemplate}>{`목록에 없는 알림톡 (…${ataTemplate.slice(-4)})`}</option> : null}
                   {meta.ata.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               ) : null}
               {isAdKind(autoKind, ataTemplate) ? <label><input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />광고 표기</label> : null}
+            </span>
+          </div>
+        ) : null}
+        {autoKind && bmsOn ? (
+          <div className="stf-line" aria-label="브랜드메시지 버튼">
+            <span className="stf-tag">버튼</span>
+            <span className="stf-cells">
+              {bmsButtons.map((button, index) => (
+                <span key={index} className="stf-cells">
+                  <input type="text" value={button.name} maxLength={14} placeholder="버튼 이름(14자까지)" aria-label={`버튼 ${index + 1} 이름`} onChange={event => setBmsButton(index, { name: event.target.value })} />
+                  <input type="text" inputMode="url" value={button.link} maxLength={1000} placeholder="https:// 링크" aria-label={`버튼 ${index + 1} 링크`} onChange={event => setBmsButton(index, { link: event.target.value })} />
+                  <button type="button" className="ktm-btn" aria-label={`버튼 ${index + 1} 지우기`} onClick={() => setBmsButtons(prev => prev.filter((_, i) => i !== index))}>지우기</button>
+                </span>
+              ))}
+              {bmsButtons.length < 5 ? <button type="button" className="ktm-btn" onClick={() => setBmsButtons(prev => [...prev, { name: '', link: '' }])}>버튼 더하기</button> : null}
+              <span className="stf-hint">사진 1장과 함께면 400자, 글만이면 1300자까지(고객명은 20자로 계산). 지금 {[...String(body).replace(/#\{고객명\}/g, '가'.repeat(20))].length}자. 채널 친구가 아니면 장문문자로 대체돼 나갑니다. 오전 8시~오후 8시 사이에만 보냅니다.</span>
+              {images[0]?.url ? <img className="ktm-open-img sac-thumb" src={images[0].url} alt="브랜드메시지 이미지 미리보기" /> : null}
             </span>
           </div>
         ) : null}
@@ -432,9 +453,9 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                     </li>
                   ))}
                 </ul>
-                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · 알림톡 1건 {won(catchupInfo.data.unit)} · 일괄 발송은 5분마다 {catchupInfo.data.per_run}건씩, 시작 후 약 {catchupInfo.data.eta_minutes}분 안에 모두 나갑니다(하루 {catchupInfo.data.daily_max}건까지{catchupInfo.data.days_needed > 1 ? `, 넘으면 다음 날 이어서 약 ${catchupInfo.data.days_needed}일` : ''}, 안내 문자 상한과 따로 셉니다)</p>
+                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · {catchupInfo.data.bms ? `브랜드메시지(자유형) 1건 ${won(catchupInfo.data.unit)}${catchupInfo.data.fallback_unit ? `(친구가 아니면 장문문자 ${won(catchupInfo.data.fallback_unit)}으로 대체)` : ''}` : `알림톡 1건 ${won(catchupInfo.data.unit)}`} · 일괄 발송은 5분마다 {catchupInfo.data.per_run}건씩, 시작 후 약 {catchupInfo.data.eta_minutes}분 안에 모두 나갑니다(하루 {catchupInfo.data.daily_max}건까지{catchupInfo.data.days_needed > 1 ? `, 넘으면 다음 날 이어서 약 ${catchupInfo.data.days_needed}일` : ''}, 안내 문자 상한과 따로 셉니다)</p>
                 {catchupInfo.data.balance_short ? <p className="ktm-alert" role="alert">잔액이 예상 비용보다 적습니다. 충전 후 보내세요(발송은 막지 않습니다).</p> : null}
-                <p className="stf-cu-foot">템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다. 출고 후 설정한 일수가 지난 주문만 보내고, 그 뒤 출고분은 평소 자동 발송이 그 일수째에 보냅니다. 같은 번호에는 겹쳐 보내지 않습니다.</p>
+                <p className="stf-cu-foot">{bmsOn ? '오전 8시~오후 8시 사이에만 나가며, 그 밖의 시각이면 다음 확인 때 나갑니다.' : '템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다.'} 출고 후 설정한 일수가 지난 주문만 보내고, 그 뒤 출고분은 평소 자동 발송이 그 일수째에 보냅니다. 같은 번호에는 겹쳐 보내지 않습니다.</p>
               </div>
             ) : null}
           </div>

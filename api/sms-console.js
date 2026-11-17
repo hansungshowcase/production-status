@@ -149,7 +149,7 @@ async function handleGet(req, res, ctx) {
   }
   if (resource === 'catchup_preview') { // 이미 출고된 주문 1회 발송 미리보기(읽기만): 출고일 범위별 건수·예상 비용·잔액. 번호는 돌려주지 않는다
     try {
-      const out = await catchupPreview(deps.db || getDb(), { from: String(queryValue(req.query?.from) || ''), templateId: queryValue(req.query?.id) || null, days: Number(queryValue(req.query?.days)) || 0, nowMs, env: deps.env || process.env, provider: deps.sendProvider, kakao, kakaoOpts: opts });
+      const out = await catchupPreview(deps.db || getDb(), { from: String(queryValue(req.query?.from) || ''), templateId: queryValue(req.query?.id) || null, days: Number(queryValue(req.query?.days)) || 0, nowMs, env: deps.env || process.env, provider: deps.sendProvider, kakao, kakaoOpts: opts, bms: queryValue(req.query?.bms) === '1' });
       return res.status(200).json(out);
     } catch { return fail(res, 500, '미리보기를 불러오지 못했습니다.'); }
   }
@@ -252,7 +252,7 @@ async function handlePost(req, res, ctx) {
   if (action === 'text_template_save' || action === 'text_template_delete') {
     try {
       const db = deps.db || getDb();
-      const out = action === 'text_template_save' ? await saveTextTemplate(db, body, { staff: deps.staff }) : await deleteTextTemplate(db, body);
+      const out = action === 'text_template_save' ? await saveTextTemplate(db, body, { staff: deps.staff, provider: deps.sendProvider, fetchImpl: opts.fetchImpl }) : await deleteTextTemplate(db, body);
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 저장하지 못했습니다.'); }
   }

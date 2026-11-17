@@ -1,5 +1,11 @@
 // 문자 템플릿 등록 양식·내 문구 묶음의 순수 계산(화면 없음).
 import { IMAGE_MAX_EDGE, textInfo } from './sendPanelModel.js';
+import { BMS_TEMPLATE_ID, bmsButtonsCheck, bmsTextError } from '../../../shared/smsBmsLimits.js';
+
+export { BMS_TEMPLATE_ID };
+export const isBmsAta = (ataTemplate) => ataTemplate === BMS_TEMPLATE_ID; // 수단이 브랜드메시지(자유형)인지
+// 발송 조건 줄의 수단 이름
+const viaLabel = (entry) => (entry?.autoAtaTemplate === BMS_TEMPLATE_ID ? '브랜드메시지' : entry?.autoAtaTemplate ? '알림톡' : '');
 
 export const TEXT_NAME_MAX = 40;
 export const KIND_SMS = 'sms';
@@ -9,7 +15,7 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', copyTo = '' }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', copyTo = '', imageCount = 0, bmsButtons = [] }) {
   const audience = ataTemplate ? 'customer' : audienceIn; // 알림톡은 고객에게만 간다
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
@@ -17,6 +23,11 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
+  if (isBmsAta(ataTemplate)) { // 브랜드메시지(자유형): 이미지와 함께면 400자·줄바꿈 29, 글만이면 1300자·줄바꿈 99, 사진 1장, 버튼 이름 14자·링크 https·최대 5개
+    if (Number(imageCount) > 1) return { ok: false, reason: 'bms_images', info };
+    if (bmsTextError(body, Number(imageCount) === 1)) return { ok: false, reason: 'bms_too_long', info, detail: bmsTextError(body, Number(imageCount) === 1) };
+    if (bmsButtonsCheck(bmsButtons).error) return { ok: false, reason: 'bms_button', info, detail: bmsButtonsCheck(bmsButtons).error };
+  }
   { const allowed = autoVariables(autoKind, audience, ataTemplate); if (bodyVarNames(body).some(item => !allowed.includes(item))) return { ok: false, reason: 'info_unknown_var', info }; }
   if (isImmediateKind(autoKind)) {
     if (autoKind !== AUTO_KIND_ORDER_CREATED && !step) return { ok: false, reason: 'step', info };
@@ -39,7 +50,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
   if (catchupOn && autoKind === AUTO_KIND && ataTemplate) { // 이미 출고된 주문에 한 번 보내기: 출고일 시작일 + 보낼 시각(날짜·시각, 08~20시)
     if (!normalizeSendFrom(catchupFrom)) return { ok: false, reason: 'catchup_from', info };
     const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(String(catchupAt || ''));
-    if (!m || normalizeSendFrom(m[1]) === null || Number(m[2]) < 8 || Number(m[2]) > 20) return { ok: false, reason: 'catchup_at', info };
+    if (!m || normalizeSendFrom(m[1]) === null || Number(m[2]) < 8 || Number(m[2]) > (isBmsAta(ataTemplate) ? 19 : 20)) return { ok: false, reason: 'catchup_at', info };
   }
   return { ok: true, reason: '', info };
 }
@@ -211,6 +222,11 @@ export function textFormStopText(reason) {
   if (reason === 'ata_customer_only') return '알림톡은 고객에게만 보낼 수 있습니다';
   if (reason === 'catchup_from') return '이미 출고된 주문의 출고일 시작일을 날짜로 넣어 주세요';
   if (reason === 'catchup_at') return '한 번 보낼 시각을 날짜와 오전 8시~오후 8시 사이로 넣어 주세요';
+  if (reason === 'bms_images') return '브랜드메시지는 사진을 1장만 보낼 수 있습니다(여러 장은 한 장으로 합쳐 주세요)';
+  if (reason === 'bms_too_long') return '브랜드메시지 글자 수를 넘었습니다(이미지와 함께면 400자, 글만이면 1300자)';
+  if (reason === 'bms_button') return '버튼은 이름(14자까지)과 https:// 링크를 함께 넣어 주세요(최대 5개)';
+  if (reason === 'bms_image_ratio') return '브랜드메시지 이미지는 가로:세로가 2:1에서 3:4 사이여야 합니다';
+  if (reason === 'bms_not_ready') return '브랜드메시지 설정(사진·글자 수)이 맞지 않습니다. 문구를 다시 저장해 주세요';
   if (reason === 'staff') return '받을 직원을 한 명 이상 골라 주세요';
   if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
   if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
@@ -223,9 +239,10 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
-    const ata = a.ataTemplate ? { ata_template: String(a.ataTemplate) } : {}; // 알림톡을 고르면 모든 조건에서 받는 사람은 고객
+    const bmsOut = a.ataTemplate === BMS_TEMPLATE_ID ? { bms: { buttons: (Array.isArray(a.bmsButtons) ? a.bmsButtons : []).filter((b) => b && (b.name || b.link)).map((b) => ({ name: String(b.name || ''), link: String(b.link || '') })) } } : {}; // 브랜드메시지(자유형)의 버튼
+    const ata = a.ataTemplate ? { ata_template: String(a.ataTemplate), ...bmsOut } : {}; // 알림톡을 고르면 모든 조건에서 받는 사람은 고객
     if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind, ...ata };
-    if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || ''), ...(a.leadSource === 'cafe24' || a.leadSource === 'airtable' ? { lead_source: a.leadSource } : {}) };
+    if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || ''), ...bmsOut, ...(a.leadSource === 'cafe24' || a.leadSource === 'airtable' ? { lead_source: a.leadSource } : {}) };
     if (isImmediateKind(a.kind)) {
       const staffAudience = a.audience === AUDIENCE_STAFF && !a.ataTemplate;
       return { kind: a.kind, step: a.kind === AUTO_KIND_ORDER_CREATED ? '' : String(a.step || ''), audience: staffAudience ? AUDIENCE_STAFF : 'customer', staff: staffAudience && Array.isArray(a.staff) ? a.staff : [], ...ata };
@@ -247,7 +264,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
       };
     }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
-    if (a.ataTemplate) out.ata_template = String(a.ataTemplate);
+    if (a.ataTemplate) Object.assign(out, ata);
     if (a.kind === AUTO_KIND && a.ataTemplate && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
     if (a.repeat !== undefined) out.repeat = normalizeRepeat(a.repeat) ?? AUTO_DEFAULT_REPEAT;
@@ -299,7 +316,7 @@ export function formValuesFromItem(item) {
     repeat: i.repeat || String(AUTO_DEFAULT_REPEAT), interval: i.interval || String(AUTO_DEFAULT_INTERVAL),
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
     daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
-    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
+    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', bmsButtons: Array.isArray(i.bmsButtons) ? i.bmsButtons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [], sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
     catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
   };
 }
@@ -364,25 +381,25 @@ export const hasStageRow = (kind, hasSiblings) => Boolean(hasSiblings) || AUTO_K
 export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
-  entry.autoAtaTemplate ? '알림톡' : '',
+  viaLabel(entry),
 ) : isDateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset, entry.autoDaily)}`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
   entry.autoWeekdays ? '평일만' : '',
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
   entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
-  entry.autoAtaTemplate ? '알림톡' : '',
-) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객', entry.autoAtaTemplate ? '알림톡' : ''
+  viaLabel(entry),
+) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객', viaLabel(entry)
 ) : entry?.autoKind === AUTO_KIND_LEAD_PLUS ? joinDot(
   Number(entry.autoDays) > 0 ? `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || '']} 후 ${Number(entry.autoDays)}일 뒤` : `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || '']} 당일`,
   Number(entry.autoDays) > 0 ? (sendTimeLabel(entry.autoSendTime) || '오전 9시 30분') : '',
   '고객',
-  entry.autoAtaTemplate ? '알림톡' : '',
+  viaLabel(entry),
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
   '고객',
-  entry.autoAtaTemplate ? '알림톡' : '',
+  viaLabel(entry),
   entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
   entry.autoCopyTo ? `사본 ${String(entry.autoCopyTo).replace(/\D/g, '').slice(-4)}` : '',
@@ -394,7 +411,7 @@ export function autoConditionParts(entry) {
   const parts = { when: list[0] || '', who: '', via: '', extras: [] };
   list.slice(1).forEach((text) => {
     if (!parts.who && /^(고객|영업담당|직원 \d+명)$/.test(text)) parts.who = text;
-    else if (!parts.via && text === '알림톡') parts.via = text;
+    else if (!parts.via && (text === '알림톡' || text === '브랜드메시지')) parts.via = text;
     else parts.extras.push(text);
   });
   return parts;
@@ -440,12 +457,23 @@ export function toggleRejectText(reason) {
   if (reason === 'cafe24_not_connected') return '카페24 연결이 아직 안 됐습니다';
   if (reason === 'lead_source_not_connected') return '가입·문의 정보 연결이 아직 안 됐습니다.';
   if (reason === 'ata_not_ready') return '선택한 알림톡 템플릿이 아직 쓸 수 없는 상태입니다.';
+  if (reason === 'bms_not_ready') return '브랜드메시지 설정(사진·글자 수)이 맞지 않습니다. 문구를 다시 저장해 주세요.';
   if (reason === 'lead_overlap') return '가입 당일에 나가는 문구가 이미 켜져 있습니다.';
   return '';
 }
 
 // 켜기·시험 dry_run 응답 → 확인 줄
-export const autoConfirmLine = (out, photos = 0) => joinDot(
+// 브랜드메시지(자유형) 확인 줄: "브랜드메시지(자유형) N건, 약 N×100원(친구가 아니면 장문문자 45원으로 대체)"
+export const bmsConfirmLine = (out) => {
+  const unit = Number(out?.unit) || 0;
+  const n = out?.targets === undefined ? 1 : Math.min(Number(out.targets) || 0, Number(out.daily_max) || Number.MAX_SAFE_INTEGER);
+  return joinDot(
+    out?.targets === undefined ? '' : `오늘 대상 ${Number(out.targets) || 0}명`,
+    `브랜드메시지(자유형) ${n}건, 약 ${n}×${unit}원${Number(out?.fallback_unit) ? `(친구가 아니면 장문문자 ${Number(out.fallback_unit)}원으로 대체)` : ''}`,
+    `예상 비용 ${won(out?.cost)}`,
+  );
+};
+export const autoConfirmLine = (out, photos = 0) => out?.bms ? bmsConfirmLine(out) : joinDot(
   out?.targets === undefined ? '' : `오늘 대상 ${Number(out.targets) || 0}명`,
   `1명당 ${Number(out?.parts) || 0}통${Number(photos) > 1 ? `(사진 ${Number(photos)}장)` : ''}`,
   `예상 비용 ${won(out?.cost)}`,
@@ -544,6 +572,7 @@ export function formInitialFromItem(item) {
     autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
     days: item?.auto_kind === AUTO_KIND_LEAD_PLUS ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
     ataTemplate: String(item?.auto_ata_template || ''),
+    bmsButtons: Array.isArray(item?.auto_bms_buttons) ? item.auto_bms_buttons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [],
     leadSource: LEAD_SOURCES.includes(item?.auto_lead_source) ? item.auto_lead_source : '',
     catchupOn: Boolean(item?.auto_catchup_at), catchupFrom: String(item?.auto_catchup_from || ''), catchupAt: String(item?.auto_catchup_at || ''),
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),

@@ -6,7 +6,8 @@ import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
 import { AUTO_KIND, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
-import { ataReady, buildEventParts, ensureEventSchema, eventExampleText, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
+import { bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
+import { ataReady, buildEventParts, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -113,13 +114,13 @@ const partText = (part, template, name) => (part.short ? part.text : fillName(St
 async function loadTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
   if (!row) return null;
   return {
-    id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true, auto_start_date: row.auto_start_date || '',
+    auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_days: Number(row.auto_days) || 0, auto_enabled: row.auto_enabled === true, auto_start_date: row.auto_start_date || '',
     auto_send_from: row.auto_send_from || '', auto_repeat: Number(row.auto_repeat) || AUTO_LIMITS.defaultRepeat, auto_interval: Number(row.auto_interval) || AUTO_LIMITS.defaultInterval,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
@@ -444,9 +445,15 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
   const vendor = provider || getSendProvider();
   const ata = isAtaTemplate(template); // 수단이 알림톡이면 알림톡으로 시험한다(문자 수단은 아래 기존 흐름 그대로)
-  if (!vendor || typeof (ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
+  const bms = isBmsTemplate(template); // 브랜드메시지(자유형)도 알림톡 갈래를 타되 BMS_FREE 로 보낸다
+  if (!vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
   let pfId = '';
-  if (ata) { // 승인·채널 확인: 못 정하면 보내지 않고 현재 상태를 알려 준다
+  const bmsCfg = bms ? parseBmsConfig(template.auto_bms) : null;
+  if (bms) { // 채널·사진(저장 때 올린 imageId)·글자 수 확인(쏠라피 호출 없음)
+    const checked = bmsReady(template);
+    if (!checked.ok) return errorReply(400, '브랜드메시지 설정(사진·글자 수)이 맞지 않습니다. 문구를 다시 저장해 주세요.', { reason: 'bms_not_ready' });
+    pfId = checked.cfg.pfId;
+  } else if (ata) { // 승인·채널 확인: 못 정하면 보내지 않고 현재 상태를 알려 준다
     const ready = await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env });
     if (!ready.ok) {
       let status = '확인하지 못함';
@@ -457,9 +464,10 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   }
   const info = isInfoTemplate(template); // 안내 문구는 예시 값으로 치환
   const parts = ata ? [{ ata: true, image: -1 }] : info ? buildEventParts(template, template.images.length) : buildParts(template, template.images.length);
-  const cost = ata ? (typeof vendor.estimateKakao === 'function' ? vendor.estimateKakao({ count: 1 }, env)?.total ?? null : null) : costOf(vendor, parts, 1, env);
-  if (dryRun) return reply(200, { ok: true, dry_run: true, parts: parts.length, cost, ...(ata ? { ata: true } : {}) });
-  const from = digits(env.SMS_SENDER);
+  const unitInfo = bms && typeof vendor.estimateBms === 'function' ? vendor.estimateBms({ count: 1 }, env) : null;
+  const cost = bms ? (unitInfo ? unitInfo.total ?? null : null) : ata ? (typeof vendor.estimateKakao === 'function' ? vendor.estimateKakao({ count: 1 }, env)?.total ?? null : null) : costOf(vendor, parts, 1, env);
+  if (dryRun) return reply(200, { ok: true, dry_run: true, parts: parts.length, cost, ...(ata ? { ata: true } : {}), ...(unitInfo ? { bms: true, unit: unitInfo.unit, fallback_unit: unitInfo.fallback_unit } : {}) });
+  const from = bms ? bmsCfg.from : digits(env.SMS_SENDER);
   if (!from) return errorReply(503, '발신번호가 설정되지 않았습니다.');
   if (!provider && !hasSolapiCredentials()) return errorReply(503, '쏠라피 연결이 설정되지 않았습니다.');
 
@@ -467,7 +475,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   const dayStart = new Date(Date.parse(`${kstDate(nowMs)}T00:00:00Z`) - 9 * 3600000).toISOString();
   const used = Number((await db.execute({ sql: 'SELECT COALESCE(SUM(recipient_count), 0)::int AS n FROM sms_manual_sends WHERE sent_at >= ?', args: [dayStart] })).rows?.[0]?.n) || 0;
   if (used + parts.length > settings.daily) return errorReply(429, `하루 ${settings.daily}건까지 보낼 수 있습니다. 오늘 ${used}건 보냈습니다.`);
-  const msgType = ata ? 'ATA' : template.images.length ? 'MMS' : classifyText(template.body).type || 'LMS';
+  const msgType = bms ? 'BMS_FREE' : ata ? 'ATA' : template.images.length ? 'MMS' : classifyText(template.body).type || 'LMS';
   const hash = crypto.createHmac('sha256', String(env.SOLAPI_API_SECRET || 'sms-manual-send')).update(to).digest('hex');
   const inserted = await db.execute({
     sql: `INSERT INTO sms_manual_sends (idem_key, msg_type, recipient_count, text_length, tails, recipients_hash, status)
@@ -495,10 +503,10 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   for (const [partIndex, part] of parts.entries()) {
     if (stop) { results.push('skipped'); continue; }
     await waitBeforePart(partIndex, { env, sleep });
-    const item = ata ? { to, templateId: template.auto_ata_template, variables: { 고객명: '고객' } } : { to, text: info ? eventExampleText(part, template) : partText(part, template, '고객') };
+    const item = bms ? { to, text: fillVars(String(template.body).trim(), { 고객명: '고객' }), ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons } : ata ? { to, templateId: template.auto_ata_template, variables: { 고객명: '고객' } } : { to, text: info ? eventExampleText(part, template) : partText(part, template, '고객') };
     if (!ata && part.image >= 0) item.fileId = fileIds[part.image];
     let result;
-    try { result = ata ? await vendor.sendKakaoEach({ from, pfId, messages: [item], disableSms: true }, { fetchImpl }) : await vendor.sendEach({ from, messages: [item] }, { fetchImpl }); } catch { result = { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; }
+    try { result = bms ? await vendor.sendBmsEach({ from, pfId, messages: [item] }, { fetchImpl }) : ata ? await vendor.sendKakaoEach({ from, pfId, messages: [item], disableSms: true }, { fetchImpl }) : await vendor.sendEach({ from, messages: [item] }, { fetchImpl }); } catch { result = { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; }
     if (result.groupId) groupId = result.groupId;
     if (result.uncertain) { results.push('uncertain'); stop = true; message = String(result.error || '').slice(0, 200); }
     else if (result.failed === 0) results.push('sent');

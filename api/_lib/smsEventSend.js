@@ -12,6 +12,7 @@ import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
+import { bmsInWindow, bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { STEPS } from './steps.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
 import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
@@ -130,13 +131,13 @@ export function eventExampleText(part, template) {
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
   if (!row) return null;
   return {
-    id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
+    auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
@@ -289,7 +290,7 @@ async function doneKeys(db, templateId, keys) {
   return done;
 }
 // 따라잡기 미리보기(읽기만): 범위별 보낼 번호 수·예상 비용(알림톡 단가 × 건수)·현재 잔액. 번호 자체는 돌려주지 않는다. 수신거부·이미 보낸(이 문구로) 번호는 뺀다.
-export async function catchupPreview(db, { from, templateId = null, days = 0, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts } = {}) {
+export async function catchupPreview(db, { from, templateId = null, days = 0, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts, bms = false } = {}) {
   const today = kstDate(nowMs);
   const end = catchupEnd(today, days); // 출고 N일이 지난 주문만
   await ensureEventSchema(db);
@@ -303,7 +304,8 @@ export async function catchupPreview(db, { from, templateId = null, days = 0, no
   const done = templateId ? await doneKeys(db, Number(templateId), all.map(item => item.key)) : new Set();
   const open = all.filter(item => !done.has(item.key));
   const vendor = provider || getSendProvider();
-  const estimate = count => (typeof vendor?.estimateKakao === 'function' ? (Number(vendor.estimateKakao({ count }, env)?.total) ?? null) : null);
+  const estimator = bms ? vendor?.estimateBms : vendor?.estimateKakao; // 브랜드메시지(자유형)는 100원 단가
+  const estimate = count => (typeof estimator === 'function' ? (Number(estimator.call(vendor, { count }, env)?.total) ?? null) : null);
   const count = fromDate => open.filter(item => item.shipDate >= fromDate).length;
   const oldest = open.length ? open[0].shipDate : '';
   const ranges = [
@@ -317,7 +319,7 @@ export async function catchupPreview(db, { from, templateId = null, days = 0, no
   const dailyMax = catchupMaxPerDay(env); // 일괄 발송 전용 하루 상한(안내 상한과 따로)
   const perRun = catchupPerRun(env);
   const picked = ranges[0];
-  return { today, end_date: end, days: Math.max(0, Number(days) || 0), oldest_ship_date: oldest, ranges, unit: estimate(1), balance, daily_max: dailyMax, per_run: perRun, eta_minutes: picked.count ? Math.max(0, Math.ceil(picked.count / perRun) - 1) * 5 : 0, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
+  return { today, end_date: end, days: Math.max(0, Number(days) || 0), oldest_ship_date: oldest, ranges, unit: estimate(1), ...(bms ? { bms: true, fallback_unit: Number(vendor?.estimateBms?.({ count: 1 }, env)?.fallback_unit) || null } : {}), balance, daily_max: dailyMax, per_run: perRun, eta_minutes: picked.count ? Math.max(0, Math.ceil(picked.count / perRun) - 1) * 5 : 0, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
 }
 
 // 즉시형 사건(읽기만): 창 안에 생긴 주문 등록·공정 시작/완료. 켠 시각이 없으면 대상 없음. cancelled 주문·시각이 NULL(되돌린) 공정 제외.
@@ -431,7 +433,8 @@ export async function runEventSend(template, deps = {}) {
   const timeShort = () => shared && endAt - tick() < SEND_RESERVE_MS;
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   if (!template.auto_enabled || !autoOn(env)) return { ...out, reason: 'off' };
-  if (!inSendWindow(nowMs)) return { ...out, reason: 'night' };
+  const bms = isBmsTemplate(template); // 브랜드메시지(자유형): 알림톡 갈래 안전장치를 그대로 쓰되 KST 08:00~20:00 사이에만 보낸다
+  if (!inSendWindow(nowMs) || (bms && !bmsInWindow(nowMs))) return { ...out, reason: 'night' };
   if (!isInfoTemplate(template)) return { ...out, reason: 'no_auto' };
   if (isEventKind(template.auto_kind) && template.auto_weekdays && kstWeekend(nowMs)) return { ...out, reason: 'weekend' }; // 평일만: KST 토·일 무동작
   const lead = isLeadKind(template.auto_kind);
@@ -441,8 +444,9 @@ export async function runEventSend(template, deps = {}) {
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
   if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience, template.auto_kind, ata)) return { ...out, reason: 'info_check' };
   const vendor = provider || getSendProvider();
-  const from = digits(env.SMS_SENDER);
-  if (!vendor || typeof (ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function' || !from) return { ...out, reason: 'no_provider' };
+  const bmsCfg = bms ? parseBmsConfig(template.auto_bms) : null;
+  const from = bms ? bmsCfg.from : digits(env.SMS_SENDER);
+  if (!vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function' || !from) return { ...out, reason: 'no_provider' };
   if (!provider && !hasSolapiCredentials()) return { ...out, reason: 'no_provider' };
 
   if (ata && template.auto_ata_fail_at && Date.parse(template.auto_ata_fail_at) > nowMs) return { ...out, reason: 'ata_backoff' }; // 같은 문구가 연속으로 통째 실패하면 1시간 건너뛴다
@@ -462,7 +466,11 @@ export async function runEventSend(template, deps = {}) {
   if (!eligible.length) return { ...out, ran: true };
 
   let pfId = '';
-  if (ata) { // 알림톡: 승인·변수·채널을 선점 전에 다시 확인한다. 못 정하면 아무것도 선점하지 않는다.
+  if (bms) { // 브랜드메시지: 채널·사진(저장 때 올린 imageId)·글자 수를 선점 전에 다시 확인한다(쏠라피 호출 없음)
+    const checked = bmsReady(template);
+    if (!checked.ok) return { ...out, ran: true, reason: 'bms_not_ready' };
+    pfId = checked.cfg.pfId;
+  } else if (ata) { // 알림톡: 승인·변수·채널을 선점 전에 다시 확인한다. 못 정하면 아무것도 선점하지 않는다.
     const ready = await ataReady(template.auto_ata_template, { kakao: deps.kakao, kakaoOpts: deps.kakaoOpts || (fetchImpl ? { fetchImpl } : undefined), env });
     if (!ready.ok) return { ...out, ran: true, reason: ready.reason === 'ata_no_channel' ? 'ata_no_channel' : 'ata_not_ready' };
     pfId = ready.pfId;
@@ -538,13 +546,13 @@ export async function runEventSend(template, deps = {}) {
     if (stop) { partStatus.push('skipped'); continue; }
     await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
     if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
-    const messages = ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataVars(entry.item) })) : active.map(entry => {
+    const messages = bms ? active.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataVars(entry.item) })) : active.map(entry => {
       const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
       if (part.image >= 0) message.fileId = fileIds[part.image];
       return message;
     });
     let result;
-    try { result = ata ? await vendor.sendKakaoEach({ from, pfId, messages, disableSms: env.SMS_AUTO_ATA_FALLBACK !== '1' }, { fetchImpl }) : await vendor.sendEach({ from, messages }, { fetchImpl }); } catch { result = ata ? { accepted: 0, failed: messages.length, uncertain: false, error: '알림톡 발송 호출이 실패했습니다.' } : { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; } // 알림톡의 예외는 접수 전 실패라 다시 시도할 수 있게 통째 실패로 본다(문자 갈래는 그대로)
+    try { result = bms ? await vendor.sendBmsEach({ from, pfId, messages }, { fetchImpl }) : ata ? await vendor.sendKakaoEach({ from, pfId, messages, disableSms: env.SMS_AUTO_ATA_FALLBACK !== '1' }, { fetchImpl }) : await vendor.sendEach({ from, messages }, { fetchImpl }); } catch { result = ata ? { accepted: 0, failed: messages.length, uncertain: false, error: bms ? '브랜드메시지 발송 호출이 실패했습니다.' : '알림톡 발송 호출이 실패했습니다.' } : { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; } // 알림톡의 예외는 접수 전 실패라 다시 시도할 수 있게 통째 실패로 본다(문자 갈래는 그대로)
     if (result.groupId) groupIds.push(result.groupId);
     if (result.uncertain) { partStatus.push('uncertain'); stop = true; reason = String(result.error || '불확실').slice(0, 200); }
     else if (ata && !(result.accepted > 0)) { partStatus.push('failed'); stop = true; wholeFail = true; reason = String(result.error || '거절').slice(0, 200); } // 알림톡 통째 실패(4xx·접수 0건·예외)
@@ -706,7 +714,9 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   if (isLeadKind(template.auto_kind)) {
     if (!(await leadSourcesConnected(db, env))) return errorReply(400, '가입·문의 정보 연결이 아직 안 됐습니다.', { reason: 'lead_source_not_connected' });
   }
-  if (isAtaTemplate(template)) {
+  if (isBmsTemplate(template)) {
+    if (!bmsReady(template).ok) return errorReply(400, '브랜드메시지 설정(사진·글자 수)이 맞지 않습니다. 문구를 다시 저장해 주세요.', { reason: 'bms_not_ready' });
+  } else if (isAtaTemplate(template)) {
     const ready = await ataReady(template.auto_ata_template, { kakao, kakaoOpts, env });
     if (!ready.ok && ready.reason === 'ata_no_channel') return errorReply(400, '카카오 채널을 찾지 못했습니다(템플릿 채널·KAKAO_PF_ID 확인).', { reason: 'ata_no_channel' });
     if (!ready.ok) return errorReply(400, '알림톡 템플릿이 승인 상태가 아니거나 고객명 외 변수가 있습니다.', { reason: 'ata_not_ready' });
@@ -724,9 +734,12 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
     const leadKind = isLeadKind(template.auto_kind);
     const dailyMax = leadKind ? leadMaxPerDay(env) : infoMaxPerDay(env);
     const people = Math.min(targets, dailyMax);
-    const cost = isAtaTemplate(template) ? (typeof vendor?.estimateKakao === 'function' ? Number(vendor.estimateKakao({ count: people }, env)?.total) || 0 : null) : vendor ? costOf(vendor, parts, people, env) : null;
-    const catchup = template.auto_kind === AUTO_KIND_SHIP && isAtaTemplate(template) && template.auto_catchup_from ? await catchupPreview(db, { from: template.auto_catchup_from, templateId: template.id, days: template.auto_days, nowMs, env, provider, kakao, kakaoOpts }) : undefined;
-    return reply(200, { ok: true, targets, parts: parts.length, cost, daily_max: dailyMax, overlap: instantOverlap(template), ...(catchup ? { catchup } : {}) });
+    const bmsOn = isBmsTemplate(template);
+    const kakaoEstimate = bmsOn ? vendor?.estimateBms : vendor?.estimateKakao;
+    const cost = isAtaTemplate(template) ? (typeof kakaoEstimate === 'function' ? Number(kakaoEstimate.call(vendor, { count: people }, env)?.total) || 0 : null) : vendor ? costOf(vendor, parts, people, env) : null;
+    const catchup = template.auto_kind === AUTO_KIND_SHIP && isAtaTemplate(template) && template.auto_catchup_from ? await catchupPreview(db, { from: template.auto_catchup_from, templateId: template.id, days: template.auto_days, nowMs, env, provider, kakao, kakaoOpts, bms: bmsOn }) : undefined;
+    const unitInfo = bmsOn && typeof vendor?.estimateBms === 'function' ? vendor.estimateBms({ count: 1 }, env) : null;
+    return reply(200, { ok: true, targets, parts: parts.length, cost, ...(unitInfo ? { bms: true, unit: unitInfo.unit, fallback_unit: unitInfo.fallback_unit } : {}), daily_max: dailyMax, overlap: instantOverlap(template), ...(catchup ? { catchup } : {}) });
   }
   const startDate = kstDate(nowMs);
   if (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template)) { // 켠 시각 = NOW(). 이 시각 이전 사건은 보내지 않는다.

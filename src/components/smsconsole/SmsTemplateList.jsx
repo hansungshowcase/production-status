@@ -6,7 +6,7 @@ import { getKstToday } from '../../utils/dateUtils.js';
 import {
   CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAtaEntry, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
-import { autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
 const FLOW_NO_STEP_KINDS = ['order_created', 'process_started', 'process_completed', 'member_joined'];
@@ -145,7 +145,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           </span>
         ) : null}
       </button>
-      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button></SmsAutoControls> : null}
+      {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button></SmsAutoControls> : null}
       {mineOpen === entry.id ? (
         <div className="ktm-modal-actions">
           {entry.autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>}

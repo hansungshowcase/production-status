@@ -180,6 +180,44 @@ solapi.sendKakaoEach = async function sendKakaoEach({ from, pfId, messages, disa
   return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '', ...(failedTo.length ? { failedTo } : {}) };
 };
 
+// ---- 브랜드메시지 자유형(BMS_FREE, 2026-11-17 설계_브랜드메시지_자유형) ----
+// 단가(VAT 미포함, 2026-11-17 사장님과 확인): 자유형 100원, 실패해 장문문자(LMS)로 대체되면 45원. 환경값 SMS_PRICE_BMS 로 바꿀 수 있다.
+// 메시지 { to, from, type:'BMS_FREE', text, kakaoOptions:{ pfId, disableSms:false, bms:{ targeting:'I', chatBubbleType:'TEXT'|'IMAGE', imageId?, buttons:[{ name, linkType:'WL', linkMobile }] } } }
+// disableSms:false = 카카오로 못 보내면(채널 친구가 아니면) 같은 본문이 장문문자로 대체 발송된다. targeting 'I' = 채널 친구 대상(M·N 은 카카오 인허가 채널만).
+const DEFAULT_BMS_PRICE = 100;
+// 원본 블로그 리뷰 BMS_FREE 메시지처럼 최상위 subject 에 광고 머리말(tests/solapi-message-log.test.mjs 130줄). 대체 LMS 머리말이 여기서 오는지는 시험 발송 1건으로 확인한다.
+const BMS_AD_SUBJECT = '(광고)한성쇼케이스그룹';
+solapi.estimateBms = function estimateBms({ count }, env = process.env) {
+  const raw = env.SMS_PRICE_BMS;
+  const n = raw === undefined || raw === '' ? DEFAULT_BMS_PRICE : Number(raw);
+  const unit = Number.isFinite(n) && n > 0 ? n : null;
+  return { unit, total: unit === null ? null : unit * toInt(count), fallback_unit: unitPrice('LMS', env), currency: 'KRW' };
+};
+// messages:[{ to, text, imageId?, buttons:[{name, link}] }] → sendKakaoEach 와 같은 모양 { accepted, failed, groupId, uncertain, error, failedTo? }
+solapi.sendBmsEach = async function sendBmsEach({ from, pfId, messages }, { fetchImpl } = {}) {
+  const list = (Array.isArray(messages) ? messages : []).map(item => {
+    const bms = { targeting: 'I', chatBubbleType: item.imageId ? 'IMAGE' : 'TEXT' };
+    if (item.imageId) bms.imageId = item.imageId;
+    const buttons = (Array.isArray(item.buttons) ? item.buttons : []).map(button => ({ name: button.name, linkType: 'WL', linkMobile: button.link }));
+    if (buttons.length) bms.buttons = buttons;
+    return { to: item.to, from, type: 'BMS_FREE', subject: BMS_AD_SUBJECT, text: item.text, kakaoOptions: { pfId, disableSms: false, bms } };
+  });
+  const total = list.length;
+  let payload;
+  try {
+    payload = await call('messages/v4/send-many/detail', { method: 'POST', body: { messages: list, allowDuplicates: false, showMessageList: false } }, { fetchImpl });
+  } catch (error) {
+    const status = Number(error?.status);
+    if (status >= 400 && status < 500) return { accepted: 0, failed: total, groupId: null, uncertain: false, error: String(error.publicMessage || '쏠라피에서 거절했습니다.').slice(0, 200) };
+    return { accepted: 0, failed: 0, groupId: null, uncertain: true, error: '보냈는지 확인하지 못했습니다. 발송 내역을 확인해 주세요' };
+  }
+  const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
+  const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
+  const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
+  const failedTo = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.map(item => String(item?.to ?? '').replace(/\D/g, '')).filter(Boolean) : [];
+  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '', ...(failedTo.length ? { failedTo } : {}) };
+};
+
 const PROVIDERS = { solapi };
 
 export function getSendProvider(name = process.env.SMS_SEND_PROVIDER || 'solapi') {

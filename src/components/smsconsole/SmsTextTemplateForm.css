@@ -50,3 +50,5 @@
 .stf-form .stf-cu-pick { min-height: 28px; padding: 0 8px; font-size: 12px; }
 .stf-form .stf-cu-pick.is-active { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent-weak, #eaf0ff); font-weight: 600; }
 .stf-cu-foot { margin: 0; color: var(--smsc-muted, #667085); font-size: 12px; }
+
+.stf-cells .stf-hint { flex: 1 1 100%; font-size: 12px; color: var(--smsc-muted, #6b7280); }
