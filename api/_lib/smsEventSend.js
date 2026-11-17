@@ -9,7 +9,7 @@ import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
 import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, LEAD_KINDS, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
-import { ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
+import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
 import { bmsInWindow, bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
@@ -283,6 +283,19 @@ async function catchupTargets(db, { from, to }) {
   }
   return targets;
 }
+// 광고 문자 일괄 발송 미리보기용: 이 문구로 sms_auto_sends 에 행이 하나라도 있는 번호·주문(회차 무관)은 '이미 보낸' 것으로 본다.
+async function adDoneKeys(db, templateId, all) {
+  if (!templateId) return new Set();
+  await ensureAutoSchema(db);
+  const rows = (await db.execute({ sql: 'SELECT phone_hash, order_id FROM sms_auto_sends WHERE template_id = ?', args: [Number(templateId)] })).rows || [];
+  const hashes = new Set(rows.map(row => row.phone_hash));
+  const orders = new Set(rows.map(row => Number(row.order_id)));
+  return new Set(all.filter(item => hashes.has(autoPhoneHash(item.phone)) || orders.has(item.orderId)).map(item => item.key));
+}
+async function adImageCount(db, templateId) {
+  if (!templateId) return 0;
+  try { return storedImages((await db.execute({ sql: 'SELECT image, images FROM sms_text_templates WHERE id = ?', args: [Number(templateId)] })).rows?.[0]).length; } catch { return 0; }
+}
 async function doneKeys(db, templateId, keys) {
   const done = new Set();
   for (let i = 0; i < keys.length; i += KEY_CHUNK) {
@@ -292,7 +305,7 @@ async function doneKeys(db, templateId, keys) {
   return done;
 }
 // 따라잡기 미리보기(읽기만): 범위별 보낼 번호 수·예상 비용(알림톡 단가 × 건수)·현재 잔액. 번호 자체는 돌려주지 않는다. 수신거부·이미 보낸(이 문구로) 번호는 뺀다.
-export async function catchupPreview(db, { from, templateId = null, days = 0, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts, bms = false, dailyCap = 0 } = {}) {
+export async function catchupPreview(db, { from, templateId = null, days = 0, nowMs = Date.now(), env = process.env, provider, kakao = kakaoTemplates, kakaoOpts, bms = false, dailyCap = 0, ad = false } = {}) {
   const today = kstDate(nowMs);
   const end = catchupEnd(today, days); // 출고 N일이 지난 주문만
   await ensureEventSchema(db);
@@ -303,11 +316,12 @@ export async function catchupPreview(db, { from, templateId = null, days = 0, no
     if (optouts.has(autoPhoneHash(target.phone))) continue;
     all.push({ ...target, key: `${hashOf(target.phone)}:ship` });
   }
-  const done = templateId ? await doneKeys(db, Number(templateId), all.map(item => item.key)) : new Set();
+  const done = ad ? await adDoneKeys(db, templateId, all) : templateId ? await doneKeys(db, Number(templateId), all.map(item => item.key)) : new Set();
   const open = all.filter(item => !done.has(item.key));
   const vendor = provider || getSendProvider();
   const estimator = bms ? vendor?.estimateBms : vendor?.estimateKakao; // 브랜드메시지(자유형)는 100원 단가
-  const estimate = count => (typeof estimator === 'function' ? (Number(estimator.call(vendor, { count }, env)?.total) ?? null) : null);
+  const adParts = ad ? buildAdParts({ body: '' }, await adImageCount(db, templateId)) : null; // 광고 문자: 문구 1건 값(사진 있으면 MMS)으로 센다
+  const estimate = count => (ad ? (vendor && typeof vendor.estimate === 'function' ? adCostOf(vendor, adParts, count, env) : null) : typeof estimator === 'function' ? (Number(estimator.call(vendor, { count }, env)?.total) ?? null) : null);
   const count = fromDate => open.filter(item => item.shipDate >= fromDate).length;
   const oldest = open.length ? open[0].shipDate : '';
   const ranges = [
@@ -319,7 +333,7 @@ export async function catchupPreview(db, { from, templateId = null, days = 0, no
   let balance = null;
   try { const value = await kakao.getBalance(kakaoOpts); balance = Number.isFinite(value) ? value : null; } catch { balance = null; }
   const dailyMax = catchupDailyCap(dailyCap, env); // 일괄 발송 전용 하루 상한(안내 상한과 따로)
-  const perRun = catchupPerRun(env);
+  const perRun = ad ? AD_CATCHUP_PER_RUN : catchupPerRun(env);
   const picked = ranges[0];
   return { today, end_date: end, days: Math.max(0, Number(days) || 0), oldest_ship_date: oldest, ranges, unit: estimate(1), ...(bms ? { bms: true, fallback_unit: Number(vendor?.estimateBms?.({ count: 1 }, env)?.fallback_unit) || null } : {}), balance, daily_max: dailyMax, per_run: perRun, eta_minutes: picked.count ? Math.max(0, Math.ceil((Number(dailyCap) > 0 ? Math.min(picked.count, dailyMax) : picked.count) / perRun) - 1) * 5 : 0, days_needed: picked.count ? Math.ceil(picked.count / dailyMax) : 0, balance_short: balance !== null && picked.cost !== null && balance < picked.cost };
 }

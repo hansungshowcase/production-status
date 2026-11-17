@@ -340,7 +340,7 @@ test('화면 모델: 모든 조건에서 알림톡을 고르면 ata_template 이
   assert.deepEqual(sav({ kind: 'ship_plus_days', days: '2', ataTemplate: 'KA01', catchupOn: true, catchupFrom: '2026-10-01', catchupAt: '2026-11-21T09:00' }).catchup, { from: '2026-10-01', at: '2026-11-21T09:00' });
   assert.equal('catchup' in sav({ kind: 'ship_plus_days', days: '2', ataTemplate: 'KA01', catchupOn: false, catchupFrom: '2026-10-01', catchupAt: '2026-11-21T09:00' }), false);
   assert.equal('catchup' in sav({ kind: 'order_plus_days', days: '2', ataTemplate: 'KA01', catchupOn: true, catchupFrom: '2026-10-01', catchupAt: '2026-11-21T09:00' }), false);
-  assert.equal('catchup' in sav({ kind: 'ship_plus_days', days: '2', catchupOn: true, catchupFrom: '2026-10-01', catchupAt: '2026-11-21T09:00' }), false); // 알림톡이 아니면 실리지 않는다
+  assert.deepEqual(sav({ kind: 'ship_plus_days', days: '2', catchupOn: true, catchupFrom: '2026-10-01', catchupAt: '2026-11-21T09:00' }).catchup, { from: '2026-10-01', at: '2026-11-21T09:00' }); // 광고 문자(알림톡 아님)도 출고 완료 후면 실린다(2026-11-17)
   assert.equal(isAdKind('order_plus_days', 'KA01'), false);
   for (const kind of AUTO_KINDS) assert.match(autoConditionLine({ autoKind: kind, autoDays: 2, autoOffset: -1, autoStep: '포장', autoAtaTemplate: 'KA01' }), /알림톡/, kind);
   assert.doesNotMatch(autoConditionLine({ autoKind: 'due_date', autoOffset: -1 }), /알림톡/);

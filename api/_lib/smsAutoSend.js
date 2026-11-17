@@ -7,7 +7,7 @@ import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
 import { AUTO_KIND, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
-import { ataReady, buildEventParts, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
+import { ataReady, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -22,6 +22,8 @@ const TIME_BUDGET_MS = 70000; // 여러 통 사이 기다림(설계 22-4) 때문
 export const AUTO_TIME_BUDGET_MS = TIME_BUDGET_MS; // 크론이 광고·안내 실행에 같은 전체 마감 시각을 넘길 때 쓴다
 const SEND_RESERVE_MS = 4000; // 전체 마감까지 이만큼도 안 남았으면 사진 올리기·선점을 시작하지 않는다
 const TARGET_LIMIT = 1000;
+export const AD_CATCHUP_PER_RUN = 30; // 광고 문자 일괄 발송(이미 출고된 주문 한 번 보내기)은 실행 1번에 이만큼까지
+const AD_CATCHUP_LIMIT = 20000; // 일괄 후보 한 번 조회 상한(번호 기준 중복 제거 전)
 
 const flags = new Map();
 export function _resetAutoSchemaForTest() { flags.clear(); }
@@ -48,6 +50,7 @@ export async function ensureAutoSchema(db) {
   });
   // 회차(2026-11-13): 순서 고정 — ① 칸 추가 ② 새 유일 인덱스 ③ 옛 유일 제약 삭제. 실패하면 이 실행이 실패로 끝난다(선점 전).
   await db.execute({ sql: 'ALTER TABLE sms_auto_sends ADD COLUMN IF NOT EXISTS round INT NOT NULL DEFAULT 1', args: [] });
+  await db.execute({ sql: 'ALTER TABLE sms_auto_sends ADD COLUMN IF NOT EXISTS kind TEXT', args: [] }); // 'catchup' = 이미 출고된 주문 한 번 보내기분(평소 하루 상한에서 뺀다)
   await db.execute({ sql: 'CREATE UNIQUE INDEX IF NOT EXISTS sms_auto_sends_tpl_phone_round ON sms_auto_sends (template_id, phone_hash, round)', args: [] });
   await db.execute({ sql: 'CREATE UNIQUE INDEX IF NOT EXISTS sms_auto_sends_tpl_order_round ON sms_auto_sends (template_id, order_id, round)', args: [] });
   const oldUnique = (await db.execute({ sql: "SELECT conname FROM pg_constraint WHERE conrelid = 'sms_auto_sends'::regclass AND contype = 'u'", args: [] })).rows || [];
@@ -202,6 +205,41 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
 
 const placeholders = list => list.map(() => '?').join(', ');
 
+// 광고 문자 일괄 발송(이미 출고된 주문 한 번 보내기): 출고일이 [시작일, 오늘 − days] 인 출고 완료 주문의 번호(번호당 최근 출고 1건).
+// 수신거부·오늘 이미 나간 번호·이 문구로 행이 하나라도 있는 번호/주문·이번 실행의 평소 대상 번호는 뺀다.
+// 회차 = 예정일이 이미 지났거나 간격의 절반 안에 닥칠 회차까지를 이번 1통으로 친다(다음 회차는 그 뒤 예정일에 평소 규칙대로).
+async function adCatchupTargets(db, template, { nowMs, skipHashes }) {
+  const today = kstDate(nowMs);
+  const upper = addDays(today, -template.auto_days);
+  if (template.auto_catchup_from > upper) return [];
+  const out = await db.execute({
+    sql: `SELECT id, phone, client_name, LEFT(ship_date, 10) AS ship_day FROM orders
+      WHERE status = 'shipped' AND ship_date IS NOT NULL AND LEFT(ship_date, 10) >= ? AND LEFT(ship_date, 10) <= ?
+      ORDER BY ship_date DESC, id DESC LIMIT ${AD_CATCHUP_LIMIT}`,
+    args: [template.auto_catchup_from, upper],
+  });
+  const claimed = (await db.execute({ sql: 'SELECT phone_hash, order_id FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || [];
+  const claimedHash = new Set(claimed.map(row => row.phone_hash));
+  const claimedOrder = new Set(claimed.map(row => Number(row.order_id)));
+  const optouts = new Set(((await db.execute({ sql: 'SELECT phone_hash FROM sms_optouts', args: [] })).rows || []).map(row => row.phone_hash));
+  const todayHash = new Set(((await db.execute({ sql: 'SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date = ?', args: [today] })).rows || []).map(row => row.phone_hash));
+  const repeat = Math.max(1, Math.min(AUTO_LIMITS.repeatMax, Number(template.auto_repeat) || 1));
+  const interval = Number(template.auto_interval) || AUTO_LIMITS.defaultInterval;
+  const seen = new Set();
+  const targets = [];
+  for (const row of out.rows || []) {
+    const phone = digits(row.phone);
+    if (!TARGET_RE.test(phone) || seen.has(phone)) continue;
+    seen.add(phone); // 번호당 첫 1건(최근 출고)만 본다
+    const hash = phoneHash(phone);
+    if (optouts.has(hash) || todayHash.has(hash) || claimedHash.has(hash) || claimedOrder.has(Number(row.id)) || skipHashes.has(hash)) continue;
+    const age = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${row.ship_day}T00:00:00Z`)) / DAY_MS);
+    const round = Math.max(1, Math.min(repeat, Math.floor((age - template.auto_days + Math.floor(interval / 2)) / interval) + 1));
+    targets.push({ orderId: Number(row.id), phone, name: row.client_name, shipDate: row.ship_day, hash, round, catchup: true });
+  }
+  return targets;
+}
+
 // ---- 자동 발송 1개 문구 실행(설계 3절 ①~⑧ 순서 그대로) ----
 // deadline: runAutoSendAll 이 만든 전체 마감 시각(tick 기준). 없으면(단독 실행) 이 문구만 TIME_BUDGET_MS.
 export async function runAutoSend(template, { db, provider, env = process.env, nowMs = Date.now(), fetchImpl, tick = Date.now, deadline, sleep, kakao, kakaoOpts } = {}) {
@@ -226,13 +264,28 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   await ensureAutoSchema(db);
   const today = kstDate(nowMs);
   const eligible = await eligibleTargets(db, template, { nowMs, startDate: template.auto_start_date }); // ④
+  let catchupList = []; // 이미 출고된 주문 한 번 보내기(일괄 발송): 설정이 있고 시각이 됐을 때만 조회한다
+  if (catchupActive({ ...template, auto_ata_template: 'ad' }, nowMs)) { // 광고 문구는 알림톡 칸이 비어 있어 같은 판정을 쓰려고 칸만 채워 넘긴다
+    catchupList = await adCatchupTargets(db, template, { nowMs, skipHashes: new Set(eligible.map(t => t.hash)) });
+    if (!catchupList.length) {
+      try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_done_at = NOW() WHERE id = ? AND auto_catchup_done_at IS NULL RETURNING id', args: [template.id] }); } catch { console.error('[sms-auto] 일괄 발송 완료 표시 실패'); }
+    }
+  }
   out.targets = eligible.length;
-  if (!eligible.length) return { ...out, ran: true };
+  if (!eligible.length && !catchupList.length) return { ...out, ran: true };
 
-  const usedToday = Number((await db.execute({ sql: 'SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ?', args: [today] })).rows?.[0]?.n) || 0; // ⑤
+  const usedToday = eligible.length ? Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ? AND COALESCE(kind, '') <> 'catchup'", args: [today] })).rows?.[0]?.n) || 0 : 0; // ⑤ 평소 상한은 일괄 발송분을 세지 않는다
   const room = Math.max(0, settings.maxPerDay - usedToday);
   const picked = eligible.slice(0, room);
-  if (!picked.length) return { ...out, ran: true, reason: 'cap' };
+  let catchupPicked = [];
+  if (catchupList.length) { // 일괄 발송분은 자기 하루 상한과 실행 1번 30건 중 작은 쪽까지
+    const catchupUsed = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ? AND kind = 'catchup'", args: [today] })).rows?.[0]?.n) || 0;
+    const ownCap = Number(template.auto_catchup_daily) > 0 ? catchupDailyCap(template.auto_catchup_daily, env) : 0; // 문구별 하루 최대(없으면 0 = 전역 상한만)
+    const ownUsed = ownCap ? Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ? AND kind = 'catchup' AND template_id = ?", args: [today, template.id] })).rows?.[0]?.n) || 0 : 0;
+    catchupPicked = catchupList.slice(0, Math.max(0, Math.min(AD_CATCHUP_PER_RUN, catchupMaxPerDay(env) - catchupUsed, ownCap ? ownCap - ownUsed : Infinity)));
+  }
+  if (!picked.length && !catchupPicked.length) return { ...out, ran: true, reason: 'cap' };
+  const sendList = [...picked, ...catchupPicked];
 
   const parts = buildParts(template, template.images.length);
   if (multiPartTimeShort(parts.length, endAt - tick(), env)) return { ...out, ran: true, reason: 'time' }; // 여러 통은 끝까지 나갈 시간이 모자라면 선점 전에 통째로 다음 실행으로
@@ -247,22 +300,32 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
 
   // ⑦ 선점: 여러 행 INSERT 1번. 돌아온 행만 보낸다. (회차 round 포함, 모든 회차 대상을 한 번에)
   if (timeShort()) return { ...out, ran: true, reason: 'time' };
-  const values = picked.map(() => "(?, ?, ?, ?, ?, ?, 'claimed', ?)").join(', ');
-  const claimArgs = picked.flatMap(t => [template.id, t.hash, t.phone.slice(-4), t.orderId, t.shipDate, today, t.round]);
+  const withKind = catchupPicked.length > 0; // 일괄 항목이 섞였을 때만 kind 칸을 넣는다(평소 항목은 NULL)
+  const values = sendList.map(t => (withKind ? `(?, ?, ?, ?, ?, ?, 'claimed', ?, ${t.catchup ? "'catchup'" : 'NULL'})` : "(?, ?, ?, ?, ?, ?, 'claimed', ?)")).join(', ');
+  const claimArgs = sendList.flatMap(t => [template.id, t.hash, t.phone.slice(-4), t.orderId, t.shipDate, today, t.round]);
   const claimedRows = (await db.execute({
-    sql: `INSERT INTO sms_auto_sends (template_id, phone_hash, phone_last4, order_id, ship_date, kst_date, status, round) VALUES ${values} ON CONFLICT DO NOTHING RETURNING id, phone_hash, round`,
+    sql: `INSERT INTO sms_auto_sends (template_id, phone_hash, phone_last4, order_id, ship_date, kst_date, status, round${withKind ? ', kind' : ''}) VALUES ${values} ON CONFLICT DO NOTHING RETURNING id, phone_hash, round`,
     args: claimArgs,
   })).rows || [];
-  const byHash = new Map(picked.map(t => [t.hash, t]));
+  const byHash = new Map(sendList.map(t => [t.hash, t]));
   let active = claimedRows.map(row => ({ id: Number(row.id), target: byHash.get(row.phone_hash) })).filter(item => item.target);
   // 크론이 겹쳐 돌았을 때: 선점 뒤 오늘 합계가 상한을 넘으면 넘은 행은 지우고 보내지 않는다.
-  const after = Number((await db.execute({ sql: 'SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ?', args: [today] })).rows?.[0]?.n) || 0;
-  if (after > settings.maxPerDay) {
-    const over = Math.min(active.length, after - settings.maxPerDay);
-    const drop = active.slice(active.length - over);
-    if (drop.length) {
-      await db.execute({ sql: `DELETE FROM sms_auto_sends WHERE status = 'claimed' AND id IN (${placeholders(drop)})`, args: drop.map(item => item.id) });
-      active = active.slice(0, active.length - over);
+  // 평소 항목과 일괄 항목은 따로 센다(일괄 항목은 하루 catchupMaxPerDay).
+  const trim = async (group, after, limit) => {
+    if (after <= limit) return;
+    const drop = group.slice(group.length - Math.min(group.length, after - limit));
+    if (!drop.length) return;
+    await db.execute({ sql: `DELETE FROM sms_auto_sends WHERE status = 'claimed' AND id IN (${placeholders(drop)})`, args: drop.map(item => item.id) });
+    active = active.filter(item => !drop.includes(item));
+  };
+  const after = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ? AND COALESCE(kind, '') <> 'catchup'", args: [today] })).rows?.[0]?.n) || 0;
+  await trim(active.filter(item => !item.target.catchup), after, settings.maxPerDay);
+  if (active.some(item => item.target.catchup)) {
+    const afterCatchup = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ? AND kind = 'catchup'", args: [today] })).rows?.[0]?.n) || 0;
+    await trim(active.filter(item => item.target.catchup), afterCatchup, catchupMaxPerDay(env));
+    if (Number(template.auto_catchup_daily) > 0) {
+      const afterOwn = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date = ? AND kind = 'catchup' AND template_id = ?", args: [today, template.id] })).rows?.[0]?.n) || 0;
+      await trim(active.filter(item => item.target.catchup), afterOwn, catchupDailyCap(template.auto_catchup_daily, env));
     }
   }
   out.claimed = active.length;
@@ -299,6 +362,13 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
     });
   } catch { /* 기록 실패가 이미 끝난 발송 결과를 막지 않는다. 행은 claimed 로 남아 다음 실행이 uncertain 으로 바꾼다. */ }
   out[status] = active.length;
+  const catchupActiveItems = active.filter(item => item.target.catchup);
+  if (catchupActiveItems.length) { // 일괄 항목이 섞인 실행: 깨끗한 성공이 아니면 이 문구의 일괄 발송을 멈춘다(화면에서 다시 저장해야 이어진다). 평소 발송은 계속된다.
+    out.catchup = status === 'sent' ? catchupActiveItems.length : 0;
+    if (status !== 'sent') {
+      try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_paused_at = NOW(), auto_catchup_error = ? WHERE id = ? RETURNING id', args: [String(reason || (status === 'failed' ? '거절' : '불확실')).slice(0, 200), template.id] }); } catch { console.error('[sms-auto] 일괄 발송 멈춤 표시 실패'); }
+    }
+  }
   if (out.sent >= 1 && template.auto_copy_to && !timeShort()) { // 사본(2026-11-17): 고객 발송·기록이 끝난 뒤 하루 1통. 실패해도 위 결과는 그대로
     try {
       const claimed = await db.execute({ sql: "UPDATE sms_text_templates SET auto_copy_date = ? WHERE id = ? AND COALESCE(auto_copy_date, '') <> ? RETURNING id", args: [today, template.id, today] });
@@ -386,10 +456,11 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
     enabled: template.auto_enabled && autoSettings(env).on, days: template.auto_days, start_date: template.auto_start_date || '',
     today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'), failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'),
     last_sent_date: sums.find(row => row.status === 'sent')?.last || '', enable_blocked_reason: reason,
+    ...(template.auto_kind === AUTO_KIND && template.auto_catchup_at && template.auto_catchup_paused ? { catchup_paused: true, catchup_error: template.auto_catchup_error } : {}),
   });
 }
 
-function costOf(vendor, parts, people, env) {
+export function costOf(vendor, parts, people, env) {
   let total = 0;
   for (const part of parts) {
     const type = part.image >= 0 ? 'MMS' : 'LMS';

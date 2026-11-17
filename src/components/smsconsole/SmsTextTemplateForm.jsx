@@ -118,13 +118,13 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const check = validateTextForm({ name, body: outBody, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience, staff, step, ataTemplate, catchupOn, catchupFrom, catchupAt, catchupDaily, copyTo, imageCount: merge && images.length >= 2 ? 1 : images.length, bmsButtons });
   useEffect(() => { setError(pendingError.current); pendingError.current = ''; }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, bmsButtons, adMark, sendTime, copyTo, catchupOn, catchupFrom, catchupAt, catchupDaily, leadSource]);
   // 이미 출고된 주문 1회 발송 미리보기(읽기만): 켜져 있고 출고 완료 후 + 알림톡일 때 출고일 범위가 바뀌면 건수·비용·잔액을 다시 읽는다
-  const catchupShown = autoKind === AUTO_KIND && Boolean(ataTemplate) && catchupOn;
+  const catchupShown = autoKind === AUTO_KIND && catchupOn;
   const stageId = stages.find(item => item.key === activeKey)?.id;
   useEffect(() => {
     if (!catchupShown) { setCatchupInfo({ loading: false, error: '', data: null }); return undefined; }
     let alive = true;
     setCatchupInfo(prev => ({ ...prev, loading: true, error: '' }));
-    fetchSmsConsole('catchup_preview', { bms: isBmsAta(ataTemplate) ? '1' : '', from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId, days: Number(days) || 0, daily: /^\d+$/.test(String(catchupDaily).trim()) ? String(catchupDaily).trim() : '' })
+    fetchSmsConsole('catchup_preview', { bms: isBmsAta(ataTemplate) ? '1' : '', ad: ataTemplate ? '' : '1', from: /^\d{4}-\d{2}-\d{2}$/.test(catchupFrom) ? catchupFrom : getKstToday(), id: stageId, days: Number(days) || 0, daily: /^\d+$/.test(String(catchupDaily).trim()) ? String(catchupDaily).trim() : '' })
       .then(out => { if (!alive) return; setCatchupInfo({ loading: false, error: '', data: out }); if (!catchupFrom && out?.oldest_ship_date) setCatchupFrom(out.oldest_ship_date); })
       .catch(err => { if (alive) setCatchupInfo({ loading: false, error: err.message || '미리보기를 불러오지 못했습니다.', data: null }); });
     return () => { alive = false; };
@@ -426,7 +426,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </span>
           </div>
         ) : null}
-        {autoKind === AUTO_KIND && ataTemplate ? (
+        {autoKind === AUTO_KIND ? (
           <div className="stf-line">
             <span className="stf-tag">1회 발송</span>
             <span className="stf-cells">
@@ -459,9 +459,9 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                     </li>
                   ))}
                 </ul>
-                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · {catchupInfo.data.bms ? `브랜드메시지(자유형) 1건 ${won(catchupInfo.data.unit)}${catchupInfo.data.fallback_unit ? `(친구가 아니면 장문문자 ${won(catchupInfo.data.fallback_unit)}으로 대체)` : ''}` : `알림톡 1건 ${won(catchupInfo.data.unit)}`} · 일괄 발송은 5분마다 {catchupInfo.data.per_run}건씩, 시작 후 약 {catchupInfo.data.eta_minutes}분 안에 모두 나갑니다({String(catchupDaily).trim() ? `하루 ${catchupInfo.data.daily_max}건씩${catchupInfo.data.days_needed > 1 ? `, 약 ${catchupInfo.data.days_needed}일` : ''}` : `하루 ${catchupInfo.data.daily_max}건까지${catchupInfo.data.days_needed > 1 ? `, 넘으면 다음 날 이어서 약 ${catchupInfo.data.days_needed}일` : ''}`}, 안내 문자 상한과 따로 셉니다)</p>
+                <p className="stf-cu-foot">현재 잔액 {won(catchupInfo.data.balance)} · {catchupInfo.data.bms ? `브랜드메시지(자유형) 1건 ${won(catchupInfo.data.unit)}${catchupInfo.data.fallback_unit ? `(친구가 아니면 장문문자 ${won(catchupInfo.data.fallback_unit)}으로 대체)` : ''}` : `${ataTemplate ? '알림톡' : '문자'} 1건 ${won(catchupInfo.data.unit)}`} · 일괄 발송은 5분마다 {catchupInfo.data.per_run}건씩, 시작 후 약 {catchupInfo.data.eta_minutes}분 안에 모두 나갑니다({String(catchupDaily).trim() ? `하루 ${catchupInfo.data.daily_max}건씩${catchupInfo.data.days_needed > 1 ? `, 약 ${catchupInfo.data.days_needed}일` : ''}` : `하루 ${catchupInfo.data.daily_max}건까지${catchupInfo.data.days_needed > 1 ? `, 넘으면 다음 날 이어서 약 ${catchupInfo.data.days_needed}일` : ''}`}, 안내 문자 상한과 따로 셉니다)</p>
                 {catchupInfo.data.balance_short ? <p className="ktm-alert" role="alert">잔액이 예상 비용보다 적습니다. 충전 후 보내세요(발송은 막지 않습니다).</p> : null}
-                <p className="stf-cu-foot">{bmsOn ? '오전 8시~오후 8시 사이에만 나가며, 그 밖의 시각이면 다음 확인 때 나갑니다.' : '템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다.'} 출고 후 설정한 일수가 지난 주문만 보내고, 그 뒤 출고분은 평소 자동 발송이 그 일수째에 보냅니다. 같은 번호에는 겹쳐 보내지 않습니다.</p>
+                <p className="stf-cu-foot">{bmsOn ? '오전 8시~오후 8시 사이에만 나가며, 그 밖의 시각이면 다음 확인 때 나갑니다.' : !ataTemplate ? '오전 8시~오후 9시 사이에만 나가며, 평소 자동 발송 시각이 지난 뒤 이어서 나갑니다.' : '템플릿이 승인 상태여야 지정 시각에 나가며, 승인 전이면 승인 후 자동 발송을 켠 뒤 다음 확인 때 나갑니다.'} 출고 후 설정한 일수가 지난 주문만 보내고, 그 뒤 출고분은 평소 자동 발송이 그 일수째에 보냅니다. 같은 번호에는 겹쳐 보내지 않습니다.</p>
               </div>
             ) : null}
           </div>

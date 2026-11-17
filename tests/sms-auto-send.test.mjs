@@ -37,6 +37,8 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
       if (t.startsWith('SELECT phone_hash FROM sms_optouts')) return { rows: state.optouts.map(phone_hash => ({ phone_hash })) };
       if (t.startsWith('SELECT phone_hash, order_id')) return { rows: state.sends.filter(r => r.template_id === args[0]) };
       if (t.startsWith('SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date')) return { rows: state.sends.filter(r => r.kst_date === args[0]).map(r => ({ phone_hash: r.phone_hash })) };
+      if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date') && t.includes("kind = 'catchup'") && !t.includes('<>')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0] && r.kind === 'catchup' && (!t.includes('template_id') || r.template_id === args[1])).length }] };
+      if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date') && t.includes("<> 'catchup'")) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0] && r.kind !== 'catchup').length }] };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0]).length }] };
       if (t.startsWith('SELECT status, COUNT(*) AS n')) {
         const by = {};
@@ -47,10 +49,11 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
       if (t.startsWith('INSERT INTO sms_auto_sends')) {
         beforeInsert?.(state);
         const rows = [];
+        const kinds = [...t.matchAll(/'claimed', \?, (?:'(catchup)'|NULL)\)/g)].map(m => m[1] || null);
         for (let i = 0; i < args.length; i += 7) {
           const [template_id, phone_hash, , order_id, , kst_date, round] = args.slice(i, i + 7);
           if (state.sends.some(r => r.template_id === template_id && (r.round || 1) === round && (r.phone_hash === phone_hash || r.order_id === order_id))) continue;
-          const row = { id: state.nextId++, template_id, phone_hash, order_id, kst_date, status: 'claimed', round };
+          const row = { id: state.nextId++, template_id, phone_hash, order_id, kst_date, status: 'claimed', round, kind: kinds[i / 7] || null };
           state.sends.push(row); rows.push({ id: row.id, phone_hash, round });
         }
         return { rows };
@@ -62,6 +65,8 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
         return { rows: [] };
       }
       if (t.startsWith("UPDATE sms_auto_sends SET status = 'uncertain'")) { for (const r of state.sends.filter(x => x.status === 'claimed' && x.kst_date < args[0])) r.status = 'uncertain'; return { rows: [] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_catchup_done_at = NOW()')) { state.tpl.auto_catchup_done = true; return { rows: [{ id: args[0] }] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_catchup_paused_at = NOW()')) { state.tpl.auto_catchup_paused = true; state.tpl.auto_catchup_error = args[0]; return { rows: [{ id: args[1] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_copy_date = ? WHERE id = ?')) { if ((state.copyDate || '') === args[0]) return { rows: [] }; state.copyDate = args[0]; return { rows: [{ id: args[1] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_enabled = true, auto_start_date')) { state.tpl.auto_enabled = true; state.tpl.auto_start_date = args[0]; return { rows: [{ id: 7 }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_enabled = false WHERE id')) { state.tpl.auto_enabled = false; return { rows: [{ id: 7 }] }; }
@@ -530,4 +535,79 @@ test('문구 저장: 사본 번호는 숫자만 저장, 형식이 틀리면 거�
   const changed = await saveTextTemplate(db, { id: created.body.item.id, name: '사본', body: BODY, auto: { ...auto, copy_to: '010-1111-2222' } });
   assert.equal(changed.body.item.auto_enabled, true);
   assert.equal(changed.body.item.auto_copy_to, '01011112222');
+});
+
+// ---- 광고 문자 일괄 발송(이미 출고된 주문에 한 번 보내기, 2026-11-17) ----
+const CU = { auto_repeat: 10, auto_interval: 50, auto_catchup_from: '2026-06-01', auto_catchup_at: '2026-11-20T09:00' };
+const runCu = (db, provider, extra = {}) => {
+  const t = db.state.tpl;
+  return runAutoSend({ id: t.id, name: t.name, body: t.body, images: [], auto_kind: t.auto_kind, auto_days: t.auto_days, auto_enabled: true, auto_start_date: t.auto_start_date, auto_send_from: '', auto_repeat: t.auto_repeat || 1, auto_interval: t.auto_interval || 30, auto_ata_template: '', auto_catchup_from: t.auto_catchup_from || '', auto_catchup_at: t.auto_catchup_at || '', auto_catchup_daily: t.auto_catchup_daily || 0, auto_catchup_done: Boolean(t.auto_catchup_done), auto_catchup_paused: Boolean(t.auto_catchup_paused) }, { db, provider, env: ENV, nowMs: NOW, ...extra });
+};
+
+test('광고 일괄 발송: 출고 100일 지난 번호가 한 번 선점·발송되고 kind=catchup·회차는 식 값이며 다음 실행엔 다시 안 나간다', async () => {
+  const db = setup({ template: CU, orders: [order(1, '010-3333-4444', '2026-08-12'), order(2, '010-5555-6666', '2026-10-31')] });
+  const provider = fakeProvider();
+  const out = await runCu(db, provider);
+  assert.equal(out.claimed, 2);
+  assert.equal(out.catchup, 1);
+  const cu = db.state.sends.find(r => r.phone_hash === phoneHash('010-3333-4444'));
+  assert.deepEqual([cu.kind, cu.round, cu.status], ['catchup', 3, 'sent']); // age 100, days 20, interval 50 → floor((100-20+25)/50)+1 = 3
+  assert.equal(db.state.sends.find(r => r.phone_hash === phoneHash('010-5555-6666')).kind, null);
+  const sendsBefore = provider.calls.send.length;
+  const next = await runCu(db, provider, { nowMs: NOW + 86400000 });
+  assert.equal(next.catchup, undefined);
+  assert.equal(provider.calls.send.length, sendsBefore);
+  assert.equal(db.state.tpl.auto_catchup_done, true);
+});
+
+test('광고 일괄 발송: 대상이 0건이면 완료 표시가 나가고, 일괄 설정이 비면 일괄 조회·완료 표시 SQL 이 없다', async () => {
+  const empty = setup({ template: CU, orders: [order(2, '010-5555-6666', '2026-10-31')] });
+  const emptyOut = await runCu(empty, fakeProvider());
+  assert.equal(emptyOut.ran, true);
+  assert.equal(empty.state.tpl.auto_catchup_done, true);
+  const plain = setup({ orders: [order(2, '010-5555-6666', '2026-10-31')] });
+  const plainOut = await runCu(plain, fakeProvider());
+  assert.equal(plainOut.claimed, 1);
+  assert.equal(plainOut.catchup, undefined);
+  assert.ok(plain.state.sql.every(sql => !sql.includes('ship_date DESC') && !sql.includes('auto_catchup_done_at') && !sql.includes(', kind)')));
+});
+
+test('광고 일괄 발송: 평소 상한 30 이 찬 날에도 일괄은 30건까지 나가고, 일괄이 섞인 발송이 실패하면 멈춤 표시가 찍힌다', async () => {
+  const old = Array.from({ length: 31 }, (_, i) => order(100 + i, `0101000${String(i).padStart(4, '0')}`, '2026-08-12'));
+  const full = setup({ template: CU, orders: [order(2, '010-5555-6666', '2026-10-31'), ...old] });
+  for (let i = 0; i < 30; i += 1) full.state.sends.push({ id: 900 + i, template_id: 9, phone_hash: `p${i}`, order_id: 900 + i, kst_date: '2026-11-20', status: 'sent', kind: null });
+  const out = await runCu(full, fakeProvider());
+  assert.equal(out.claimed, 30);
+  assert.equal(out.catchup, 30);
+  assert.equal(full.state.sends.filter(r => r.template_id === 7 && r.kind === 'catchup').length, 30);
+  assert.equal(full.state.sends.some(r => r.phone_hash === phoneHash('010-5555-6666')), false); // 평소 항목은 상한 때문에 못 나갔다
+  const bad = setup({ template: CU, orders: [order(2, '010-5555-6666', '2026-10-31'), order(3, '010-3333-4444', '2026-08-12')] });
+  const failed = await runCu(bad, fakeProvider({ sendResults: [{ accepted: 0, failed: 2, groupId: 'G', uncertain: false, error: '거절됨' }] }));
+  assert.equal(failed.failed, 2);
+  assert.equal(failed.catchup, 0);
+  assert.equal(bad.state.tpl.auto_catchup_paused, true);
+  assert.match(bad.state.tpl.auto_catchup_error, /거절/);
+  const capped = setup({ template: { ...CU, auto_catchup_daily: 5 }, orders: old });
+  assert.equal((await runCu(capped, fakeProvider())).catchup, 5); // 문구별 하루 최대 건수도 따른다
+});
+
+test('문구 저장: 광고 ship_plus_days 의 일괄 발송 값이 저장·조회되고, 일괄 값만 바꾼 저장은 켜짐을 끄지 않으며, 주문 후에서는 비워 저장된다', async () => {
+  const db = setup();
+  const auto = { kind: 'ship_plus_days', days: 20, catchup: { from: '2026-06-01', at: '2026-11-21T09:00' } };
+  const created = await saveTextTemplate(db, { name: '일괄', body: BODY, auto });
+  assert.equal(created.status, 201);
+  assert.deepEqual([created.body.item.auto_catchup_from, created.body.item.auto_catchup_at], ['2026-06-01', '2026-11-21T09:00']);
+  assert.equal(db.state.templates[0].auto_catchup_at, '2026-11-21T09:00');
+  const got = await getTextTemplate(db, { id: created.body.item.id });
+  assert.deepEqual([got.body.item.auto_catchup_from, got.body.item.auto_catchup_at, got.body.item.auto_catchup_done], ['2026-06-01', '2026-11-21T09:00', false]);
+  db.state.templates[0].auto_enabled = true;
+  const moved = await saveTextTemplate(db, { id: created.body.item.id, name: '일괄', body: BODY, auto: { ...auto, catchup: { from: '2026-07-01', at: '2026-11-22T10:00' } } });
+  assert.equal(moved.body.item.auto_enabled, true);
+  assert.equal(moved.body.item.auto_disabled, undefined);
+  const guard = db.state.sql.filter(sql => sql.startsWith('UPDATE sms_text_templates SET name = ?, body = ?, auto_enabled = false')).at(-1);
+  assert.ok(guard && !guard.includes('auto_catchup_from'));
+  const orderBased = await saveTextTemplate(db, { name: '주문후', body: BODY, auto: { kind: 'order_plus_days', days: 3, catchup: { from: '2026-06-01', at: '2026-11-21T09:00' } } });
+  assert.equal(orderBased.status, 201);
+  assert.equal(orderBased.body.item.auto_catchup_at, undefined);
+  assert.equal(db.state.templates.at(-1).auto_catchup_at, '');
 });

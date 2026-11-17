@@ -125,8 +125,8 @@ function autoFields(row) {
     ...(isLeadKind(row.auto_kind) || row.auto_ata_template ? { auto_ata_template: String(row.auto_ata_template || '') } : {}),
     ...(row.auto_ata_template === BMS_TEMPLATE_ID ? bmsFields(row.auto_bms) : {}), // 브랜드메시지(자유형): 버튼·사진 올림 여부만(채널·발신번호·imageId 는 싣지 않는다)
     ...(isLeadKind(row.auto_kind) && LEAD_SOURCES.includes(row.auto_lead_source) && row.auto_lead_source ? { auto_lead_source: String(row.auto_lead_source) } : {}),
-    ...(isShipAta(row) && row.auto_catchup_at ? { auto_catchup_from: String(row.auto_catchup_from || ''), auto_catchup_at: String(row.auto_catchup_at), auto_catchup_done: Boolean(row.auto_catchup_done_at), ...(Number(row.auto_catchup_daily) > 0 ? { auto_catchup_daily: Number(row.auto_catchup_daily) } : {}) } : {}),
-    ...(isShipAta(row) && row.auto_catchup_at && row.auto_catchup_paused_at ? { auto_catchup_paused: true, auto_catchup_error: String(row.auto_catchup_error || '') } : {}),
+    ...(row.auto_kind === AUTO_KIND && row.auto_catchup_at ? { auto_catchup_from: String(row.auto_catchup_from || ''), auto_catchup_at: String(row.auto_catchup_at), auto_catchup_done: Boolean(row.auto_catchup_done_at), ...(Number(row.auto_catchup_daily) > 0 ? { auto_catchup_daily: Number(row.auto_catchup_daily) } : {}) } : {}),
+    ...(row.auto_kind === AUTO_KIND && row.auto_catchup_at && row.auto_catchup_paused_at ? { auto_catchup_paused: true, auto_catchup_error: String(row.auto_catchup_error || '') } : {}),
     ...(row.auto_send_time ? { auto_send_time: String(row.auto_send_time) } : {}),
     ...(row.auto_copy_to ? { auto_copy_to: String(row.auto_copy_to) } : {}),
   };
@@ -231,7 +231,9 @@ function readAutoBase(input, staff) {
   const interval = input.auto.interval === undefined || input.auto.interval === null || input.auto.interval === '' ? AUTO_LIMITS.defaultInterval : Number(input.auto.interval);
   if (!(Number.isInteger(interval) && interval >= 1 && interval <= AUTO_LIMITS.intervalMax)) return { error: `반복 간격은 1~${AUTO_LIMITS.intervalMax}일로 입력해 주세요.` };
   if (typeof input.body === 'string' && [...input.body.matchAll(/#\{([^}]*)\}/g)].some(match => match[1] !== '고객명')) return { error: INFO_CHECK_MESSAGE.info_unknown_var, reason: 'info_unknown_var' };
-  return { kind: input.auto.kind, days, send_from: sendFrom, repeat, interval, ...AD_EXTRA };
+  const adCatchup = input.auto.kind === AUTO_KIND ? readCatchup(input.auto.catchup) : { catchup_from: '', catchup_at: '', catchup_daily: null }; // 광고 문자(출고 완료 후)도 이미 출고된 주문에 한 번 보내기를 쓸 수 있다
+  if (adCatchup.error) return adCatchup;
+  return { kind: input.auto.kind, days, send_from: sendFrom, repeat, interval, ...AD_EXTRA, catchup_from: adCatchup.catchup_from, catchup_at: adCatchup.catchup_at, catchup_daily: adCatchup.catchup_daily ?? null };
 }
 
 // 알림톡 수단 읽기(모든 조건 공용) → { ata:'' } | { ata } | { error, reason? }. 받는 사람은 고객만, 본문은 고객명 변수만(광고 낱말 검사 없음).
@@ -322,7 +324,7 @@ function readImage(input) {
 
 // 저장한 새 칸 값 → 응답(auto_*) / DB 행 모양. 저장 직후 응답은 방금 검증한 값을 그대로 쓴다.
 const newAutoColumns = auto => ({ auto_send_time: auto.send_time || '', auto_copy_to: auto.copy_to || '', auto_offset: auto.offset, auto_unless_step: auto.unless_step, auto_audience: auto.audience, auto_staff: auto.staff, auto_msg_type: auto.msg_type, auto_step: auto.step, auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode, auto_ata_template: auto.ata || '', auto_catchup_from: auto.catchup_from || '', auto_catchup_at: auto.catchup_at || '', auto_catchup_daily: auto.catchup_daily ?? null, auto_lead_source: auto.lead_source || '', auto_bms: auto.bms_json || null });
-const newAutoFields = auto => ({ ...(auto.send_time ? { auto_send_time: auto.send_time } : {}), ...(auto.copy_to ? { auto_copy_to: auto.copy_to } : {}), auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type, ...(auto.step ? { auto_step: auto.step } : {}), ...(isEventKind(auto.kind) ? { auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode } : {}), ...(isLeadKind(auto.kind) || auto.ata ? { auto_ata_template: auto.ata || '' } : {}), ...(auto.ata === BMS_TEMPLATE_ID ? bmsFields(auto.bms_json) : {}), ...(isLeadKind(auto.kind) && auto.lead_source ? { auto_lead_source: auto.lead_source } : {}), ...(auto.kind === AUTO_KIND && auto.ata && auto.catchup_at ? { auto_catchup_from: auto.catchup_from, auto_catchup_at: auto.catchup_at, ...(auto.catchup_daily ? { auto_catchup_daily: auto.catchup_daily } : {}), auto_catchup_done: false } : {}) });
+const newAutoFields = auto => ({ ...(auto.send_time ? { auto_send_time: auto.send_time } : {}), ...(auto.copy_to ? { auto_copy_to: auto.copy_to } : {}), auto_offset: auto.offset, auto_unless_step: auto.unless_step || '', auto_audience: auto.audience, auto_staff: parseStaffIds(auto.staff), auto_msg_type: auto.msg_type, ...(auto.step ? { auto_step: auto.step } : {}), ...(isEventKind(auto.kind) ? { auto_daily: auto.daily, auto_weekdays: auto.weekdays, auto_unless_mode: auto.unless_mode } : {}), ...(isLeadKind(auto.kind) || auto.ata ? { auto_ata_template: auto.ata || '' } : {}), ...(auto.ata === BMS_TEMPLATE_ID ? bmsFields(auto.bms_json) : {}), ...(isLeadKind(auto.kind) && auto.lead_source ? { auto_lead_source: auto.lead_source } : {}), ...(auto.kind === AUTO_KIND && auto.catchup_at ? { auto_catchup_from: auto.catchup_from, auto_catchup_at: auto.catchup_at, ...(auto.catchup_daily ? { auto_catchup_daily: auto.catchup_daily } : {}), auto_catchup_done: false } : {}) });
 
 export async function listTextTemplates(db) {
   await ensureTextTemplateSchema(db);
@@ -422,8 +424,10 @@ export async function saveTextTemplate(db, input, { staff, provider, fetchImpl }
       changed.push('auto_daily IS DISTINCT FROM ?', 'auto_weekdays IS DISTINCT FROM ?', 'auto_unless_mode IS DISTINCT FROM ?'); guardArgs.push(auto.daily, auto.weekdays, auto.unless_mode);
       changed.push("COALESCE(auto_ata_template, '') IS DISTINCT FROM ?"); guardArgs.push(auto.ata || '');
       changed.push("COALESCE(auto_send_time, '') IS DISTINCT FROM ?"); guardArgs.push(auto.send_time || '');
-      changed.push("COALESCE(auto_catchup_from, '') IS DISTINCT FROM ?", "COALESCE(auto_catchup_at, '') IS DISTINCT FROM ?"); guardArgs.push(auto.catchup_from || '', auto.catchup_at || '');
-      changed.push('auto_catchup_daily IS DISTINCT FROM ?'); guardArgs.push(auto.catchup_daily ?? null);
+      if (auto.ata) { // 일괄 발송 값만 바뀐 저장은 광고 문구의 켜짐을 끄지 않는다(알림톡 문구는 지금처럼)
+        changed.push("COALESCE(auto_catchup_from, '') IS DISTINCT FROM ?", "COALESCE(auto_catchup_at, '') IS DISTINCT FROM ?"); guardArgs.push(auto.catchup_from || '', auto.catchup_at || '');
+        changed.push('auto_catchup_daily IS DISTINCT FROM ?'); guardArgs.push(auto.catchup_daily ?? null);
+      }
       changed.push("COALESCE(auto_lead_source, '') IS DISTINCT FROM ?"); guardArgs.push(auto.lead_source || '');
       changed.push("COALESCE(auto_bms, '') IS DISTINCT FROM ?"); guardArgs.push(auto.bms_json || '');
     }

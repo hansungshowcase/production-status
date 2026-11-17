@@ -47,7 +47,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     if (times >= 2 && normalizeInterval(interval ?? '30') === null) return { ok: false, reason: 'interval', info };
     if (!ataTemplate && String(copyTo || '').trim() && !/^01[016789]\d{7,8}$/.test(String(copyTo).replace(/\D/g, ''))) return { ok: false, reason: 'copyTo', info };
   }
-  if (catchupOn && autoKind === AUTO_KIND && ataTemplate) { // 이미 출고된 주문에 한 번 보내기: 출고일 시작일 + 보낼 시각(날짜·시각, 08~20시)
+  if (catchupOn && autoKind === AUTO_KIND) { // 이미 출고된 주문에 한 번 보내기: 출고일 시작일 + 보낼 시각(날짜·시각, 08~20시)
     if (!normalizeSendFrom(catchupFrom)) return { ok: false, reason: 'catchup_from', info };
     const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(String(catchupAt || ''));
     if (!m || normalizeSendFrom(m[1]) === null || Number(m[2]) < 8 || Number(m[2]) > (isBmsAta(ataTemplate) ? 19 : 20)) return { ok: false, reason: 'catchup_at', info };
@@ -267,7 +267,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
     if (a.ataTemplate) Object.assign(out, ata);
-    if (a.kind === AUTO_KIND && a.ataTemplate && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt), ...(String(a.catchupDaily ?? '').trim() ? { daily: Number(a.catchupDaily) } : {}) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
+    if (a.kind === AUTO_KIND && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt), ...(String(a.catchupDaily ?? '').trim() ? { daily: Number(a.catchupDaily) } : {}) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
     if (a.repeat !== undefined) out.repeat = normalizeRepeat(a.repeat) ?? AUTO_DEFAULT_REPEAT;
     if (a.interval !== undefined) out.interval = normalizeInterval(a.interval) ?? AUTO_DEFAULT_INTERVAL;
@@ -379,6 +379,12 @@ export function bootStages(initial, siblings, startNew) {
 // 단계 줄을 그릴지: siblings 가 왔거나 자동 발송 조건을 고른 상태
 export const hasStageRow = (kind, hasSiblings) => Boolean(hasSiblings) || AUTO_KINDS.includes(kind);
 
+// 광고 문자(알림톡 아님) 출고 완료 후 줄 끝에 붙는 일괄 발송 글(알림톡 상세 줄과 같은 표현)
+function adCatchupText(entry) {
+  return entry.autoKind === AUTO_KIND && !entry.autoAtaTemplate && entry.autoCatchupAt
+    ? `일괄 ${entry.autoCatchupAt.replace('T', ' ')} · 출고일 ${entry.autoCatchupFrom || '처음'}~오늘${entry.autoCatchupDone ? ' (완료)' : ''}` : '';
+}
+
 // 발송 조건 한 줄
 export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
@@ -405,6 +411,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
   entry.autoCopyTo ? `사본 ${String(entry.autoCopyTo).replace(/\D/g, '').slice(-4)}` : '',
+  adCatchupText(entry),
 ) : '');
 
 // 발송 조건을 조각으로: { when, who, via, extras[] } — autoConditionLine 과 같은 글을 ' · ' 로 나눠 만든다
