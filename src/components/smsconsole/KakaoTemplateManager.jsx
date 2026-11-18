@@ -3,10 +3,11 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
 import SmsModal from './SmsModal.jsx';
-import { KIND_KAKAO, ataLinkLine, linkedTextEntries } from './smsTextTemplateFormModel.js';
+import { itemLight } from './smsTemplateListModel.js';
+import { KIND_KAKAO, ataLinkLine, autoTargetText, linkedTextEntries } from './smsTextTemplateFormModel.js';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
-  isValidRename, readOnlyAudienceSections, readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras, usageBadge, usageCount,
+  isValidRename, readOnlyAudienceSections, readOnlyKakaoItems, failBadge, statusInfo, statusPills, templateAudienceSections, templateExtras, usageBadge, usageCount, usageFail, usageSuccess,
 } from './templateListModel.js';
 import './KakaoTemplateManager.css';
 
@@ -82,6 +83,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState(false);
   const [linked, setLinked] = useState({ id: '', loading: false, error: '', rows: [] }); // 이 알림톡을 수단으로 쓰는 자동 발송 설정(문자 템플릿 중 auto_ata_template 이 같은 것)
+  const [textItems, setTextItems] = useState([]); // 자동 발송 문구 목록(카드의 '대상' 줄용, 실패하면 빈 목록)
   const startedRef = useRef(false);
   useEffect(() => {
     if (!active || !selectedId) return undefined;
@@ -122,7 +124,8 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     if (!active || startedRef.current) return;
     startedRef.current = true;
     loadTemplates();
-    fetchSmsConsole('usage').then(setUsage).catch(() => setUsage(null));
+    fetchSmsConsole('usage').then(setUsage).catch(() => { /* 새 요청이 실패하면 마지막 성공 응답을 유지한다 */ });
+    fetchSmsConsole('text_templates').then((res) => setTextItems(Array.isArray(res?.items) ? res.items : [])).catch(() => { /* 대상 줄만 안 보인다 */ });
     fetchSmsConsole('sent').then((res) => setSent(Array.isArray(res?.groups) ? res.groups : null)).catch(() => setSent(null));
   }, [active, loadTemplates]);
 
@@ -143,9 +146,9 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const items = useMemo(() => (Array.isArray(data?.items) ? data.items : []), [data]);
   const write = data?.write || null;
   const writeOff = Boolean(write && write.enabled === false);
-  const pills = useMemo(() => statusPills(items, usage), [items, usage]);
-  const statusFilter = pickedFilter ?? defaultStatusFilter(pills, selectedId, usage);
-  const visible = useMemo(() => filterTemplates(items, { query, status: statusFilter, usage }), [items, query, statusFilter, usage]);
+  const pills = useMemo(() => statusPills(items, usage, sent), [items, usage, sent]);
+  const statusFilter = pickedFilter ?? defaultStatusFilter(pills, selectedId, usage, sent);
+  const visible = useMemo(() => filterTemplates(items, { query, status: statusFilter, usage, sent }), [items, query, statusFilter, usage, sent]);
   const readOnly = useMemo(() => readOnlyKakaoItems(items, sent, { status: statusFilter, query }), [items, sent, statusFilter, query]);
   const listSections = useMemo(() => templateAudienceSections(visible, sent), [visible, sent]);
   const readOnlySections = useMemo(() => readOnlyAudienceSections(readOnly), [readOnly]);
@@ -237,7 +240,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       <div className="ktm-detail-head">
         <button type="button" className="ktm-btn ktm-back" onClick={() => setOpenRoId('')}><Icon name="back" /> 목록</button>
         <h3 className="ktm-detail-name">{entry.name}</h3>
-        {entry.active === false ? <span className="ktm-light ktm-light--off">꺼짐</span> : <span className="ktm-light ktm-light--on">켜짐</span>}
+        <span className={`ktm-light ktm-light--${itemLight(entry).tone}`}>{itemLight(entry).text}</span>
       </div>
       <KakaoTemplatePreview template={{
         name: entry.name, content: entry.body || '', emphasizeType: entry.image ? 'IMAGE' : undefined, imageUrl: entry.image || '',
@@ -345,10 +348,12 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     const extras = templateExtras(item.id, sent);
     // 신호등(2026-11-16 사장님): 승인됐고, 보내는 곳(프로그램·메이크·연동)에 연결돼 켜져 있거나 최근 7일 발송이 있으면 켜짐.
     // 연결된 곳이 꺼졌거나, 승인 전이거나, 연결된 곳도 최근 발송도 없으면 꺼짐. 연결도 없고 건수도 못 읽었으면 표시 없음
-    const used = usageCount(usage, item.id);
+    const used = usageSuccess(usage, item.id, sent); // 성공(사용 건수 - 실패 건수)이 있어야 켜짐 근거가 된다
     const linked = Boolean(item.program_use || extras);
     const lightOff = Boolean(extras && extras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
-    const light = lightOff ? 'off' : (linked || (used ?? 0) > 0 ? 'on' : '');
+    const allFailed = usageCount(usage, item.id) > 0 && used === 0; // 최근 7일 발송이 전부 실패 — 초록(켜짐)으로 보이면 안 된다
+    const light = lightOff ? 'off' : (allFailed ? 'part' : (linked || (used ?? 0) > 0 ? 'on' : ''));
+    const targetEntry = linkedTextEntries(textItems, item.id).find(entry => entry.autoKind) || null; // 이 알림톡에 연결된 자동 발송 문구의 대상 조건
     const picked = item.id === selectedId; // 채널·날짜·보내는 곳·종류 칩은 고른 줄에서만 보인다(목록이 위아래로 길어지지 않게)
     // 카드는 두 줄: 1줄 = 제목 + 오른쪽 상태·최근 7일·⋮, 2줄 = 칩. 드물게 붙는 보조 배지는 2줄 쪽으로 보낸다(1줄이 길어지지 않게)
     const extraBadges = item.program_use || (extras && extras.replaced7 > 0) ? (
@@ -361,6 +366,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
       <li key={item.id} className={`ktm-card ktm-card--slim${item.id === selectedId ? ' is-selected' : ''}`}>
         <button type="button" className="ktm-card-main" onClick={() => { setNotice(null); setOpenRoId(''); onRoute({ tpl: item.id, mode: '' }); }} aria-current={item.id === selectedId ? 'true' : undefined}>
           <span className="ktm-card-name">{item.name}</span>
+          {' '}
           {picked ? (
             <span className="ktm-card-meta">
               <span className="ktm-chip">{item.target?.name || '채널'}{item.target?.kind === 'group' ? ' · 그룹' : ''}</span>
@@ -371,11 +377,14 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
             </span>
           ) : extraBadges ? <span className="ktm-card-meta">{extraBadges}</span> : null}
           <span className="ktm-card-badges">
-            {light ? <span className={`ktm-light ktm-light--${light}`}>{light === 'on' ? '켜짐' : '꺼짐'}</span> : null}
+            {light ? <span className={`ktm-light ktm-light--${light}`}>{light === 'on' ? '켜짐' : (light === 'part' ? '최근 실패뿐' : '꺼짐')}</span> : null}
+            {light ? ' ' : null}
             <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
             {data ? <span className="ktm-badge ktm-badge--muted">알림톡{Number.isFinite(Number(data.ata_unit)) && data.ata_unit !== null ? ` · 건당 ${Number(data.ata_unit).toLocaleString('ko-KR')}원` : ''}</span> : null}
             {badge ? <span className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span> : null}
+            {failBadge(usageFail(item.id, sent)) ? <span className="ktm-badge ktm-badge--danger">{failBadge(usageFail(item.id, sent)).text}</span> : null}
           </span>
+          {targetEntry ? <span className="ktm-card-target">대상: {autoTargetText(targetEntry)}</span> : null}
         </button>
         <div className="ktm-menu-wrap">
           <button type="button" className="ktm-more" aria-haspopup="menu" aria-expanded={isOpen} aria-label={`${item.name} 동작 메뉴`} onClick={() => setMenuId(isOpen ? '' : item.id)}>
@@ -417,9 +426,10 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
                       </span>
                     ) : null}
                     <span className="ktm-card-badges">
-                      {entry.active === false ? <span className="ktm-light ktm-light--off">꺼짐</span> : <span className="ktm-light ktm-light--on">켜짐</span>}
+                      <span className={`ktm-light ktm-light--${itemLight(entry).tone}`}>{itemLight(entry).text}</span>
                       {entry.count === null ? <span className="ktm-badge ktm-badge--muted">사용 여부 확인 못 함</span>
                         : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
+                      {failBadge(entry.fail) ? <span className="ktm-badge ktm-badge--danger">{failBadge(entry.fail).text}</span> : null}
                       {entry.ad ? <span className="ktm-badge ktm-badge--info">광고</span> : null}
                     </span>
                   </button>

@@ -14,7 +14,7 @@ process.env.POSTGRES_URL = 'postgres://user:fake-test-password@host.example/db';
 const NOW = Date.parse('2026-11-20T01:00:00Z'); // KST 11-20 10:00
 const HOUR = 3600000;
 const ENV = { SMS_SENDER: '0212345678' };
-const BODY = '안녕하세요 #{고객명} 대표님\n구글 리뷰를 남겨 주세요.';
+const BODY = '안녕하세요 #{고객명} 대표님\n구글 리뷰를 남겨 주세요.\n무료수신거부 080-123-4567'; // 브랜드메시지는 광고라 080 줄 필수(2026-11-18)
 const IMG = 'FAKEJPEGBASE64==';
 const BUTTONS = [{ name: '구글 리뷰 쓰기', link: 'https://search.google.com/local/writereview?placeid=TEST' }];
 const cfgJson = (extra = {}) => JSON.stringify({ pfId: BMS_PF_ID, from: BMS_SENDER, buttons: BUTTONS, imageId: 'ST01FZ_TEST_IMAGE', imageSig: bmsImageSig(IMG), ...extra });
@@ -113,7 +113,7 @@ test('평소 자동 발송: BMS 수단이면 sendBmsEach 로 건별 메시지(�
   const call = vendor.calls.bms[0];
   assert.equal(call.from, '0319862458', '발신은 BMS 기본 번호(환경값 SMS_SENDER 가 아니다)');
   assert.equal(call.pfId, BMS_PF_ID);
-  assert.deepEqual(call.messages, [{ to: '01011112222', text: '안녕하세요 홍길동 대표님\n구글 리뷰를 남겨 주세요.', imageId: 'ST01FZ_TEST_IMAGE', buttons: BUTTONS }]);
+  assert.deepEqual(call.messages, [{ to: '01011112222', text: '안녕하세요 홍길동 대표님\n구글 리뷰를 남겨 주세요.\n무료수신거부 080-123-4567', imageId: 'ST01FZ_TEST_IMAGE', buttons: BUTTONS }]);
   assert.equal(db.state.sends[0].status, 'sent');
 });
 
@@ -240,7 +240,7 @@ test('[내 번호로 브랜드메시지 시험]: 확인 줄은 100원, 발송은
   const sent = await autoTest(body, deps);
   assert.equal(sent.body.status, 'sent');
   assert.equal(vendor.calls.bms.length, 1); assert.equal(vendor.calls.kakao.length, 0); assert.equal(vendor.calls.each.length, 0);
-  assert.deepEqual(vendor.calls.bms[0].messages, [{ to: '01012344237', text: '안녕하세요 고객 대표님\n구글 리뷰를 남겨 주세요.', imageId: 'ST01FZ_TEST_IMAGE', buttons: BUTTONS }]);
+  assert.deepEqual(vendor.calls.bms[0].messages, [{ to: '01012344237', text: '안녕하세요 고객 대표님\n구글 리뷰를 남겨 주세요.\n무료수신거부 080-123-4567', imageId: 'ST01FZ_TEST_IMAGE', buttons: BUTTONS }]);
   assert.equal(vendor.calls.bms[0].from, '0319862458');
   // 설정이 안 맞으면 보내지 않는다
   reset();
@@ -321,7 +321,7 @@ test('저장 거부: 이미지와 함께 400자 초과·사진 2장·버튼 이�
   const go = (body, extra = {}, images = [PHOTO]) => { reset(); return saveTextTemplate(saveDb([]), { name: `n${Math.random()}`, body, images, auto: autoIn(extra) }, opts); };
   const long = await go(`#{고객명}${'가'.repeat(400)}`);
   assert.equal(long.status, 400); assert.equal(long.body.reason, 'bms_too_long'); assert.match(long.body.error.message, /이미지와 함께면 400자/);
-  assert.equal((await go('#{고객명}' + '가'.repeat(379))).status, 201, '고객명 20자 + 380자 = 400자 는 통과');
+  assert.equal((await go('#{고객명}' + '가'.repeat(359) + '\n무료수신거부 080-123-4567')).status, 201, '고객명 20자 + 080 줄 포함 400자 는 통과');
   const two = await go(BODY, {}, [PHOTO, PHOTO]);
   assert.equal(two.status, 400); assert.equal(two.body.reason, 'bms_images');
   assert.equal((await go(BODY, { bms: { buttons: [{ name: '가'.repeat(15), link: 'https://a.example' }] } })).body.reason, 'bms_button');
@@ -331,7 +331,7 @@ test('저장 거부: 이미지와 함께 400자 초과·사진 2장·버튼 이�
   assert.equal((await go(BODY, { catchup: { from: '2026-10-01', at: '2026-11-21T20:30' } })).body.reason, 'catchup_at');
   assert.equal(uploads.length, 1, '통과한 한 건(400자 경계)만 올렸다');
   // 글만 보내면 400자를 넘어도 1300자까지
-  assert.equal((await go('#{고객명}' + '가'.repeat(480), {}, [])).status, 201);
+  assert.equal((await go('#{고객명}' + '가'.repeat(460) + '\n무료수신거부 080-123-4567', {}, [])).status, 201);
   assert.equal((await go('가'.repeat(1301), {}, [])).status, 400);
 });
 
@@ -394,4 +394,14 @@ test('알림톡 수단은 sendKakaoEach 만, 문자 수단은 sendEach 만 쓴�
   assert.equal(smsVendor.calls.bms.length, 0); assert.equal(smsVendor.calls.kakao.length, 0);
   assert.equal(parseBmsConfig('{깨진 json').pfId, BMS_PF_ID, '깨진 설정은 기본 채널로 읽는다');
   assert.equal(sms.reason, 'no_auto', '수단이 문자인 출고 후 문구는 안내 경로를 타지 않는다(종전 그대로)');
+});
+
+test('080 무료수신거부 줄이 없는 브랜드메시지는 저장이 거절되고(no_optout_080, 쏠라피에 올리지 않음) 켜기도 막힌다 (2026-11-18 사장님 결정)', async () => {
+  reset();
+  const uploads = [];
+  const out = await saveTextTemplate(saveDb([]), { name: '구글 리뷰', body: '안녕하세요 #{고객명} 대표님\n구글 리뷰를 남겨 주세요.', images: [PHOTO], auto: autoIn() }, { staff: [], provider: uploader(uploads) });
+  assert.equal(out.status, 400); assert.equal(out.body.reason, 'no_optout_080'); assert.equal(uploads.length, 0);
+  const db = fakeDb();
+  const toggle = await eventToggleOn({ dry_run: true }, base({ auto_enabled: false, body: '안녕하세요 #{고객명} 대표님' }), { db, provider: provider(), env: ENV, nowMs: NOW, kakao: noKakao() });
+  assert.equal(toggle.status, 400); assert.equal(toggle.body.reason, 'no_optout_080'); assert.match(toggle.body.error.message, /080/);
 });

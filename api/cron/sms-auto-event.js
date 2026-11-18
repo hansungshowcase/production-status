@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 import { cors } from '../_lib/cors.js';
 import { getDb } from '../_lib/db.js';
-import { runInstantSendAll } from '../_lib/smsEventSend.js';
+import { recordCronRun, runInstantSendAll } from '../_lib/smsEventSend.js';
 import { runTimedSendAll } from '../_lib/smsAutoSend.js';
 
 export const config = { maxDuration: 90 }; // vercel.json 과 같은 값 — 통 사이 기다림(설계 22-4)
@@ -36,6 +36,7 @@ export async function handleSmsAutoEvent(req, res, dependencies = {}) {
     const result = await run(deps); // 즉시형·가입·문의 먼저, 남은 시간에 발송 시각이 있는 날짜형(같은 마감 시각)
     let timed = null;
     try { timed = await runTimed(deps); } catch { logger.error?.('[sms-auto-event] 시각 지정 문구 실행 실패'); }
+    await (dependencies.recordCronRun || recordCronRun)(db, 'sms-auto-event', nowMs); // 마지막 실행 시각(화면의 '실행이 멈춤' 판정용). 실패는 조용히
     logger.info?.('[sms-auto-event]', result, timed);
     return res.json({ ok: true, ...result, ...(timed ? { timed } : {}) });
   } catch {

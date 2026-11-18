@@ -192,7 +192,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const allMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
   const sortedMine = useMemo(() => allMine.filter((row) => !cond || conditionGroup(row) === cond), [allMine, cond]);
   // 내 문구 탭은 흐름(기준 시점) 단위 행. siblings 는 조건 거르기와 상관없이 같은 흐름 전체
-  const flowRows = useMemo(() => groupFlows(sortedMine, (entry) => Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
+  const flowRows = useMemo(() => groupFlows(sortedMine, (entry) => ['on', 'part'].includes(effOf(entry).tone)), [sortedMine, autoStatus]);
   const flowById = useMemo(() => {
     const map = new Map();
     groupFlows(allMine).forEach((flow) => flow.steps.forEach((step) => map.set(step.id, flow)));

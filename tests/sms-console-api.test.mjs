@@ -103,7 +103,7 @@ test('GET usage: 7일 셈, 대체발송 제외, 2개씩, 실패는 partial, 10�
   };
   const d = deps({ fetchSolapiDay });
   const res = await run(request('GET', { query: { resource: 'usage' } }), d);
-  assert.deepEqual(seen.slice().sort(), ['2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11']);
+  assert.deepEqual(seen.slice().sort(), ['2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11']); // 실패한 날(11-08)은 1번 더 시도한다
   assert.ok(maxInflight <= 2);
   assert.equal(res.body.partial, true);
   assert.equal(res.body.by_template.KA01.count, 6);
@@ -313,4 +313,24 @@ test('GET templates: fresh=1 이면 캐시를 건너뛰라고 넘기고, 없으�
   await run(request('GET', { query: { resource: 'templates', fresh: '1' } }), deps({ kakao }));
   await run(request('GET', { query: { resource: 'templates' } }), deps({ kakao }));
   assert.deepEqual(seen, [true, false]);
+});
+
+test('GET usage: 하루 조회가 실패하면 1번 더 시도하고, 계속 실패하면 직전 성공 값을 stale:true 로 돌려준다', async () => {
+  reset();
+  let broken = false; const tries = {};
+  const fetchSolapiDay = async date => {
+    tries[date] = (tries[date] || 0) + 1;
+    if (broken && date === '2026-11-08') throw new Error('boom');
+    return { partial: false, messages: [{ to: '0', dateCreated: `${date}T01:00:00Z`, kakaoOptions: { templateId: 'KA01' } }] };
+  };
+  const d = deps({ fetchSolapiDay });
+  const ok = await run(request('GET', { query: { resource: 'usage' } }), d);
+  assert.equal(ok.body.partial, false);
+  assert.equal(ok.body.by_template.KA01.count, 7);
+  broken = true;
+  const later = deps({ fetchSolapiDay, nowMs: NOW + 11 * 60000 }); // 10분 캐시가 지난 뒤
+  const res = await run(request('GET', { query: { resource: 'usage' } }), later);
+  assert.equal(res.body.stale, true);
+  assert.equal(res.body.by_template.KA01.count, 7, '직전 성공 값');
+  assert.equal(tries['2026-11-08'], 3, '첫 성공 1번 + 실패 뒤 재시도 포함 2번');
 });

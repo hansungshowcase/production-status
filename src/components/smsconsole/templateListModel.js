@@ -1,5 +1,6 @@
 // 알림톡 템플릿 목록 화면 계산(순수 함수). 화면(KakaoTemplateManager)과 시험이 같이 쓴다.
 import { TEMPLATE_STATUS } from '../../../shared/smsConsole.js';
+import { itemLight } from './smsTemplateListModel.js';
 import {
   CATALOG_KINDS, EXTERNAL_TEMPLATES, KAKAO_CHANNELS, KAKAO_TEMPLATE_AUDIENCE, UNCLASSIFIED, groupByAudience, splitByAudience, templateMeta, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
@@ -12,12 +13,12 @@ export function statusInfo(status) {
 
 // 이름·템플릿 ID 포함 검색(대소문자 무시) + 상태 거르기. 서버 호출 없음.
 // status 'in_use' = 발송 중(최근 7일 사용 1건 이상, usage 필요)
-export function filterTemplates(items, { query = '', status = 'all', usage = null } = {}) {
+export function filterTemplates(items, { query = '', status = 'all', usage = null, sent = null } = {}) {
   const list = Array.isArray(items) ? items : [];
   const q = String(query || '').trim().toLowerCase();
   return list.filter((item) => {
     if (status === 'in_use') {
-      if (!(usageCount(usage, item.id) > 0)) return false;
+      if (!(usageSuccess(usage, item.id, sent) > 0)) return false;
     } else if (status && status !== 'all' && item.status !== status) return false;
     if (!q) return true;
     return String(item.name || '').toLowerCase().includes(q) || String(item.id || '').toLowerCase().includes(q);
@@ -35,10 +36,10 @@ export function statusCounts(items) {
 
 // 상태 알약 목록: [{id,label,count}]
 // usage 를 알면 맨 앞에 '발송 중' 알약을 더한다.
-export function statusPills(items, usage = null) {
+export function statusPills(items, usage = null, sent = null) {
   const counts = statusCounts(items);
   const inUse = usageKnown(usage)
-    ? [{ id: 'in_use', label: '발송 중', count: (Array.isArray(items) ? items : []).filter((item) => usageCount(usage, item?.id) > 0).length }]
+    ? [{ id: 'in_use', label: '발송 중', count: (Array.isArray(items) ? items : []).filter((item) => usageSuccess(usage, item?.id, sent) > 0).length }]
     : [];
   return [...inUse, { id: 'all', label: '전체', count: counts.all },
     ...STATUS_ORDER.map((id) => ({ id, label: TEMPLATE_STATUS[id].label, count: counts[id] }))];
@@ -46,10 +47,10 @@ export function statusPills(items, usage = null) {
 
 // 처음 선택할 알약: 발송 중이 1개 이상이면 발송 중, 아니면 전체
 // 주소에 tpl 로 특정 템플릿이 들어와 있고 그것이 발송 중이 아니면 전체로 시작한다(그 템플릿이 보이게).
-export function defaultStatusFilter(pills, selectedId = '', usage = null) {
+export function defaultStatusFilter(pills, selectedId = '', usage = null, sent = null) {
   const inUse = (Array.isArray(pills) ? pills : []).find((pill) => pill.id === 'in_use');
   if (!(inUse && inUse.count > 0)) return 'all';
-  if (selectedId && !(usageCount(usage, selectedId) > 0)) return 'all';
+  if (selectedId && !(usageSuccess(usage, selectedId, sent) > 0)) return 'all';
   return 'in_use';
 }
 
@@ -65,6 +66,27 @@ export function usageCount(usage, id) {
   const count = Number(row?.count) || 0;
   if (count === 0 && usage.partial) return null;
   return count;
+}
+
+// 최근 7일 실패 건수(보낸 묶음 sent[].fail7). 템플릿 ID 를 표에서 못 찾거나 묶음을 모르면 0
+export function usageFail(templateId, sent = null) {
+  const meta = templateMeta(templateId);
+  if (!meta) return 0;
+  const group = (Array.isArray(sent) ? sent : []).find((row) => row.key === meta.key);
+  return Math.max(0, Number(group?.fail7) || 0);
+}
+
+// 최근 7일 성공 건수(사용 건수 - 실패 건수). 사용 건수를 모르면 null. '발송 중'·켜짐 판정은 이 값이 0 보다 클 때만 쓴다.
+export function usageSuccess(usage, id, sent = null) {
+  const count = usageCount(usage, id);
+  if (count === null) return null;
+  return Math.max(0, count - usageFail(id, sent));
+}
+
+// 실패 배지: { tone:'danger', text:'실패 n' } 또는 null
+export function failBadge(fail) {
+  const n = Number(fail) || 0;
+  return n > 0 ? { tone: 'danger', text: `실패 ${n}` } : null;
 }
 
 // 사용 배지: { tone, text } 또는 null(쓰이지 않음 → 배지 없음)
@@ -192,6 +214,7 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
       id: entry.key, name: entry.name, sender: entry.sender, kind: entry.kind, audience: entry.audience || '고객', channel: entry.channel, ad: Boolean(entry.ad || group?.ad),
       active: entry.active !== false, count: group ? group.count7 : (sentKnown ? 0 : null), trigger: entry.trigger || '', scenario: entry.scenario || '',
       body: entry.body || '', image: entry.image || '', who: entry.who || '', order: index,
+      fail: group ? Number(group.fail7) || 0 : 0, external: true, make_on: entry.make_on, make_last_run: entry.make_last_run,
     });
   });
   let extra = 0;
@@ -202,11 +225,12 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
     out.push({
       id: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key, sender: group.sender, kind: group.kind, audience: group.audience || '',
       channel: group.channel, ad: Boolean(group.ad), active: true, count: group.count7, trigger: '', scenario: '', body: '', order: 1000 + (extra += 1),
+      fail: Number(group.fail7) || 0, external: true,
     });
   }
   const q = String(query || '').trim().toLowerCase();
   return out
-    .filter((item) => (status === 'in_use' ? (item.count ?? 0) > 0 : true))
+    .filter((item) => (status === 'in_use' ? (item.count ?? 0) - (item.fail ?? 0) > 0 : true))
     .filter((item) => !q || item.name.toLowerCase().includes(q))
     .sort((a, b) => ((b.count ?? 0) - (a.count ?? 0)) || (a.order - b.order));
 }

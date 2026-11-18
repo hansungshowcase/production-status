@@ -160,6 +160,8 @@
 .ktm-light::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
 .ktm-light--on { background: #dff5e5; color: #12803a; }
 .ktm-light--off { background: #fde3e1; color: #d12c20; }
+.ktm-light--part { background: #fff1cc; color: #a86a00; }
+.ktm-light--unknown { background: #eceff3; color: #5f6b7a; }
 .ktm-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 /* 알림톡 목록 카드는 두 줄: 1줄 = 제목(말줄임) + 오른쪽 상태·최근 7일·⋮, 2줄 = 칩. 안쪽 위아래 여백도 줄였다 */
 .ktm-card--slim .ktm-card-main { gap: 2px 8px; padding: 4px 4px 4px 12px; min-height: 34px; }
@@ -173,3 +175,5 @@
 .ktm-linked-row { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-surface, #fff); font: inherit; cursor: pointer; }
 .ktm-linked-name { font-weight: 700; font-size: 13px; overflow-wrap: anywhere; }
 .ktm-linked-line { font-size: 12px; color: var(--smsc-muted, #667085); overflow-wrap: anywhere; }
+
+.ktm-card-target { order: 3; flex: 1 1 100%; font-size: 12px; color: var(--smsc-muted, #667085); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

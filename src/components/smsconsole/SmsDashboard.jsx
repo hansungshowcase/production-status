@@ -88,8 +88,9 @@ export default function SmsDashboard({ active = true, onNavigate }) {
     ]);
     busy.current = false;
     if (!alive.current) return;
-    setLog(a.status === 'fulfilled' ? { data: a.value, error: '' } : { data: null, error: a.reason?.message || '발송 현황을 불러오지 못했습니다.' });
-    setOverview(b.status === 'fulfilled' ? { data: b.value, error: '' } : { data: null, error: b.reason?.message || '잔액·템플릿을 불러오지 못했습니다.' });
+    // 새 요청이 실패하면 마지막 성공 응답을 그대로 유지한다(처음부터 실패일 때만 오류 표시)
+    setLog((prev) => (a.status === 'fulfilled' ? { data: a.value, error: '' } : prev?.data ? prev : { data: null, error: a.reason?.message || '발송 현황을 불러오지 못했습니다.' }));
+    setOverview((prev) => (b.status === 'fulfilled' ? { data: b.value, error: '' } : prev?.data ? prev : { data: null, error: b.reason?.message || '잔액·템플릿을 불러오지 못했습니다.' }));
     setCheckedAt(nowLabel());
     setLoading(false);
   }, []);
@@ -165,7 +166,7 @@ export default function SmsDashboard({ active = true, onNavigate }) {
             <>
               <table className="smsd-table">
                 <thead>
-                  <tr><th scope="col"><span className="smsd-sr">받는 사람</span></th><th scope="col">문자</th><th scope="col">알림톡</th></tr>
+                  <tr><th scope="col"><span className="smsd-sr">받는 사람</span></th><th scope="col">문자</th><th scope="col">카톡(알림톡·브랜드)</th></tr>
                 </thead>
                 <tbody>
                   {matrix.rows.map((row) => (

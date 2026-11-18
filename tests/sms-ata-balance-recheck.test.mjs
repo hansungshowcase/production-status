@@ -45,13 +45,16 @@ function fakeDb({ orders = [] } = {}) {
         return { rows };
       }
       if (t.startsWith("DELETE FROM sms_event_sends WHERE status = 'claimed'")) { state.sends = state.sends.filter(r => !args.includes(r.id)); return { rows: [] }; }
+      if (t.startsWith("SELECT id, dedupe_key FROM sms_event_sends WHERE template_id = ? AND status = 'failed'")) return { rows: state.sends.filter(r => r.template_id === args[0] && r.status === 'failed' && !(r.retry_count > 0) && r.kind !== 'catchup' && args.slice(1).includes(r.dedupe_key)).map(r => ({ id: r.id, dedupe_key: r.dedupe_key })) };
+      if (t.startsWith("UPDATE sms_event_sends SET status = 'claimed', reason = NULL")) { const r = state.sends.find(x => x.id === args[1] && x.status === 'failed' && !(x.retry_count > 0)); if (!r) return { rows: [] }; r.status = 'claimed'; r.reason = null; r.checked_at = null; r.kst_date = args[0]; r.retry_count = (r.retry_count || 0) + 1; return { rows: [{ id: r.id, dedupe_key: r.dedupe_key }] }; }
+      if (t.startsWith("UPDATE sms_event_sends SET status = 'failed', reason = ?")) { const [reason, ...ids] = args; for (const r of state.sends.filter(x => x.status === 'sent' && ids.includes(x.id))) { r.status = 'failed'; r.reason = reason; r.checked_at = 'now'; } return { rows: [] }; }
       if (t.startsWith('UPDATE sms_event_sends SET status = ?')) { const [status, , reason, groupIds, ...ids] = args; for (const r of state.sends.filter(x => ids.includes(x.id))) { r.status = status; r.reason = reason; r.group_ids = groupIds; } return { rows: [] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_catchup_done_at = NOW()')) { state.done.push(args[0]); return { rows: [{ id: args[0] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_catchup_paused_at = NOW()')) { state.paused.push({ error: args[0], id: args[1] }); return { rows: [{ id: args[1] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = CASE')) { state.failMark += 1; return { rows: [{ id: args[0] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = NULL')) { state.failClear += 1; return { rows: [{ id: args[0] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_skip_reason = ?')) { (state.skips ||= []).push({ why: args[0], id: args[1] }); return { rows: [{ id: args[1] }] }; }
-      if (t.startsWith("SELECT id, group_ids FROM sms_event_sends WHERE template_id = ? AND status = 'sent'")) return { rows: state.sends.filter(r => r.template_id === args[0] && r.status === 'sent' && r.kind === 'catchup' && r.kst_date >= args[1] && !r.checked_at).map(r => ({ id: r.id, group_ids: r.group_ids })) };
+      if (t.startsWith("SELECT id, group_ids, kind FROM sms_event_sends WHERE template_id = ? AND status = 'sent'")) return { rows: state.sends.filter(r => r.template_id === args[0] && r.status === 'sent' && r.kst_date >= args[1] && !r.checked_at).map(r => ({ id: r.id, group_ids: r.group_ids, kind: r.kind })) }; // 평소·일괄 발송분 모두(2026-11-18)
       if (t.startsWith('UPDATE sms_event_sends SET checked_at = NOW()')) { for (const r of state.sends.filter(x => args.includes(x.id))) r.checked_at = 'now'; return { rows: [] }; }
       if (t.startsWith("DELETE FROM sms_event_sends WHERE status = 'sent'")) { state.sends = state.sends.filter(r => !(r.status === 'sent' && args.includes(r.id))); return { rows: [] }; }
       throw new Error(`예상 못 한 SQL ${t}`);
@@ -166,7 +169,7 @@ test('(b) 멈춘 문구도 미확인 그룹이 있으면 재확인이 돈다 / �
   const seen = [];
   const listDb = { async execute({ sql, args }) { seen.push({ t: sql.replace(/\s+/g, ' '), args }); return { rows: [] }; } };
   await runInstantSendAll({ db: listDb, nowMs: NOW });
-  assert.ok(seen[0].t.includes("kind = 'catchup' AND kst_date >= ? AND checked_at IS NULL")); assert.deepEqual(seen[0].args, ['2026-11-19']);
+  assert.ok(seen[0].t.includes("status = 'sent' AND kst_date >= ? AND checked_at IS NULL")); assert.deepEqual(seen[0].args, ['2026-11-19']);
 });
 
 test('groupResult: 그룹 응답을 정리하고 4xx·5xx·예외는 null', async () => {
@@ -247,4 +250,73 @@ test('(c) 발송이 나가면 건너뜀 사유를 NULL 로 지운다', async () 
   assert.equal(out.sent, 3);
   assert.equal(db.state.failClear, 1, '실패 표시와 건너뜀 사유를 한 문장으로 지운다');
   assert.ok(db.state.sql.some(s => s.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = NULL, auto_skip_reason = NULL')));
+});
+
+// ---------- 2026-11-18: 평소 발송분 재확인 · 3일 안 재시도 ----------
+const regularTpl = (extra = {}) => base({ auto_enabled_at: new Date(NOW - 10 * 24 * HOUR).toISOString(), ...extra });
+
+test('(b) 평소 발송분(일괄 아님)도 그룹이 전부 실패면 행을 지우지 않고 failed 로 남기고 사유·쉼 표시를 남기며 같은 실행에서 다시 보내지 않는다', async () => {
+  const db = fakeDb({ orders: [order(1, '010-1111-2222', '2026-11-17', '가')] });
+  const first = await run(db, provider(), regularTpl());
+  assert.equal(first.sent, 1);
+  assert.ok(db.state.sends.every(r => r.kind === undefined), '평소 발송분');
+  const vendor = provider({ groups: { G1: COMPLETE_ZERO } });
+  const out = await run(db, vendor, regularTpl());
+  assert.deepEqual(vendor.calls.group, ['G1']);
+  assert.equal(out.reason, 'ata_failed'); assert.equal(vendor.calls.bms.length, 0, '같은 실행에서 다시 보내지 않는다');
+  assert.equal(db.state.sends.length, 1);
+  assert.equal(db.state.sends[0].status, 'failed');
+  assert.match(db.state.sends[0].reason, /^쏠라피 발송 실패: /);
+  assert.deepEqual(db.state.paused, [], '일괄 발송이 아니므로 멈춤 표시는 하지 않는다');
+  assert.equal(db.state.skips.length, 1); assert.match(db.state.skips[0].why, /^쏠라피 발송 실패: /);
+  assert.equal(db.state.failMark, 1);
+});
+
+test('(b) 실패한 1명 그룹은 다시 대상이 되어 1번만 재시도하고, 그 뒤 또 실패하면 더는 대상이 아니다', async () => {
+  const db = fakeDb({ orders: [order(1, '010-1111-2222', '2026-11-17', '가')] });
+  await run(db, provider(), regularTpl()); // 1차 접수
+  await run(db, provider({ groups: { G1: COMPLETE_ZERO } }), regularTpl()); // 전부 실패 → failed 로 남음
+  assert.equal(db.state.sends[0].status, 'failed');
+  const retry = provider();
+  const second = await run(db, retry, regularTpl()); // 재시도 1번
+  assert.equal(second.sent, 1, '실패 행을 1번 다시 보낸다');
+  assert.equal(db.state.sends.length, 1, '같은 키 행을 다시 쓴다');
+  assert.equal(db.state.sends[0].retry_count, 1);
+  assert.equal(db.state.sends[0].status, 'sent');
+  await run(db, provider({ groups: { G1: COMPLETE_ZERO } }), regularTpl()); // 재시도도 전부 실패
+  assert.equal(db.state.sends[0].status, 'failed');
+  const last = provider();
+  const third = await run(db, last, regularTpl());
+  assert.equal(third.targets, 0, '재시도 뒤에는 대상이 아니다');
+  assert.equal(last.calls.bms.length + last.calls.kakao.length, 0);
+});
+
+test('(b) 그룹이 일부만 실패하면 행 상태는 그대로 두고 checked_at 과 실패 건수 사유만 남긴다', async () => {
+  const db = fakeDb({ orders: threeOrders.map((o, i) => order(o.id, o.phone, '2026-11-17', `이${i}`)) });
+  await run(db, provider(), regularTpl());
+  const vendor = provider({ groups: { G1: { status: 'COMPLETE', success: 2, replacement: 0, failed: 1, total: 3, log: '' } } });
+  const sqlBefore = db.state.sql.length;
+  await run(db, vendor, regularTpl());
+  assert.ok(db.state.sends.every(r => r.status === 'sent' && r.checked_at === 'now'));
+  assert.ok(db.state.sql.slice(sqlBefore).some(s => s.startsWith('UPDATE sms_event_sends SET checked_at = NOW(), reason = ?')));
+});
+
+test('출고 후 N일 알림톡·브랜드메시지: 예정일이 오늘 − 3일 ~ 오늘이면 대상, 그 밖은 아니고, 이미 보낸 번호는 다시 보내지 않는다', async () => {
+  // days 3, 오늘 11-20: 출고 11-17(예정 11-20)·11-16(11-19)·11-15(11-18)·11-14(11-17) 은 대상, 11-13(11-16) 은 3일을 넘어 제외, 11-18(11-21) 은 아직
+  const orders = [order(1, '010-1111-2222', '2026-11-17', 'a'), order(2, '010-3333-4444', '2026-11-16', 'b'), order(3, '010-5555-6666', '2026-11-15', 'c'), order(4, '010-7777-8888', '2026-11-14', 'd'), order(5, '010-9999-0000', '2026-11-13', 'e'), order(6, '010-2222-3333', '2026-11-18', 'f')];
+  const db = fakeDb({ orders });
+  const vendor = provider();
+  const first = await run(db, vendor, regularTpl());
+  assert.equal(first.sent, 4);
+  assert.deepEqual(vendor.calls.bms[0].messages.map(m => m.to).sort(), ['01011112222', '01033334444', '01055556666', '01077778888']);
+  const again = await run(db, vendor, regularTpl());
+  assert.equal(again.sent, 0); assert.equal(vendor.calls.bms.length, 1, '이미 보낸 번호는 dedupe 키가 막는다');
+});
+
+test('출고 후 N일: 켠 날 이전 예정일분은 3일 안이어도 보내지 않는다(켠 날 이후분만 규칙 유지)', async () => {
+  const db = fakeDb({ orders: [order(1, '010-1111-2222', '2026-11-15', 'a'), order(2, '010-3333-4444', '2026-11-17', 'b')] });
+  const vendor = provider();
+  const out = await run(db, vendor, regularTpl({ auto_enabled_at: new Date(Date.parse('2026-11-19T01:00:00Z')).toISOString() })); // 켠 날 = KST 11-19: 예정일 11-18 은 제외, 11-20 은 포함
+  assert.equal(out.sent, 1);
+  assert.deepEqual(vendor.calls.bms[0].messages.map(m => m.to), ['01033334444']);
 });

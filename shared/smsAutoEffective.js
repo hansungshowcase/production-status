@@ -22,17 +22,28 @@ const BLOCKED_TEXT = {
 };
 const blockedText = (code) => { const key = reasonText(code); return key ? (BLOCKED_TEXT[key] || '설정 확인 필요') : ''; };
 
-export function autoEffective(status) {
+// 크론이 멈췄는지(2026-11-18): 5분 크론의 마지막 실행(cron_last_run, ISO)이 30분을 넘게 지났으면 '실행이 멈춤'. 값이 없거나 읽을 수 없으면 판단하지 않는다.
+const CRON_STALE_MS = 30 * 60000;
+const staleCronText = (status, nowMs) => {
+  const last = Date.parse(status?.cron_last_run || '');
+  if (!Number.isFinite(last) || !Number.isFinite(nowMs) || nowMs - last <= CRON_STALE_MS) return '';
+  return `자동 발송 실행이 멈춤(마지막 ${new Date(last + 9 * 3600000).toISOString().slice(11, 16)})`;
+};
+
+export function autoEffective(status, nowMs = Date.now()) {
   if (!status || typeof status !== 'object') return { tone: 'unknown', text: '확인 중', blocked: false };
   if (!status.enabled) return { tone: 'off', text: '꺼짐', blocked: false };
   const sent7 = Number(status.sent_7d) || 0;
   const failed7 = Number(status.failed_7d) || 0;
+  const no080 = reasonText(status.enable_blocked_reason) === 'no_optout_080'; // 080 줄이 없어도 발송은 멈추지 않는다 → 막힘이 아니라 '켜짐(주의)'
   const why = status.no_provider ? '발송 업체 설정 없음'
-    : blockedText(status.enable_blocked_reason)
+    : blockedText(no080 ? '' : status.enable_blocked_reason)
     || reasonText(status.auto_skip_reason)
     || (status.ata_backoff ? '알림톡 연속 실패로 잠시 쉼' : '')
+    || staleCronText(status, nowMs)
     || (failed7 > sent7 ? '최근 7일 실패가 성공보다 많음' : '');
   if (why) return { tone: 'blocked', text: `켜짐(막힘: ${why})`, blocked: true };
+  if (no080) return { tone: 'part', text: '켜짐 · 080 수신거부 줄 필요(발송은 계속)', blocked: false };
   if (status.catchup_paused) {
     const detail = reasonText(status.catchup_error) || '사유를 알 수 없습니다';
     return { tone: 'part', text: `켜짐 · 일괄 발송 멈춤(${detail})`, blocked: false };

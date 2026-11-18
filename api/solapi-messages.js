@@ -167,7 +167,8 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
     });
     manualGroupIds = new Set((manual.rows || []).map(row => String(row.group_id)));
   } catch { /* 표가 없거나 조회 실패: 구분 표식 없이 계속 */ }
-  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources, manualGroupIds });
+  const failedGroupIds = new Set((slimGroups || []).filter(g => g.groupId && String(g.status).toUpperCase() === 'FAILED' && g.count?.sentTotal === 0).map(g => g.groupId)); // 그룹이 FAILED 이고 나간 건수가 0이면 그 그룹 메시지는 실패로 센다
+  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources, manualGroupIds, failedGroupIds });
   const matrix = buildMatrix(everything);
   const hourly = buildHourly(everything);
   const all = channel === 'all' ? everything : everything.filter(item => kindOfType(item.type) === channel);

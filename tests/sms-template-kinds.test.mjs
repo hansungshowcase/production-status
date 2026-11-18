@@ -96,7 +96,7 @@ test('외부 문구 표: 카페24 자동 알림 44개는 종류·대상·키가 
     assert.ok(KINDS.includes(e.kind), e.key);
     assert.ok(['고객', '직원'].includes(e.audience), e.key);
     assert.equal(e.sender, SENDERS.cafe24, e.key);
-    assert.ok(e.trigger, e.key);
+    assert.equal(typeof e.trigger, 'string', e.key); // 건수 글은 두지 않는다(2026-11-18) — 건수를 모르는 항목은 빈 글
     assert.equal(typeof e.active, 'boolean', e.key);
     assert.equal(typeof e.body, 'string', e.key);
   }

@@ -6,7 +6,12 @@ import { BMS_TEMPLATE_ID, bmsButtonsCheck, bmsTextError } from '../../../shared/
 export { BMS_TEMPLATE_ID };
 export const isBmsAta = (ataTemplate) => ataTemplate === BMS_TEMPLATE_ID; // 수단이 브랜드메시지(자유형)인지
 // 발송 조건 줄의 수단 이름
-const viaLabel = (entry) => (entry?.autoAtaTemplate === BMS_TEMPLATE_ID ? '브랜드메시지' : entry?.autoAtaTemplate ? '알림톡' : '');
+// 일괄 발송 안내의 시간 문구(대상 미리보기 응답 info). 하루 상한 때문에 하루를 넘으면 첫날 분량과 일수를 같이 쓴다.
+export const catchupSpanText = (info) => (Number(info?.days_needed) > 1
+  ? `첫날 약 ${info.eta_minutes}분, 하루 ${info.daily_max}건씩 약 ${info.days_needed}일이 걸립니다`
+  : `시작 후 약 ${info?.eta_minutes}분 안에 모두 나갑니다`);
+
+export const viaLabel = (entry) => (entry?.autoAtaTemplate === BMS_TEMPLATE_ID ? '브랜드메시지' : entry?.autoAtaTemplate ? '알림톡' : '');
 
 export const TEXT_NAME_MAX = 40;
 export const KIND_SMS = 'sms';

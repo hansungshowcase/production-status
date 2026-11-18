@@ -20,7 +20,7 @@ const AUDIENCE_TABS = [
 const CHANNEL_TABS = [
   { value: 'all', label: '전체' },
   { value: 'sms', label: '문자' },
-  { value: 'kakao', label: '알림톡' },
+  { value: 'kakao', label: '카톡(알림톡·브랜드)' },
 ].filter((t) => CHANNEL_KINDS.includes(t.value));
 
 const PAGE_SIZES = [20, 50, 100];

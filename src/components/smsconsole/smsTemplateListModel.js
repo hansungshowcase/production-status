@@ -1,7 +1,7 @@
 import {
   EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
-import { autoConditionParts, LEAD_SOURCE_FLOW_LABEL } from './smsTextTemplateFormModel.js';
+import { autoConditionParts, LEAD_SOURCE_FLOW_LABEL, viaLabel } from './smsTextTemplateFormModel.js';
 import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
@@ -17,7 +17,10 @@ export function audienceOf(group, item) {
 export function recentCount(item) {
   const recent = item?.recent;
   if (!recent || recent.state === 'unavailable') return null;
-  return Number(recent.counts?.total) || 0;
+  const counts = recent.counts || {};
+  // 성공(수신·접수)만 센다. 실패·테스트 기록(dry_run)은 뺀다. 옛 응답(성공 칸 없음)은 total 로 읽는다.
+  if (counts.received === undefined && counts.accepted === undefined) return Number(counts.total) || 0;
+  return (Number(counts.received) || 0) + (Number(counts.accepted) || 0);
 }
 
 // 카탈로그 → [{id,name,audience,trigger,count,policy,config,example,order}] (정렬 전, 카탈로그 순서가 order)
@@ -67,7 +70,7 @@ export function itemLight(item) {
   if (item?.external && item.sender !== SENDERS.program) {
     if (item.make_on === false) return { tone: 'off', text: '꺼짐' };
     if (item.make_on === true) return makeRunFresh(item.make_last_run) ? { tone: 'on', text: '켜짐' } : { tone: 'part', text: '켜짐(최근 실행 없음)' };
-    return (item.count ?? 0) > 0 ? { tone: 'on', text: '켜짐' } : { tone: 'unknown', text: '확인 안 됨' };
+    return (item.count ?? 0) - (item.fail ?? 0) > 0 ? { tone: 'on', text: '켜짐' } : { tone: 'unknown', text: '확인 안 됨' };
   }
   return { tone: 'on', text: '켜짐' };
 }
@@ -181,8 +184,8 @@ export function conditionLine(item, recipients = null) {
   if (item?.external) return joinDot(item.who ? `${item.who}에게 발송` : '', trigger);
   if (!Array.isArray(recipients)) return trigger;
   const people = staffRecipientsOf(item?.target, recipients);
-  if (people.length > 0) return joinDot(`${staffRecipientsPhrase(people)}에게 발송 중`, trigger);
-  if (/\d{4}/.test(String(item?.target || ''))) return joinDot(`${shortenPhonesInText(item.target)}로 발송 중`, trigger);
+  if (people.length > 0) return joinDot(`${staffRecipientsPhrase(people)}에게`, trigger);
+  if (/\d{4}/.test(String(item?.target || ''))) return joinDot(`${shortenPhonesInText(item.target)}로`, trigger);
   return joinDot(staffRecipientsPhrase([]), trigger);
 }
 
@@ -267,7 +270,7 @@ export function groupFlows(entries, enabledOf = (entry) => Boolean(entry.autoEna
     const parts = autoConditionParts(first);
     flow.label = `${first.autoKind === 'lead_plus_days' && first.autoLeadSource ? `${LEAD_SOURCE_FLOW_LABEL[first.autoLeadSource]} 후` : (FLOW_LABELS[first.autoKind] || '')}${first.autoStep ? `(${first.autoStep})` : ''}`;
     flow.who = parts.who;
-    flow.via = flow.steps.some((step) => step.autoAtaTemplate) ? '알림톡' : '';
+    flow.via = [...new Set(flow.steps.map((step) => viaLabel(step)).filter(Boolean))].join('·');
     const times = [...new Set(flow.steps.map((step) => String(step.autoSendTime || '')).filter(Boolean))];
     flow.time = times.length > 1 ? '시각 여러 개' : (times[0] || '');
     flow.total = flow.steps.length;

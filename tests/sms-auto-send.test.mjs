@@ -8,6 +8,7 @@ import {
   _resetAutoSchemaForTest, adCheck, autoStatus, autoToggle, autoTest, buildParts, findTargets, kstDate, optoutAdd, phoneHash, runAutoSend, runAutoSendAll,
 } from '../api/_lib/smsAutoSend.js';
 import { getSendProvider } from '../api/_lib/sendProvider.js';
+import { eventPhoneHash, runGuarded } from '../api/_lib/smsEventSend.js';
 
 const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 1, 2, 3]).toString('base64');
 const BODY = '(광고) 한성쇼케이스\n#{고객명} 대표님, 쇼케이스는 잘 쓰고 계신가요?\n무료수신거부 080-123-4567';
@@ -35,8 +36,15 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
       if (t.includes('FROM orders') && t.includes('LEFT(order_date')) return { rows: state.orders.filter(o => o.order_date && o.order_date.slice(0, 10) >= args[0] && o.order_date.slice(0, 10) <= args[1]).map(o => ({ id: o.id, phone: o.phone, client_name: o.client_name, ship_day: o.order_date.slice(0, 10) })) };
       if (t.includes('FROM orders')) return { rows: state.orders.filter(o => o.status === 'shipped' && o.ship_date.slice(0, 10) >= args[0] && o.ship_date.slice(0, 10) <= args[1]).map(o => ({ id: o.id, phone: o.phone, client_name: o.client_name, ship_day: o.ship_date.slice(0, 10) })) };
       if (t.startsWith('SELECT phone_hash FROM sms_optouts')) return { rows: state.optouts.map(phone_hash => ({ phone_hash })) };
-      if (t.startsWith('SELECT phone_hash, order_id')) return { rows: state.sends.filter(r => r.template_id === args[0]) };
-      if (t.startsWith('SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date')) return { rows: state.sends.filter(r => r.kst_date === args[0]).map(r => ({ phone_hash: r.phone_hash })) };
+      if (t.startsWith('SELECT phone_hash, order_id')) return { rows: state.sends.filter(r => r.template_id === args[0] && (!t.includes("status <> 'failed'") || r.status !== 'failed')) };
+      if (t.startsWith('SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date')) return { rows: state.sends.filter(r => r.kst_date === args[0] && (!t.includes("status <> 'failed'") || r.status !== 'failed')).map(r => ({ phone_hash: r.phone_hash })) };
+      if (t.startsWith('SELECT DISTINCT e.phone_hash FROM sms_event_sends')) return { rows: (state.bmsToday || []).map(phone_hash => ({ phone_hash })) }; // 오늘 나간 브랜드메시지 번호(event 해시)
+      if (t.startsWith("DELETE FROM sms_auto_sends WHERE template_id = ? AND status = 'failed'")) { const n = (args.length - 1) / 2; const hs = args.slice(1, 1 + n); const os = args.slice(1 + n); state.sends = state.sends.filter(r => !(r.template_id === args[0] && r.status === 'failed' && (hs.includes(r.phone_hash) || os.includes(r.order_id)))); return { rows: [] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_skip_reason = ?')) { (state.skips ||= []).push(args[0]); return { rows: [{ id: args[1] }] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_skip_reason = NULL')) { state.skipCleared = (state.skipCleared || 0) + 1; return { rows: [{ id: args[0] }] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = CASE')) { state.failMark = (state.failMark || 0) + 1; return { rows: [{ id: args[0] }] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = NULL')) { state.failClear = (state.failClear || 0) + 1; return { rows: [{ id: args[0] }] }; }
+      if (t.startsWith('SELECT MAX(last_run)')) return { rows: [{ last_run: state.cronLast || null }] };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date') && t.includes("kind = 'catchup'") && !t.includes('<>')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0] && r.kind === 'catchup' && (!t.includes('template_id') || r.template_id === args[1])).length }] };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date') && t.includes("<> 'catchup'")) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0] && r.kind !== 'catchup').length }] };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_auto_sends WHERE kst_date')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0]).length }] };
@@ -254,7 +262,9 @@ test('1통째가 실패하면 2통째는 0, 불확실·일부 실패·시간 초
   let out = await run(db, provider);
   assert.equal(provider.calls.send.length, 1);
   assert.equal(out.failed, 2);
-  assert.deepEqual(JSON.parse(db.state.sends[0].part_status), ['failed', 'skipped', 'skipped']);
+  assert.equal(db.state.sends.length, 0, '접수 0건 통째 실패: 선점 행을 지워 다음 실행이 다시 보낸다');
+  assert.deepEqual(db.state.skips, ['발송 실패: 거절'], '실패 사유는 건너뜀 사유에 남는다');
+  assert.equal(db.state.failMark, 1, '연속 실패면 1시간 쉬도록 표시');
 
   db = setup({ orders });
   provider = fakeProvider({ sendResults: [{ accepted: 0, failed: 0, groupId: null, uncertain: true, error: '확인 못 함' }] });
@@ -610,4 +620,59 @@ test('문구 저장: 광고 ship_plus_days 의 일괄 발송 값이 저장·조�
   assert.equal(orderBased.status, 201);
   assert.equal(orderBased.body.item.auto_catchup_at, undefined);
   assert.equal(db.state.templates.at(-1).auto_catchup_at, '');
+});
+
+// ---- 2026-11-18 사장님 결정: 광고 문자 통째 실패는 다시 대상·잔액 사전 확인·하루 상한 사유·광고 하루 1통·문구별 오류 격리 ----
+const twoOrders = () => [order(1, '010-3333-4444', '2026-10-31'), order(2, '010-5555-6666', '2026-10-31')];
+
+test('통째 실패(failed)로 남은 기존 행은 선점으로 치지 않아 다음 실행이 다시 보내고, 실패 행은 지워진다', async () => {
+  const db = setup({ orders: twoOrders() });
+  db.state.sends.push({ id: 90, template_id: 7, phone_hash: phoneHash('010-3333-4444'), order_id: 1, kst_date: '2026-11-19', status: 'failed', round: 1, part_status: JSON.stringify(['failed', 'skipped', 'skipped']) });
+  db.state.nextId = 91;
+  const provider = fakeProvider();
+  const out = await run(db, provider);
+  assert.equal(out.sent, 2, '실패했던 1번 번호도 다시 대상');
+  assert.equal(db.state.sends.filter(r => r.status === 'failed').length, 0);
+  assert.equal(db.state.sends.filter(r => r.status === 'sent').length, 2);
+});
+
+test('잔액이 모자라면 선점·업로드·발송 없이 끝나고 사유를 남긴다 / 조회 실패·충분하면 종전대로 보낸다', async () => {
+  let db = setup({ orders: twoOrders() });
+  let provider = fakeProvider();
+  let out = await run(db, provider, { kakao: { async getBalance() { return 100; } } });
+  assert.equal(out.reason, 'balance_short');
+  assert.equal(db.state.sends.length, 0); assert.equal(provider.calls.send.length, 0); assert.equal(provider.calls.upload.length, 0);
+  assert.match(db.state.skips[0], /^잔액 부족: 필요 \d+원, 잔액 100원$/);
+  for (const balance of ['throw', null, 100000]) {
+    db = setup({ orders: twoOrders() });
+    provider = fakeProvider();
+    out = await run(db, provider, { kakao: { async getBalance() { if (balance === 'throw') throw new Error('boom'); return balance; } } });
+    assert.equal(out.sent, 2, `잔액 ${balance}`);
+  }
+});
+
+test('하루 상한에 막히면 사유(하루 상한 N건 도달, 남은 M건 다음 날)를 남긴다', async () => {
+  const db = setup({ orders: twoOrders() });
+  db.state.sends.push({ id: 50, template_id: 7, phone_hash: phoneHash('010-9999-0000'), order_id: 99, kst_date: '2026-11-20', status: 'sent', round: 1 });
+  const out = await run(db, fakeProvider(), { env: { ...ENV, SMS_AUTO_MAX_PER_DAY: '1' } });
+  assert.equal(out.reason, 'cap');
+  assert.deepEqual(db.state.skips, ['하루 상한 1건 도달, 남은 2건 다음 날']);
+});
+
+test('오늘 브랜드메시지(광고)가 나간 번호에는 광고 문자를 보내지 않는다(광고 하루 1통)', async () => {
+  const db = setup({ orders: twoOrders() });
+  db.state.bmsToday = [eventPhoneHash('010-3333-4444')];
+  const provider = fakeProvider();
+  const out = await run(db, provider);
+  assert.equal(out.sent, 1);
+  assert.deepEqual(provider.calls.send[0].messages.map(m => m.to), ['01055556666']);
+});
+
+test('문구 하나가 예외로 끝나도 사유(실행 오류: 앞 80자·긴 숫자 가림)를 남기고 null 을 돌려준다', async () => {
+  const db = setup({ orders: [] });
+  const long = `보내기 실패 번호 01012345678 ${'가'.repeat(120)}`;
+  const result = await runGuarded(db, { id: 7 }, async () => { throw new Error(long); }, () => {});
+  assert.equal(result, null);
+  assert.ok(db.state.skips[0].startsWith('실행 오류: 보내기 실패 번호 ***'));
+  assert.ok(db.state.skips[0].length <= '실행 오류: '.length + 80);
 });

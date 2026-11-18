@@ -84,10 +84,12 @@ async function computeUsage(fetchDay, nowMs, { fresh = false } = {}) {
   const byTemplate = {};
   const sent = new Map();
   let partial = false;
+  let dayFailed = false;
   const lastMs = {};
   const readDay = async date => {
     try {
-      const day = await fetchDay(date, { nowMs });
+      let day;
+      try { day = await fetchDay(date, { nowMs }); } catch { day = await fetchDay(date, { nowMs }); } // 하루 조회 실패는 1번 더 시도한다
       if (day?.partial) partial = true;
       try { for (const entry of collapseReplacements(day?.messages || [])) addSent(sent, entry, nowMs); } catch { /* 묶음 판정 실패가 7일 사용량 셈을 막지 않게 한다 */ }
       for (const message of day?.messages || []) {
@@ -99,9 +101,15 @@ async function computeUsage(fetchDay, nowMs, { fresh = false } = {}) {
         const at = Date.parse(message.dateCreated || '');
         if (Number.isFinite(at) && at > (lastMs[id] || 0)) { lastMs[id] = at; entry.last_at = new Date(at).toISOString(); }
       }
-    } catch { partial = true; }
+    } catch { partial = true; dayFailed = true; }
   };
   for (let i = 0; i < dates.length; i += 2) await Promise.all(dates.slice(i, i + 2).map(readDay));
+  if (dayFailed && usageCache) { // 재시도 뒤에도 실패한 날이 있으면 직전 성공 값을 쓰고 오래된 값이라고 표시한다(캐시는 덮지 않는다)
+    const old = usageCache.value;
+    const stale = { ...old, stale: true };
+    if (old.sent) Object.defineProperty(stale, 'sent', { value: old.sent, enumerable: false });
+    return stale;
+  }
   const value = { days: USAGE_DAYS, partial, by_template: byTemplate, checked_at: new Date(nowMs).toISOString() };
   // 'sent' 는 usage 응답 모양을 바꾸지 않도록 열거되지 않는 칸으로만 붙인다(resource=sent 가 같은 훑기 결과를 재사용).
   Object.defineProperty(value, 'sent', { value: sent, enumerable: false });

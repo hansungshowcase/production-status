@@ -91,9 +91,9 @@ test('조건 한 줄: 고객 who·trigger 조합, 직원 등록 현황', () => {
   assert.equal(conditionLine({ audience: { id: 'customer' }, external: false, trigger: '포장 공정 완료 시' }), '제작 주문 고객 · 포장 공정 완료 시');
   const staff = (target) => ({ audience: { id: 'staff' }, external: false, trigger: 'V-커팅 완료 시', target });
   const registry = [person('이시아 부장', ''), person('최우석 이사', '')].map((p) => ({ name: p.name, phone_tail: p.name.startsWith('이') ? '4237' : '5110' }));
-  assert.equal(conditionLine(staff('이시아 부장 (010****4237)'), registry), '이시아 부장 (4237)에게 발송 중 · V-커팅 완료 시');
+  assert.equal(conditionLine(staff('이시아 부장 (010****4237)'), registry), '이시아 부장 (4237)에게 · V-커팅 완료 시');
   assert.equal(conditionLine(staff('아무도 없음'), registry), '받는 직원 없음 · V-커팅 완료 시');
-  assert.equal(conditionLine(staff('관리자 지정 번호 (010****4237)'), registry), '관리자 지정 번호 (4237)로 발송 중 · V-커팅 완료 시');
+  assert.equal(conditionLine(staff('관리자 지정 번호 (010****4237)'), registry), '관리자 지정 번호 (4237)로 · V-커팅 완료 시');
   assert.equal(conditionLine(staff('이시아 부장 (010****4237)'), null), 'V-커팅 완료 시');
   assert.equal(conditionLine({ audience: { id: 'staff' }, external: true, who: '공장장', trigger: '3일 전' }), '공장장에게 발송 · 3일 전');
 });

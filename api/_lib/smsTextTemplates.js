@@ -1,6 +1,6 @@
 // 내 문자 문구 저장소(보내기 화면에서 불러 쓰는 문구). 번호·이름은 다루지 않는다.
 import { byteLength, getSendProvider } from './sendProvider.js';
-import { BMS_PF_ID, BMS_SENDER, BMS_TEMPLATE_ID, bmsImageRatioError, bmsImageSig, bmsTextError, parseBmsConfig, readBmsButtons } from './smsBms.js';
+import { BMS_PF_ID, BMS_SENDER, BMS_TEMPLATE_ID, bmsImageRatioError, bmsImageSig, bmsTextError, bmsOptoutCheck, parseBmsConfig, readBmsButtons } from './smsBms.js';
 import { parseSendExtras, staffDirectory } from './smsManualSend.js';
 import { STEPS } from './steps.js';
 
@@ -474,6 +474,7 @@ async function buildBmsConfig(db, { id, auto, body, photo, photos, provider, fet
   if (images.length > 1) return { error: '브랜드메시지는 사진을 1장만 보낼 수 있습니다. 여러 장이면 한 장으로 합쳐 주세요.', reason: 'bms_images' };
   const textError = bmsTextError(body, images.length === 1);
   if (textError) return { error: textError, reason: 'bms_too_long' };
+  if (bmsOptoutCheck(body)) return { error: '브랜드메시지(광고) 본문에 무료수신거부 080 번호 줄이 있어야 합니다.', reason: 'no_optout_080' }; // 2026-11-18 사장님 결정: 광고 문자와 같은 080 줄 필수
   const prev = parseBmsConfig(prevRaw);
   const cfg = { pfId: prev.pfId || BMS_PF_ID, from: prev.from || BMS_SENDER, buttons: auto.bms.buttons, imageId: '', imageSig: '' };
   if (images.length === 1) {

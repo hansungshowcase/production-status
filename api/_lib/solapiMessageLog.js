@@ -50,8 +50,13 @@ const codeOf = message => {
   return /^\d{4}$/.test(code) ? code : null;
 };
 
-export function classifyStatus(message, { nowMs = Date.now(), replacementPossible = false } = {}) {
+export function classifyStatus(message, { nowMs = Date.now(), replacementPossible = false, groupFailed = false } = {}) {
   const code = codeOf(message);
+  // 그룹이 FAILED 이고 나간 건수(sentTotal)가 0이면 메시지 코드가 비었거나 대기·발송중이어도 실패로 본다(2026-11-18). 성공(4000)은 그대로.
+  if (groupFailed && code !== '4000') { // 대기·발송중(2000·3000)이나 코드 없음은 코드를 남기지 않는다(발송불가가 아니라 발송실패로 보이게)
+    const kept = code && code !== '2000' && code !== '3000' ? code : null;
+    return { status: 'failed', status_code: kept, status_label: kept ? `접수 실패 (그룹 실패 ${kept})` : '접수 실패 (그룹 실패)' };
+  }
   if (code === '4000') return { status: 'success', status_code: code, status_label: '발송 성공' };
   if (code === '2000') return { status: 'pending', status_code: code, status_label: '발송대기' };
   if (code === '3000') return { status: 'pending', status_code: code, status_label: '발송중' };
@@ -251,7 +256,7 @@ function sourceOf(groupSources, groupId) {
 }
 const nullable = value => (value == null || value === '' ? null : String(value));
 
-export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null, manualGroupIds = null } = {}) {
+export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null, manualGroupIds = null, failedGroupIds = null } = {}) {
   const index = buildDbIndex(dbRows);
   const items = collapseReplacements(messages).map(entry => {
     const { orig, final, replaced } = entry;
@@ -259,8 +264,8 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
     const source = sourceOf(groupSources, final.groupId || orig.groupId);
     const kind = classifyAudience(entry, dbRow, source);
     const replacementPossible = !replaced && isKakaoType(orig.type) && orig.kakaoOptions?.disableSms !== true;
-    const state = classifyStatus(final, { nowMs, replacementPossible });
     const groupId = final.groupId || orig.groupId;
+    const state = classifyStatus(final, { nowMs, replacementPossible, groupFailed: Boolean(groupId && failedGroupIds?.has(groupId)) });
     const senderLabel = (groupId && manualGroupIds?.has(groupId)) ? '보내기 화면'
       : dbRow ? SENDERS.program : (externalSender(entry, source) || SOURCE_NAMES[source] || SENDERS.unknown);
     const replacedReason = replaced ? (safeText(orig.reason || null) || (codeOf(orig) ? classifyStatus(orig).status_label : null)) : null;

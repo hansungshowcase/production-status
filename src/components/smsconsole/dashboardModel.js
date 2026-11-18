@@ -13,7 +13,7 @@ export function summarizeToday(counts) {
 }
 
 const AUD_ROWS = [['customer', '고객'], ['staff', '직원']];
-const CH_COLS = [['sms', '문자'], ['kakao', '알림톡']];
+const CH_COLS = [['sms', '문자'], ['kakao', '카톡(알림톡·브랜드)']];
 
 export function matrixCells(matrix) {
   const m = matrix && typeof matrix === 'object' ? matrix : {};
@@ -61,9 +61,11 @@ export function kstTime(iso) {
 function groupState(g) {
   const failed = num(g.failed);
   const pending = num(g.pending);
-  const tone = failed > 0 ? 'danger' : pending > 0 ? 'info' : 'ok';
+  const groupFailed = String(g.status || '').toUpperCase() === 'FAILED';
+  const tone = failed > 0 || groupFailed ? 'danger' : pending > 0 ? 'info' : 'ok';
   if (typeof g.status_label === 'string' && g.status_label.trim()) return { label: g.status_label.trim(), tone };
   if (failed > 0) return { label: `실패 ${failed}`, tone };
+  if (groupFailed) return { label: '실패', tone };
   if (pending > 0) return { label: '발송중', tone };
   return { label: '완료', tone };
 }

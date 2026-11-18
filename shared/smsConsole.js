@@ -7,9 +7,9 @@ export const CONSOLE_MENUS = Object.freeze([
     id: 'log', label: '발송 내역', subs: [
       { id: 'all', label: '전체', aud: 'all', ch: 'all' },
       { id: 'customer-sms', label: '고객 · 문자', aud: 'customer', ch: 'sms' },
-      { id: 'customer-kakao', label: '고객 · 알림톡', aud: 'customer', ch: 'kakao' },
+      { id: 'customer-kakao', label: '고객 · 카톡(알림톡·브랜드)', aud: 'customer', ch: 'kakao' },
       { id: 'staff-sms', label: '직원 · 문자', aud: 'staff', ch: 'sms' },
-      { id: 'staff-kakao', label: '직원 · 알림톡', aud: 'staff', ch: 'kakao' },
+      { id: 'staff-kakao', label: '직원 · 카톡(알림톡·브랜드)', aud: 'staff', ch: 'kakao' },
     ],
   },
   {
