@@ -218,6 +218,22 @@ solapi.sendBmsEach = async function sendBmsEach({ from, pfId, messages }, { fetc
   return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '', ...(failedTo.length ? { failedTo } : {}) };
 };
 
+// 접수된 그룹의 최종 결과 조회(GET messages/v4/groups/{groupId}, 조회 전용). 4xx·5xx·예외는 null(던지지 않는다).
+// → { status, success, replacement, failed, total, log(마지막 로그 문구) }. status 'COMPLETE' 가 아니면 아직 처리 중이다.
+solapi.groupResult = async function groupResult(groupId, { fetchImpl } = {}) {
+  const id = String(groupId ?? '').trim();
+  if (!id) return null;
+  try {
+    const payload = await call(`messages/v4/groups/${encodeURIComponent(id)}`, {}, { fetchImpl });
+    if (!payload || typeof payload !== 'object') return null;
+    const g = payload?.groupInfo || payload?.group || payload;
+    const count = g.count || {};
+    const nInt = value => (value === undefined || value === null || value === '' || !Number.isFinite(Number(value)) ? null : toInt(value)); // 필드가 없으면 0 이 아니라 null
+    const log = Array.isArray(g.log) && g.log.length ? g.log[g.log.length - 1] : null;
+    return { status: String(g.status || ''), success: nInt(count.sentSuccess), replacement: nInt(count.sentReplacement), failed: nInt(count.sentFailed), total: nInt(count.total), log: String(log?.message ?? '') };
+  } catch { return null; }
+};
+
 const PROVIDERS = { solapi };
 
 export function getSendProvider(name = process.env.SMS_SEND_PROVIDER || 'solapi') {

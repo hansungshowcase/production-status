@@ -177,7 +177,7 @@ test('KST 08:00~20:00 사이에만 보낸다(20:00 이후·08:00 전은 다음 �
   // 알림톡 수단은 20:00~21:00 에도 종전대로 나간다(BMS 만 20시 제한)
   const db2 = fakeDb({ orders });
   const ata = provider();
-  const ataKakao = { async getBalance() { return 1; }, async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables: ['#{고객명}'], content: '#{고객명}님' }, scope: { allowed: true, kind: 'channel' } }; } };
+  const ataKakao = { async getBalance() { return 100000; }, async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables: ['#{고객명}'], content: '#{고객명}님' }, scope: { allowed: true, kind: 'channel' } }; } };
   const ataOut = await run(db2, ata, base({ auto_ata_template: 'KA01TP1', images: [], auto_bms: '' }), { nowMs: Date.parse('2026-11-20T11:30:00Z'), kakao: ataKakao });
   assert.equal(ataOut.sent, 1); assert.equal(ata.calls.kakao.length, 1); assert.equal(ata.calls.bms.length, 0);
 });
@@ -384,7 +384,7 @@ test('화면 모델: 이미지와 함께면 400자, 버튼 검사, 저장 본문
 
 // ---------- 7. 문자·알림톡 수단은 그대로 ----------
 test('알림톡 수단은 sendKakaoEach 만, 문자 수단은 sendEach 만 쓴다(브랜드메시지 변경 전과 같다)', async () => {
-  const ataKakao = { async getBalance() { return 1; }, async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables: ['#{고객명}'], content: '#{고객명}님' }, scope: { allowed: true, kind: 'channel' } }; } };
+  const ataKakao = { async getBalance() { return 100000; }, async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables: ['#{고객명}'], content: '#{고객명}님' }, scope: { allowed: true, kind: 'channel' } }; } };
   const ataVendor = provider();
   const ata = await run(fakeDb({ orders: [order(1, '010-1111-2222', '2026-11-17', '가')] }), ataVendor, base({ auto_ata_template: 'KA01TP1', images: [], auto_bms: '' }), { kakao: ataKakao });
   assert.equal(ata.sent, 1); assert.equal(ataVendor.calls.kakao.length, 1); assert.equal(ataVendor.calls.bms.length, 0); assert.equal(ataVendor.calls.each.length, 0);

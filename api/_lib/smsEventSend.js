@@ -92,6 +92,7 @@ export async function ensureEventSchema(db) {
     args: [],
   });
   await db.execute({ sql: 'ALTER TABLE sms_event_sends ADD COLUMN IF NOT EXISTS kind TEXT', args: [] }); // 'catchup' = 이미 출고된 주문 1회 발송분(안내 상한에서 뺀다)
+  await db.execute({ sql: 'ALTER TABLE sms_event_sends ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ', args: [] }); // 쏠라피 그룹 결과를 다시 확인한 시각(알림톡·브랜드메시지 일괄 발송분)
   flags.set('sms.event', true);
 }
 
@@ -474,6 +475,7 @@ export async function runEventSend(template, deps = {}) {
     await pollSignups(db, { env, fetchImpl, nowMs, warn });
   }
   const today = kstDate(nowMs);
+  if (ata && (await recheckAtaGroups(db, template, vendor, { nowMs, fetchImpl, warn }))) return { ...out, ran: true, reason: 'catchup_paused' }; // 접수 뒤 전부 실패한 그룹: 행을 지우고 일괄 발송을 멈췄다(같은 실행에서 다시 보내지 않는다)
   const eligible = await pending(db, template, { nowMs, staff, warn, catchupOnly: deps.catchupOnly === true });
   if (catchupActive(template, nowMs) && !eligible.some(item => item.catchup)) { // 이미 출고된 주문 1회 발송: 남은 대상이 없으면 끝(다시 돌지 않는다)
     try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_done_at = NOW() WHERE id = ? AND auto_catchup_done_at IS NULL RETURNING id', args: [template.id] }); } catch { warn('[sms-event] 1회 발송 완료 표시 실패'); }
@@ -507,6 +509,15 @@ export async function runEventSend(template, deps = {}) {
   const picked = [...normalItems.slice(0, Math.max(0, max - usedToday)), ...catchupItems.slice(0, Math.max(0, Math.min(catchupPerRun(env), catchupGlobal - catchupUsed, catchupOwn ? catchupOwn - catchupOwnUsed : Infinity)))];
   if (picked.length < eligible.length) warn('[sms-event] 하루 상한·묶음으로 못 보낸 건수', eligible.length - picked.length);
   if (!picked.length) return { ...out, ran: true, reason: 'cap' };
+  if (ata) { // 알림톡·브랜드메시지: 잔액이 모자라면 선점 전에 멈춘다(접수 뒤 잔액 부족으로 전부 실패하면 행만 sent 로 남는다). 조회 실패는 종전대로 보낸다.
+    const short = await balanceShort(vendor, bms, picked.length, deps, env);
+    if (short) {
+      if (picked.some(item => item.catchup)) {
+        try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_paused_at = NOW(), auto_catchup_error = ? WHERE id = ? RETURNING id', args: [short.why, template.id] }); } catch { warn('[sms-event] 일괄 발송 멈춤 표시 실패'); }
+      }
+      return { ...out, ran: true, reason: 'balance_short' };
+    }
+  }
 
   // 문구 만들기: 한 건에서 예외가 나면 그 건만 건너뛴다.
   const links = await trackUrls(db, [...new Set(picked.map(item => item.orderId).filter(id => id !== null))]);
@@ -603,6 +614,55 @@ export async function runEventSend(template, deps = {}) {
   return out;
 }
 
+// 선점 전 잔액 확인: 숫자 잔액이 필요 금액보다 작으면 { why }, 아니면(충분·조회 실패·단가 모름) null
+async function balanceShort(vendor, bms, count, deps, env) {
+  try {
+    const kakao = deps.kakao || kakaoTemplates;
+    if (typeof kakao.getBalance !== 'function') return null;
+    const estimator = bms ? vendor.estimateBms : vendor.estimateKakao;
+    if (typeof estimator !== 'function') return null;
+    const need = Number(estimator.call(vendor, { count }, env)?.total);
+    const balance = await kakao.getBalance(deps.kakaoOpts || (deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : undefined));
+    if (!Number.isFinite(need) || typeof balance !== 'number' || !Number.isFinite(balance) || balance >= need) return null;
+    return { why: `잔액 부족: 필요 ${need}원, 잔액 ${balance}원` };
+  } catch { return null; }
+}
+
+// 접수 뒤 전부 실패한 그룹 찾기(알림톡·브랜드메시지 일괄 발송분): 최근 2일 안 sent 행의 쏠라피 그룹 결과를 1번씩 확인한다(미확인 그룹이 있을 때만, 한 번에 최대 5그룹).
+// 완료이고 성공·대체발송이 0건이면 그 그룹의 행을 지워 다시 대상이 되게 하고 일괄 발송을 멈춘다. 일부라도 성공했으면 확인 시각만 남긴다. 완료가 아니거나 조회가 안 되면 아무것도 바꾸지 않는다.
+// → 일괄 발송을 멈췄으면 true
+const RECHECK_GROUPS_PER_RUN = 5;
+async function recheckAtaGroups(db, template, vendor, { nowMs, fetchImpl, warn }) {
+  if (typeof vendor?.groupResult !== 'function') return false;
+  let stopped = false;
+  try {
+    const rows = (await db.execute({ sql: "SELECT id, group_ids FROM sms_event_sends WHERE template_id = ? AND status = 'sent' AND kind = 'catchup' AND kst_date >= ? AND checked_at IS NULL ORDER BY id ASC", args: [template.id, addDays(kstDate(nowMs), -1)] })).rows || [];
+    if (!rows.length) return false;
+    const byGroup = new Map();
+    const noGroup = [];
+    for (const row of rows) {
+      let ids = [];
+      try { const parsed = JSON.parse(row.group_ids || '[]'); ids = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : []; } catch { ids = []; }
+      if (!ids.length) { noGroup.push(Number(row.id)); continue; }
+      for (const gid of ids) { if (!byGroup.has(gid)) byGroup.set(gid, []); byGroup.get(gid).push(Number(row.id)); }
+    }
+    if (noGroup.length) await db.execute({ sql: `UPDATE sms_event_sends SET checked_at = NOW() WHERE id IN (${placeholders(noGroup)})`, args: noGroup }); // 확인할 그룹이 없는 행은 다시 보지 않는다
+    for (const [gid, rowIds] of [...byGroup.entries()].slice(0, RECHECK_GROUPS_PER_RUN)) {
+      let result = null;
+      try { result = await vendor.groupResult(gid, { fetchImpl }); } catch { result = null; }
+      if (!result || (result.status !== 'COMPLETE' && result.status !== 'FAILED')) continue;
+      if (![result.success, result.replacement, result.failed].every(Number.isFinite)) continue; // 숫자를 못 읽으면 아무것도 바꾸지 않는다
+      if (result.success + result.replacement > 0) { await db.execute({ sql: `UPDATE sms_event_sends SET checked_at = NOW() WHERE id IN (${placeholders(rowIds)})`, args: rowIds }); continue; }
+      if (!(result.failed > 0)) continue; // 성공·대체·실패가 모두 0이면 아직 집계 전일 수 있어 그대로 둔다
+      await db.execute({ sql: `DELETE FROM sms_event_sends WHERE status = 'sent' AND id IN (${placeholders(rowIds)})`, args: rowIds });
+      const why = `쏠라피 발송 실패: ${String(result.log || '성공 0건').slice(0, 150)}`;
+      try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_paused_at = NOW(), auto_catchup_error = ?, auto_catchup_done_at = NULL WHERE id = ? RETURNING id', args: [why, template.id] }); } catch { warn('[sms-event] 일괄 발송 멈춤 표시 실패'); }
+      stopped = true;
+    }
+  } catch { warn('[sms-event] 쏠라피 그룹 결과 재확인 실패'); }
+  return stopped;
+}
+
 // 알림톡 묶음이 통째 실패(접수 0건): 선점 행을 지워 다음에 다시 보낼 수 있게 한다.
 // 일괄 발송(catchup)이 섞였으면 그 문구의 일괄 발송을 멈추고(완료 표시 없음) 사유를 남긴다 — 화면에서 다시 저장해야 이어진다.
 // 평소 발송은 첫 실패는 다음 크론에 다시 시도, 연속 실패면 1시간 건너뛴다(auto_ata_fail_at 이 미래면 건너뜀, 성공하면 지움).
@@ -648,12 +708,14 @@ export async function runInstantSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   // 즉시형·가입·문의 문구 + (이미 출고된 주문 1회 발송이 걸려 아직 안 끝난 출고 완료 후 알림톡 문구: 5분 크론이 지정 시각에 1번 실행)
-  const sql = `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND (auto_kind IN (${[...INSTANT_KINDS, ...LEAD_KINDS].map(kind => `'${kind}'`).join(', ')}) OR (auto_kind = 'ship_plus_days' AND COALESCE(auto_ata_template, '') <> '' AND COALESCE(auto_catchup_at, '') <> '' AND auto_catchup_done_at IS NULL AND auto_catchup_paused_at IS NULL)) ORDER BY id ASC`;
+  const sql = `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND (auto_kind IN (${[...INSTANT_KINDS, ...LEAD_KINDS].map(kind => `'${kind}'`).join(', ')}) OR (auto_kind = 'ship_plus_days' AND COALESCE(auto_ata_template, '') <> '' AND COALESCE(auto_catchup_at, '') <> '' AND auto_catchup_done_at IS NULL AND auto_catchup_paused_at IS NULL) OR (auto_kind = 'ship_plus_days' AND COALESCE(auto_ata_template, '') <> '' AND id IN (SELECT template_id FROM sms_event_sends WHERE status = 'sent' AND kind = 'catchup' AND kst_date >= ? AND checked_at IS NULL))) ORDER BY id ASC`; // 뒤쪽: 멈췄거나 끝난 문구도 최근 2일 안 미확인 일괄 발송 그룹이 있으면 결과 재확인 때문에 목록에 넣는다
+  const recheckFrom = addDays(kstDate(nowMs), -1);
   let list;
-  try { list = await db.execute({ sql, args: [] }); } catch (error) {
+  try { list = await db.execute({ sql, args: [recheckFrom] }); } catch (error) {
     if (error?.code !== '42703' && error?.code !== '42P01') throw error; // 표·칸이 아직 없으면 만든 뒤 한 번 더
     await ensureTextTemplateSchema(db);
-    list = await db.execute({ sql, args: [] });
+    await ensureEventSchema(db);
+    list = await db.execute({ sql, args: [recheckFrom] });
   }
   if (!(list.rows || []).length || !inSendWindow(nowMs)) return total;
   await ensureTextTemplateSchema(db);
