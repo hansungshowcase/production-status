@@ -231,6 +231,7 @@ function instantDb({ orders = [], processes = [], templates = [] } = {}) {
     }
     if (t.includes('FROM processes p JOIN orders o')) {
       db.state.sql.push(t);
+      (db.state.procSql ||= []).push({ t, args });
       const column = /p\.(started_at|completed_at) IS NOT NULL/.exec(t)[1];
       const ids = new Set(db.state.processes.filter(p => p.step_name === args[0] && p[column] && p[column] >= args[1] && p[column] <= args[2]).map(p => p.order_id));
       return { rows: db.state.orders.filter(o => ids.has(o.id) && o.status !== 'cancelled') };
@@ -534,4 +535,11 @@ test('발송 시각 ③ 저장: 09:00~20:00 30분 단위만, 즉시형·가입 �
   assert.equal((await save('가입 당일', { kind: 'lead_plus_days', days: 0, send_time: '10:30' }, '#{고객명}님 안내')).body.item.auto_send_time, undefined);
   assert.equal((await save('가입 2일', { kind: 'lead_plus_days', days: 2, send_time: '10:30' }, '#{고객명}님 안내')).body.item.auto_send_time, '10:30');
   assert.equal((await save('빈 값', { kind: 'due_date', offset: -3 })).body.item.auto_send_time, undefined);
+});
+
+test('즉시형 공정 조회 SQL: ? 자리표시자 수가 넘기는 값 수와 같다(db.js 가 문자열 안의 ? 도 자리표시자로 바꾼다)', async () => {
+  const db = instantDb({ orders: [mkOrder(1)], processes: [{ order_id: 1, step_name: '포장', status: 'completed', completed_at: '2026-11-20T00:30:00.000Z' }] });
+  await go(db, fakeProvider(), itpl());
+  assert.ok(db.state.procSql?.length >= 1, '공정 조회가 실행돼야 한다');
+  for (const { t, args } of db.state.procSql) assert.equal([...t].filter(ch => ch === '?').length, args.length);
 });

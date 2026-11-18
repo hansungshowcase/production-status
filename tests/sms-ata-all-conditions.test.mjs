@@ -90,8 +90,10 @@ const KIND_AUTO = {
 };
 
 test('점검표: 화면의 모든 자동 발송 조건(10종)이 알림톡 가능 목록과 일치한다', () => {
-  assert.deepEqual(Object.keys(KIND_AUTO).sort(), [...AUTO_KINDS].sort());
-  assert.deepEqual(Object.keys(ATA_CONDITIONS).sort(), [...AUTO_KINDS].sort());
+  // process_started_plus_days(2026-11-18)는 광고 문자 전용이라 알림톡이 없다(저장 때 no_ata 로 거절, tests/sms-process-plus-1118.test.mjs). 나머지 10종은 종전 그대로 대조한다.
+  const ataKinds = [...AUTO_KINDS].filter(kind => kind !== 'process_started_plus_days');
+  assert.deepEqual(Object.keys(KIND_AUTO).sort(), ataKinds.sort());
+  assert.deepEqual(Object.keys(ATA_CONDITIONS).sort(), ataKinds.sort());
 });
 
 for (const [kind, extra] of Object.entries(KIND_AUTO)) {

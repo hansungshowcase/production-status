@@ -12,12 +12,13 @@ import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions, 
 import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 import { STEPS } from './_lib/steps.js';
 import { cafe24Connected } from './_lib/cafe24.js';
-import { autoStatus, autoTest, sendCostOf, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
+import { authEnabled } from './_lib/auth.js';
+import { autoMarkSent, autoStatus, autoTest, sendCostOf, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 import { catchupPreview } from './_lib/smsEventSend.js';
 import { readSolapiHealth } from './_lib/solapiHealth.js';
 
 const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts', 'catchup_preview']);
-const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete']);
+const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete', 'auto_mark_sent']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
 const DAY_MS = 86400000;
@@ -270,6 +271,13 @@ async function handlePost(req, res, ctx) {
       const out = action === 'text_template_save' ? await saveTextTemplate(db, body, { staff: deps.staff, provider: deps.sendProvider, fetchImpl: opts.fetchImpl }) : await deleteTextTemplate(db, body);
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 저장하지 못했습니다.'); }
+  }
+  if (action === 'auto_mark_sent') { // Make 전환용 '이미 보냄' 기록(실제 발송 없음). 관리자 로그인이 켜져 있으면 관리자만, 같은 출처·쓰기 잠금은 위에서 이미 확인했다.
+    if ((authEnabled() || req.auth) && req.auth?.role !== 'admin') return fail(res, 403, '관리자만 쓸 수 있습니다.');
+    try {
+      const out = await autoMarkSent(body, { db: deps.db || getDb() });
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '처리하지 못했습니다.'); }
   }
   if (action === 'auto_toggle' || action === 'auto_test' || action === 'optout_add' || action === 'optout_delete') {
     try {

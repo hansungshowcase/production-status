@@ -366,7 +366,7 @@ async function instantCandidates(db, template, { nowMs, staff, preview }) {
     // 시각은 TEXT(UTC ISO). 형식이 ISO 가 아닌 값은 비교에서 빠진다(안전한 쪽).
     out = await db.execute({
       sql: `SELECT ${ORDER_COLUMNS} FROM processes p JOIN orders o ON o.id = p.order_id
-        WHERE p.step_name = ? AND p.${column} IS NOT NULL AND p.${column} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$' AND p.${column} >= ? AND p.${column} <= ? AND COALESCE(o.status, '') <> 'cancelled'
+        WHERE p.step_name = ? AND p.${column} IS NOT NULL AND p.${column} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.0-9]*Z$' AND p.${column} >= ? AND p.${column} <= ? AND COALESCE(o.status, '') <> 'cancelled'
         ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
       args: [template.auto_step, from, to],
     });
@@ -857,7 +857,7 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   await ensureEventSchema(db);
   const id = template.id;
   const today = kstDate(nowMs);
-  const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends WHERE template_id = ? GROUP BY status', args: [id] })).rows || [];
+  const sums = (await db.execute({ sql: "SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends WHERE template_id = ? AND COALESCE(reason, '') <> 'make_migrated' GROUP BY status", args: [id] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
   const rows7 = (await db.execute({ sql: "SELECT status, COUNT(*) AS n FROM sms_event_sends WHERE template_id = ? AND status IN ('sent', 'failed') AND kst_date >= ? GROUP BY status", args: [id, addDays(today, -6)] })).rows || [];
   const sent7 = Number(rows7.find(row => row.status === 'sent')?.n) || 0;

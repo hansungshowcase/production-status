@@ -46,6 +46,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
   } else if (autoKind === AUTO_KIND_LEAD_PLUS) {
     if (normalizeLeadDays(days) === null) return { ok: false, reason: 'offset', info };
   } else if (AUTO_KINDS.includes(autoKind)) {
+    if (autoKind === AUTO_KIND_PROCESS_PLUS && !step) return { ok: false, reason: 'step', info };
     if (normalizeDays(days) === null) return { ok: false, reason: 'days', info };
     if (normalizeSendFrom(sendFrom) === null) return { ok: false, reason: 'sendFrom', info };
     const times = normalizeRepeat(repeat ?? '1');
@@ -85,6 +86,7 @@ export function mergeLayout(sizes, { maxEdge = IMAGE_MAX_EDGE } = {}) {
 export const IMAGE_MAX = 3;
 export const AUTO_KIND = 'ship_plus_days';
 export const AUTO_KIND_ORDER = 'order_plus_days';
+export const AUTO_KIND_PROCESS_PLUS = 'process_started_plus_days'; // 공정 시작일+N일(설비 진입 후 N일 등). 공정 선택이 필요하다
 export const AUTO_KIND_DUE = 'due_date';
 export const AUTO_KIND_SHIP_PLAN = 'ship_scheduled';
 export const AUTO_KIND_SHIP_OR_DUE = 'ship_or_due';
@@ -99,12 +101,12 @@ export const AUTO_KIND_LEAD_PLUS = 'lead_plus_days';
 export const LEAD_SOURCES = ['', 'cafe24', 'airtable'];
 export const LEAD_SOURCE_OPTION_LABEL = { '': '가입·문의 모두', cafe24: '회원가입만', airtable: '견적 문의만' };
 export const LEAD_SOURCE_FLOW_LABEL = { '': '가입·문의', cafe24: '회원가입', airtable: '견적 문의' };
-export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS];
+export const AUTO_KINDS = [AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, ...DATE_KINDS, ...IMMEDIATE_KINDS, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS];
 export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
 // 광고 문구로 저장되는 종류(서버 auto_msg_type 'ad' = 출고 완료 후·주문 등록 후)
 // 출고 완료 후·주문 등록 후 + 알림톡을 고르면 광고가 아니라 정보성 알림톡이다(ataTemplate 를 넘기면 광고 표기 대상에서 뺀다)
-export const isAdKind = (kind, ataTemplate = '') => (kind === AUTO_KIND || kind === AUTO_KIND_ORDER) && !ataTemplate;
+export const isAdKind = (kind, ataTemplate = '') => (kind === AUTO_KIND || kind === AUTO_KIND_ORDER || kind === AUTO_KIND_PROCESS_PLUS) && !ataTemplate;
 const AD_OPTOUT_LINE = '무료수신거부 080-500-4233';
 const AD_OPTOUT_RE = /무료\s*수신\s*거부[^\n]*080[-\d]{7,}/;
 // 광고 표기: 맨 앞 "(광고)"와 080 무료수신거부 줄이 없으면 붙인 본문을 돌려준다(있으면 그대로). 서버 adCheck 를 통과하는 모양.
@@ -129,7 +131,7 @@ export const isImmediateKind = (kind) => IMMEDIATE_KINDS.includes(kind);
 export const AUTO_DEFAULT_DAYS = 20;
 export const AUTO_DEFAULT_REPEAT = 1;
 export const AUTO_DEFAULT_INTERVAL = 30;
-const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시', [AUTO_KIND_MEMBER_JOINED]: '자사몰 회원가입 시', [AUTO_KIND_LEAD_PLUS]: '가입·문의' };
+const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_PROCESS_PLUS]: '공정 시작 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시', [AUTO_KIND_MEMBER_JOINED]: '자사몰 회원가입 시', [AUTO_KIND_LEAD_PLUS]: '가입·문의' };
 
 // 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null. 매일 반복(daily)은 별도 체크
 export const dirDaily = (dir, daily) => (daily ? (dir === 'before' ? 'until' : 'ongoing') : '');
@@ -272,6 +274,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
       };
     }
     const out = { kind: a.kind, days: normalizeDays(a.days) };
+    if (a.kind === AUTO_KIND_PROCESS_PLUS) out.step = String(a.step || ''); // 어느 공정의 시작일 기준인지
     if (a.ataTemplate) Object.assign(out, ata);
     if (a.kind === AUTO_KIND && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt), ...(String(a.catchupDaily ?? '').trim() ? { daily: Number(a.catchupDaily) } : {}) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
     if (a.sendFrom !== undefined) out.send_from = normalizeSendFrom(a.sendFrom) || null;
@@ -311,7 +314,7 @@ export function sendTimeLabel(time) {
   return `${hour < 12 ? '오전' : '오후'} ${hour > 12 ? hour - 12 : hour}:${time.slice(3)}`;
 }
 // 시각 칸이 뜻을 갖는 조건: 날짜형·출고 완료 후·주문 등록 후, 가입·문의 후(일수 1 이상). 즉시형·회원가입 시는 없다.
-export const hasSendTime = (kind, days) => (kind === AUTO_KIND_LEAD_PLUS ? (normalizeLeadDays(days) ?? 0) >= 1 : kind === AUTO_KIND || kind === AUTO_KIND_ORDER || isDateKind(kind));
+export const hasSendTime = (kind, days) => (kind === AUTO_KIND_LEAD_PLUS ? (normalizeLeadDays(days) ?? 0) >= 1 : kind === AUTO_KIND || kind === AUTO_KIND_ORDER || kind === AUTO_KIND_PROCESS_PLUS || isDateKind(kind));
 // 사장님이 고르지 않았을 때 칸에 골라져 보이는 값(가입·문의 후 09:30, 그 밖 날짜형 10:00)
 export const defaultSendTime = (kind) => (kind === AUTO_KIND_LEAD_PLUS ? '09:30' : (hasSendTime(kind, '1') ? '10:00' : ''));
 
@@ -332,7 +335,7 @@ export function formValuesFromItem(item) {
 export function stageOrder(f) {
   const kind = f?.autoKind;
   if (kind === AUTO_KIND_LEAD_PLUS) return normalizeLeadDays(f.days);
-  if (kind === AUTO_KIND || kind === AUTO_KIND_ORDER) return normalizeDays(f.days);
+  if (kind === AUTO_KIND || kind === AUTO_KIND_ORDER || kind === AUTO_KIND_PROCESS_PLUS) return normalizeDays(f.days);
   if (isDateKind(kind)) return normalizeOffset(f.offsetDir, f.offsetDays, f.daily);
   return AUTO_KINDS.includes(kind) ? 0 : null;
 }
@@ -410,7 +413,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   '고객',
   viaLabel(entry),
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
-  `${AUTO_LABEL[entry.autoKind]} ${entry.autoDays}일 뒤`,
+  `${AUTO_LABEL[entry.autoKind]}${entry.autoKind === AUTO_KIND_PROCESS_PLUS && entry.autoStep ? `(${entry.autoStep})` : ''} ${entry.autoDays}일 뒤`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
   '고객',
   viaLabel(entry),
@@ -426,6 +429,7 @@ export function autoTargetText(entry) {
   const days = Number(entry?.autoDays) || 0;
   const times = Number(entry?.autoRepeat) > 1 ? `번호당 ${Number(entry.autoRepeat)}회(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '번호당 1회';
   if (kind === AUTO_KIND) return joinDot('주문 상태 출고완료', `출고일+${days}일=오늘(3일 지난 건까지)`, '수신거부·중복번호 제외', times);
+  if (kind === AUTO_KIND_PROCESS_PLUS) return joinDot(`${entry.autoStep || '고른'} 공정 시작일+${days}일=오늘(3일 지난 건까지)`, '취소 주문 제외', '수신거부·중복번호 제외', times);
   if (kind === AUTO_KIND_ORDER) return joinDot(`주문일+${days}일=오늘(3일 지난 건까지)`, '취소 주문 제외', '수신거부·중복번호 제외', times);
   if (isDateKind(kind)) {
     const label = kind === AUTO_KIND_SHIP_OR_DUE ? '출고예정일(없으면 납기일)' : (kind === AUTO_KIND_SHIP_PLAN ? '출고예정일' : '납기일');

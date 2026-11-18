@@ -7,7 +7,10 @@ import { STEPS } from './steps.js';
 export const TEXT_TEMPLATE_LIMITS = Object.freeze({ name: 40, bodyBytes: 2000, count: 100, images: 3, autoDaysMax: 365 });
 export const AUTO_KIND = 'ship_plus_days';
 // 기준 사건: 출고 완료 후 / 주문 등록 후(2026-11-13 더함)
-export const AUTO_KINDS = Object.freeze(['ship_plus_days', 'order_plus_days']);
+export const AUTO_KINDS = Object.freeze(['ship_plus_days', 'order_plus_days', 'process_started_plus_days']);
+// 2026-11-18(20:45): 'process_started_plus_days' = 공정(auto_step) 시작일(processes.started_at, KST) + N일. 광고 문자 갈래(sms_auto_sends)를 타며 알림톡·일괄 발송은 없다.
+export const AUTO_KIND_PROCESS = 'process_started_plus_days';
+export const isProcessPlusKind = kind => kind === AUTO_KIND_PROCESS;
 export const isAutoKind = kind => AUTO_KINDS.includes(kind);
 // 2단계-가(2026-11-13): 기준일형(납기일·출고예정일 기준) — 항상 안내(info) 문구
 // 3단계-가(설계 17절): 'ship_or_due' = 출고예정일(없으면 납기일) 기준
@@ -81,15 +84,20 @@ const flags = new Map();
 export function _resetTextTemplateSchemaForTest() { flags.clear(); }
 
 // 표 만들기: sms_manual_sends 와 같은 방식(요청 때 CREATE TABLE IF NOT EXISTS, 인스턴스당 1회)
-// 연쇄 발송(auto_chain, 2026-11-18 Make 이전): { after:<앞 문구 id>, subject, from, plain }.
-// 이 문구는 앞 문구(after)가 오늘 나간 번호에게만 나가고, plain 이면 광고 형식 검사((광고)·080)를 면제하며 제목·발신번호를 싣는다. 없으면 종전 동작.
+// 연쇄 발송(auto_chain, 2026-11-18 Make 이전): { after?:<앞 문구 id>, subject, from, plain }.
+// after 가 있으면 앞 문구가 오늘 나간 번호에게만 나간다. after 가 없으면(2026-11-18 20:45) 연쇄 판정 없이 plain(광고 형식 면제)·제목·발신번호만 적용한다. 없으면 종전 동작.
 export function parseAutoChain(raw) {
   let value = raw;
   if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch { value = null; } }
   if (!value || typeof value !== 'object') return null;
-  const after = Number(value.after);
-  if (!(Number.isInteger(after) && after > 0)) return null;
-  return { after, subject: String(value.subject ?? '').trim().slice(0, 40), from: String(value.from ?? '').replace(/\D/g, ''), plain: value.plain === true };
+  const hasAfter = value.after !== undefined && value.after !== null && value.after !== '';
+  let after = 0;
+  if (hasAfter) { after = Number(value.after); if (!(Number.isInteger(after) && after > 0)) return null; }
+  const subject = String(value.subject ?? '').trim().slice(0, 40);
+  const from = String(value.from ?? '').replace(/\D/g, '');
+  const plain = value.plain === true;
+  if (!hasAfter && !subject && !from && !plain) return null;
+  return { ...(hasAfter ? { after } : {}), subject, from, plain };
 }
 // 저장 입력 auto_chain → { skip } | { json: string|null } | { error }. 키가 없으면 건드리지 않고(화면 편집이 지우지 않게), null·''·{} 는 지운다.
 function readChain(input, id) {
@@ -97,8 +105,8 @@ function readChain(input, id) {
   const raw = input.auto_chain;
   if (raw === null || raw === '' || (typeof raw === 'object' && !Array.isArray(raw) && !Object.keys(raw).length)) return { json: null };
   const chain = parseAutoChain(raw);
-  if (!chain) return { error: '연쇄 발송 설정이 올바르지 않습니다(after 는 앞 문구 id).' };
-  if (id !== null && chain.after === id) return { error: '연쇄 발송은 자기 자신을 앞 문구로 둘 수 없습니다.' };
+  if (!chain) return { error: '연쇄 발송 설정이 올바르지 않습니다(after 는 앞 문구 id, 없어도 됩니다).' };
+  if (id !== null && chain.after && chain.after === id) return { error: '연쇄 발송은 자기 자신을 앞 문구로 둘 수 없습니다.' };
   if (chain.from && !/^\d{8,12}$/.test(chain.from)) return { error: '연쇄 발송 발신번호는 숫자 8~12자리여야 합니다.' };
   return { json: JSON.stringify(chain) };
 }
@@ -233,8 +241,21 @@ function readAutoBase(input, staff) {
   if (isInstantKind(input.auto.kind)) return readInstantAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '');
   if (!isAutoKind(input.auto.kind)) return { error: '자동 발송 종류가 올바르지 않습니다.' };
   const days = Number(input.auto.days);
-  const when = input.auto.kind === AUTO_KIND ? '출고' : '주문';
+  const when = input.auto.kind === AUTO_KIND ? '출고' : isProcessPlusKind(input.auto.kind) ? '공정 시작' : '주문';
   if (!(Number.isInteger(days) && days >= 1 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `${when} 후 일수는 1~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
+  if (isProcessPlusKind(input.auto.kind)) { // 공정 시작 후 N일(2026-11-18): 광고 문자 갈래. 공정 필수, 알림톡·일괄 발송·반복은 없다.
+    const step = typeof input.auto.step === 'string' ? input.auto.step.trim() : '';
+    if (!STEPS.includes(step)) return { error: '공정을 골라 주세요.' };
+    if (typeof input.auto.ata_template === 'string' && input.auto.ata_template.trim()) return { error: '공정 시작 후 N일은 알림톡을 쓸 수 없습니다.', reason: 'no_ata' };
+    const rawFrom = input.auto.send_from;
+    let sendFrom = null;
+    if (rawFrom !== undefined && rawFrom !== null && rawFrom !== '') {
+      if (!validDate(typeof rawFrom === 'string' ? rawFrom : '')) return { error: '시작일은 YYYY-MM-DD 형식으로 입력해 주세요.' };
+      sendFrom = rawFrom;
+    }
+    if (typeof input.body === 'string' && [...input.body.matchAll(/#{([^}]*)}/g)].some(match => match[1] !== '고객명')) return { error: INFO_CHECK_MESSAGE.info_unknown_var, reason: 'info_unknown_var' };
+    return { kind: input.auto.kind, days, send_from: sendFrom, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, step };
+  }
   { // 출고·주문 후 N일 + 알림톡: 정보성 알림톡. 시작일·반복 없이 번호당 1번(가입·문의 갈래와 같은 본문 검증)
     const picked = readAta(input.auto, typeof input.body === 'string' ? input.body : '', input.auto.kind);
     if (picked.error) return picked;

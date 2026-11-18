@@ -227,7 +227,7 @@ export function conditionGroup(row) {
 
 // ---------- 흐름(기준 시점) 묶기: 같은 종류·받는 사람(·공정)의 자동 문구를 한 행으로 ----------
 const FLOW_LABELS = {
-  lead_plus_days: '가입·문의 후', ship_plus_days: '출고 완료 후', order_plus_days: '주문 등록 후',
+  lead_plus_days: '가입·문의 후', ship_plus_days: '출고 완료 후', order_plus_days: '주문 등록 후', process_started_plus_days: '공정 시작 후',
   due_date: '납기일', ship_scheduled: '출고예정일', ship_or_due: '출고·납기일',
   order_created: '주문 등록 시', process_started: '공정 시작 시', process_completed: '공정 완료 시', member_joined: '자사몰 회원가입 시',
 };
