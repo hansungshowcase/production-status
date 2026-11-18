@@ -381,7 +381,7 @@ export const hasStageRow = (kind, hasSiblings) => Boolean(hasSiblings) || AUTO_K
 
 // 광고 문자(알림톡 아님) 출고 완료 후 줄 끝에 붙는 일괄 발송 글(알림톡 상세 줄과 같은 표현)
 function adCatchupText(entry) {
-  return entry.autoKind === AUTO_KIND && !entry.autoAtaTemplate && entry.autoCatchupAt
+  return entry.autoKind === AUTO_KIND && (!entry.autoAtaTemplate || entry.autoAtaTemplate === BMS_TEMPLATE_ID) && entry.autoCatchupAt
     ? `일괄 ${entry.autoCatchupAt.replace('T', ' ')} · 출고일 ${entry.autoCatchupFrom || '처음'}~오늘${entry.autoCatchupDone ? ' (완료)' : ''}` : '';
 }
 

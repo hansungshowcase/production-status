@@ -58,7 +58,7 @@ function conditionResult(f) {
 }
 
 // 문자 템플릿 등록: 이름·내용·사진 1장. 검수가 없어 등록하면 바로 쓸 수 있다.
-export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial, siblings, startNew }) {
+export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial, siblings, startNew, pausedText = '' }) {
   const [boot] = useState(() => bootStages(initial, siblings, startNew));
   const v0 = boot.values;
   const [stages, setStages] = useState(boot.stages); // 단계별 보관 값(지금 편집 중인 단계의 최신 값은 아래 칸 상태에 있다)
@@ -426,6 +426,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </span>
           </div>
         ) : null}
+        {pausedText ? <p className="ktm-alert" role="alert">{pausedText}</p> : null}
         {autoKind === AUTO_KIND ? (
           <div className="stf-line">
             <span className="stf-tag">1회 발송</span>

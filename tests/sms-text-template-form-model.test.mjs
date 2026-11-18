@@ -156,3 +156,16 @@ test('변수: 종류 없음이면 고객명 단추, 예시 값 미리보기, 쓸
   assert.equal(bad.reason, 'info_unknown_var');
   assert.equal(validateTextForm({ name: 'a', body: '#{주문번호} 안내', autoKind: 'due_date', audience: 'customer', offsetDir: 'before', offsetDays: '1' }).reason === 'info_unknown_var', false);
 });
+
+test('브랜드메시지 문구도 일괄 발송 표기가 나오고, 멈춤 문구는 문자·브랜드메시지 모두 같은 글이다', async () => {
+  const { BMS_TEMPLATE_ID, catchupPausedText } = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  const base = { autoKind: 'ship_plus_days', autoDays: 2, autoCatchupAt: '2026-11-18T13:00', autoCatchupFrom: '2026-11-01' };
+  const sms = autoConditionLine(base);
+  assert.match(sms, /일괄 2026-11-18 13:00 · 출고일 2026-11-01~오늘/);
+  const bms = autoConditionLine({ ...base, autoAtaTemplate: BMS_TEMPLATE_ID });
+  assert.match(bms, /일괄 2026-11-18 13:00/);
+  assert.equal(autoConditionLine({ ...base, autoAtaTemplate: 'OTHER_ATA' }).includes('일괄'), false);
+  const paused = catchupPausedText({ catchup_paused: true, catchup_error: '보유 잔액이 부족' });
+  assert.equal(paused, '일괄 발송이 멈췄습니다: 보유 잔액이 부족. 확인 후 다시 저장하면 이어서 보냅니다.');
+  assert.equal(catchupPausedText({ catchup_paused: false }), '');
+});

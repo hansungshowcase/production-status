@@ -6,7 +6,7 @@ import { getKstToday } from '../../utils/dateUtils.js';
 import {
   CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAtaEntry, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
-import { BMS_TEMPLATE_ID, autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
 const FLOW_NO_STEP_KINDS = ['order_created', 'process_started', 'process_completed', 'member_joined'];
@@ -127,6 +127,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
               {cp.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
               {cp.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
               {cp.extras.length ? <span className="stl-extras">{cp.extras.join(' · ')}</span> : null}
+              {catchupPausedText(autoStatus[entry.id]) ? <span className="stl-extras ktm-alert" role="alert">{catchupPausedText(autoStatus[entry.id])}</span> : null}
             </span>
           );
         })() : <span className="ktm-card-meta"><span>{entry.preview}</span></span>}
@@ -337,7 +338,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
         </div>
         {adding ? (
           <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
-            <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
+            <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
           </SmsModal>
         ) : null}
       </div>
@@ -353,7 +354,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       {body}
       {adding ? (
         <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit?.id ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
-          <SmsTextTemplateForm key={editInit?.id || 'new'} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
+          <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
         </SmsModal>
       ) : null}
     </div>
