@@ -167,8 +167,21 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
     });
     manualGroupIds = new Set((manual.rows || []).map(row => String(row.group_id)));
   } catch { /* 표가 없거나 조회 실패: 구분 표식 없이 계속 */ }
+  // 제작현황 자동·일괄 발송(sms_auto_sends·sms_event_sends)의 그룹 id 도 제작현황 발송으로 표시한다(조회 실패 시 표식 없이 계속)
+  let programGroupIds = null;
+  try {
+    const auto = await database.execute({
+      sql: `SELECT group_ids FROM sms_auto_sends WHERE kst_date = ? AND group_ids IS NOT NULL
+            UNION ALL SELECT group_ids FROM sms_event_sends WHERE kst_date = ? AND group_ids IS NOT NULL`,
+      args: [date, date],
+    });
+    programGroupIds = new Set();
+    for (const row of auto.rows || []) {
+      try { const ids = JSON.parse(row.group_ids || '[]'); if (Array.isArray(ids)) ids.forEach(id => id && programGroupIds.add(String(id))); } catch { /* 깨진 값은 건너뜀 */ }
+    }
+  } catch { /* 표가 없거나 조회 실패 */ }
   const failedGroupIds = new Set((slimGroups || []).filter(g => g.groupId && String(g.status).toUpperCase() === 'FAILED' && g.count?.sentTotal === 0).map(g => g.groupId)); // 그룹이 FAILED 이고 나간 건수가 0이면 그 그룹 메시지는 실패로 센다
-  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources, manualGroupIds, failedGroupIds });
+  const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources, manualGroupIds, programGroupIds, failedGroupIds });
   const matrix = buildMatrix(everything);
   const hourly = buildHourly(everything);
   const all = channel === 'all' ? everything : everything.filter(item => kindOfType(item.type) === channel);

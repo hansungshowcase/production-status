@@ -256,7 +256,7 @@ function sourceOf(groupSources, groupId) {
 }
 const nullable = value => (value == null || value === '' ? null : String(value));
 
-export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null, manualGroupIds = null, failedGroupIds = null } = {}) {
+export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSources = null, manualGroupIds = null, programGroupIds = null, failedGroupIds = null } = {}) {
   const index = buildDbIndex(dbRows);
   const items = collapseReplacements(messages).map(entry => {
     const { orig, final, replaced } = entry;
@@ -267,7 +267,7 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
     const groupId = final.groupId || orig.groupId;
     const state = classifyStatus(final, { nowMs, replacementPossible, groupFailed: Boolean(groupId && failedGroupIds?.has(groupId)) });
     const senderLabel = (groupId && manualGroupIds?.has(groupId)) ? '보내기 화면'
-      : dbRow ? SENDERS.program : (externalSender(entry, source) || SOURCE_NAMES[source] || SENDERS.unknown);
+      : (dbRow || (groupId && programGroupIds?.has(groupId))) ? SENDERS.program : (externalSender(entry, source) || SOURCE_NAMES[source] || SENDERS.unknown);
     const replacedReason = replaced ? (safeText(orig.reason || null) || (codeOf(orig) ? classifyStatus(orig).status_label : null)) : null;
     let subject = safeText(final.subject ?? dbRow?.message_subject ?? null);
     let text = safeText(final.text);

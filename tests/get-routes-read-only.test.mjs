@@ -144,7 +144,7 @@ test('solapi message log GET executes only SELECTs (기록 1 + 보내기 화면 
     });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.body.items, []);
-    assert.equal(db.statements.length, 2);
+    assert.equal(db.statements.length, 3);
   } finally {
     delete process.env.SOLAPI_API_KEY;
     delete process.env.SOLAPI_API_SECRET;

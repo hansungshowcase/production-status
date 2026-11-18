@@ -304,7 +304,7 @@ test('같은 날짜 두 번째 호출은 쏠라피 fetch 0회, DB 는 호출마�
   }
   assert.equal(fetchImpl.calls.length, 1);
   assert.equal(fetchImpl.groupCalls.length, 1);
-  assert.equal(db.statements.length, 4);
+  assert.equal(db.statements.length, 6);
   assert.match(fetchImpl.calls[0], /limit=500/);
 });
 
@@ -440,6 +440,19 @@ test('sender_label: DB 맞음은 제작현황, 외부 표 템플릿은 그 이�
   assert.equal(byId[make.messageId].sender_label, '메이크');
   assert.equal(byId[unknown.messageId].sender_label, { AUTO: '쏠라피 자동화', COMM: '스마트스토어 연동', API: '다른 API 프로그램', APP: '쏠라피 앱' }[byId[unknown.messageId].source] || '확인 안 됨');
   for (const item of response.body.items) assert.ok(item.sender_label);
+});
+
+test('sender_label: sms_auto_sends 그룹 id 가 있는 항목은 제작현황, 없는 항목은 기존 라벨 그대로', async () => {
+  const auto = msg({ to: OTHER_PHONE, type: 'LMS', text: '아무 문구', groupId: 'GAUTOSEND01' });
+  const other = msg({ to: OTHER_PHONE, type: 'LMS', text: '아무 문구', groupId: 'GAPI0000002' });
+  const { response } = await call({ view: 'messages' }, {
+    messages: [auto, other],
+    rows: [{ group_ids: '["GAUTOSEND01"]' }],
+    fetchOpts: { groups: [SLIM('GAPI0000002', { app: { appId: 'NOT-A-KNOWN-APP' } })] },
+  });
+  const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
+  assert.equal(byId[auto.messageId].sender_label, '제작현황');
+  assert.notEqual(byId[other.messageId].sender_label, '제작현황');
 });
 
 test('유튜브 인터뷰 본문은 "유튜브 인터뷰(…)", 블로그 리뷰는 예전 분류 그대로', async () => {
