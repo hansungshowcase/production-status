@@ -396,12 +396,12 @@ test('알림톡 수단은 sendKakaoEach 만, 문자 수단은 sendEach 만 쓴�
   assert.equal(sms.reason, 'no_auto', '수단이 문자인 출고 후 문구는 안내 경로를 타지 않는다(종전 그대로)');
 });
 
-test('080 무료수신거부 줄이 없는 브랜드메시지는 저장이 거절되고(no_optout_080, 쏠라피에 올리지 않음) 켜기도 막힌다 (2026-11-18 사장님 결정)', async () => {
+test('080 무료수신거부 줄이 없는 브랜드메시지도 저장되고 켜기도 된다(경고만 남는다) (2026-11-18 사장님: 080 줄은 넣지 않는다)', async () => {
   reset();
   const uploads = [];
   const out = await saveTextTemplate(saveDb([]), { name: '구글 리뷰', body: '안녕하세요 #{고객명} 대표님\n구글 리뷰를 남겨 주세요.', images: [PHOTO], auto: autoIn() }, { staff: [], provider: uploader(uploads) });
-  assert.equal(out.status, 400); assert.equal(out.body.reason, 'no_optout_080'); assert.equal(uploads.length, 0);
+  assert.equal(out.status, 201); assert.equal(uploads.length, 1, '저장은 통과하고 사진은 올린다');
   const db = fakeDb();
   const toggle = await eventToggleOn({ dry_run: true }, base({ auto_enabled: false, body: '안녕하세요 #{고객명} 대표님' }), { db, provider: provider(), env: ENV, nowMs: NOW, kakao: noKakao() });
-  assert.equal(toggle.status, 400); assert.equal(toggle.body.reason, 'no_optout_080'); assert.match(toggle.body.error.message, /080/);
+  assert.equal(toggle.status, 200); assert.notEqual(toggle.body.reason, 'no_optout_080');
 });

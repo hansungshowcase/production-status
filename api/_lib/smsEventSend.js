@@ -866,7 +866,7 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   const body = {
     enabled: template.auto_enabled && autoOn(env), no_provider: eventNoProvider(template, env), ata_backoff: Boolean(isAtaTemplate(template) && template.auto_ata_fail_at && Date.parse(template.auto_ata_fail_at) > nowMs), failed_7d: failed7, auto_skip_reason: template.auto_skip_reason || '', cron_last_run: await cronLastRun(db), days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
     catchup_paused: Boolean(template.auto_catchup_paused), catchup_error: template.auto_catchup_paused ? String(template.auto_catchup_error || '') : '', failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'), last_sent_date: sums.find(row => row.status === 'sent')?.last || '',
-    enable_blocked_reason: eventBlockedReason(template) || (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env)) ? 'cafe24_not_connected' : '') || (isLeadKind(template.auto_kind) && !(await leadSourcesConnected(db, env)) ? 'lead_source_not_connected' : ''),
+    enable_blocked_reason: eventBlockedReason(template) || (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env)) ? 'cafe24_not_connected' : '') || (isLeadKind(template.auto_kind) && !(await leadSourcesConnected(db, env)) ? 'lead_source_not_connected' : '') || eventWarnReason(template),
   };
   return reply(200, withEffective(body, nowMs));
 }
@@ -887,12 +887,13 @@ export function eventNoProvider(template, env = process.env) {
 
 const needsStep = kind => kind === 'process_started' || kind === 'process_completed';
 const previewMode = template => (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template)) && !template.auto_enabled; // 켜기 전 미리 보기
+// 080 줄이 없는 브랜드메시지(2026-11-18 사장님: 080 줄은 넣지 않는다): 막지 않고 경고만 남긴다(화면 '켜짐 · 080 수신거부 줄 필요').
+export const eventWarnReason = template => (isBmsTemplate(template) && bmsOptoutCheck(template.body) ? 'no_optout_080' : '');
 export function eventBlockedReason(template) {
   if (!isInfoTemplate(template)) return 'no_auto';
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return 'no_step';
   if (template.auto_audience === 'staff' && !template.auto_staff.length) return 'no_staff';
   if (isAtaTemplate(template) && template.auto_audience !== 'customer') return 'ata_customer_only';
-  if (isBmsTemplate(template) && bmsOptoutCheck(template.body)) return 'no_optout_080'; // 브랜드메시지는 광고라 080 줄 필수(켜기·표시만 막고, 이미 켜진 문구의 발송 경로는 멈추지 않는다)
   return infoCheck(template.body, template.auto_audience, template.auto_kind, isAtaTemplate(template));
 }
 
@@ -918,7 +919,7 @@ export async function eventToggleOn(body, template, { db, provider, env = proces
   const blocked = eventBlockedReason(template);
   if (blocked) {
     const message = blocked === 'no_staff' ? '받는 직원을 1명 이상 골라야 켤 수 있습니다.' : blocked === 'no_auto' ? '자동 발송이 설정된 문구가 아닙니다.'
-      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'ata_customer_only' ? '알림톡은 고객에게만 보낼 수 있습니다.' : blocked === 'no_optout_080' ? '브랜드메시지(광고) 본문에 무료수신거부 080 번호 줄이 있어야 켤 수 있습니다.' : blocked === 'info_unknown_var' && template.auto_kind === 'member_joined' ? INFO_CHECK_MESSAGE.info_unknown_var : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
+      : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'ata_customer_only' ? '알림톡은 고객에게만 보낼 수 있습니다.' : blocked === 'info_unknown_var' && template.auto_kind === 'member_joined' ? INFO_CHECK_MESSAGE.info_unknown_var : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
     return errorReply(400, message, { reason: blocked });
   }
   if (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env))) return errorReply(400, '카페24 연결이 아직 안 됐습니다.', { reason: 'cafe24_not_connected' });

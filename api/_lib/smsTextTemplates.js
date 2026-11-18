@@ -1,6 +1,6 @@
 // 내 문자 문구 저장소(보내기 화면에서 불러 쓰는 문구). 번호·이름은 다루지 않는다.
 import { byteLength, getSendProvider } from './sendProvider.js';
-import { BMS_PF_ID, BMS_SENDER, BMS_TEMPLATE_ID, bmsImageRatioError, bmsImageSig, bmsTextError, bmsOptoutCheck, parseBmsConfig, readBmsButtons } from './smsBms.js';
+import { BMS_PF_ID, BMS_SENDER, BMS_TEMPLATE_ID, bmsImageRatioError, bmsImageSig, bmsTextError, parseBmsConfig, readBmsButtons } from './smsBms.js';
 import { parseSendExtras, staffDirectory } from './smsManualSend.js';
 import { STEPS } from './steps.js';
 
@@ -81,6 +81,31 @@ const flags = new Map();
 export function _resetTextTemplateSchemaForTest() { flags.clear(); }
 
 // 표 만들기: sms_manual_sends 와 같은 방식(요청 때 CREATE TABLE IF NOT EXISTS, 인스턴스당 1회)
+// 연쇄 발송(auto_chain, 2026-11-18 Make 이전): { after:<앞 문구 id>, subject, from, plain }.
+// 이 문구는 앞 문구(after)가 오늘 나간 번호에게만 나가고, plain 이면 광고 형식 검사((광고)·080)를 면제하며 제목·발신번호를 싣는다. 없으면 종전 동작.
+export function parseAutoChain(raw) {
+  let value = raw;
+  if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch { value = null; } }
+  if (!value || typeof value !== 'object') return null;
+  const after = Number(value.after);
+  if (!(Number.isInteger(after) && after > 0)) return null;
+  return { after, subject: String(value.subject ?? '').trim().slice(0, 40), from: String(value.from ?? '').replace(/\D/g, ''), plain: value.plain === true };
+}
+// 저장 입력 auto_chain → { skip } | { json: string|null } | { error }. 키가 없으면 건드리지 않고(화면 편집이 지우지 않게), null·''·{} 는 지운다.
+function readChain(input, id) {
+  if (!input || !Object.prototype.hasOwnProperty.call(input, 'auto_chain')) return { skip: true };
+  const raw = input.auto_chain;
+  if (raw === null || raw === '' || (typeof raw === 'object' && !Array.isArray(raw) && !Object.keys(raw).length)) return { json: null };
+  const chain = parseAutoChain(raw);
+  if (!chain) return { error: '연쇄 발송 설정이 올바르지 않습니다(after 는 앞 문구 id).' };
+  if (id !== null && chain.after === id) return { error: '연쇄 발송은 자기 자신을 앞 문구로 둘 수 없습니다.' };
+  if (chain.from && !/^\d{8,12}$/.test(chain.from)) return { error: '연쇄 발송 발신번호는 숫자 8~12자리여야 합니다.' };
+  return { json: JSON.stringify(chain) };
+}
+async function saveChain(db, id, json) {
+  await db.execute({ sql: "UPDATE sms_text_templates SET auto_enabled = CASE WHEN COALESCE(auto_chain, '') IS DISTINCT FROM ? THEN false ELSE auto_enabled END, auto_chain = ? WHERE id = ? RETURNING id", args: [json || '', json, id] }); // 연쇄 설정이 바뀌면 켜짐을 끈다(다시 켤 때 확인)
+}
+
 export async function ensureTextTemplateSchema(db) {
   if (flags.get('sms.textTemplates')) return;
   await db.execute({
@@ -98,7 +123,7 @@ export async function ensureTextTemplateSchema(db) {
   // 출고 후 자동 발송(2026-11-13): 사진 최대 3장(JSON 배열)과 자동 발송 조건·켜짐 상태. 기존 image 칸은 그대로 둔다.
   for (const column of ['images TEXT', 'auto_kind TEXT', 'auto_days INT', 'auto_enabled BOOLEAN NOT NULL DEFAULT false', 'auto_start_date TEXT', 'auto_send_from TEXT', 'auto_repeat INT NOT NULL DEFAULT 1', 'auto_interval INT NOT NULL DEFAULT 30',
     'auto_offset INT NOT NULL DEFAULT 0', 'auto_unless_step TEXT', "auto_audience TEXT NOT NULL DEFAULT 'customer'", 'auto_staff TEXT', "auto_msg_type TEXT NOT NULL DEFAULT 'ad'", 'auto_step TEXT', 'auto_enabled_at TIMESTAMPTZ',
-    "auto_daily TEXT NOT NULL DEFAULT ''", 'auto_weekdays BOOLEAN NOT NULL DEFAULT false', "auto_unless_mode TEXT NOT NULL DEFAULT 'completed'", 'auto_ata_template TEXT', 'auto_send_time TEXT', "auto_copy_to TEXT NOT NULL DEFAULT ''", "auto_copy_date TEXT NOT NULL DEFAULT ''", 'auto_catchup_from TEXT', 'auto_catchup_at TEXT', 'auto_catchup_daily INTEGER', 'auto_catchup_done_at TIMESTAMPTZ', "auto_lead_source TEXT NOT NULL DEFAULT ''", 'auto_catchup_paused_at TIMESTAMPTZ', 'auto_catchup_error TEXT', 'auto_ata_fail_at TIMESTAMPTZ', 'auto_bms TEXT']) {
+    "auto_daily TEXT NOT NULL DEFAULT ''", 'auto_weekdays BOOLEAN NOT NULL DEFAULT false', "auto_unless_mode TEXT NOT NULL DEFAULT 'completed'", 'auto_ata_template TEXT', 'auto_send_time TEXT', "auto_copy_to TEXT NOT NULL DEFAULT ''", "auto_copy_date TEXT NOT NULL DEFAULT ''", 'auto_catchup_from TEXT', 'auto_catchup_at TEXT', 'auto_catchup_daily INTEGER', 'auto_catchup_done_at TIMESTAMPTZ', "auto_lead_source TEXT NOT NULL DEFAULT ''", 'auto_catchup_paused_at TIMESTAMPTZ', 'auto_catchup_error TEXT', 'auto_ata_fail_at TIMESTAMPTZ', 'auto_bms TEXT', 'auto_chain TEXT']) {
     await db.execute({ sql: `ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS ${column}`, args: [] });
   }
   flags.set('sms.textTemplates', true);
@@ -127,6 +152,7 @@ function autoFields(row) {
     ...(isLeadKind(row.auto_kind) && LEAD_SOURCES.includes(row.auto_lead_source) && row.auto_lead_source ? { auto_lead_source: String(row.auto_lead_source) } : {}),
     ...(row.auto_kind === AUTO_KIND && row.auto_catchup_at ? { auto_catchup_from: String(row.auto_catchup_from || ''), auto_catchup_at: String(row.auto_catchup_at), auto_catchup_done: Boolean(row.auto_catchup_done_at), ...(Number(row.auto_catchup_daily) > 0 ? { auto_catchup_daily: Number(row.auto_catchup_daily) } : {}) } : {}),
     ...(row.auto_kind === AUTO_KIND && row.auto_catchup_at && row.auto_catchup_paused_at ? { auto_catchup_paused: true, auto_catchup_error: String(row.auto_catchup_error || '') } : {}),
+    ...(parseAutoChain(row.auto_chain) ? { auto_chain: parseAutoChain(row.auto_chain) } : {}), // 연쇄 발송(없으면 싣지 않는다)
     ...(row.auto_send_time ? { auto_send_time: String(row.auto_send_time) } : {}),
     ...(row.auto_copy_to ? { auto_copy_to: String(row.auto_copy_to) } : {}),
   };
@@ -332,7 +358,7 @@ export async function listTextTemplates(db) {
     sql: `SELECT id, name, body,
       ((image IS NOT NULL AND image <> '') OR COALESCE(images, '') NOT IN ('', '[]')) AS has_image,
       CASE WHEN COALESCE(images, '') NOT IN ('', '[]') THEN jsonb_array_length(images::jsonb) WHEN image IS NOT NULL AND image <> '' THEN 1 ELSE 0 END AS image_count,
-      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_bms
+      auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_bms, auto_chain
       FROM sms_text_templates ORDER BY name ASC`,
     args: [],
   });
@@ -343,7 +369,7 @@ export async function getTextTemplate(db, input) {
   const id = Number(input?.id);
   if (!(Number.isInteger(id) && id > 0)) return bad('올바른 문구가 아닙니다.');
   await ensureTextTemplateSchema(db);
-  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_bms FROM sms_text_templates WHERE id = ?', args: [id] });
+  const out = await db.execute({ sql: 'SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_send_from, auto_repeat, auto_interval, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_daily, auto_weekdays, auto_unless_mode, auto_ata_template, auto_send_time, auto_copy_to, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_bms, auto_chain FROM sms_text_templates WHERE id = ?', args: [id] });
   const row = out.rows?.[0];
   if (!row) return bad('문구를 찾을 수 없습니다.', 404);
   const images = storedImages(row);
@@ -368,6 +394,8 @@ export async function saveTextTemplate(db, input, { staff, provider, fetchImpl }
   if (photos.error) return bad(photos.error);
   const auto = readAuto(input, staff || staffDirectory());
   if (auto.error) return bad(auto.error, 400, auto.reason ? { reason: auto.reason } : {});
+  const chain = readChain(input, id);
+  if (chain.error) return bad(chain.error);
   if (!auto.skip) { // 브랜드메시지(자유형): 글자 수 검사 + 사진을 쏠라피에 올려 imageId 저장(저장 때 1회, 같은 사진이면 다시 올리지 않는다)
     if (auto.ata === BMS_TEMPLATE_ID) {
       const made = await buildBmsConfig(db, { id, auto, body, photo, photos, provider, fetchImpl });
@@ -401,6 +429,7 @@ export async function saveTextTemplate(db, input, { staff, provider, fetchImpl }
           : await db.execute({ sql: 'INSERT INTO sms_text_templates (name, body) VALUES (?, ?) RETURNING id', args: [name, body.trim()] });
       }
       const item = { id: Number(out.rows?.[0]?.id), ...itemBase };
+      if (!chain.skip && chain.json) { await saveChain(db, item.id, chain.json); item.auto_chain = parseAutoChain(chain.json); }
       if (auto.kind) { item.auto_kind = auto.kind; item.auto_days = auto.days; item.auto_enabled = false; if (auto.send_from) item.auto_send_from = auto.send_from; item.auto_repeat = auto.repeat; item.auto_interval = auto.interval; Object.assign(item, newAutoFields(auto)); }
       return ok({ item }, 201);
     } catch (error) {
@@ -453,6 +482,7 @@ export async function saveTextTemplate(db, input, { staff, provider, fetchImpl }
     throw error;
   }
   const item = { id, ...itemBase };
+  if (!chain.skip) { await saveChain(db, id, chain.json); if (chain.json) item.auto_chain = parseAutoChain(chain.json); }
   if (returned?.auto_kind) Object.assign(item, autoFields(auto.skip ? returned : { ...returned, ...newAutoColumns(auto) }));
   if (disabled) { item.auto_enabled = false; item.auto_disabled = true; }
   return ok({ item });
@@ -474,9 +504,8 @@ async function buildBmsConfig(db, { id, auto, body, photo, photos, provider, fet
   if (images.length > 1) return { error: '브랜드메시지는 사진을 1장만 보낼 수 있습니다. 여러 장이면 한 장으로 합쳐 주세요.', reason: 'bms_images' };
   const textError = bmsTextError(body, images.length === 1);
   if (textError) return { error: textError, reason: 'bms_too_long' };
-  if (bmsOptoutCheck(body)) return { error: '브랜드메시지(광고) 본문에 무료수신거부 080 번호 줄이 있어야 합니다.', reason: 'no_optout_080' }; // 2026-11-18 사장님 결정: 광고 문자와 같은 080 줄 필수
   const prev = parseBmsConfig(prevRaw);
-  const cfg = { pfId: prev.pfId || BMS_PF_ID, from: prev.from || BMS_SENDER, buttons: auto.bms.buttons, imageId: '', imageSig: '' };
+  const cfg = { pfId: prev.pfId || BMS_PF_ID, from: prev.from || BMS_SENDER, buttons: auto.bms.buttons.map(button => { const same = button.linkPc ? null : prev.buttons.find(old => old.linkPc && old.name === button.name && old.link === button.link); return same ? { ...button, linkPc: same.linkPc } : button; }), imageId: '', imageSig: '' }; // 화면 편집은 PC 링크 칸이 없어 이름·링크가 같은 기존 버튼의 PC 링크를 이어 받는다(지워지지 않게)
   if (images.length === 1) {
     const ratioError = bmsImageRatioError(images[0]);
     if (ratioError) return { error: ratioError, reason: 'bms_image_ratio' };

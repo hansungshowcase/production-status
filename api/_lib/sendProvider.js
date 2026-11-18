@@ -198,7 +198,7 @@ solapi.sendBmsEach = async function sendBmsEach({ from, pfId, messages }, { fetc
   const list = (Array.isArray(messages) ? messages : []).map(item => {
     const bms = { targeting: 'I', chatBubbleType: item.imageId ? 'IMAGE' : 'TEXT' };
     if (item.imageId) bms.imageId = item.imageId;
-    const buttons = (Array.isArray(item.buttons) ? item.buttons : []).map(button => ({ name: button.name, linkType: 'WL', linkMobile: button.link }));
+    const buttons = (Array.isArray(item.buttons) ? item.buttons : []).map(button => ({ name: button.name, linkType: 'WL', linkMobile: button.link, ...(button.linkPc ? { linkPc: button.linkPc } : {}) }));
     if (buttons.length) bms.buttons = buttons;
     return { to: item.to, from, type: 'BMS_FREE', subject: BMS_AD_SUBJECT, text: item.text, kakaoOptions: { pfId, disableSms: false, bms } };
   });

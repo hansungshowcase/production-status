@@ -30,7 +30,7 @@ export function parseBmsConfig(raw) {
   if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch { value = null; } }
   const src = value && typeof value === 'object' ? value : {};
   const buttons = (Array.isArray(src.buttons) ? src.buttons : [])
-    .map(item => ({ name: clean(item?.name), link: clean(item?.link) })).filter(item => item.name && item.link).slice(0, BMS_LIMITS.buttons);
+    .map(item => ({ name: clean(item?.name), link: clean(item?.link), ...(clean(item?.linkPc) ? { linkPc: clean(item.linkPc) } : {}) })).filter(item => item.name && item.link).slice(0, BMS_LIMITS.buttons);
   return { pfId: clean(src.pfId) || BMS_PF_ID, from: String(src.from || '').replace(/\D/g, '') || BMS_SENDER, buttons, imageId: clean(src.imageId), imageSig: clean(src.imageSig) };
 }
 

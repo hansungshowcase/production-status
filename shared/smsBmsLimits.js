@@ -27,7 +27,9 @@ export function bmsButtonsCheck(list) {
     if (!name || !link) return { error: '버튼은 이름과 링크를 둘 다 넣어 주세요.', reason: 'bms_button' };
     if (countChars(name) > BMS_LIMITS.buttonName) return { error: `버튼 이름은 ${BMS_LIMITS.buttonName}자까지 넣을 수 있습니다.`, reason: 'bms_button' };
     if (link.length > BMS_LIMITS.link || !BMS_LINK_RE.test(link)) return { error: '버튼 링크는 https:// 로 시작하는 주소로 넣어 주세요.', reason: 'bms_button' };
-    buttons.push({ name, link });
+    const linkPc = String(item?.linkPc ?? '').trim(); // PC 링크(선택, 2026-11-18): 값이 있을 때만 싣는다
+    if (linkPc && (linkPc.length > BMS_LIMITS.link || !BMS_LINK_RE.test(linkPc))) return { error: '버튼 PC 링크는 https:// 로 시작하는 주소로 넣어 주세요.', reason: 'bms_button' };
+    buttons.push(linkPc ? { name, link, linkPc } : { name, link });
   }
   if (buttons.length > BMS_LIMITS.buttons) return { error: `버튼은 최대 ${BMS_LIMITS.buttons}개까지 넣을 수 있습니다.`, reason: 'bms_button' };
   return { buttons };

@@ -6,7 +6,7 @@ import { autoEffective } from '../shared/smsAutoEffective.js';
 import { handleSmsAutoEvent } from '../api/cron/sms-auto-event.js';
 import { _resetAutoSchemaForTest, phoneHash } from '../api/_lib/smsAutoSend.js';
 import { _resetTextTemplateSchemaForTest } from '../api/_lib/smsTextTemplates.js';
-import { _resetEventSchemaForTest, cronLastRun, eventBlockedReason, recordCronRun, runEventSend, runEventSendAll } from '../api/_lib/smsEventSend.js';
+import { _resetEventSchemaForTest, cronLastRun, eventBlockedReason, eventWarnReason, recordCronRun, runEventSend, runEventSendAll } from '../api/_lib/smsEventSend.js';
 import { _resetManualSendSchemaForTest } from '../api/_lib/smsManualSend.js';
 import { BMS_PF_ID, BMS_SENDER, bmsOptoutCheck } from '../api/_lib/smsBms.js';
 import { buildItems, classifyStatus } from '../api/_lib/solapiMessageLog.js';
@@ -133,10 +133,12 @@ test('쏠라피 그룹이 FAILED 이고 나간 건수가 0이면 그 그룹의 �
   assert.equal(failed.status, 'failed'); assert.equal(failed.status_text, '발송실패');
 });
 
-test('브랜드메시지는 080 무료수신거부 줄이 없으면 켜기·표시가 막힌다(no_optout_080), 있으면 통과', () => {
+test('브랜드메시지는 080 무료수신거부 줄이 없어도 켜기는 막히지 않고 경고(no_optout_080)만 남는다', () => {
   assert.equal(bmsOptoutCheck(BMS_BODY), '');
   assert.equal(bmsOptoutCheck('안녕하세요 #{고객명}'), 'no_optout_080');
-  assert.equal(eventBlockedReason(bmsTpl({ body: '안녕하세요 #{고객명} 대표님' })), 'no_optout_080');
+  assert.equal(eventBlockedReason(bmsTpl({ body: '안녕하세요 #{고객명} 대표님' })), '', '막지 않는다');
+  assert.equal(eventWarnReason(bmsTpl({ body: '안녕하세요 #{고객명} 대표님' })), 'no_optout_080', '경고는 남는다');
+  assert.equal(eventWarnReason(bmsTpl()), '');
   assert.equal(eventBlockedReason(bmsTpl()), '');
 });
 
