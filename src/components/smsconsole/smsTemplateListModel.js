@@ -60,8 +60,18 @@ export function smsPills(items) {
 // 신호등(2026-11-16 사장님 "오프면 빨간색 온이면 초록색 한눈에"): 켜짐 초록 · 꺼짐 빨강 · 일부만 켜짐 노랑
 export function itemLight(item) {
   // 설정 미완료(예: 제작 시작 알림 사용 설정이 꺼짐)도 실제로는 안 나가므로 꺼짐
-  return item?.active === false || item?.policy?.status === 'paused' || item?.config?.status === 'incomplete' ? { tone: 'off', text: '꺼짐' } : { tone: 'on', text: '켜짐' };
+  if (item?.active === false || item?.policy?.status === 'paused' || item?.config?.status === 'incomplete') return { tone: 'off', text: '꺼짐' };
+  // 테스트 기록만 남는 설정: 실제 발송 업체로는 나가지 않으므로 막힘
+  if (item?.config?.status === 'test') return { tone: 'part', text: '켜짐(막힘: 제공사 설정 없음 · 테스트 기록만)' };
+  // 메이크·쏠라피 커머스·앱·카페24 문구: 손으로 적은 active 만으로는 초록을 쓰지 않는다. 메이크 수집 결과(make_on·make_last_run)가 있어야 판정한다
+  if (item?.external && item.sender !== SENDERS.program) {
+    if (item.make_on === false) return { tone: 'off', text: '꺼짐' };
+    if (item.make_on === true) return makeRunFresh(item.make_last_run) ? { tone: 'on', text: '켜짐' } : { tone: 'part', text: '켜짐(최근 실행 없음)' };
+    return (item.count ?? 0) > 0 ? { tone: 'on', text: '켜짐' } : { tone: 'unknown', text: '확인 안 됨' };
+  }
+  return { tone: 'on', text: '켜짐' };
 }
+const makeRunFresh = (value) => { const ms = Date.parse(value || ''); return Number.isFinite(ms) && Date.now() - ms <= 7 * 86400000; };
 export function flowLightTone(on, total) {
   if (!on) return 'off';
   return on >= total ? 'on' : 'part';
@@ -113,7 +123,7 @@ export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEM
     out.push({
       id: entry.key, key: entry.key, name: entry.name, audience: { id: entry.audience === '직원' ? 'staff' : 'customer', label: entry.audience || '고객' },
       trigger: entry.trigger || '', count: orNull(sentMap.get(entry.key), sentKnown), policy: null, config: null, example: null,
-      order: 1000 + index, kind: entry.kind, sender: entry.sender, ad: Boolean(entry.ad || sentMap.get(entry.key)?.ad), active: entry.active !== false,
+      order: 1000 + index, make_on: entry.make_on, make_last_run: entry.make_last_run, kind: entry.kind, sender: entry.sender, ad: Boolean(entry.ad || sentMap.get(entry.key)?.ad), active: entry.active !== false,
       channel: entry.channel, body: entry.body || '', scenario: entry.scenario || '', external: true, who: entry.who || '', image: entry.image || '',
     });
   });
@@ -224,6 +234,7 @@ const stepDays = (entry) => (OFFSET_KINDS.includes(entry.autoKind) ? (Number(ent
 
 // 알림톡 템플릿이 붙은 자동 문구(알림톡 템플릿 화면에서 보인다)
 export const isAtaEntry = (entry) => Boolean(entry?.autoKind && entry?.autoAtaTemplate && entry.autoAtaTemplate !== 'BMS_FREE'); // 브랜드메시지(자유형)는 알림톡이 아니라 문자 목록에 보인다
+export const isKakaoEntry = (e) => Boolean(e?.autoKind && e?.autoAtaTemplate); // 카톡으로 나가는 자동 문구(알림톡·브랜드메시지) — 알림톡 화면에 보인다
 
 // 단계 칩 글자: 0 → 당일, N → N일(날짜 기준은 N일 전·N일 지남), 즉시형은 공정 이름 또는 즉시
 export function flowStepText(entry) {

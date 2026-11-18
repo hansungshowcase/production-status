@@ -365,7 +365,7 @@ test('알림톡 상세 연결 줄: 조건 이름·1회·시각·켜짐/꺼짐·�
   const [entry] = myTextSection([{ id: 5, name: '리뷰', body: 'b', auto_kind: 'ship_plus_days', auto_days: 2, auto_enabled: true, auto_ata_template: 'KA01', auto_send_time: '10:00', auto_catchup_from: '2026-05-26', auto_catchup_at: '2026-11-17T09:00', auto_catchup_done: false }]).items;
   assert.equal(ataLinkLine(entry, { enabled: true, sent_7d: 4 }), '출고 완료 후 2일 뒤 · 오전 10:00 · 1회 · 켜짐 · 일괄 2026-11-17 09:00 · 출고일 2026-05-26~오늘 · 최근 7일 4건');
   const [off] = myTextSection([{ id: 6, name: 'x', body: 'b', auto_kind: 'due_date', auto_offset: -2, auto_enabled: false, auto_ata_template: 'KA01' }]).items;
-  assert.match(ataLinkLine(off, null), /^납기일 2일 전 · .*1회 · 꺼짐$/);
+  assert.match(ataLinkLine(off, { enabled: false }), /^납기일 2일 전 · .*1회 · 꺼짐 · 최근 7일 0건$/);
 });
 
 // ---------- F. 하루에 다 보내기: 일괄 발송 전용 상한(기본 1000) · 크론 1회 묶음 · 안내 상한과 분리 ----------

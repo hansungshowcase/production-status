@@ -7,6 +7,7 @@
 .stl-rows .stl-light--on { background: #dff5e5; color: #12803a; }
 .stl-rows .stl-light--off { background: #fde3e1; color: #d12c20; }
 .stl-rows .stl-light--part { background: #fff1cc; color: #a86a00; }
+.stl-rows .stl-light--unknown { background: #eceff3; color: #5f6b7a; }
 
 .stl-rows .stl-tabs { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
 .stl-rows .stl-tabs .ktm-pills { margin: 0; }

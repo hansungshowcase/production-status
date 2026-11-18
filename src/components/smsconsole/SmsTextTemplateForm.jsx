@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
 import { getKstToday } from '../../utils/dateUtils.js';
-import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, autoTargetText, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -34,7 +34,7 @@ async function mergeImages(list) {
 }
 
 // 폼 상태 → autoConditionLine 이 받는 entry 모양으로 바꿔 결과 한 줄을 만든다(입력이 올바르지 않으면 빈 글).
-function conditionResult(f) {
+function conditionResult(f, asTarget = false) {
   const kind = f.autoKind;
   if (!kind) return '';
   const entry = { autoKind: kind };
@@ -54,7 +54,8 @@ function conditionResult(f) {
     if (dayCount === null) return '';
     Object.assign(entry, { autoDays: dayCount, autoSendFrom: f.sendFrom, autoRepeat: normalizeRepeat(f.repeat) ?? AUTO_DEFAULT_REPEAT, autoInterval: normalizeInterval(f.interval) ?? AUTO_DEFAULT_INTERVAL });
   }
-  return autoConditionLine({ ...entry, autoSendTime: hasSendTime(kind, f.days) ? f.sendTime : '' });
+  const full = { ...entry, autoSendTime: hasSendTime(kind, f.days) ? f.sendTime : '' };
+  return asTarget ? autoTargetText(full) : autoConditionLine(full);
 }
 
 // 문자 템플릿 등록: 이름·내용·사진 1장. 검수가 없어 등록하면 바로 쓸 수 있다.
@@ -155,7 +156,9 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const mergePending = wantMerge && !mergeFailed && !merged;
   const toggleStaff = id => setStaff(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   const { info } = check;
-  const conditionText = conditionResult({ leadSource, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime });
+  const conditionForm = { leadSource, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, sendTime };
+  const conditionText = conditionResult(conditionForm);
+  const targetText = conditionResult(conditionForm, true);
   const won = value => (value === null || value === undefined ? '확인 못 함' : `${Number(value).toLocaleString('ko-KR')}원`);
   const showTime = hasSendTime(autoKind, days);
 
@@ -468,6 +471,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           </div>
         ) : null}
         {conditionText ? <p className="stf-result" aria-label="발송 조건">{conditionText}</p> : null}
+        {targetText ? <p className="stf-result" aria-label="발송 대상">대상: {targetText}</p> : null}
       </div>
       {imageError ? <p className="ktm-alert" role="alert">{imageError}</p> : null}
       {error ? <p className="ktm-alert" role="alert">{error}</p> : null}

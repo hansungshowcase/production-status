@@ -98,8 +98,8 @@ export const EXTERNAL_TEMPLATES = Object.freeze([
     match: { types: KAKAO_TYPES, words: ['한성쇼케이스 무료 지원 이벤트'] },
   },
   {
-    key: 'youtube_interview', name: '유튜브 인터뷰 혜택 안내(요청 고객용)', channel: 'ATA', sender: MAKE, kind: '이벤트·혜택', ad: false, audience: '고객', who: '유튜브 인터뷰를 요청한 고객',
-    via: MAKE, scenario: '유튜브 인터뷰 발송', trigger: '매일 17:59 · 구글시트에 유튜브 인터뷰를 요청한 고객 행이 있을 때', active: true,
+    key: 'youtube_interview', name: '유튜브 인터뷰 혜택 안내(요청 고객용)', channel: 'ATA', sender: MAKE, kind: '이벤트·혜택', ad: false, audience: '고객', who: '한성쇼케이스 제품을 구매한 고객 중 구글시트 유튜브 인터뷰 발송 대상으로 오른 고객',
+    via: MAKE, scenario: '유튜브 인터뷰 발송', trigger: '매일 17:59 · 구글시트에 유튜브 인터뷰 발송 대상 행이 있을 때', active: true,
     body: '안녕하세요, [상호] 대표님.\n한성쇼케이스 제품을 구매해 주셔서 감사합니다.\n\n문의주신 유튜브 인터뷰 촬영 혜택 안내드립니다.\n\n■ 대상: 당사 제품 구매 고객\n■ 내용: 매장 운영 관련 유튜브 인터뷰 촬영\n■ 참여 시 제공 사항\n  - 배송 운임비 50% 지원\n  - 매장 홍보용 쇼츠 영상 제작 제공\n■ 모집 인원: 10명 (선착순 마감)\n■ 모집 기간: 한 달간\n\n더 자세한 정보를 안내받으시려면\n010-5879-2438로 연락 부탁드립니다.',
     match: { templateId: 'KA01TP260427071128256TBi5mAg9hvT' },
   },

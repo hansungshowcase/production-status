@@ -12,7 +12,7 @@ import { listScheduledSends, runKakaoSend, runSend, runSendCancel, sendOptions, 
 import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplate } from './_lib/smsTextTemplates.js';
 import { STEPS } from './_lib/steps.js';
 import { cafe24Connected } from './_lib/cafe24.js';
-import { autoStatus, autoTest, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
+import { autoStatus, autoTest, sendCostOf, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 import { catchupPreview } from './_lib/smsEventSend.js';
 import { readSolapiHealth } from './_lib/solapiHealth.js';
 
@@ -132,6 +132,11 @@ async function handleGet(req, res, ctx) {
   if (resource === 'text_templates') {
     try {
       const out = await listTextTemplates(deps.db || getDb());
+      try { // 카드마다 건당 비용(종류 표기용). 못 구해도 목록은 그대로 낸다
+        const vendor = getSendProvider();
+        const env = deps.env || process.env;
+        if (vendor && Array.isArray(out.body?.items)) out.body.items = out.body.items.map(item => ({ ...item, send_cost: sendCostOf(item, vendor, env) }));
+      } catch { /* 비용은 덤이다 */ }
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '문구를 불러오지 못했습니다.'); }
   }
@@ -203,7 +208,9 @@ async function handleGet(req, res, ctx) {
     if (resource === 'templates') {
       if (!configured) return res.status(200).json({ configured: false, write, targets: [], items: [], counts: emptyCounts(), unresolved_groups: 0, checked_at });
       const listed = await kakao.listTemplates({ ...opts, fresh: String(queryValue(req.query?.fresh) || '') === '1' });
-      return res.status(200).json({ configured: true, write, targets: listed.targets || [], items: markProgramUse(listed.items, programTemplateIds()),
+      let ataUnit = null;
+      try { ataUnit = getSendProvider()?.estimateKakao?.({ count: 1 }, deps.env || process.env)?.unit ?? null; } catch { ataUnit = null; }
+      return res.status(200).json({ configured: true, write, ata_unit: ataUnit, targets: listed.targets || [], items: markProgramUse(listed.items, programTemplateIds()),
         counts: listed.counts || emptyCounts(), unresolved_groups: listed.unresolved_groups || 0, checked_at });
     }
     // scope: 진단용(이름·내용 없음)

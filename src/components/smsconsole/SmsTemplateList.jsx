@@ -4,9 +4,10 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAtaEntry, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, audienceSections, buildKindedItems, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isKakaoEntry, itemLight, kindBadges, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
 } from './smsTemplateListModel.js';
-import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoStatusLine, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoStatusLine, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, sendCostText } from './smsTextTemplateFormModel.js';
+import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
 const FLOW_NO_STEP_KINDS = ['order_created', 'process_started', 'process_completed', 'member_joined'];
@@ -110,11 +111,12 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const mySection = useMemo(() => {
     const section = myTextSection(mine);
     if (!section) return null;
-    const rows = section.items.filter((entry) => isAtaEntry(entry) === isKakao);
+    const rows = section.items.filter((entry) => isKakaoEntry(entry) === isKakao);
     return rows.length ? { ...section, items: rows, count: rows.length } : null;
   }, [mine, isKakao]);
   // 내 문구 카드. 켜진 자동 문구는 '발송 중' 묶음에도 같은 카드로 보인다(그래서 함수로 둔다)
   const isOn = (entry) => Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled);
+  const effOf = (entry) => autoEffective(autoStatus[entry.id] ?? (entry.autoEnabled ? null : { enabled: false }));
   const renderMine = (entry, prefix = '') => (
     <li key={`${prefix}${entry.id}`} className={`ktm-card stl-row${prefix === 'step-' ? ' stl-step' : ''}${mineOpen === entry.id ? ' is-selected' : ''}`}>
       <button type="button" className="ktm-card-main" aria-expanded={mineOpen === entry.id} onClick={() => openMine(entry)}>
@@ -128,18 +130,22 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
               {cp.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
               {cp.extras.length ? <span className="stl-extras">{cp.extras.join(' · ')}</span> : null}
               {catchupPausedText(autoStatus[entry.id]) ? <span className="stl-extras ktm-alert" role="alert">{catchupPausedText(autoStatus[entry.id])}</span> : null}
+              {autoTargetText(entry) ? <span className="stl-extras stl-target">대상: {autoTargetText(entry)}</span> : null}
             </span>
           );
         })() : <span className="ktm-card-meta"><span>{entry.preview}</span></span>}
-        {entry.autoKind || entry.hasImage ? (
+        {entry.autoKind || entry.hasImage || entry.sendCost ? (
           <span className="ktm-card-badges">
-            {entry.autoKind ? <span className={`stl-light stl-light--${isOn(entry) ? 'on' : 'off'}`}>{isOn(entry) ? '켜짐' : '꺼짐'}</span> : null}
+            {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(effOf(entry))}`}>{effOf(entry).text}</span> : null}
             {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
+            {entry.sendCost ? <span className="ktm-badge ktm-badge--muted">{sendCostText(entry.sendCost)}</span> : null}
           </span>
         ) : null}
         {mineOpen === entry.id ? (
           <span className="ktm-open">
             {entry.autoKind ? <span className="stl-open-cond">{autoConditionLine(entry)}</span> : null}
+            {entry.autoKind && autoTargetText(entry) ? <span className="stl-open-cond">대상: {autoTargetText(entry)}</span> : null}
+            {entry.autoKind && (effOf(entry).tone === 'blocked' || effOf(entry).tone === 'part') ? <span className="sac-status">{effOf(entry).text}</span> : null}
             {entry.autoKind && autoStatus[entry.id] ? <span className="sac-status">{autoStatusLine(autoStatus[entry.id])}</span> : null}
             {(minePhoto[entry.id] || []).map((url, index, all) => <img key={index} className={all.length > 1 ? 'ktm-open-img sac-thumb' : 'ktm-open-img'} src={url} alt="" />)}
             <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>

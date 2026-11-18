@@ -41,7 +41,7 @@ test('저장 → 목록 → 수정 → 삭제', async () => {
   assert.equal(saved.statusCode, 201);
   const id = saved.body.item.id;
   let list = await call(get(), deps);
-  assert.deepEqual(list.body.items, [{ id, name: '안내', body: '안녕하세요' }]);
+  assert.deepEqual(list.body.items.map(({ send_cost, ...rest }) => rest), [{ id, name: '안내', body: '안녕하세요' }]);
   const edited = await call(post({ action: 'text_template_save', id, name: '안내', body: '수정한 문구' }), deps);
   assert.equal(edited.statusCode, 200);
   list = await call(get(), deps);
@@ -96,7 +96,7 @@ test('문구+사진 저장 → 목록은 has_image 만 → 단건 조회에 사�
   assert.equal(saved.body.item.image, undefined);
   const id = saved.body.item.id;
   const list = await call(get(), deps);
-  assert.deepEqual(list.body.items, [{ id, name: '사진안내', body: '사진 문구', has_image: true }]);
+  assert.deepEqual(list.body.items.map(({ send_cost, ...rest }) => rest), [{ id, name: '사진안내', body: '사진 문구', has_image: true }]);
   assert.ok(!JSON.stringify(list.body).includes(JPG));
   const one = await call(getOne(id), deps);
   assert.equal(one.statusCode, 200);

@@ -1,5 +1,6 @@
 // 문자 템플릿 등록 양식·내 문구 묶음의 순수 계산(화면 없음).
 import { IMAGE_MAX_EDGE, textInfo } from './sendPanelModel.js';
+import { autoEffective } from '../../../shared/smsAutoEffective.js';
 import { BMS_TEMPLATE_ID, bmsButtonsCheck, bmsTextError } from '../../../shared/smsBmsLimits.js';
 
 export { BMS_TEMPLATE_ID };
@@ -414,6 +415,37 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   adCatchupText(entry),
 ) : '');
 
+// 발송 대상 한 줄: 서버(api/_lib/smsAutoSend.js·smsEventSend.js)가 실제로 고르는 조건을 글로 옮긴 것. 근거를 못 찾은 종류는 빈 글.
+export function autoTargetText(entry) {
+  const kind = entry?.autoKind;
+  const days = Number(entry?.autoDays) || 0;
+  const times = Number(entry?.autoRepeat) > 1 ? `번호당 ${Number(entry.autoRepeat)}회(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '번호당 1회';
+  if (kind === AUTO_KIND) return joinDot('주문 상태 출고완료', `출고일+${days}일=오늘(3일 지난 건까지)`, '수신거부·중복번호 제외', times);
+  if (kind === AUTO_KIND_ORDER) return joinDot(`주문일+${days}일=오늘(3일 지난 건까지)`, '취소 주문 제외', '수신거부·중복번호 제외', times);
+  if (isDateKind(kind)) {
+    const label = kind === AUTO_KIND_SHIP_OR_DUE ? '출고예정일(없으면 납기일)' : (kind === AUTO_KIND_SHIP_PLAN ? '출고예정일' : '납기일');
+    return joinDot(
+      '주문 상태 제작 중',
+      `${label} ${offsetText(entry.autoOffset, entry.autoDaily)}=오늘`,
+      entry.autoWeekdays ? '평일만(토·일 안 보냄)' : '',
+      entry.autoUnlessStep ? `${entry.autoUnlessStep} 공정 ${entry.autoUnlessMode === 'started' ? '미착수' : '미완료'}인 주문만` : '',
+      entry.autoDaily ? '번호·주문당 하루 1번' : '번호·주문당 1번',
+    );
+  }
+  if (kind === AUTO_KIND_LEAD_PLUS) {
+    const flow = LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || ''];
+    return days > 0
+      ? joinDot(`카페24 ${flow} 접수일+${days}일=오늘`, '번호가 남아 있는 접수만', '번호당 1번')
+      : joinDot(`카페24 ${flow} 접수 즉시(켠 뒤 24시간 안 접수)`, '번호당 1번');
+  }
+  if (kind === AUTO_KIND_MEMBER_JOINED) return '카페24 회원가입 즉시(켠 뒤 24시간 안 가입) · 번호당 1번';
+  if (kind === AUTO_KIND_ORDER_CREATED) return '주문 등록 즉시(켠 뒤 24시간 안 등록) · 취소 주문 제외 · 번호·주문당 1번';
+  if (kind === AUTO_KIND_PROCESS_STARTED || kind === AUTO_KIND_PROCESS_COMPLETED) {
+    return joinDot(`${entry.autoStep || '고른'} 공정 ${kind === AUTO_KIND_PROCESS_STARTED ? '시작' : '완료'} 시각이 기록된 주문(켠 뒤 24시간 안)`, '취소 주문 제외', '번호·주문당 1번');
+  }
+  return '';
+}
+
 // 발송 조건을 조각으로: { when, who, via, extras[] } — autoConditionLine 과 같은 글을 ' · ' 로 나눠 만든다
 export function autoConditionParts(entry) {
   const list = autoConditionLine(entry).split(' · ').filter(Boolean);
@@ -439,17 +471,17 @@ export function ataLinkLine(entry, status) {
   const parts = autoConditionLine(entry).split(' · ').filter(Boolean).filter((text) => text !== '알림톡' && text !== '고객');
   const when = parts.shift() || '';
   const timeText = parts.length ? parts.join(' · ') : '';
-  const on = status ? Boolean(status.enabled) : Boolean(entry.autoEnabled);
+  const effective = autoEffective(status);
   const catchup = entry.autoKind === AUTO_KIND && entry.autoCatchupAt
     ? `일괄 ${entry.autoCatchupAt.replace('T', ' ')} · 출고일 ${entry.autoCatchupFrom || '처음'}~오늘${entry.autoCatchupDone ? ' (완료)' : ''}` : '';
-  return joinDot(when, timeText, '1회', on ? '켜짐' : '꺼짐', catchup, status ? `최근 7일 ${Number(status.sent_7d) || 0}건` : '', catchupPausedText(status));
+  return joinDot(when, timeText, '1회', effective.text, catchup, status ? `최근 7일 ${Number(status.sent_7d) || 0}건` : '', catchupPausedText(status));
 }
 
 // 현황 한 줄 (resource=auto_status 응답)
 export function autoStatusLine(status) {
   if (!status) return '';
   return joinDot(
-    status.enabled ? '켜짐' : '꺼짐',
+    autoEffective(status).text,
     `오늘 대상 ${Number(status.today_targets) || 0}`,
     `최근 7일 ${Number(status.sent_7d) || 0}`,
     `누적 ${Number(status.sent_total) || 0}`,
@@ -516,6 +548,21 @@ export function ensureAutoSection(sections, autoCount) {
 }
 
 // 사진 배지 글
+// 카드 종류 표기·건당 비용(서버 send_cost = { type, unit, parts:[{type,count}], fallback_unit? })
+const KIND_LABELS = { BMS: '브랜드메시지', ATA: '알림톡', SMS: '단문 문자', LMS: '장문 문자', MMS: '사진 문자' };
+export const sendKindLabel = (type) => KIND_LABELS[type] || '';
+export function sendCostText(sendCost) {
+  if (!sendCost || !KIND_LABELS[sendCost.type]) return '';
+  const parts = Array.isArray(sendCost.parts) ? sendCost.parts : [];
+  const label = parts.length > 1 || (parts[0] && parts[0].count > 1)
+    ? parts.map((part) => `${sendKindLabel(part.type)} ${part.count}통`).join(' + ')
+    : sendKindLabel(sendCost.type);
+  const unit = Number(sendCost.unit);
+  const cost = Number.isFinite(unit) && sendCost.unit !== null ? `건당 ${unit.toLocaleString('ko-KR')}원` : '';
+  const fb = Number(sendCost.fallback_unit);
+  const fallback = sendCost.type === 'BMS' && sendCost.fallback_unit != null && Number.isFinite(fb) ? `친구 아니면 장문 문자 ${fb.toLocaleString('ko-KR')}원` : '';
+  return [label, cost, fallback].filter(Boolean).join(' · ');
+}
 export const photoBadgeText = (entry) => (entry.imageCount > 1 || entry.autoKind ? `사진 ${entry.imageCount}장` : '사진');
 
 // 목록 응답 items → '내 문구' 묶음. 0개면 null(묶음 자체가 안 보인다).
@@ -537,6 +584,7 @@ export function myTextSection(items) {
       preview: String(item.body || '').replace(/\s+/g, ' ').trim().slice(0, 60),
       hasImage: Boolean(item.has_image) || Number(item.image_count) > 0,
       imageCount: Number(item.image_count) || (item.has_image ? 1 : 0),
+      sendCost: item.send_cost || null,
       autoKind: AUTO_KINDS.includes(item.auto_kind) ? item.auto_kind : '',
       autoDays: Number(item.auto_days) || 0,
       autoAtaTemplate: String(item.auto_ata_template || ''),

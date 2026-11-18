@@ -50,6 +50,7 @@ function fakeDb({ orders = [] } = {}) {
       if (t.startsWith('UPDATE sms_text_templates SET auto_catchup_paused_at = NOW()')) { state.paused.push({ error: args[0], id: args[1] }); return { rows: [{ id: args[1] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = CASE')) { state.failMark += 1; return { rows: [{ id: args[0] }] }; }
       if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = NULL')) { state.failClear += 1; return { rows: [{ id: args[0] }] }; }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_skip_reason = ?')) { (state.skips ||= []).push({ why: args[0], id: args[1] }); return { rows: [{ id: args[1] }] }; }
       if (t.startsWith("SELECT id, group_ids FROM sms_event_sends WHERE template_id = ? AND status = 'sent'")) return { rows: state.sends.filter(r => r.template_id === args[0] && r.status === 'sent' && r.kind === 'catchup' && r.kst_date >= args[1] && !r.checked_at).map(r => ({ id: r.id, group_ids: r.group_ids })) };
       if (t.startsWith('UPDATE sms_event_sends SET checked_at = NOW()')) { for (const r of state.sends.filter(x => args.includes(x.id))) r.checked_at = 'now'; return { rows: [] }; }
       if (t.startsWith("DELETE FROM sms_event_sends WHERE status = 'sent'")) { state.sends = state.sends.filter(r => !(r.status === 'sent' && args.includes(r.id))); return { rows: [] }; }
@@ -230,4 +231,20 @@ test('groupResult: 감싼 응답(groupInfo)도 읽고, 숫자 필드가 없으�
   } finally {
     for (const [name, v] of [['SOLAPI_API_KEY', prev.k], ['SOLAPI_API_SECRET', prev.s]]) { if (v === undefined) delete process.env[name]; else process.env[name] = v; }
   }
+});
+
+// ---------- 켜짐 실제 판정: 건너뜀 사유 기록·지우기 ----------
+test('(c) 잔액 부족으로 건너뛰면 사유가 DB 에 1번 기록된다', async () => {
+  const db = fakeDb({ orders: threeOrders });
+  const out = await run(db, provider(), catchupTpl(), { catchupOnly: true, kakao: kakao(250) });
+  assert.equal(out.reason, 'balance_short');
+  assert.deepEqual(db.state.skips, [{ why: '잔액 부족: 필요 300원, 잔액 250원', id: 31 }]);
+});
+
+test('(c) 발송이 나가면 건너뜀 사유를 NULL 로 지운다', async () => {
+  const db = fakeDb({ orders: threeOrders });
+  const out = await run(db, provider(), catchupTpl({ auto_skip_reason: '잔액 부족: 필요 300원, 잔액 250원' }), { catchupOnly: true, kakao: kakao(100000) });
+  assert.equal(out.sent, 3);
+  assert.equal(db.state.failClear, 1, '실패 표시와 건너뜀 사유를 한 문장으로 지운다');
+  assert.ok(db.state.sql.some(s => s.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = NULL, auto_skip_reason = NULL')));
 });

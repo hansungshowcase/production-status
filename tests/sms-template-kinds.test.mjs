@@ -263,3 +263,11 @@ test('image 칸이 있는 외부 문구는 그 파일이 public 폴더에 실제
     assert.ok(existsSync(new URL(`../public${t.image}`, import.meta.url)), `${t.key} 이미지 없음: ${t.image}`);
   }
 });
+
+test('유튜브 인터뷰 안내의 대상·언제 나가나 문구는 요청 고객이 아니라 발송 조건을 적는다', () => {
+  const t = EXTERNAL_TEMPLATES.find(x => x.key === 'youtube_interview');
+  assert.ok(t.who.includes('구매한 고객') && t.who.includes('발송 대상'));
+  assert.ok(!t.who.includes('요청한 고객'));
+  assert.ok(t.trigger.includes('유튜브 인터뷰 발송 대상 행'));
+  assert.ok(!t.trigger.includes('요청한 고객'));
+});

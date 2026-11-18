@@ -7,7 +7,7 @@ import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
 import { AUTO_KIND, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
-import { ataReady, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend } from './smsEventSend.js';
+import { ataReady, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, ensureEventSchema, eventExampleText, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, runEventSend, withEffective } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -445,19 +445,21 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
   const today = kstDate(nowMs);
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_auto_sends WHERE template_id = ? GROUP BY status', args: [templateId] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
-  const sent7 = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_auto_sends WHERE template_id = ? AND status = 'sent' AND kst_date >= ?", args: [templateId, addDays(today, -6)] })).rows?.[0]?.n) || 0;
+  const rows7 = (await db.execute({ sql: "SELECT status, COUNT(*) AS n FROM sms_auto_sends WHERE template_id = ? AND status IN ('sent', 'failed') AND kst_date >= ? GROUP BY status", args: [templateId, addDays(today, -6)] })).rows || [];
+  const sent7 = Number(rows7.find(row => row.status === 'sent')?.n) || 0;
+  const failed7 = Number(rows7.find(row => row.status === 'failed')?.n) || 0;
   let todayTargets = 0;
   if (isAutoKind(template.auto_kind) && template.auto_days >= 1) {
     const startDate = template.auto_start_date || addDays(today, -template.auto_days);
     todayTargets = (await eligibleTargets(db, template, { nowMs, startDate })).length;
   }
   const reason = !isAutoKind(template.auto_kind) ? 'no_auto' : adCheck(template.body);
-  return reply(200, {
-    enabled: template.auto_enabled && autoSettings(env).on, days: template.auto_days, start_date: template.auto_start_date || '',
+  return reply(200, withEffective({
+    enabled: template.auto_enabled && autoSettings(env).on, no_provider: !getSendProvider() || !hasSolapiCredentials(), ata_backoff: false, failed_7d: failed7, auto_skip_reason: '', days: template.auto_days, start_date: template.auto_start_date || '',
     today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'), failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'),
     last_sent_date: sums.find(row => row.status === 'sent')?.last || '', enable_blocked_reason: reason,
     ...(template.auto_kind === AUTO_KIND && template.auto_catchup_at && template.auto_catchup_paused ? { catchup_paused: true, catchup_error: template.auto_catchup_error } : {}),
-  });
+  }));
 }
 
 export function costOf(vendor, parts, people, env) {
@@ -467,6 +469,31 @@ export function costOf(vendor, parts, people, env) {
     total += Number(vendor.estimate({ type, count: people }, env)?.total) || 0;
   }
   return total;
+}
+
+// 문구 카드에 보이는 건당 비용(1명 기준). 브랜드메시지는 대체 문자 단가를, 문자는 통 구성을 함께 돌려준다. vendor 가 없으면 null.
+export function sendCostOf(item, vendor, env = process.env) {
+  if (!vendor || !item) return null;
+  const num = value => (Number.isFinite(Number(value)) ? Number(value) : null);
+  if (isBmsTemplate(item)) {
+    const info = typeof vendor.estimateBms === 'function' ? vendor.estimateBms({ count: 1 }, env) : null;
+    return info ? { type: 'BMS', unit: num(info.total), parts: [{ type: 'BMS', count: 1 }], fallback_unit: num(info.fallback_unit) } : null;
+  }
+  if (isAtaTemplate(item)) {
+    const info = typeof vendor.estimateKakao === 'function' ? vendor.estimateKakao({ count: 1 }, env) : null;
+    return info ? { type: 'ATA', unit: num(info.total), parts: [{ type: 'ATA', count: 1 }] } : null;
+  }
+  const images = Math.max(0, Number(item.image_count) || 0);
+  const list = isInfoTemplate(item) ? buildEventParts(item, images) : buildParts(item, images);
+  const counts = new Map();
+  let total = 0;
+  for (const part of list) {
+    const type = part.image >= 0 ? 'MMS' : (classifyText(part.text || item.body || '').type || 'LMS');
+    counts.set(type, (counts.get(type) || 0) + 1);
+    total += Number(vendor.estimate({ type, count: 1 }, env)?.total) || 0;
+  }
+  const parts = [...counts].map(([type, count]) => ({ type, count }));
+  return { type: parts.find(part => part.type === 'MMS')?.type || parts[parts.length - 1].type, unit: total, parts };
 }
 
 // action auto_toggle { id, enabled, dry_run }

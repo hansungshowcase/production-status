@@ -373,6 +373,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           <span className="ktm-card-badges">
             {light ? <span className={`ktm-light ktm-light--${light}`}>{light === 'on' ? '켜짐' : '꺼짐'}</span> : null}
             <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
+            {data ? <span className="ktm-badge ktm-badge--muted">알림톡{Number.isFinite(Number(data.ata_unit)) && data.ata_unit !== null ? ` · 건당 ${Number(data.ata_unit).toLocaleString('ko-KR')}원` : ''}</span> : null}
             {badge ? <span className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span> : null}
           </span>
         </button>

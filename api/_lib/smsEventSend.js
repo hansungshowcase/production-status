@@ -14,6 +14,7 @@ import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
 import { bmsInWindow, bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { STEPS } from './steps.js';
+import { autoEffective } from '../../shared/smsAutoEffective.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
 import { parsePositiveIntegerQuantity } from '../../src/utils/quantity.js';
 
@@ -93,6 +94,8 @@ export async function ensureEventSchema(db) {
   });
   await db.execute({ sql: 'ALTER TABLE sms_event_sends ADD COLUMN IF NOT EXISTS kind TEXT', args: [] }); // 'catchup' = 이미 출고된 주문 1회 발송분(안내 상한에서 뺀다)
   await db.execute({ sql: 'ALTER TABLE sms_event_sends ADD COLUMN IF NOT EXISTS checked_at TIMESTAMPTZ', args: [] }); // 쏠라피 그룹 결과를 다시 확인한 시각(알림톡·브랜드메시지 일괄 발송분)
+  await db.execute({ sql: 'ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS auto_skip_reason TEXT', args: [] }); // 일반 발송이 잔액 부족·제공사 없음으로 건너뛴 사유(성공하면 지움)
+  await db.execute({ sql: 'ALTER TABLE sms_text_templates ADD COLUMN IF NOT EXISTS auto_skip_at TIMESTAMPTZ', args: [] });
   flags.set('sms.event', true);
 }
 
@@ -133,14 +136,15 @@ export function eventExampleText(part, template) {
 
 export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
+  await ensureEventSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms, auto_skip_reason FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
   if (!row) return null;
   return {
-    auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
+    auto_skip_reason: row.auto_skip_reason || '', auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
@@ -463,8 +467,9 @@ export async function runEventSend(template, deps = {}) {
   const vendor = provider || getSendProvider();
   const bmsCfg = bms ? parseBmsConfig(template.auto_bms) : null;
   const from = bms ? bmsCfg.from : digits(env.SMS_SENDER);
-  if (!vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function' || !from) return { ...out, reason: 'no_provider' };
-  if (!provider && !hasSolapiCredentials()) return { ...out, reason: 'no_provider' };
+  if (!vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function' || !from) { await noteSkip(db, template, '발송 업체 설정 없음', warn); return { ...out, reason: 'no_provider' }; }
+  if (!provider && !hasSolapiCredentials()) { await noteSkip(db, template, '발송 업체 설정 없음', warn); return { ...out, reason: 'no_provider' }; }
+  if (template.auto_skip_reason) { try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_skip_reason = NULL WHERE id = ? RETURNING id', args: [template.id] }); } catch { warn('[sms-event] 건너뜀 사유 지우기 실패'); } } // 제공사 확인을 통과했으면 '업체 설정 없음' 류 사유를 지운다
 
   if (ata && template.auto_ata_fail_at && Date.parse(template.auto_ata_fail_at) > nowMs) return { ...out, reason: 'ata_backoff' }; // 같은 문구가 연속으로 통째 실패하면 1시간 건너뛴다
 
@@ -515,8 +520,10 @@ export async function runEventSend(template, deps = {}) {
       if (picked.some(item => item.catchup)) {
         try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_paused_at = NOW(), auto_catchup_error = ? WHERE id = ? RETURNING id', args: [short.why, template.id] }); } catch { warn('[sms-event] 일괄 발송 멈춤 표시 실패'); }
       }
+      await noteSkip(db, template, short.why, warn);
       return { ...out, ran: true, reason: 'balance_short' };
     }
+    if (template.auto_skip_reason) { try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_skip_reason = NULL WHERE id = ? RETURNING id', args: [template.id] }); } catch { warn('[sms-event] 건너뜀 사유 지우기 실패'); } } // 잔액 확인을 통과했으면 '잔액 부족' 사유를 지운다
   }
 
   // 문구 만들기: 한 건에서 예외가 나면 그 건만 건너뛴다.
@@ -610,7 +617,7 @@ export async function runEventSend(template, deps = {}) {
     });
   } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다. 행은 claimed 로 남아 다음 실행이 uncertain 으로 바꾼다. */ }
   out[status] = active.length;
-  if (ata && status === 'sent') await clearAtaFail(db, template);
+  if (status === 'sent') await clearAtaFail(db, template);
   return out;
 }
 
@@ -678,9 +685,16 @@ async function ataWholeFail(db, template, active, { reason, warn, out }) {
   }
   return { ...out, failed: active.length, reason: hasCatchup ? 'catchup_paused' : 'ata_failed' };
 }
-async function clearAtaFail(db, template) {
-  if (!template.auto_ata_fail_at) return;
-  try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_ata_fail_at = NULL WHERE id = ? RETURNING id', args: [template.id] }); } catch { /* 다음 성공 때 다시 지운다 */ }
+async function clearAtaFail(db, template) { // 발송이 나가면 실패 표시와 건너뜀 사유를 함께 지운다
+  if (!template.auto_ata_fail_at && !template.auto_skip_reason) return;
+  try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_ata_fail_at = NULL, auto_skip_reason = NULL WHERE id = ? RETURNING id', args: [template.id] }); } catch { /* 다음 성공 때 다시 지운다 */ }
+}
+// 일반 발송이 잔액 부족·제공사 없음으로 건너뛴 사실을 남긴다(화면의 '켜짐' 판정용). 기록 실패는 발송 흐름을 막지 않는다.
+async function noteSkip(db, template, why, warn = console.warn) {
+  try {
+    await ensureEventSchema(db);
+    await db.execute({ sql: 'UPDATE sms_text_templates SET auto_skip_reason = ?, auto_skip_at = NOW() WHERE id = ? RETURNING id', args: [String(why).slice(0, 200), template.id] });
+  } catch { warn('[sms-event] 건너뜀 사유 기록 실패'); }
 }
 
 // 크론: 켜진 안내 문구를 모두 실행. 결과는 건수만.
@@ -747,13 +761,30 @@ export async function eventStatus(db, template, { nowMs = Date.now(), env = proc
   const today = kstDate(nowMs);
   const sums = (await db.execute({ sql: 'SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends WHERE template_id = ? GROUP BY status', args: [id] })).rows || [];
   const count = status => Number(sums.find(row => row.status === status)?.n) || 0;
-  const sent7 = Number((await db.execute({ sql: "SELECT COUNT(*) AS n FROM sms_event_sends WHERE template_id = ? AND status = 'sent' AND kst_date >= ?", args: [id, addDays(today, -6)] })).rows?.[0]?.n) || 0;
+  const rows7 = (await db.execute({ sql: "SELECT status, COUNT(*) AS n FROM sms_event_sends WHERE template_id = ? AND status IN ('sent', 'failed') AND kst_date >= ? GROUP BY status", args: [id, addDays(today, -6)] })).rows || [];
+  const sent7 = Number(rows7.find(row => row.status === 'sent')?.n) || 0;
+  const failed7 = Number(rows7.find(row => row.status === 'failed')?.n) || 0;
   const todayTargets = (await pending(db, template, { nowMs, staff, preview: previewMode(template) })).length;
-  return reply(200, {
-    enabled: template.auto_enabled && autoOn(env), days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
+  const body = {
+    enabled: template.auto_enabled && autoOn(env), no_provider: eventNoProvider(template, env), ata_backoff: Boolean(isAtaTemplate(template) && template.auto_ata_fail_at && Date.parse(template.auto_ata_fail_at) > nowMs), failed_7d: failed7, auto_skip_reason: template.auto_skip_reason || '', days: 0, start_date: '', today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'),
     catchup_paused: Boolean(template.auto_catchup_paused), catchup_error: template.auto_catchup_paused ? String(template.auto_catchup_error || '') : '', failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'), last_sent_date: sums.find(row => row.status === 'sent')?.last || '',
     enable_blocked_reason: eventBlockedReason(template) || (template.auto_kind === 'member_joined' && !(await cafe24Connected(db, env)) ? 'cafe24_not_connected' : '') || (isLeadKind(template.auto_kind) && !(await leadSourcesConnected(db, env)) ? 'lead_source_not_connected' : ''),
-  });
+  };
+  return reply(200, withEffective(body));
+}
+// 실제 발송 판정(화면과 같은 규칙: shared/smsAutoEffective.js). effective = 지금 보내지는 상태, blocked = 막힌 사유('' 이면 막힘 없음)
+export function withEffective(body) {
+  const result = autoEffective(body);
+  return { ...body, effective: result.tone === 'on' || result.tone === 'part', blocked: result.blocked ? String(result.text || result.blocked) : '' };
+}
+// 발송 제공사·발신번호가 없어 runEventSend 가 건너뛰는 상태(runEventSend 의 no_provider 판정과 같은 조건, 읽기만)
+export function eventNoProvider(template, env = process.env) {
+  if (!isInfoTemplate(template)) return false;
+  const ata = isAtaTemplate(template);
+  const bms = isBmsTemplate(template);
+  const vendor = getSendProvider();
+  const from = bms ? parseBmsConfig(template.auto_bms).from : digits(env.SMS_SENDER);
+  return !vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function' || !from || !hasSolapiCredentials();
 }
 
 const needsStep = kind => kind === 'process_started' || kind === 'process_completed';
