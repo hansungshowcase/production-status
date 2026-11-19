@@ -176,8 +176,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           <span className="ktm-card-meta stl-flow-meta" title={chips}>
             <span className="stl-stepchips">{flow.steps.map((step) => <span key={step.id} className="ktm-chip stl-stepchip">{flowStepText(step)}</span>)}</span>
             {flow.who ? <span className={`ktm-chip stl-who ${flow.who === '고객' ? 'stl-who--cust' : (flow.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{flow.who}</span> : null}
-            {flow.via ? <span className="ktm-chip stl-via">{flow.via}</span> : null}
-            {flow.time ? <span className="stl-extras">{flow.time}</span> : null}
+            {flow.via ? <span className={`ktm-chip stl-via${flow.via.includes('알림톡') ? ' stl-via--talk' : (flow.via.includes('브랜드') ? ' stl-via--bms' : '')}`}>{flow.via}</span> : null}
+            {flow.time ? <span className="stl-extras stl-time">{flow.time}</span> : null}
           </span>
           <span className="ktm-card-badges stl-flow-on"><span className={`stl-light stl-light--${flowLightTone(flow.on, flow.total)}`}>켜짐 {flow.on}/{flow.total}</span></span>
         </button>
@@ -338,8 +338,9 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   if (isKakao) {
     if (!mySection) return null;
     return (
-      <div className="ktm-root stl-rows" hidden={!active}>
-        <h3 className="stl-grouphead">자동 발송 조건 <span className="ktm-kind-count">{flowRows.length}</span></h3>
+      <div className="ktm-root stl-rows stl-kakao" hidden={!active}>
+        <h3 className="stl-grouphead stl-flowhead">자동 발송 조건 <span className="ktm-kind-count">{flowRows.length}</span></h3>
+        <p className="stl-flowsub">고객에게 자동으로 나가는 문자 조건입니다</p>
         {mineError ? <p className="ktm-alert" role="alert">{mineError}</p> : null}
         <div className="stl-table">
           <ul className="ktm-cards">

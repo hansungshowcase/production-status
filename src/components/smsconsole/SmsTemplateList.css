@@ -114,3 +114,17 @@
 .stl-rows .stl-open-split .stl-open-imgs { display: flex; flex-direction: row; gap: 6px; flex: 0 0 auto; box-sizing: border-box; width: min(340px, 45%); min-width: 0; padding: 18px 14px 14px; background: #b9c6d6; border-radius: 12px; }
 .stl-rows .stl-open-split .stl-open-imgs .stl-open-img { flex: 1 1 0; width: auto; min-width: 0; max-width: 100%; max-height: 368px; padding: 0; background: none; border-radius: 8px; }
 @media (max-width: 520px) { .stl-rows .stl-open-split { flex-wrap: wrap; } .stl-rows .stl-open-split .ktm-open-body { flex-basis: 100%; } }
+
+/* 알림톡 화면 위 「자동 발송 조건」: 제목을 아래 큰 제목과 맞추고, 칩 색을 일수·채널·시각별로 나누고, 흰 카드로 감싸 다음 영역과 띄운다 */
+.stl-rows.stl-kakao { margin-bottom: 32px; }
+.stl-rows.stl-kakao .stl-flowhead { display: flex; height: auto; padding: 0; background: transparent; border: 0; font-size: 20px; font-weight: 700; color: var(--smsc-text, #1c2330); }
+.stl-rows.stl-kakao .stl-flowsub { margin: 4px 0 12px; font-size: 13px; color: var(--smsc-muted, #667085); }
+.stl-rows.stl-kakao .stl-table { border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); }
+.stl-rows.stl-kakao .stl-row { min-height: 52px; }
+.stl-rows.stl-kakao .stl-row .ktm-card-main { min-height: 51px; }
+.stl-rows.stl-kakao .stl-flow .stl-flow-name { font-size: 15px; font-weight: 700; }
+.stl-rows.stl-kakao .stl-flow-actions { margin-top: 12px; }
+.stl-rows.stl-kakao .stl-stepchip { background: #fff; border: 1px solid #2457d6; color: #2457d6; font-weight: 600; }
+.stl-rows.stl-kakao .stl-via--talk { background: #fff3b0; color: #7a5b00; font-weight: 600; }
+.stl-rows.stl-kakao .stl-via--bms { background: #ece3ff; color: #5b34b8; font-weight: 600; }
+.stl-rows.stl-kakao .stl-time { padding: 1px 8px; border-radius: 6px; background: #eef0f4; color: var(--smsc-text, #1c2330); font-size: 12px; font-weight: 700; flex: 0 0 auto; }
