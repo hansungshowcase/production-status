@@ -147,8 +147,10 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             {entry.autoKind && autoTargetText(entry) ? <span className="stl-open-cond">대상: {autoTargetText(entry)}</span> : null}
             {entry.autoKind && (effOf(entry).tone === 'blocked' || effOf(entry).tone === 'part') ? <span className="sac-status">{effOf(entry).text}</span> : null}
             {entry.autoKind && autoStatus[entry.id] ? <span className="sac-status">{autoStatusLine(autoStatus[entry.id])}</span> : null}
-            {(minePhoto[entry.id] || []).map((url, index, all) => <img key={index} className={all.length > 1 ? 'ktm-open-img sac-thumb' : 'ktm-open-img'} src={url} alt="" />)}
-            <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>
+            <span className={(minePhoto[entry.id] || []).length ? 'stl-open-split' : 'stl-open-plain'}>
+              <span className="ktm-open-body">{(mine.find((item) => item.id === entry.id) || {}).body}</span>
+              {(minePhoto[entry.id] || []).length ? <span className="stl-open-imgs">{minePhoto[entry.id].map((url, index) => <img key={index} className="ktm-open-img stl-open-img" src={url} alt="" />)}</span> : null}
+            </span>
           </span>
         ) : null}
       </button>
