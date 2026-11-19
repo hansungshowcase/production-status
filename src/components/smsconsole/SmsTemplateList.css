@@ -110,5 +110,5 @@
 /* 이미지 있는 문구: 왼쪽 글·오른쪽 이미지(휴대폰 말풍선 폭, 원본 비율) — 카드가 위아래로 길어지지 않게 */
 .stl-rows .stl-open-split { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; min-width: 0; }
 .stl-rows .stl-open-split .ktm-open-body { flex: 1 1 auto; min-width: 0; }
-.stl-rows .stl-open-split .stl-open-img { flex: 0 0 180px; width: 180px; max-width: 45%; height: auto; object-fit: contain; }
+.stl-rows .stl-open-split .stl-open-img { flex: 0 0 auto; width: auto; max-width: min(180px, 45%); height: auto; max-height: 220px; object-fit: contain; }
 @media (max-width: 520px) { .stl-rows .stl-open-split { flex-wrap: wrap; } .stl-rows .stl-open-split .ktm-open-body { flex-basis: 100%; } }
