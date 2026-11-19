@@ -229,12 +229,15 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
   const kind = template.auto_kind || AUTO_KIND;
   const repeat = Math.max(1, Math.min(AUTO_LIMITS.repeatMax, Number(template.auto_repeat) || 1));
   const interval = Number(template.auto_interval) || AUTO_LIMITS.defaultInterval;
-  const claimed = ((await db.execute({ sql: 'SELECT phone_hash, order_id, round, status FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || []).filter(row => row.status !== 'failed'); // 접수 0건 통째 실패('failed')는 선점으로 치지 않는다 → 다시 대상이 된다(2026-11-18 사장님 결정)
+  const claimed = ((await db.execute({ sql: 'SELECT phone_hash, order_id, round, status, kst_date FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || []).filter(row => row.status !== 'failed'); // 접수 0건 통째 실패('failed')는 선점으로 치지 않는다 → 다시 대상이 된다(2026-11-18 사장님 결정)
   const roundOf = row => Number(row.round) || 1;
   const claimedHash = new Set(claimed.map(row => `${row.phone_hash}|${roundOf(row)}`));
   const claimedOrder = new Set(claimed.map(row => `${Number(row.order_id)}|${roundOf(row)}`));
   const sentHash = new Set(claimed.filter(row => row.status === 'sent').map(row => `${row.phone_hash}|${roundOf(row)}`));
   const sentRounds = new Set(claimed.filter(row => row.status === 'sent').map(roundOf));
+  const lastByHash = new Map(); // 출고 후 문구만: 번호별 이 문구의 가장 최근 기록일(failed 제외)
+  if (kind === AUTO_KIND) for (const row of claimed) { const d = String(row.kst_date || '').slice(0, 10); if (d && (!lastByHash.has(row.phone_hash) || d > lastByHash.get(row.phone_hash))) lastByHash.set(row.phone_hash, d); }
+  const recentLimit = addDays(today, -Math.floor(interval / 2));
   const raw = [];
   for (let round = 1; round <= repeat; round += 1) {
     if (round > 1 && !sentRounds.has(round - 1)) continue; // 앞 회차가 나간 적이 없으면 이 회차는 조회하지 않는다
@@ -256,6 +259,8 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
     if (chain?.after) { if (optouts.has(hash) || !(chainOk.event.has(eventPhoneHash(t.phone)) || chainOk.auto.has(hash))) return false; }
     else if (optouts.has(hash) || (!plainAd && todayHash.has(hash)) || bmsToday.has(eventPhoneHash(t.phone))) return false;
     if (claimedHash.has(`${hash}|${t.round}`) || claimedOrder.has(`${t.orderId}|${t.round}`)) return false;
+    if (kind === AUTO_KIND && t.round === 1 && lastByHash.has(hash)) return false; // 2026-11-19 이틀 연속 발송 3건: 일괄 발송 회차와 새 주문 1회차가 겹침 → 이 문구를 받은 번호는 새 주문 1회차를 받지 않는다
+    if (kind === AUTO_KIND && lastByHash.has(hash) && lastByHash.get(hash) > recentLimit) return false; // 2026-11-19 이틀 연속 발송 3건: 최근 기록이 간격의 절반 안이면 어느 회차든 보내지 않는다
     return t.round === 1 || sentHash.has(`${hash}|${t.round - 1}`);
   });
   const byPhone = new Map();

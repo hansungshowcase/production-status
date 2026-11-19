@@ -437,6 +437,27 @@ test('회차: 앞 회차가 sent 가 아니면 다음 회차는 안 나간다', 
   assert.equal(provider.calls.send.length, 0);
 });
 
+test('이틀 연속 방지: 일괄 발송으로 어제 3회차를 받은 번호는 새 주문 1회차가 오늘 예정이어도 대상 0', async () => {
+  const hash = phoneHash('01033334444');
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] }); // 새 주문 1회차 예정일 = 오늘
+  db.state.sends.push({ id: 60, template_id: 7, phone_hash: hash, order_id: 2, kst_date: '2026-11-19', status: 'sent', round: 3 });
+  const provider = fakeProvider();
+  assert.equal((await run(db, provider)).claimed, 0);
+  assert.equal(provider.calls.send.length, 0);
+  Object.assign(db.state.sends[0], { kst_date: '2026-10-01', round: 3, status: 'sent' }); // 간격 절반보다 오래된 기록 → 1회차 조건만으로 막히는지
+  assert.equal((await run(db, provider)).claimed, 0);
+});
+
+test('이틀 연속 방지: 최근 기록이 간격 절반 안이면 다음 회차도 빠지고 정확히 절반째엔 나간다, 주문 후 문구는 제외', async () => {
+  const hash = phoneHash('01033334444');
+  const mk = date => { const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')], template: REPEAT2 }); db.state.sends.push({ id: 61, template_id: 7, phone_hash: hash, order_id: 1, kst_date: date, status: 'sent', round: 1 }); return db; };
+  assert.equal((await run(mk('2026-12-06'), fakeProvider(), { nowMs: NOW2 })).claimed, 0); // 14일 전 < 15
+  assert.equal((await run(mk('2026-12-05'), fakeProvider(), { nowMs: NOW2 })).claimed, 1); // 정확히 15일 전은 통과
+  const plus = setup({ template: { auto_kind: 'order_plus_days' }, orders: [{ id: 1, phone: '010-3333-4444', client_name: 'A', status: 'working', ship_date: null, order_date: '2026-10-31' }] });
+  plus.state.sends.push({ id: 62, template_id: 7, phone_hash: hash, order_id: 2, kst_date: '2026-11-19', status: 'sent', round: 3 });
+  assert.equal((await run(plus, fakeProvider())).claimed, 1);
+});
+
 test('주문 등록 후: order_date 기준, 출고 상태와 무관', async () => {
   const db = setup({ template: { auto_kind: 'order_plus_days' }, orders: [
     { id: 1, phone: '010-3333-4444', client_name: 'A', status: 'working', ship_date: null, order_date: '2026-10-31' },
