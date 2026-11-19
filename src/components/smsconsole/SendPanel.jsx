@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { allVariablesFilled, buildRecipients, fillTemplateContent, groupTexts, sendButtonLabel, lockedLine, makeIdempotencyKey, payloadSignature, scheduleInfo, shortKst, shrinkImage, templateVariableNames, textInfo } from './sendPanelModel.js';
 import { buildSaveBody, imageFromItem } from './smsTextTemplateFormModel.js';
+import { AutoOffNotice } from './SmsTextTemplateForm.jsx';
 import './SendPanel.css';
 
 const wonText = value => (value === null || value === undefined ? '모름' : `${Number(value || 0).toLocaleString('ko-KR')}원`);
@@ -31,6 +32,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [textError, setTextError] = useState('');
+  const [autoOffId, setAutoOffId] = useState(null); // 저장 응답 auto_disabled 인 문구 id(저장 직후 꺼짐 경고)
   const textsLoadedRef = useRef(false);
   const [image, setImage] = useState(null); // { data, bytes, url } 사진 1장(문자 보내기에서만)
   const [imageError, setImageError] = useState('');
@@ -106,13 +108,14 @@ export default function SendPanel({ active = true, template = '', text: textPara
   const saveText = async () => {
     if (saving) return;
     setSaving(true);
-    setTextError('');
+    setTextError(''); setAutoOffId(null);
     const name = saveName.trim();
     try {
       const out = await postSmsConsole('text_template_save', { id: selectedText && selectedText.name === name ? selectedText.id : undefined, ...buildSaveBody({ name, body: text, image: photo }) });
       const item = out.item;
       setTexts(prev => [...prev.filter(x => x.id !== item.id), item].sort((a, b) => a.name.localeCompare(b.name, 'ko')));
       setTextId(String(item.id)); setSaveOpen(false); setConfirmDelete(false);
+      if (item.auto_disabled === true) setAutoOffId(item.id);
     } catch (err) { setTextError(err.message || '저장하지 못했습니다.'); } finally { setSaving(false); }
   };
   const deleteText = async () => {
@@ -255,6 +258,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
             </div>
           )}
           {textError ? <p className="smsc-send__error" role="alert">{textError}</p> : null}
+          {autoOffId ? <AutoOffNotice key={autoOffId} id={autoOffId} /> : null}
         </div>
       ) : null}
       {error ? <p className="smsc-send__server" role="alert">{error}</p> : null}

@@ -2,9 +2,35 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
 import { getKstToday } from '../../utils/dateUtils.js';
-import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, autoTargetText, normalizeOffset, normalizeDays, normalizeOrderDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, catchupSpanText, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, autoTargetText, normalizeOffset, normalizeDays, normalizeOrderDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, catchupSpanText, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL, autoConfirmLine, toggleRejectText } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
+
+// 저장 직후 꺼짐 경고: 서버가 본문·조건 변경으로 자동 발송을 껐을 때(item.auto_disabled) 다시 켜기 전까지 고객에게 안 나간다는 것을 보인다.
+// [다시 켜기]는 목록의 켜기와 같은 auto_toggle 흐름(dry_run 확인 줄 → 켜기 확인)을 쓴다.
+export function AutoOffNotice({ id, photos = 0 }) {
+  const [confirm, setConfirm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const run = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      if (!confirm) setConfirm(await postSmsConsole('auto_toggle', { id, enabled: true, dry_run: true }));
+      else { await postSmsConsole('auto_toggle', { id, enabled: true }); setConfirm(null); setDone(true); }
+    } catch (err) { setConfirm(null); setError(toggleRejectText(err?.data?.reason || err?.data?.error?.reason || '') || err?.message || '다시 켜지 못했습니다.'); } finally { setBusy(false); }
+  };
+  if (done) return <p className="stf-done" role="status">다시 켰습니다</p>;
+  return (
+    <div className="stf-autooff" role="alert" data-auto-off-notice>
+      <p>자동 발송이 꺼졌습니다. 다시 켜야 고객에게 나갑니다</p>
+      {confirm ? <p className="stf-autooff-line">{autoConfirmLine(confirm, photos)}</p> : null}
+      {error ? <p className="stf-autooff-line">{error}</p> : null}
+      <button type="button" className="ktm-btn ktm-btn--primary" disabled={busy} onClick={run}>{confirm ? '켜기 확인' : '다시 켜기'}</button>
+    </div>
+  );
+}
 
 // 사진 여러 장을 mergeLayout 배치대로 한 장(JPEG, 200KB 이하)으로 그린다. 안 되면 Error('사진이 너무 큽니다').
 async function mergeImages(list) {
@@ -103,6 +129,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(null);
+  const [offItems, setOffItems] = useState([]); // 저장 응답이 auto_disabled 인 문구(저장 직후 꺼짐 경고)
   const formId = useId();
   const fileRef = useRef(null);
   const bodyRef = useRef(null);
@@ -243,6 +270,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         }
         const out = await postSmsConsole('text_template_save', buildSaveBody({ id: item.id, name: f.name, body: outOf(f), images: imgs, auto: { leadSource: f.leadSource, kind: f.autoKind, days: f.days, sendFrom: f.sendFrom, repeat: f.repeat, interval: f.interval, offsetDir: f.offsetDir, offsetDays: f.offsetDays, daily: f.daily, unlessStep: f.unlessStep, unlessMode: f.unlessMode, weekdays: f.weekdays, step: f.step, audience: f.audience, staff: f.staff, ataTemplate: f.ataTemplate, bmsButtons: f.bmsButtons, sendTime: f.sendTime, copyTo: f.copyTo, catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt, catchupDaily: f.catchupDaily } }));
         last = out.item;
+        if (out.item?.auto_disabled === true) setOffItems(prev => [...prev.filter(x => x.id !== out.item.id), { id: out.item.id, photos: Array.isArray(imgs) ? imgs.length : 0 }]);
         setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
       } catch (err) {
         broke = true;
@@ -259,6 +287,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     return (
       <div className="stf-form">
         <p className="stf-done" role="status">등록했습니다</p>
+        {offItems.map(item => <AutoOffNotice key={item.id} id={item.id} photos={item.photos} />)}
         <div className="stf-actions">
           {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>목록</button> : null}
           {autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSend(saved.id)}>이 문구로 보내기</button>}

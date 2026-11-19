@@ -69,6 +69,7 @@ const RECENT_LABEL_PRESENTATION = Object.freeze({
 
 export function notificationStatusPresentation(item) {
   if (item?.policy?.status === 'paused') return STATUS_PRESENTATION.paused;
+  if (item?.configuration?.status === 'disabled_recent') return { key: 'off', label: '꺼져 있음' }; // 최근 발송하던 문구가 꺼진 경고(빨강)
   if (
     item?.id === 'customer_started'
     && item?.configuration?.reason === STARTED_NOTIFICATION_OFF_REASON

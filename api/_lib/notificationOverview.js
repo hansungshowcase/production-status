@@ -480,6 +480,45 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
   }
 }
 
+// 최근 7일 안에 실제로 나가던 고객 문구가 지금 꺼져 있으면 현황판 맨 앞에 경고 한 항목으로 알린다(2026-11-19: 본문 저장으로 꺼진 문구 4개를 3시간 넘게 몰랐다).
+// 꺼진 문구는 loadConsoleAutoItems 목록에서 빠지므로 따로 조회한다. 조회가 실패하면 경고만 빠지고 기존 목록은 그대로 나온다.
+export async function loadConsoleDisabledRecent(db, now, checkedAt) {
+  try {
+    const weekStart = kstDateString(new Date(new Date(now).getTime() - 6 * 86400000));
+    const rows = ((await db.execute({
+      sql: `SELECT t.id, t.name, t.auto_enabled
+              FROM sms_text_templates t
+             WHERE t.auto_enabled = false AND COALESCE(t.auto_kind, '') <> ''
+               AND COALESCE(t.auto_audience, 'customer') NOT IN ('staff', 'sales')
+               AND t.id IN (
+                 SELECT template_id FROM sms_auto_sends WHERE status = 'sent' AND kst_date >= ? AND COALESCE(reason, '') <> 'make_migrated'
+                 UNION
+                 SELECT template_id FROM sms_event_sends WHERE status = 'sent' AND kst_date >= ? AND COALESCE(reason, '') <> 'make_migrated'
+               )
+             ORDER BY t.id ASC`,
+      args: [weekStart, weekStart],
+    })).rows || []).filter(row => row.auto_enabled === false); // 꺼진 문구만(조회 결과를 한 번 더 확인)
+    if (!rows.length) return [];
+    const names = rows.map(row => String(row.name || `콘솔 문구 ${row.id}`));
+    return [{
+      id: 'console_disabled_recent',
+      name: '최근 발송하던 문구가 꺼져 있습니다',
+      milestone: 'console_disabled_recent',
+      trigger: '최근 7일 안에 발송 기록이 있는 고객 문구가 지금 꺼져 있음',
+      target: `${names.join(', ')} (${rows.length}개)`,
+      timing: '템플릿 화면에서 [켜기]를 눌러야 다시 고객에게 나갑니다',
+      policy: policy('active'),
+      configuration: { status: 'disabled_recent', label: '꺼져 있음', reason: '본문·조건을 저장하면 자동 발송이 꺼집니다. 다시 켜야 발송됩니다.', channel: '확인 불가' },
+      checked_at: checkedAt,
+      example_message: null,
+      recent: { state: 'empty', counts: emptyCounts(), latest: null },
+      disabled_template_ids: rows.map(row => Number(row.id)),
+    }];
+  } catch {
+    return [];
+  }
+}
+
 export async function loadNotificationOverview(db, env = process.env, now = new Date()) {
   const checkedAt = new Date(now).toISOString();
   const baseGroups = buildNotificationCatalog(env, now);
@@ -561,6 +600,7 @@ export async function loadNotificationOverview(db, env = process.env, now = new 
 
 async function appendConsoleItems(groups, db, now, checkedAt) {
   const extra = await loadConsoleAutoItems(db, now, checkedAt);
-  if (!extra.length) return groups;
-  return groups.map(group => (group.id === 'customer' ? { ...group, items: [...group.items, ...extra] } : group));
+  const warn = await loadConsoleDisabledRecent(db, now, checkedAt);
+  if (!extra.length && !warn.length) return groups;
+  return groups.map(group => (group.id === 'customer' ? { ...group, items: [...warn, ...group.items, ...extra] } : group));
 }
