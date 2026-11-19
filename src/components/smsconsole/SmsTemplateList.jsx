@@ -304,8 +304,10 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                               {line ? <span className="stl-open-cond">{line}</span> : null}
                               {item.external && item.trigger ? <span className="ktm-open-line"><b>언제 나가나</b> {item.trigger}</span> : null}
                               {item.scenario ? <span className="ktm-open-line"><b>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</b> {item.scenario}</span> : null}
-                              {item.image ? <img className="ktm-open-img" src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : null}
-                              {item.body ? <span className="ktm-open-body">{item.body}</span> : null}
+                              <span className={item.image ? 'stl-open-split' : 'stl-open-plain'}>
+                                {item.body ? <span className="ktm-open-body">{item.body}</span> : null}
+                                {item.image ? <img className="ktm-open-img stl-open-img" src={item.image} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : null}
+                              </span>
                             </span>
                           ) : null}
                         </button>
