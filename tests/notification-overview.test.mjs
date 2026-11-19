@@ -222,6 +222,7 @@ test('전체 이력의 새로운 internal 태그를 발견하고 최근 집계�
   const calls = [];
   const result = await loadNotificationOverview({
     async execute(query) {
+      if (query.sql.includes('sms_text_templates')) return { rows: [] }; // 콘솔 문구 조회는 이 시험의 대상이 아니다
       calls.push(query);
       if (query.sql.includes('DISTINCT ON')) {
         return { rows: [
@@ -334,7 +335,7 @@ test('발견 항목은 200개로 제한하고 초과 시 카탈로그 상태만 
 test('최근 기록과 카탈로그 발견은 읽기 전용 SELECT만 수행하고 모두 실패해도 정책·설정을 반환한다', async () => {
   const calls = [];
   const available = await loadNotificationOverview({
-    async execute(query) { calls.push(query); return { rows: [] }; },
+    async execute(query) { if (!query.sql.includes('sms_text_templates')) calls.push(query); return { rows: [] }; },
   }, readyEnv(), NOW);
   assert.equal(calls.length, 2);
   for (const call of calls) {
@@ -372,4 +373,30 @@ test('현황 API는 GET·rate limit·no-store 계약을 지키고 조회 실패�
     rateLimitCheck: () => true,
   });
   assert.equal(methodRes.statusCode, 405);
+});
+
+test('콘솔에서 켜 둔 고객용 자동 문구를 고객 그룹 끝에 붙이고 기존 5종은 그대로 둔다', async () => {
+  const templates = [
+    { id: 23, name: 'SNS 설비+2', body: '안내 문구', auto_kind: 'ship_plus_days', auto_days: 2, auto_ata_template: '', auto_audience: 'customer', auto_send_time: '12:30', has_image: false },
+  ];
+  const result = await loadNotificationOverview({
+    async execute(query) {
+      if (query.sql.includes('FROM sms_text_templates')) return { rows: templates };
+      if (query.sql.includes('sms_auto_sends')) return { rows: [{ template_id: 23, d7: 5, today: 2 }] };
+      return { rows: [] };
+    },
+  }, readyEnv(), NOW);
+  const customer = result.groups.find(group => group.id === 'customer').items;
+  assert.deepEqual(customer.slice(0, 5).map(item => item.id), [
+    'customer_ordered', 'customer_started', 'customer_packed', 'customer_rescheduled', 'customer_shipped',
+  ]);
+  const added = customer[5];
+  assert.equal(added.id, 'console_auto_23');
+  assert.equal(added.name, 'SNS 설비+2');
+  assert.equal(added.policy.status, 'active');
+  assert.equal(added.configuration.channel, '문자');
+  assert.match(added.timing, /오늘 2건/);
+  assert.equal(added.recent.counts.total, 5);
+  assert.equal(customer.length, 6);
+  assert.equal(result.groups.find(group => group.id === 'internal').items.length, 11);
 });

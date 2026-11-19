@@ -4,6 +4,7 @@ import { buildNotificationExample } from './notificationExamples.js';
 import { OVERDUE_REMINDER_DEFINITIONS } from './overdueReminders.js';
 import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
 import { SHIP_DAY_REMINDER_DEFINITION } from './shipDayReminders.js';
+import { BMS_TEMPLATE_ID, autoConditionLine, autoTargetText, sendTimeLabel } from '../../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 export const NOTIFICATION_OVERVIEW_DAYS = 7;
 const PUBLIC_INTERNAL_HISTORY_START_MS = Date.parse('2026-09-01T00:00:00+09:00');
@@ -388,6 +389,94 @@ function unknownHistoryRule(row, checkedAt) {
   };
 }
 
+// 콘솔에서 켜 둔 고객용 자동 문구(sms_text_templates.auto_kind)를 고객 알림 그룹 끝에 붙인다. 읽기만 하고, 조회가 실패하면 기존 5종만 보여 준다.
+function consoleChannel(row) {
+  if (row.auto_ata_template === BMS_TEMPLATE_ID) return '브랜드메시지';
+  if (row.auto_ata_template) return '알림톡';
+  return row.has_image ? 'MMS' : '문자';
+}
+
+function kstDateString(now) {
+  return new Date(new Date(now).getTime() + 9 * 3600000).toISOString().slice(0, 10);
+}
+
+export async function loadConsoleAutoItems(db, now, checkedAt) {
+  try {
+    const today = kstDateString(now);
+    const weekStart = kstDateString(new Date(new Date(now).getTime() - 6 * 86400000));
+    const templates = (await db.execute({
+      sql: `SELECT id, name, body, auto_kind, auto_days, auto_ata_template, auto_audience, auto_offset, auto_daily,
+                   auto_weekdays, auto_unless_mode, auto_unless_step, auto_step, auto_send_time, auto_lead_source,
+                   auto_repeat, auto_interval, auto_send_from, auto_copy_to,
+                   (COALESCE(image, '') <> '') AS has_image
+              FROM sms_text_templates
+             WHERE auto_enabled = true AND COALESCE(auto_kind, '') <> ''
+               AND COALESCE(auto_audience, 'customer') NOT IN ('staff', 'sales')
+             ORDER BY id ASC`,
+      args: [],
+    })).rows || [];
+    if (!templates.length) return [];
+    const counts = new Map();
+    try {
+      const rows = (await db.execute({
+        sql: `SELECT template_id, COUNT(*) AS d7, SUM(CASE WHEN kst_date = ? THEN 1 ELSE 0 END) AS today
+                FROM (
+                  SELECT template_id, kst_date FROM sms_auto_sends WHERE status = 'sent' AND kst_date >= ? AND COALESCE(reason, '') <> 'make_migrated'
+                  UNION ALL
+                  SELECT template_id, kst_date FROM sms_event_sends WHERE status = 'sent' AND kst_date >= ? AND COALESCE(reason, '') <> 'make_migrated'
+                ) sent
+               GROUP BY template_id`,
+        args: [today, weekStart, weekStart],
+      })).rows || [];
+      for (const row of rows) counts.set(Number(row.template_id), { d7: Number(row.d7) || 0, today: Number(row.today) || 0 });
+    } catch { /* 발송 수를 못 읽어도 문구 목록은 보여 준다 */ }
+    return templates.map((row) => {
+      const entry = {
+        autoKind: row.auto_kind,
+        autoDays: Number(row.auto_days) || 0,
+        autoAtaTemplate: String(row.auto_ata_template || ''),
+        autoLeadSource: String(row.auto_lead_source || ''),
+        autoSendFrom: String(row.auto_send_from || '').slice(0, 10),
+        autoRepeat: Number(row.auto_repeat) || 1,
+        autoInterval: Number(row.auto_interval) || 0,
+        autoOffset: Number(row.auto_offset) || 0,
+        autoDaily: row.auto_daily === 'until' || row.auto_daily === 'ongoing' ? row.auto_daily : '',
+        autoWeekdays: Boolean(row.auto_weekdays),
+        autoUnlessMode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
+        autoUnlessStep: String(row.auto_unless_step || ''),
+        autoStep: String(row.auto_step || ''),
+        autoAudience: 'customer',
+        autoSendTime: String(row.auto_send_time || ''),
+        autoCopyTo: String(row.auto_copy_to || ''),
+      };
+      const sent = counts.get(Number(row.id)) || { d7: 0, today: 0 };
+      const channel = consoleChannel(row);
+      const timeText = sendTimeLabel(entry.autoSendTime);
+      return {
+        id: `console_auto_${row.id}`,
+        name: String(row.name || `콘솔 문구 ${row.id}`),
+        milestone: `console_auto_${row.id}`,
+        console_template_id: Number(row.id),
+        trigger: autoConditionLine(entry) || '콘솔에서 정한 조건',
+        target: autoTargetText(entry) || '고객',
+        timing: `${timeText ? `${timeText} · ` : ''}콘솔 자동 발송 · 오늘 ${sent.today}건 발송`,
+        policy: policy('active'),
+        configuration: configuration('ready', '콘솔에서 켜져 있어 조건에 맞으면 자동으로 발송됩니다.', channel),
+        checked_at: checkedAt,
+        example_message: String(row.body || '').trim() ? { subject: '', text: String(row.body).trim(), label: '콘솔 등록 문구', source: 'console' } : null,
+        recent: {
+          state: sent.d7 ? 'available' : 'empty',
+          counts: { ...emptyCounts(), total: sent.d7, accepted: sent.d7 },
+          latest: null,
+        },
+        sent_today: sent.today,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export async function loadNotificationOverview(db, env = process.env, now = new Date()) {
   const checkedAt = new Date(now).toISOString();
   const baseGroups = buildNotificationCatalog(env, now);
@@ -463,6 +552,12 @@ export async function loadNotificationOverview(db, env = process.env, now = new 
       ? { state: 'available', message: '최근 처리 기록을 조회했습니다.' }
       : { state: 'unavailable', message: '정책과 설정은 확인했지만 최근 처리 기록은 조회할 수 없습니다.' },
     catalog_status: catalogStatus,
-    groups: attachRecentResults(groups, recentRows, { available: recentAvailable }),
+    groups: await appendConsoleItems(attachRecentResults(groups, recentRows, { available: recentAvailable }), db, now, checkedAt),
   };
+}
+
+async function appendConsoleItems(groups, db, now, checkedAt) {
+  const extra = await loadConsoleAutoItems(db, now, checkedAt);
+  if (!extra.length) return groups;
+  return groups.map(group => (group.id === 'customer' ? { ...group, items: [...group.items, ...extra] } : group));
 }
