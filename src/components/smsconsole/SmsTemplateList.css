@@ -128,3 +128,8 @@
 .stl-rows.stl-kakao .stl-via--talk { background: #fff3b0; color: #7a5b00; font-weight: 600; }
 .stl-rows.stl-kakao .stl-via--bms { background: #ece3ff; color: #5b34b8; font-weight: 600; }
 .stl-rows.stl-kakao .stl-time { padding: 1px 8px; border-radius: 6px; background: #eef0f4; color: var(--smsc-text, #1c2330); font-size: 12px; font-weight: 700; flex: 0 0 auto; }
+
+/* 자동 발송 조건: 칩이 많은 행(가입·문의 후 12개)은 잘리지 않고 줄바꿈된다 */
+.stl-rows.stl-kakao .stl-row .ktm-card-meta.stl-flow-meta { flex-wrap: wrap; overflow: visible; white-space: normal; row-gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+.stl-rows.stl-kakao .stl-flow .stl-stepchips { flex-wrap: wrap; overflow: visible; row-gap: 4px; flex: 0 1 auto; max-width: 100%; }
+.stl-rows.stl-kakao .stl-flow-actions { margin-top: 12px; }
