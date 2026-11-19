@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
 import { getKstToday } from '../../utils/dateUtils.js';
-import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, autoTargetText, normalizeOffset, normalizeDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, catchupSpanText, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT, AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE, AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED, AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind, moveImageEarlier, withAdFormat, TEXT_NAME_MAX, buildSaveBody, textFormStopText, validateTextForm, autoConditionLine, autoTargetText, normalizeOffset, normalizeDays, normalizeOrderDays, normalizeLeadDays, normalizeRepeat, normalizeInterval, dirDaily, catchupSpanText, SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel, duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL } from './smsTextTemplateFormModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -50,7 +50,7 @@ function conditionResult(f, asTarget = false) {
     if (leadDays === null) return '';
     Object.assign(entry, { autoDays: leadDays, autoLeadSource: f.leadSource || '' });
   } else if (kind !== AUTO_KIND_MEMBER_JOINED) {
-    const dayCount = normalizeDays(f.days);
+    const dayCount = kind === AUTO_KIND_ORDER ? normalizeOrderDays(f.days) : normalizeDays(f.days);
     if (dayCount === null) return '';
     if (kind === AUTO_KIND_PROCESS_PLUS) entry.autoStep = f.step;
     Object.assign(entry, { autoDays: dayCount, autoSendFrom: f.sendFrom, autoRepeat: normalizeRepeat(f.repeat) ?? AUTO_DEFAULT_REPEAT, autoInterval: normalizeInterval(f.interval) ?? AUTO_DEFAULT_INTERVAL });

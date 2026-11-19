@@ -47,7 +47,7 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     if (normalizeLeadDays(days) === null) return { ok: false, reason: 'offset', info };
   } else if (AUTO_KINDS.includes(autoKind)) {
     if (autoKind === AUTO_KIND_PROCESS_PLUS && !step) return { ok: false, reason: 'step', info };
-    if (normalizeDays(days) === null) return { ok: false, reason: 'days', info };
+    if ((autoKind === AUTO_KIND_ORDER ? normalizeOrderDays(days) : normalizeDays(days)) === null) return { ok: false, reason: 'days', info };
     if (normalizeSendFrom(sendFrom) === null) return { ok: false, reason: 'sendFrom', info };
     const times = normalizeRepeat(repeat ?? '1');
     if (times === null) return { ok: false, reason: 'repeat', info };
@@ -158,7 +158,7 @@ const offsetText = (offset, daily) => {
 
 // 본문에 넣을 수 있는 변수(고른 종류·받는 사람 기준). 1단계 광고 2종은 고객명만.
 export function autoVariables(kind, audience, ataTemplate = '') {
-  if (ataTemplate && AUTO_KINDS.includes(kind)) return ['고객명']; // 알림톡은 변수가 고객명 하나(모든 조건 공통)
+  if (ataTemplate && AUTO_KINDS.includes(kind)) return ['고객명', '업체명']; // 알림톡 변수: 고객명·업체명(값은 같다, 2026-11-19)
   if (kind === AUTO_KIND_MEMBER_JOINED) return [];
   if (kind === AUTO_KIND_LEAD_PLUS) return ['고객명'];
   if (!isDateKind(kind) && !isImmediateKind(kind)) return AUTO_KINDS.includes(kind) || !kind ? ['고객명'] : [];
@@ -203,6 +203,9 @@ export function normalizeLeadDays(value) {
   const days = Number(text);
   return days <= 365 ? days : null;
 }
+
+// 주문 등록 후 일수 칸 → 0~365 정수(0 = 주문 등록 당일, 2026-11-19 Make 이전), 아니면 null
+export function normalizeOrderDays(value) { return normalizeLeadDays(value); }
 
 // 일수 칸 → 1~365 정수, 아니면 null
 export function normalizeDays(value) {
@@ -273,7 +276,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
         ...ata,
       };
     }
-    const out = { kind: a.kind, days: normalizeDays(a.days) };
+    const out = { kind: a.kind, days: a.kind === AUTO_KIND_ORDER ? normalizeOrderDays(a.days) : normalizeDays(a.days) };
     if (a.kind === AUTO_KIND_PROCESS_PLUS) out.step = String(a.step || ''); // 어느 공정의 시작일 기준인지
     if (a.ataTemplate) Object.assign(out, ata);
     if (a.kind === AUTO_KIND && a.catchupOn && a.catchupFrom && a.catchupAt) out.catchup = { from: String(a.catchupFrom), at: String(a.catchupAt), ...(String(a.catchupDaily ?? '').trim() ? { daily: Number(a.catchupDaily) } : {}) }; // 이미 출고된 주문에 한 번 보내기(꺼져 있으면 칸 자체를 보내지 않는다)
@@ -335,7 +338,8 @@ export function formValuesFromItem(item) {
 export function stageOrder(f) {
   const kind = f?.autoKind;
   if (kind === AUTO_KIND_LEAD_PLUS) return normalizeLeadDays(f.days);
-  if (kind === AUTO_KIND || kind === AUTO_KIND_ORDER || kind === AUTO_KIND_PROCESS_PLUS) return normalizeDays(f.days);
+  if (kind === AUTO_KIND_ORDER) return normalizeOrderDays(f.days);
+  if (kind === AUTO_KIND || kind === AUTO_KIND_PROCESS_PLUS) return normalizeDays(f.days);
   if (isDateKind(kind)) return normalizeOffset(f.offsetDir, f.offsetDays, f.daily);
   return AUTO_KINDS.includes(kind) ? 0 : null;
 }
@@ -430,6 +434,7 @@ export function autoTargetText(entry) {
   const times = Number(entry?.autoRepeat) > 1 ? `번호당 ${Number(entry.autoRepeat)}회(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '번호당 1회';
   if (kind === AUTO_KIND) return joinDot('주문 상태 출고완료', `출고일+${days}일=오늘(3일 지난 건까지)`, '수신거부·중복번호 제외', times);
   if (kind === AUTO_KIND_PROCESS_PLUS) return joinDot(`${entry.autoStep || '고른'} 공정 시작일+${days}일=오늘(3일 지난 건까지)`, '취소 주문 제외', '수신거부·중복번호 제외', times);
+  if (kind === AUTO_KIND_ORDER && days === 0) return joinDot(`주문 등록 당일 ${entry?.autoSendTime || 'HH:MM'}`, '취소 주문 제외', '수신거부·중복번호 제외', times);
   if (kind === AUTO_KIND_ORDER) return joinDot(`주문일+${days}일=오늘(3일 지난 건까지)`, '취소 주문 제외', '수신거부·중복번호 제외', times);
   if (isDateKind(kind)) {
     const label = kind === AUTO_KIND_SHIP_OR_DUE ? '출고예정일(없으면 납기일)' : (kind === AUTO_KIND_SHIP_PLAN ? '출고예정일' : '납기일');
@@ -637,7 +642,7 @@ export function formInitialFromItem(item) {
     body: String(item?.body || ''),
     images: photos.map((data) => ({ data, url: `data:image/jpeg;base64,${data}` })),
     autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
-    days: item?.auto_kind === AUTO_KIND_LEAD_PLUS ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
+    days: item?.auto_kind === AUTO_KIND_LEAD_PLUS || (item?.auto_kind === AUTO_KIND_ORDER && item?.auto_days !== null && item?.auto_days !== undefined && item?.auto_days !== '') ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
     ataTemplate: String(item?.auto_ata_template || ''),
     bmsButtons: Array.isArray(item?.auto_bms_buttons) ? item.auto_bms_buttons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [],
     leadSource: LEAD_SOURCES.includes(item?.auto_lead_source) ? item.auto_lead_source : '',

@@ -26,6 +26,9 @@ const TARGET_LIMIT = 1000;
 export const AD_CATCHUP_PER_RUN = 30; // 광고 문자 일괄 발송(이미 출고된 주문 한 번 보내기)은 실행 1번에 이만큼까지
 const AD_CATCHUP_LIMIT = 20000; // 일괄 후보 한 번 조회 상한(번호 기준 중복 제거 전)
 
+// 주문 후 N일(order_plus_days)만 0일(주문 당일, 지정 시각)을 허용한다. 출고·공정 후 N일은 종전대로 1일 이상.
+const daysOk = template => Number(template?.auto_days) >= (template?.auto_kind === 'order_plus_days' ? 0 : 1);
+
 const flags = new Map();
 export function _resetAutoSchemaForTest() { flags.clear(); }
 
@@ -314,7 +317,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   if (!inSendWindow(nowMs)) return { ...out, reason: 'night' }; // ② 선점도 하지 않는다
   const blocked = adCheckOf(template); // ③
   if (blocked) return { ...out, reason: blocked };
-  if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return { ...out, reason: 'no_auto' };
+  if (!isAutoKind(template.auto_kind) || !daysOk(template)) return { ...out, reason: 'no_auto' };
   if (template.auto_kind === AUTO_KIND_PROCESS && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' }; // 공정 시작 후 N일은 공정이 있어야 한다
 
   const vendor = provider || getSendProvider();
@@ -535,7 +538,7 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
   const sent7 = Number(rows7.find(row => row.status === 'sent')?.n) || 0;
   const failed7 = Number(rows7.find(row => row.status === 'failed')?.n) || 0;
   let todayTargets = 0;
-  if (isAutoKind(template.auto_kind) && template.auto_days >= 1) {
+  if (isAutoKind(template.auto_kind) && daysOk(template)) {
     const startDate = template.auto_start_date || addDays(today, -template.auto_days);
     todayTargets = (await eligibleTargets(db, template, { nowMs, startDate })).length;
   }
@@ -549,19 +552,49 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
 }
 
 // action auto_mark_sent { template_id, phones[] }: Make 에서 넘어올 때 이미 보낸 번호를 '보냄'으로만 기록한다(실제 발송 없음).
-// 알림톡·브랜드메시지(출고·주문 후 N일) 문구는 sms_event_sends('<해시>:ship'), 광고 문자 문구는 sms_auto_sends(회차 1)에 넣는다. 이미 있으면 건너뛴다.
-// kst_date 는 하루 상한·'오늘 받은 번호' 판정에 안 잡히게 옛 날짜(1970-01-01)로 둔다.
+// 기록 키는 그 문구 종류의 '발송 때 쓰는 dedupe 키'와 같은 형식이다(smsEventSend.js 의 dayCandidatesFor·expandItems 와 같은 규칙).
+//   출고 후 N일 + 알림톡·브랜드메시지  → sms_event_sends '<해시>:ship'
+//   주문 후 N일 + 알림톡·브랜드메시지  → sms_event_sends '<해시>:order'
+//   주문 등록 시(order_created)         → sms_event_sends '<해시>:<주문번호>:order_created'  (주문 단위 키 — 번호만 받으므로 그 번호의 기존 주문들을 찾아 주문마다 1개씩 넣는다)
+//   공정 시작 시(process_started)       → sms_event_sends '<해시>:<주문번호>:process_started' (그 번호의 주문 중 이 문구의 공정이 이미 시작된 주문만)
+//   문자 갈래(출고·주문·공정 후 N일 문자·MMS·plain) → sms_auto_sends 회차 1(번호 해시 기준, 종전 그대로)
+//   가입·문의 후 N일(lead_plus_days)·납기일 등 나머지 → 번호·주문 하나로 키를 만들 수 없으므로 거절(unsupported_kind)
+// 이미 있으면 건너뛴다. kst_date 는 하루 상한·'오늘 받은 번호' 판정에 안 잡히게 옛 날짜(1970-01-01)로 둔다.
 export const MARK_DATE = '1970-01-01';
 const MARK_MAX = 5000;
 const MARK_CHUNK = 200;
+const MARK_ORDER_KINDS = Object.freeze(['order_created', 'process_started']);
+// 번호 목록(숫자만) → 그 번호의 주문 번호들. 전화 칸에 하이픈이 섞여 있어도 숫자만 남겨 비교한다. process_started 는 문구의 공정이 이미 시작된 주문만.
+async function ordersOfPhones(db, template, list) {
+  const byPhone = new Map();
+  const started = template.auto_kind === 'process_started';
+  for (let i = 0; i < list.length; i += MARK_CHUNK) {
+    const chunk = list.slice(i, i + MARK_CHUNK);
+    const sql = started
+      ? `SELECT DISTINCT o.id AS id, o.phone AS phone FROM orders o JOIN processes p ON p.order_id = o.id WHERE p.step_name = ? AND p.started_at IS NOT NULL AND regexp_replace(o.phone, '[^0-9]', '', 'g') IN (${placeholders(chunk)})`
+      : `SELECT o.id AS id, o.phone AS phone FROM orders o WHERE regexp_replace(o.phone, '[^0-9]', '', 'g') IN (${placeholders(chunk)})`;
+    for (const row of (await db.execute({ sql, args: started ? [template.auto_step, ...chunk] : chunk })).rows || []) {
+      const phone = digits(row.phone);
+      if (!byPhone.has(phone)) byPhone.set(phone, new Set());
+      byPhone.get(phone).add(Number(row.id));
+    }
+  }
+  return byPhone;
+}
 export async function autoMarkSent(body, { db } = {}) {
   const id = Number(body?.template_id);
   if (!(Number.isInteger(id) && id > 0)) return errorReply(400, '올바른 문구가 아닙니다.');
   if (!Array.isArray(body?.phones) || !body.phones.length || body.phones.length > MARK_MAX) return errorReply(400, `번호는 1~${MARK_MAX}개로 보내 주세요.`);
   const template = await loadTemplate(db, id);
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
-  const viaEvent = isDayAta(template); // 출고·주문 후 N일 + 알림톡·브랜드메시지는 안내 발송 경로(sms_event_sends)
-  if (!viaEvent && !isAutoKind(template.auto_kind)) return errorReply(400, '출고·주문·공정 후 N일 문구만 쓸 수 있습니다.', { reason: 'no_auto' });
+  const viaDay = isDayAta(template); // 출고·주문 후 N일 + 알림톡·브랜드메시지는 안내 발송 경로(sms_event_sends)
+  const viaOrder = !viaDay && MARK_ORDER_KINDS.includes(template.auto_kind) && template.auto_audience === 'customer'; // 즉시형(고객 수신)은 주문 단위 키
+  const viaEvent = viaDay || viaOrder;
+  if (!viaEvent && !isAutoKind(template.auto_kind)) {
+    if (isInfoTemplate(template)) return reply(400, { ok: false, error: 'unsupported_kind', reason: 'unsupported_kind', kind: template.auto_kind });
+    return errorReply(400, '출고·주문·공정 후 N일 문구만 쓸 수 있습니다.', { reason: 'no_auto' });
+  }
+  if (viaOrder && template.auto_kind === 'process_started' && !STEPS.includes(template.auto_step)) return errorReply(400, '공정을 골라야 합니다.', { reason: 'no_step' });
   const phones = new Map();
   let invalid = 0;
   for (const raw of body.phones) {
@@ -572,13 +605,29 @@ export async function autoMarkSent(body, { db } = {}) {
   const list = [...phones.keys()];
   let inserted = 0;
   let updatedFailed = 0; // 실패 행이 있던 번호는 sent 로 고친다(실패 행이 '이미 보냄' 기록을 막지 않게)
+  let noOrder = 0; // 주문 단위 키 문구에서 그 번호의 (해당) 주문이 하나도 없어 기록할 키가 없었던 번호 수
+  let keyCount = list.length;
   if (viaEvent) {
     await ensureEventSchema(db);
-    for (let i = 0; i < list.length; i += MARK_CHUNK) {
-      const chunk = list.slice(i, i + MARK_CHUNK);
+    const entries = [];
+    if (viaOrder) {
+      const orders = await ordersOfPhones(db, template, list);
+      for (const phone of list) {
+        const ids = [...(orders.get(phone) || [])].sort((a, b) => a - b);
+        if (!ids.length) { noOrder += 1; continue; }
+        const hash = eventPhoneHash(phone);
+        for (const orderId of ids) entries.push({ phone, hash, key: `${hash}:${orderId}:${template.auto_kind}` });
+      }
+    } else {
+      const word = template.auto_kind === AUTO_KIND ? 'ship' : 'order'; // smsEventSend.js dayWord 와 같은 규칙
+      for (const phone of list) { const hash = eventPhoneHash(phone); entries.push({ phone, hash, key: `${hash}:${word}` }); }
+    }
+    keyCount = entries.length;
+    for (let i = 0; i < entries.length; i += MARK_CHUNK) {
+      const chunk = entries.slice(i, i + MARK_CHUNK);
       const rows = (await db.execute({
         sql: `INSERT INTO sms_event_sends (template_id, dedupe_key, order_id, phone_hash, phone_last4, kst_date, status, reason) VALUES ${chunk.map(() => "(?, ?, NULL, ?, ?, ?, 'sent', 'make_migrated')").join(', ')} ON CONFLICT (template_id, dedupe_key) DO UPDATE SET status = 'sent', reason = 'make_migrated' WHERE sms_event_sends.status = 'failed' RETURNING id, (xmax = 0) AS fresh`,
-        args: chunk.flatMap(phone => { const hash = eventPhoneHash(phone); return [id, `${hash}:ship`, hash, phone.slice(-4), MARK_DATE]; }),
+        args: chunk.flatMap(entry => [id, entry.key, entry.hash, entry.phone.slice(-4), MARK_DATE]),
       })).rows || [];
       inserted += rows.filter(row => row.fresh !== false).length; updatedFailed += rows.filter(row => row.fresh === false).length;
     }
@@ -593,7 +642,7 @@ export async function autoMarkSent(body, { db } = {}) {
       inserted += rows.filter(row => row.fresh !== false).length; updatedFailed += rows.filter(row => row.fresh === false).length;
     }
   }
-  return reply(200, { ok: true, via: viaEvent ? 'event' : 'auto', inserted, updated_failed: updatedFailed, skipped: list.length - inserted - updatedFailed, invalid, duplicated_in_request: body.phones.length - invalid - list.length });
+  return reply(200, { ok: true, via: viaEvent ? 'event' : 'auto', ...(viaOrder ? { per_order: true, no_order: noOrder, keys: keyCount } : {}), inserted, updated_failed: updatedFailed, skipped: keyCount - inserted - updatedFailed, invalid, duplicated_in_request: body.phones.length - invalid - list.length });
 }
 
 export function costOf(vendor, parts, people, env) {
@@ -644,7 +693,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
     return reply(200, { ok: true, enabled: false, start_date: template.auto_start_date || '' });
   }
   if (isInfoTemplate(template)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs, kakao, kakaoOpts }); } // 안내 문구는 새 모듈
-  if (!isAutoKind(template.auto_kind) || !(template.auto_days >= 1)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
+  if (!isAutoKind(template.auto_kind) || !daysOk(template)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
   if (template.auto_kind === AUTO_KIND_PROCESS && !STEPS.includes(template.auto_step)) return errorReply(400, '공정을 골라야 켤 수 있습니다.', { reason: 'no_step' });
   const blocked = adCheckOf(template);
   if (blocked) return errorReply(400, blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.', { reason: blocked });

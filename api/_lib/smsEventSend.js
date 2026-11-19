@@ -7,7 +7,7 @@ import { getSendProvider } from './sendProvider.js';
 import { staffDirectory, multiPartTimeShort, templateVariableNames, waitBeforePart } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
-import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, LEAD_KINDS, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
+import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, LEAD_KINDS, parseAutoChain, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
@@ -39,6 +39,7 @@ const KEY_CHUNK = 200;
 const CATCHUP_LIMIT = 5000; // 이미 출고된 주문 1회 발송(따라잡기)의 한 번 조회 상한(번호 기준 중복 제거 전)
 const AUTO_KIND_SHIP = 'ship_plus_days';
 const ORDER_COLUMNS = 'o.id, o.phone, o.client_name, o.order_date, o.due_date, o.ship_scheduled_date, o.product_type, o.door_type, o.width, o.depth, o.height, o.quantity, o.sales_person';
+const ATA_VARS = Object.freeze(['고객명', '업체명']); // 알림톡 허용 변수
 export const CUSTOMER_VARS = Object.freeze(['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크']);
 export const STAFF_VARS = Object.freeze([...CUSTOMER_VARS, '제품']);
 
@@ -53,6 +54,7 @@ const kstWeekend = nowMs => { const d = new Date(nowMs + 9 * 3600000).getUTCDay(
 const inSendWindow = nowMs => { const h = kstHour(nowMs); return h >= SEND_WINDOW.from && h < SEND_WINDOW.to; };
 const hashOf = phone => crypto.createHash('sha256').update(`${HASH_SALT}:${digits(phone)}`).digest('hex');
 export const eventPhoneHash = hashOf; // 광고 문자 쪽이 오늘 나간 브랜드메시지 번호를 비교할 때 쓴다(광고 하루 1통)
+const LEAD_CATCH_UP = 5; // 가입·문의 후 N일(N>=1): 접수일+N 이 오늘 − 5일 ~ 오늘인 아직 안 보낸 접수를 대상으로 한다(2026-11-19 S5, 중복은 dedupe 키가 막는다)
 const DAY_CATCH_UP = 3; // 출고·주문 후 N일 알림톡·브랜드메시지: 예정일이 지난 뒤 이만큼의 날까지는 다시 시도한다(문자 갈래 CATCH_UP_DAYS 와 같다)
 const intEnv = (value, fallback) => { const n = Number(value); return Number.isInteger(n) && n > 0 ? n : fallback; };
 const leadFilter = lead => ` AND template_id ${lead ? 'IN' : 'NOT IN'} (SELECT id FROM sms_text_templates WHERE auto_kind IN (${LEAD_KIND_SQL}))`; // 가입·문의 문구는 따로 센다
@@ -108,6 +110,7 @@ const orderSize = order => (order.width && order.depth && order.height ? `${orde
 const specLine = order => [order.door_type || '', orderSize(order)].filter(Boolean).join(' ');
 const fmtDate = value => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${m[1]}-${m[2]}-${m[3]}` : '협의 예정'; };
 const cleanValue = value => String(value ?? '').replace(/#\{|\}/g, '').replace(/\s+/g, ' ').trim();
+const nameVars = name => { const value = cleanValue(name).slice(0, 20) || '고객'; return { 고객명: value, 업체명: value }; }; // 알림톡 변수: #{업체명} 은 #{고객명} 과 같은 값(2026-11-19 S1)
 
 export function orderVars(order, audience, trackUrl = '') {
   const qty = parsePositiveIntegerQuantity(order.quantity);
@@ -141,13 +144,13 @@ export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   await ensureEventSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms, auto_skip_reason FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms, auto_skip_reason, auto_chain FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
   if (!row) return null;
   return {
-    auto_skip_reason: row.auto_skip_reason || '', auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
+    auto_skip_reason: row.auto_skip_reason || '', auto_chain: parseAutoChain(row.auto_chain), auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
     auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
@@ -202,23 +205,23 @@ async function leadCandidatesFor(db, template, { nowMs, preview }) {
   if (!Number.isFinite(enabledMs)) return [];
   const days = Math.max(0, Number(template.auto_days) || 0);
   const today = kstDate(nowMs);
+  const enabledDay = kstDate(enabledMs);
   let fromMs; let toMs = nowMs;
   if (days === 0) fromMs = Math.max(enabledMs, nowMs - WINDOW_MS);
-  else {
-    const joinDay = addDays(today, -days);
-    if (addDays(joinDay, days) < kstDate(enabledMs)) return [];
-    fromMs = Date.parse(`${joinDay}T00:00:00+09:00`);
-    toMs = Math.min(nowMs, fromMs + 24 * 3600000 - 1);
+  else { // 접수일 + N 이 [오늘 − 5일, 오늘]: 접수일 = [오늘 − N − 5일, 오늘 − N일]
+    const newest = addDays(today, -days);
+    fromMs = Date.parse(`${addDays(newest, -LEAD_CATCH_UP)}T00:00:00+09:00`);
+    toMs = Math.min(nowMs, Date.parse(`${newest}T00:00:00+09:00`) + 24 * 3600000 - 1);
   }
   const seen = new Set();
   const items = [];
   for (const row of await leadCandidates(db, { fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString(), source: template.auto_lead_source })) {
     const joinDay = kstDate(row.joinedAtMs);
-    if (days > 0 && addDays(joinDay, days) !== today) continue;
+    if (days > 0) { const due = addDays(joinDay, days); if (due > today || due < addDays(today, -LEAD_CATCH_UP) || due < enabledDay) continue; } // 켜기 전에 이미 지난 단계는 보내지 않는다
     const key = `${row.hash}:lead:${joinDay}:d${days}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    items.push({ order: null, orderId: null, leadId: row.id, phone: row.phone, hash: row.hash, last4: row.last4, baseDay: 'lead', key, vars: { 고객명: cleanValue(row.name).slice(0, 20) || '고객' } });
+    items.push({ order: null, orderId: null, leadId: row.id, phone: row.phone, hash: row.hash, last4: row.last4, baseDay: 'lead', key, vars: nameVars(row.name) });
   }
   return items;
 }
@@ -239,14 +242,14 @@ async function dayCandidatesFor(db, template, { nowMs, preview, catchupOnly }) {
   const optouts = await optoutHashes(db);
   const items = [];
   const keys = new Set();
-  if (!catchupOnly && Number.isFinite(enabledMs) && days >= 1) {
+  if (!catchupOnly && Number.isFinite(enabledMs) && (days >= 1 || (days === 0 && template.auto_kind === 'order_plus_days'))) { // 주문 후 0일 = 주문일 당일(S2). 출고 후는 1일 이상만
     for (const target of await findTargets(db, { nowMs, days, startDate: addDays(today, -days - DAY_CATCH_UP), kind: template.auto_kind })) {
       const due = addDays(target.shipDate, days); // 예정일: 오늘부터 3일 전까지는 아직 안 나간 번호를 다시 시도한다(이미 보낸 번호·주문은 pending 의 키 조회가 뺀다)
       if (due > today || due < addDays(today, -DAY_CATCH_UP) || due < kstDate(enabledMs)) continue;
       if (optouts.has(autoPhoneHash(target.phone))) continue;
       const hash = hashOf(target.phone);
       keys.add(`${hash}:${word}`);
-      items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: word, key: `${hash}:${word}`, vars: { 고객명: cleanValue(target.name).slice(0, 20) || '고객' } });
+      items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: word, key: `${hash}:${word}`, vars: nameVars(target.name) });
     }
   }
   if (catchupActive(template, nowMs)) {
@@ -256,7 +259,7 @@ async function dayCandidatesFor(db, template, { nowMs, preview, catchupOnly }) {
       const key = `${hash}:ship`;
       if (keys.has(key)) continue;
       keys.add(key);
-      items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: 'ship', key, catchup: true, vars: { 고객명: cleanValue(target.name).slice(0, 20) || '고객' } });
+      items.push({ order: null, orderId: target.orderId, phone: target.phone, hash, last4: target.phone.slice(-4), baseDay: 'ship', key, catchup: true, vars: nameVars(target.name) });
     }
   }
   return items;
@@ -458,15 +461,24 @@ export async function ataReady(templateId, { kakao = kakaoTemplates, kakaoOpts, 
   try {
     const found = await kakao.getTemplateFresh(templateId, kakaoOpts);
     if (!found?.scope?.allowed || found.template?.status !== 'APPROVED') return { ok: false, pfId: '', reason: 'ata_not_ready' };
-    if (templateVariableNames(found.template).some(name => name !== '고객명')) return { ok: false, pfId: '', reason: 'ata_not_ready' };
+    if (templateVariableNames(found.template).some(name => !ATA_VARS.includes(name))) return { ok: false, pfId: '', reason: 'ata_not_ready' };
     let pfId = typeof found.raw?.channelId === 'string' ? found.raw.channelId : '';
     if (!pfId && found.scope?.kind === 'group' && typeof env.KAKAO_PF_ID === 'string') pfId = env.KAKAO_PF_ID;
-    return pfId ? { ok: true, pfId } : { ok: false, pfId: '', reason: 'ata_no_channel' };
+    return pfId ? { ok: true, pfId, names: templateVariableNames(found.template) } : { ok: false, pfId: '', reason: 'ata_no_channel' };
   } catch { return { ok: false, pfId: '', reason: 'ata_not_ready' }; }
 }
 
 // 알림톡 변수는 #{고객명} 하나: 주문 행이 있으면 그 이름, 없으면(가입 시 등) '고객'
-const ataVars = item => item.vars || { 고객명: cleanValue(item.order?.client_name).slice(0, 20) || '고객' };
+const ataVars = item => item.vars || nameVars(item.order?.client_name);
+
+// 템플릿이 #{업체명} 을 쓰지 않으면 업체명은 보내지 않는다(기존 알림톡 문구의 전송 변수는 그대로 고객명 하나).
+const ataSendVars = (item, names) => { const vars = { ...ataVars(item) }; if (!names.includes('업체명')) delete vars.업체명; return vars; };
+
+// plain(auto_chain.plain === true) 안내 문구는 주문 변수 필수 검사(info_needs_order_var)만 면제한다(S3). 다른 검사는 그대로.
+function infoBlocked(template, ata) {
+  const blocked = infoCheck(template.body, template.auto_audience, template.auto_kind, ata);
+  return blocked === 'info_needs_order_var' && template.auto_chain?.plain === true ? '' : blocked;
+}
 
 // ---- 문구 1개 실행 ----
 export async function runEventSend(template, deps = {}) {
@@ -486,7 +498,7 @@ export async function runEventSend(template, deps = {}) {
   if (ata && template.auto_audience !== 'customer') return { ...out, reason: 'info_check' }; // 알림톡은 고객에게만
   if (lead && template.auto_days >= 1 && kstMinutes(nowMs) < (sendTimeMinutes(template.auto_send_time) ?? LEAD_FROM_MINUTE)) return { ...out, reason: 'early' }; // 1일 이상 단계는 문구의 발송 시각(없으면 KST 09:30) 부터
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' };
-  if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoCheck(template.body, template.auto_audience, template.auto_kind, ata)) return { ...out, reason: 'info_check' };
+  if ((template.auto_audience === 'staff' && !template.auto_staff.length) || infoBlocked(template, ata)) return { ...out, reason: 'info_check' };
   const vendor = provider || getSendProvider();
   const bmsCfg = bms ? parseBmsConfig(template.auto_bms) : null;
   const from = bms ? bmsCfg.from : digits(env.SMS_SENDER);
@@ -515,6 +527,7 @@ export async function runEventSend(template, deps = {}) {
   if (!eligible.length) return { ...out, ran: true };
 
   let pfId = '';
+  let ataNames = [];
   if (bms) { // 브랜드메시지: 채널·사진(저장 때 올린 imageId)·글자 수를 선점 전에 다시 확인한다(쏠라피 호출 없음)
     const checked = bmsReady(template);
     if (!checked.ok) return { ...out, ran: true, reason: 'bms_not_ready' };
@@ -523,6 +536,7 @@ export async function runEventSend(template, deps = {}) {
     const ready = await ataReady(template.auto_ata_template, { kakao: deps.kakao, kakaoOpts: deps.kakaoOpts || (fetchImpl ? { fetchImpl } : undefined), env });
     if (!ready.ok) return { ...out, ran: true, reason: ready.reason === 'ata_no_channel' ? 'ata_no_channel' : 'ata_not_ready' };
     pfId = ready.pfId;
+    ataNames = ready.names || [];
   }
   const max = lead ? leadMaxPerDay(env) : infoMaxPerDay(env);
   const catchupGlobal = catchupMaxPerDay(env);
@@ -621,7 +635,7 @@ export async function runEventSend(template, deps = {}) {
     if (stop) { partStatus.push('skipped'); continue; }
     await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
     if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
-    const messages = bms ? active.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataVars(entry.item) })) : active.map(entry => {
+    const messages = bms ? active.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataSendVars(entry.item, ataNames) })) : active.map(entry => {
       const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
       if (part.image >= 0) message.fileId = fileIds[part.image];
       return message;

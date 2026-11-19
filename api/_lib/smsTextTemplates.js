@@ -54,10 +54,11 @@ const AD_WORD_RE = /할인|이벤트|혜택|쿠폰|특가|소개|세일|무료|�
 // 쓸 수 있는 변수(고객 / 직원). 이 밖의 #{…} 는 치환되지 않고 글자 그대로 나가므로 저장·켜기·실행에서 막는다.
 const INFO_VARS = Object.freeze({ customer: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'], staff: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크', '제품'] });
 const hasUnknownVar = (text, audience) => [...text.matchAll(/#\{([^}]*)\}/g)].some(match => !INFO_VARS[audience].includes(match[1]));
-export function infoCheck(body, audience = 'customer', kind = '', ata = false) {
+const LEAD_ATA_VARS = ['고객명', '업체명']; // 가입·문의·알림톡 허용 변수(2026-11-19 업체명 추가, 값은 고객명과 같다)
+export function infoCheck(body, audience = 'customer', kind = '', ata = false, chain = null) {
   const text = String(body ?? '');
   if (kind === 'lead_plus_days' || ata) { // 가입·문의 후(알림톡을 고른 모든 조건이 같다): 고객명만 허용, 주문 변수 필수 면제, 광고 낱말 검사는 문자일 때만(알림톡은 카카오 검수 본문)
-    if ([...text.matchAll(/#\{([^}]*)\}/g)].some(match => match[1] !== '고객명')) return 'info_unknown_var';
+    if ([...text.matchAll(/#\{([^}]*)\}/g)].some(match => !(ata ? LEAD_ATA_VARS : ['고객명']).includes(match[1]))) return 'info_unknown_var';
     return !ata && AD_WORD_RE.test(text) ? 'info_has_ad_words' : '';
   }
   if (kind === 'member_joined') { // 가입 안내: 변수 전부 거절(주문 변수는 쓸 수 없고 고객명도 웹훅에 없음), 광고 낱말 거절, 주문 변수 필수는 면제
@@ -68,7 +69,7 @@ export function infoCheck(body, audience = 'customer', kind = '', ata = false) {
   if (hasUnknownVar(text, staffLike ? 'staff' : 'customer')) return 'info_unknown_var';
   if (staffLike) return '';
   if (AD_WORD_RE.test(text)) return 'info_has_ad_words';
-  if (!ORDER_VAR_RE.test(text)) return 'info_needs_order_var';
+  if (!ORDER_VAR_RE.test(text) && !(chain && parseAutoChain(chain)?.plain === true)) return 'info_needs_order_var'; // plain 안내 문구는 주문 변수 필수를 면제(2026-11-19)
   return '';
 }
 export const INFO_CHECK_MESSAGE = Object.freeze({
@@ -236,13 +237,14 @@ function readAuto(input, staff = staffDirectory()) {
 function readAutoBase(input, staff) {
   if (input?.auto === undefined) return { skip: true };
   if (input.auto === null || !input.auto?.kind) return { kind: '', days: null, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA };
-  if (isEventKind(input.auto.kind)) return readEventAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '');
+  if (isEventKind(input.auto.kind)) return readEventAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '', input.auto_chain);
   if (isLeadKind(input.auto.kind)) return readLeadAuto(input.auto, typeof input.body === 'string' ? input.body : '');
-  if (isInstantKind(input.auto.kind)) return readInstantAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '');
+  if (isInstantKind(input.auto.kind)) return readInstantAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '', input.auto_chain);
   if (!isAutoKind(input.auto.kind)) return { error: '자동 발송 종류가 올바르지 않습니다.' };
   const days = Number(input.auto.days);
+  const minDays = input.auto.kind === 'order_plus_days' ? 0 : 1; // 주문 등록 후는 0일(당일) 허용(2026-11-19)
   const when = input.auto.kind === AUTO_KIND ? '출고' : isProcessPlusKind(input.auto.kind) ? '공정 시작' : '주문';
-  if (!(Number.isInteger(days) && days >= 1 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `${when} 후 일수는 1~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
+  if (!(Number.isInteger(days) && days >= minDays && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `${when} 후 일수는 ${minDays}~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
   if (isProcessPlusKind(input.auto.kind)) { // 공정 시작 후 N일(2026-11-18): 광고 문자 갈래. 공정 필수, 알림톡·일괄 발송·반복은 없다.
     const step = typeof input.auto.step === 'string' ? input.auto.step.trim() : '';
     if (!STEPS.includes(step)) return { error: '공정을 골라 주세요.' };
@@ -309,7 +311,7 @@ export function readCatchup(input) {
 }
 
 // 기준일형(납기일·출고예정일 기준): 항상 안내 문구. 일수·시작일·반복은 쓰지 않는다(days 0, repeat 1 고정).
-function readEventAuto(auto, staff, body) {
+function readEventAuto(auto, staff, body, chain = null) {
   const offset = auto.offset === undefined || auto.offset === null || auto.offset === '' ? 0 : Number(auto.offset);
   if (!(Number.isInteger(offset) && offset >= -OFFSET_MAX && offset <= OFFSET_MAX)) return { error: `기준일 대비 일수는 -${OFFSET_MAX}~${OFFSET_MAX}일로 입력해 주세요.` };
   const unless = typeof auto.unless_step === 'string' ? auto.unless_step.trim() : '';
@@ -330,7 +332,7 @@ function readEventAuto(auto, staff, body) {
   }
   const picked = readAta(auto, body, auto.kind, audience); // 알림톡을 고르면 본문은 고객명만(readAta 가 검사)
   if (picked.error) return picked;
-  const blocked = picked.ata ? '' : infoCheck(body, audience, auto.kind);
+  const blocked = picked.ata ? '' : infoCheck(body, audience, auto.kind, false, chain);
   if (blocked) return { error: INFO_CHECK_MESSAGE[blocked], reason: blocked };
   return { kind: auto.kind, days: 0, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, offset, unless_step: unless || null, audience, staff: ids ? JSON.stringify(ids) : null, msg_type: 'info', step: null, daily, weekdays: auto.weekdays === true, unless_mode: unless ? unlessMode : 'completed', ata: picked.ata };
 }
@@ -349,12 +351,12 @@ function readLeadAuto(auto, body) {
 }
 
 // 즉시형(주문 등록 시·공정 시작/완료 시): 항상 안내 문구. process_* 는 공정 필수. 일수·오프셋·미완료 조건·시작일·반복은 쓰지 않는다. 받는 사람·본문 검사는 기준일형과 같다.
-function readInstantAuto(auto, staff, body) {
+function readInstantAuto(auto, staff, body, chain = null) {
   const member = auto.kind === 'member_joined'; // 가입 안내: 공정 없음·받는 사람 고객 고정
   const step = auto.kind === 'order_created' || member ? null : (typeof auto.step === 'string' ? auto.step.trim() : '');
   if (auto.kind !== 'order_created' && !member && !STEPS.includes(step)) return { error: '공정을 골라 주세요.' };
   if (auto.audience === 'sales' && !member) return { error: '영업담당 수신은 날짜 기준 안내에서만 쓸 수 있습니다.' };
-  const base = readEventAuto({ ...auto, ...(member ? { audience: 'customer', staff: null } : {}), offset: 0, unless_step: '', daily: '', weekdays: false, unless_mode: 'completed' }, staff, body);
+  const base = readEventAuto({ ...auto, ...(member ? { audience: 'customer', staff: null } : {}), offset: 0, unless_step: '', daily: '', weekdays: false, unless_mode: 'completed' }, staff, body, chain);
   if (base.error) return base;
   return { ...base, kind: auto.kind, step };
 }
