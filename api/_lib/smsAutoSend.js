@@ -8,7 +8,7 @@ import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePar
 import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseAutoChain, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { STEPS } from './steps.js';
 import { BMS_TEMPLATE_ID, bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
-import { ataReady, ataSendVars, nameVars, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
+import { dueMarkEntries, ataReady, ataSendVars, nameVars, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -586,12 +586,38 @@ async function ordersOfPhones(db, template, list) {
   }
   return byPhone;
 }
+// 한 번만(once) 납기 문구: 주문 번호 목록으로 표시한다. 키 = 발송 후보 키와 같은 '<해시>:<주문번호>:<기준일(due_date)>' (smsEventSend.js dueMarkEntries).
+async function markDueOrders(db, id, template, orderIds) {
+  if (!(isEventKind(template.auto_kind) && template.auto_daily === 'once')) return reply(400, { ok: false, error: 'unsupported_kind', reason: 'unsupported_kind', kind: template.auto_kind });
+  const ids = [...new Set(orderIds.map(Number))];
+  if (!ids.length || ids.length > MARK_MAX || ids.some(n => !(Number.isInteger(n) && n > 0))) return errorReply(400, `주문 번호는 1~${MARK_MAX}개의 양의 정수로 보내 주세요.`);
+  await ensureEventSchema(db);
+  const { items, found } = await dueMarkEntries(db, template, ids);
+  const entries = items.map(item => ({ phone: item.phone, hash: item.hash, key: item.key }));
+  const { inserted, updatedFailed } = await insertMarks(db, id, entries);
+  return reply(200, { ok: true, via: 'event', per_order: true, by_order_ids: true, requested: ids.length, no_order: ids.filter(n => !found.has(n)).length, keys: entries.length, inserted, updated_failed: updatedFailed, skipped: entries.length - inserted - updatedFailed });
+}
+async function insertMarks(db, id, entries) {
+  let inserted = 0;
+  let updatedFailed = 0;
+  for (let i = 0; i < entries.length; i += MARK_CHUNK) {
+    const chunk = entries.slice(i, i + MARK_CHUNK);
+    const rows = (await db.execute({
+      sql: `INSERT INTO sms_event_sends (template_id, dedupe_key, order_id, phone_hash, phone_last4, kst_date, status, reason) VALUES ${chunk.map(() => "(?, ?, NULL, ?, ?, ?, 'sent', 'make_migrated')").join(', ')} ON CONFLICT (template_id, dedupe_key) DO UPDATE SET status = 'sent', reason = 'make_migrated' WHERE sms_event_sends.status = 'failed' RETURNING id, (xmax = 0) AS fresh`,
+      args: chunk.flatMap(entry => [id, entry.key, entry.hash, entry.phone.slice(-4), MARK_DATE]),
+    })).rows || [];
+    inserted += rows.filter(row => row.fresh !== false).length; updatedFailed += rows.filter(row => row.fresh === false).length;
+  }
+  return { inserted, updatedFailed };
+}
 export async function autoMarkSent(body, { db } = {}) {
   const id = Number(body?.template_id);
   if (!(Number.isInteger(id) && id > 0)) return errorReply(400, '올바른 문구가 아닙니다.');
-  if (!Array.isArray(body?.phones) || !body.phones.length || body.phones.length > MARK_MAX) return errorReply(400, `번호는 1~${MARK_MAX}개로 보내 주세요.`);
+  const byOrders = Array.isArray(body?.order_ids);
+  if (!byOrders && (!Array.isArray(body?.phones) || !body.phones.length || body.phones.length > MARK_MAX)) return errorReply(400, `번호는 1~${MARK_MAX}개로 보내 주세요.`);
   const template = await loadTemplate(db, id);
   if (!template) return errorReply(404, '문구를 찾을 수 없습니다.');
+  if (byOrders) return markDueOrders(db, id, template, body.order_ids);
   const viaDay = isDayAta(template); // 출고·주문 후 N일 + 알림톡·브랜드메시지는 안내 발송 경로(sms_event_sends)
   const viaOrder = !viaDay && MARK_ORDER_KINDS.includes(template.auto_kind) && template.auto_audience === 'customer'; // 즉시형(고객 수신)은 주문 단위 키
   const viaEvent = viaDay || viaOrder;

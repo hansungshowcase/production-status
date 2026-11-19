@@ -1,6 +1,7 @@
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { INTERNAL_ALERT_CONTACTS } from './internalProductionAlerts.js';
 import { buildNotificationExample } from './notificationExamples.js';
+import { parseAutoChain } from './smsTextTemplates.js';
 import { OVERDUE_REMINDER_DEFINITIONS } from './overdueReminders.js';
 import { DELIVERY_ALERT_ADMIN_PHONE } from './solapiDeliveryMonitor.js';
 import { SHIP_DAY_REMINDER_DEFINITION } from './shipDayReminders.js';
@@ -407,7 +408,7 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
     const templates = (await db.execute({
       sql: `SELECT id, name, body, auto_kind, auto_days, auto_ata_template, auto_audience, auto_offset, auto_daily,
                    auto_weekdays, auto_unless_mode, auto_unless_step, auto_step, auto_send_time, auto_lead_source,
-                   auto_repeat, auto_interval, auto_send_from, auto_copy_to,
+                   auto_repeat, auto_interval, auto_send_from, auto_copy_to, auto_chain,
                    (COALESCE(image, '') <> '') AS has_image
               FROM sms_text_templates
              WHERE auto_enabled = true AND COALESCE(auto_kind, '') <> ''
@@ -440,7 +441,9 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
         autoRepeat: Number(row.auto_repeat) || 1,
         autoInterval: Number(row.auto_interval) || 0,
         autoOffset: Number(row.auto_offset) || 0,
-        autoDaily: row.auto_daily === 'until' || row.auto_daily === 'ongoing' ? row.auto_daily : '',
+        autoDaily: row.auto_daily === 'until' || row.auto_daily === 'ongoing' || row.auto_daily === 'once' ? row.auto_daily : '',
+        autoSales: String(parseAutoChain(row.auto_chain)?.sales || ''),
+        autoDaysOff: parseAutoChain(row.auto_chain)?.days_off || [],
         autoWeekdays: Boolean(row.auto_weekdays),
         autoUnlessMode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
         autoUnlessStep: String(row.auto_unless_step || ''),

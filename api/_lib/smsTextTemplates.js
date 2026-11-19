@@ -87,6 +87,7 @@ export function _resetTextTemplateSchemaForTest() { flags.clear(); }
 // 표 만들기: sms_manual_sends 와 같은 방식(요청 때 CREATE TABLE IF NOT EXISTS, 인스턴스당 1회)
 // 연쇄 발송(auto_chain, 2026-11-18 Make 이전): { after?:<앞 문구 id>, subject, from, plain }.
 // after 가 있으면 앞 문구가 오늘 나간 번호에게만 나간다. after 가 없으면(2026-11-18 20:45) 연쇄 판정 없이 plain(광고 형식 면제)·제목·발신번호만 적용한다. 없으면 종전 동작.
+export const DAYS_OFF = Object.freeze(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']);
 export function parseAutoChain(raw) {
   let value = raw;
   if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch { value = null; } }
@@ -97,8 +98,10 @@ export function parseAutoChain(raw) {
   const subject = String(value.subject ?? '').trim().slice(0, 40);
   const from = String(value.from ?? '').replace(/\D/g, '');
   const plain = value.plain === true;
-  if (!hasAfter && !subject && !from && !plain) return null;
-  return { ...(hasAfter ? { after } : {}), subject, from, plain };
+  const sales = typeof value.sales === 'string' ? value.sales.trim().slice(0, 20) : ''; // 영업담당 필터(due 계열 대상만, 2026-11-19 S7)
+  const daysOff = Array.isArray(value.days_off) ? [...new Set(value.days_off.filter(day => DAYS_OFF.includes(day)))] : []; // 쉬는 요일(KST, 2026-11-19 S8)
+  if (!hasAfter && !subject && !from && !plain && !sales && !daysOff.length) return null;
+  return { ...(hasAfter ? { after } : {}), subject, from, plain, ...(sales ? { sales } : {}), ...(daysOff.length ? { days_off: daysOff } : {}) };
 }
 // 저장 입력 auto_chain → { skip } | { json: string|null } | { error }. 키가 없으면 건드리지 않고(화면 편집이 지우지 않게), null·''·{} 는 지운다.
 function readChain(input, id) {
@@ -109,6 +112,8 @@ function readChain(input, id) {
   if (!chain) return { error: '연쇄 발송 설정이 올바르지 않습니다(after 는 앞 문구 id, 없어도 됩니다).' };
   if (id !== null && chain.after && chain.after === id) return { error: '연쇄 발송은 자기 자신을 앞 문구로 둘 수 없습니다.' };
   if (chain.from && !/^\d{8,12}$/.test(chain.from)) return { error: '연쇄 발송 발신번호는 숫자 8~12자리여야 합니다.' };
+  if (typeof raw === 'object' && Array.isArray(raw.days_off) && raw.days_off.some(day => !DAYS_OFF.includes(day))) return { error: '쉬는 요일은 sun·mon·tue·wed·thu·fri·sat 중에서만 넣을 수 있습니다.' };
+  if (typeof raw === 'object' && raw.sales !== undefined && typeof raw.sales !== 'string') return { error: '영업담당은 이름(글자)으로 넣어 주세요.' };
   return { json: JSON.stringify(chain) };
 }
 async function saveChain(db, id, json) {
@@ -319,8 +324,9 @@ function readEventAuto(auto, staff, body, chain = null) {
   const audience = auto.audience === undefined || auto.audience === null || auto.audience === '' ? 'customer' : auto.audience;
   if (audience !== 'customer' && audience !== 'staff' && audience !== 'sales') return { error: '받는 사람은 고객·직원·영업담당 중 하나여야 합니다.' };
   const daily = auto.daily === undefined || auto.daily === null ? '' : auto.daily;
-  if (daily !== '' && daily !== 'until' && daily !== 'ongoing') return { error: '매일 반복 방식이 올바르지 않습니다.' };
+  if (daily !== '' && daily !== 'until' && daily !== 'ongoing' && daily !== 'once') return { error: '매일 반복 방식이 올바르지 않습니다.' };
   if (daily === 'until' && offset >= 0) return { error: '일 전부터 당일까지 매일은 기준일 이전(일 전)일 때만 고를 수 있습니다.', reason: 'offset' };
+  if (daily === 'once' && offset >= 0) return { error: '납기 전까지 한 번만 보내기는 기준일 이전(일 전)일 때만 고를 수 있습니다.', reason: 'offset' };
   const unlessMode = auto.unless_mode === undefined || auto.unless_mode === null || auto.unless_mode === '' ? 'completed' : auto.unless_mode;
   if (unlessMode !== 'completed' && unlessMode !== 'started') return { error: '미완료·미착수 조건이 올바르지 않습니다.' };
   let ids = null;

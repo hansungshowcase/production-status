@@ -393,7 +393,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               {dayKind && Number(repeat) >= 2 ? <span>일 간격</span> : null}
               {dayKind && !ataTemplate ? <span>사본</span> : null}
               {dayKind && !ataTemplate ? <input type="text" inputMode="tel" className="stf-days" style={{ width: '8.5em' }} value={copyTo} maxLength={13} placeholder="내 번호" aria-label="사본 받을 번호" onChange={event => setCopyTo(event.target.value.replace(/[^\d-]/g, ''))} /> : null}
-              {dateKind ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
+              {dateKind && daily === 'once' ? <span title="콘솔에 저장된 '납기 전까지 한 번만' 설정은 이 화면에서 바꾸지 않고 그대로 유지됩니다">납기 전까지 1회</span> : null}
+              {dateKind && daily !== 'once' ? <label><input type="checkbox" className="stf-check" checked={daily} onChange={event => setDaily(event.target.checked)} />매일</label> : null}
               {dateKind ? <label><input type="checkbox" className="stf-check" checked={weekdays} onChange={event => setWeekdays(event.target.checked)} />평일만</label> : null}
             </span>
           </div>

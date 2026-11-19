@@ -134,7 +134,7 @@ export const AUTO_DEFAULT_INTERVAL = 30;
 const AUTO_LABEL = { [AUTO_KIND]: '출고 완료 후', [AUTO_KIND_ORDER]: '주문 등록 후', [AUTO_KIND_PROCESS_PLUS]: '공정 시작 후', [AUTO_KIND_DUE]: '납기일', [AUTO_KIND_SHIP_PLAN]: '출고예정일', [AUTO_KIND_SHIP_OR_DUE]: '출고·납기일', [AUTO_KIND_ORDER_CREATED]: '주문 등록 시', [AUTO_KIND_PROCESS_STARTED]: '공정 시작 시', [AUTO_KIND_PROCESS_COMPLETED]: '공정 완료 시', [AUTO_KIND_MEMBER_JOINED]: '자사몰 회원가입 시', [AUTO_KIND_LEAD_PLUS]: '가입·문의' };
 
 // 기준일형: 방향('before' 일 전 | 'same' 당일 | 'after' 일 지남) + 일수 → 부호 있는 정수(전 = 음수), 잘못이면 null. 매일 반복(daily)은 별도 체크
-export const dirDaily = (dir, daily) => (daily ? (dir === 'before' ? 'until' : 'ongoing') : '');
+export const dirDaily = (dir, daily) => (daily === 'once' ? (dir === 'before' ? 'once' : '') : (daily ? (dir === 'before' ? 'until' : 'ongoing') : '')); // 'once'(납기 전까지 한 번만)는 화면에서 새로 고르지 않고, 이미 그렇게 저장된 문구를 편집해도 유지만 한다
 export function normalizeOffset(dir, value, daily) {
   if (dir === 'same') return 0;
   const text = String(value ?? '').trim();
@@ -147,12 +147,13 @@ export function normalizeOffset(dir, value, daily) {
 // 부호 있는 정수(+ 서버의 daily 값) → { dir, days, daily }
 export const offsetParts = (offset, daily) => {
   const n = Number(offset) || 0;
-  return { dir: n < 0 ? 'before' : (n > 0 ? 'after' : 'same'), days: String(Math.abs(n)), daily: daily === 'until' || daily === 'ongoing' };
+  return { dir: n < 0 ? 'before' : (n > 0 ? 'after' : 'same'), days: String(Math.abs(n)), daily: daily === 'once' ? 'once' : daily === 'until' || daily === 'ongoing' };
 };
 const offsetText = (offset, daily) => {
   const n = Number(offset) || 0;
   if (daily === 'until') return `${-n}일 전부터 당일까지 매일`;
   if (daily === 'ongoing') return n > 0 ? `${n}일 지난 뒤 매일` : '당일부터 매일';
+  if (daily === 'once') return `${-n}일 전`;
   return n === 0 ? '당일' : (n < 0 ? `${-n}일 전` : `${n}일 지남`);
 };
 
@@ -304,6 +305,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
 }
 
 // ---------- 자동 발송 문구(카드) ----------
+const DAY_OFF_LABEL = { sun: '일요일', mon: '월요일', tue: '화요일', wed: '수요일', thu: '목요일', fri: '금요일', sat: '토요일' };
 const joinDot = (...parts) => parts.filter(Boolean).join(' · ');
 const won = (value) => `${Number(value || 0).toLocaleString('ko-KR')}원`;
 const shortDate = (value) => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${Number(m[1])}/${Number(m[2])}` : ''; };
@@ -329,7 +331,7 @@ export function formValuesFromItem(item) {
     autoKind: i.autoKind || '', days: i.days || String(AUTO_DEFAULT_DAYS), sendFrom: i.sendFrom || '',
     repeat: i.repeat || String(AUTO_DEFAULT_REPEAT), interval: i.interval || String(AUTO_DEFAULT_INTERVAL),
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
-    daily: Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
+    daily: i.daily === 'once' ? 'once' : Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
     staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', bmsButtons: Array.isArray(i.bmsButtons) ? i.bmsButtons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [], sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
     catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', catchupDaily: i.catchupDaily ? String(i.catchupDaily) : '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
   };
@@ -438,6 +440,17 @@ export function autoTargetText(entry) {
   if (kind === AUTO_KIND_ORDER) return joinDot(`주문일+${days}일=오늘(3일 지난 건까지)`, '취소 주문 제외', '수신거부·중복번호 제외', times);
   if (isDateKind(kind)) {
     const label = kind === AUTO_KIND_SHIP_OR_DUE ? '출고예정일(없으면 납기일)' : (kind === AUTO_KIND_SHIP_PLAN ? '출고예정일' : '납기일');
+    if (entry.autoDaily === 'once') { // 납기 N일 전 한 번만(콘솔 Make 이전): 담당·시각·쉬는 요일·놓친 건 처리를 한 줄로
+      const off = (Array.isArray(entry.autoDaysOff) ? entry.autoDaysOff : []).map(d => DAY_OFF_LABEL[d]).filter(Boolean).join('·');
+      return joinDot(
+        '주문 상태 제작 중',
+        entry.autoSales ? `${entry.autoSales} 담당` : '',
+        `${label} ${-(Number(entry.autoOffset) || 0)}일 전${entry.autoSendTime ? ` ${entry.autoSendTime}` : ''}(${off ? `${off} 쉼, ` : ''}놓친 건 ${label} 전까지 1회)`,
+        entry.autoWeekdays ? '평일만(토·일 안 보냄)' : '',
+        entry.autoUnlessStep ? `${entry.autoUnlessStep} 공정 ${entry.autoUnlessMode === 'started' ? '미착수' : '미완료'}인 주문만` : '',
+        '번호·주문당 1번',
+      );
+    }
     return joinDot(
       '주문 상태 제작 중',
       `${label} ${offsetText(entry.autoOffset, entry.autoDaily)}=오늘`,
@@ -611,7 +624,9 @@ export function myTextSection(items) {
       autoRepeat: Number(item.auto_repeat) || AUTO_DEFAULT_REPEAT,
       autoInterval: Number(item.auto_interval) || AUTO_DEFAULT_INTERVAL,
       autoOffset: Number(item.auto_offset) || 0,
-      autoDaily: item.auto_daily === 'until' || item.auto_daily === 'ongoing' ? item.auto_daily : '',
+      autoDaily: item.auto_daily === 'until' || item.auto_daily === 'ongoing' || item.auto_daily === 'once' ? item.auto_daily : '',
+      autoSales: String(item.auto_chain?.sales || ''),
+      autoDaysOff: Array.isArray(item.auto_chain?.days_off) ? item.auto_chain.days_off : [],
       autoWeekdays: Boolean(item.auto_weekdays),
       autoUnlessMode: item.auto_unless_mode === 'started' ? 'started' : 'completed',
       autoUnlessStep: String(item.auto_unless_step || ''),

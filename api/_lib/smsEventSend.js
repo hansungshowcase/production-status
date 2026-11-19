@@ -51,6 +51,7 @@ const kstDate = nowMs => new Date(nowMs + 9 * 3600000).toISOString().slice(0, 10
 const kstHour = nowMs => new Date(nowMs + 9 * 3600000).getUTCHours();
 const addDays = (date, n) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const kstWeekend = nowMs => { const d = new Date(nowMs + 9 * 3600000).getUTCDay(); return d === 0 || d === 6; };
+const kstDayName = nowMs => ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][new Date(nowMs + 9 * 3600000).getUTCDay()];
 const inSendWindow = nowMs => { const h = kstHour(nowMs); return h >= SEND_WINDOW.from && h < SEND_WINDOW.to; };
 const hashOf = phone => crypto.createHash('sha256').update(`${HASH_SALT}:${digits(phone)}`).digest('hex');
 export const eventPhoneHash = hashOf; // 광고 문자 쪽이 오늘 나간 브랜드메시지 번호를 비교할 때 쓴다(광고 하루 1통)
@@ -179,7 +180,8 @@ function expandItems(rows, template, staff, suffix, stats) {
       if (seen.has(phone)) continue;
       seen.add(phone);
       const hash = hashOf(phone);
-      items.push({ order, orderId: Number(order.id), phone, hash, last4: phone.slice(-4), baseDay: suffix, key: `${hash}:${Number(order.id)}:${suffix}` });
+      const tail = typeof suffix === 'function' ? suffix(order) : suffix; // once 모드: 주문마다 자기 기준일(due_date)
+      items.push({ order, orderId: Number(order.id), phone, hash, last4: phone.slice(-4), baseDay: tail, key: `${hash}:${Number(order.id)}:${tail}` });
     }
   }
   return items;
@@ -379,32 +381,51 @@ async function instantCandidates(db, template, { nowMs, staff, preview }) {
   return expandItems(rows, template, staff, template.auto_kind);
 }
 
+const dueExpr = template => (template.auto_kind === 'ship_or_due' ? SHIP_OR_DUE_SQL : `o.${DATE_COLUMN[template.auto_kind]}`);
+// auto_mark_sent(order_ids) 용: 이 문구(once 모드)가 그 주문들에 쓸 발송 후보 키와 같은 키를 만든다. 주문 상태·영업담당은 보지 않는다(표시할 주문을 호출한 쪽이 고른다).
+export async function dueMarkEntries(db, template, orderIds) {
+  const expr = dueExpr(template);
+  const found = new Set();
+  const items = [];
+  for (let i = 0; i < orderIds.length; i += KEY_CHUNK) {
+    const chunk = orderIds.slice(i, i + KEY_CHUNK);
+    const out = await db.execute({ sql: `SELECT ${ORDER_COLUMNS}, LEFT(${expr}, 10) AS base_date FROM orders o WHERE o.id IN (${placeholders(chunk)}) AND ${expr} IS NOT NULL ORDER BY o.id ASC`, args: chunk });
+    const rows = (out.rows || []).filter(row => /^\d{4}-\d{2}-\d{2}$/.test(String(row.base_date || '')));
+    for (const item of expandItems(rows, template, [], order => order.base_date)) { items.push(item); found.add(item.orderId); }
+  }
+  return { items, found };
+}
+
 // 오늘 대상(이미 선점한 것 제외 전). 납기일/출고예정일 칸이 오늘 − offset 인 진행 중 주문만(당일만, 뒤늦게 보내지 않음).
 async function candidates(db, template, { nowMs, staff, preview, warn, catchupOnly }) {
   if (isDayAta(template)) return dayCandidatesFor(db, template, { nowMs, preview, catchupOnly });
   if (isInstantKind(template.auto_kind)) return instantCandidates(db, template, { nowMs, staff, preview });
   if (isLeadKind(template.auto_kind)) return leadCandidatesFor(db, template, { nowMs, preview });
   if (!isEventKind(template.auto_kind)) return [];
+  if (template.auto_chain?.days_off?.includes(kstDayName(nowMs))) return []; // 쉬는 요일(auto_chain.days_off, KST): 그날은 대상 0 (놓친 건은 다음 날 once 범위가 잡는다)
   const today = kstDate(nowMs);
   const baseDay = addDays(today, -template.auto_offset);
   const daily = template.auto_daily || '';
-  const expr = template.auto_kind === 'ship_or_due' ? SHIP_OR_DUE_SQL : `o.${DATE_COLUMN[template.auto_kind]}`;
+  const expr = dueExpr(template);
   const args = [baseDay];
   let range = ` AND LEFT(${expr}, 10) = ?`; // 기존: 기준일 그 하루만
-  if (daily === 'until') { range = ` AND LEFT(${expr}, 10) >= ? AND LEFT(${expr}, 10) <= ?`; args.splice(0, 1, today, baseDay); } // 오늘 ≤ 기준일 ≤ 오늘 − offset
+  if (daily === 'until' || daily === 'once') { range = ` AND LEFT(${expr}, 10) >= ? AND LEFT(${expr}, 10) <= ?`; args.splice(0, 1, today, baseDay); } // 오늘 ≤ 기준일 ≤ 오늘 − offset
   else if (daily === 'ongoing') range = ` AND LEFT(${expr}, 10) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND LEFT(${expr}, 10) <= ?`; // 기준일 ≤ 오늘 − offset(날짜가 빈 주문 제외)
   let unless = '';
   if (template.auto_unless_step) {
     const notDone = template.auto_unless_mode === 'started' ? "p.status NOT IN ('in_progress', 'completed')" : "p.status <> 'completed'"; // 미착수 = 진행중·완료가 아님
     unless = ` AND EXISTS (SELECT 1 FROM processes p WHERE p.order_id = o.id AND p.step_name = ? AND ${notDone})`; args.push(template.auto_unless_step);
   }
+  const once = daily === 'once';
+  let salesFilter = '';
+  if (template.auto_chain?.sales) { salesFilter = ' AND o.sales_person = ?'; args.push(template.auto_chain.sales); } // 영업담당 필터(auto_chain.sales, S7)
   const out = await db.execute({
-    sql: `SELECT ${ORDER_COLUMNS}
-      FROM orders o WHERE o.status = 'in_production' AND ${expr} IS NOT NULL${range}${unless} ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
+    sql: `SELECT ${ORDER_COLUMNS}${once ? `, LEFT(${expr}, 10) AS base_date` : ''}
+      FROM orders o WHERE o.status = 'in_production' AND ${expr} IS NOT NULL${range}${unless}${salesFilter} ORDER BY o.id ASC LIMIT ${TARGET_LIMIT}`,
     args,
   });
   const stats = { noSales: 0 };
-  const items = expandItems(out.rows, template, staff, daily ? today : baseDay, stats); // 매일 반복이면 키 끝 날짜 = 오늘(하루 1번)
+  const items = expandItems(out.rows, template, staff, once ? (order => order.base_date) : (daily ? today : baseDay), stats); // 매일 반복이면 키 끝 날짜 = 오늘(하루 1번), once 면 주문의 기준일(주문당 평생 1번)
   if (stats.noSales && warn) warn('[sms-event] 영업담당을 찾지 못해 건너뛴 건수', stats.noSales);
   return items;
 }
