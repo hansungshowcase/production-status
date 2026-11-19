@@ -1,7 +1,7 @@
 // 2026-11-19 설계 v4 S2(자동 갈래 0일)·S4(auto_mark_sent 종류별 기록 키) 시험. 가짜 db·가짜 발송기만 쓴다(실제 발송·운영 호출 없음). 값은 모두 가짜.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { _resetAutoSchemaForTest, autoMarkSent, autoStatus, autoToggle, findTargets, phoneHash, runAutoSend } from '../api/_lib/smsAutoSend.js';
+import { _resetAutoSchemaForTest, autoMarkSent, autoTest, autoStatus, autoToggle, findTargets, phoneHash, runAutoSend } from '../api/_lib/smsAutoSend.js';
 import { _resetTextTemplateSchemaForTest } from '../api/_lib/smsTextTemplates.js';
 import { _resetEventSchemaForTest, eventPhoneHash, eventToggleOn } from '../api/_lib/smsEventSend.js';
 
@@ -226,4 +226,29 @@ test('S4 실패 행은 sent 로 고치고, 번호 형식 오류·중복은 세�
   const out = await autoMarkSent({ template_id: 23, phones: ['010-1111-2222', P1, '123'] }, { db });
   assert.deepEqual([out.body.inserted, out.body.updated_failed, out.body.invalid, out.body.duplicated_in_request], [0, 1, 1, 1]);
   assert.equal(db.state.eventRows[0].status, 'sent');
+});
+
+// 시험 발송(auto_test): 템플릿이 #{업체명} 을 쓰면 고객명과 같은 값('고객')으로 넘기고, 안 쓰면 빼서 보낸다.
+test('시험 발송 알림톡 변수: #{업체명} 템플릿이면 업체명=고객명, 아니면 고객명만', async () => {
+  const row = { id: 7, name: '안내', body: '#{고객명}님', image: null, images: '[]', auto_kind: 'ship_plus_days', auto_days: 3, auto_enabled: false, auto_start_date: '', auto_msg_type: 'info', auto_audience: 'customer', auto_ata_template: 'KA01TP1' };
+  const mkDb = () => ({ async execute({ sql, args }) {
+    const t = sql.replace(/\s+/g, ' ').trim();
+    if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE)/.test(t) || t.startsWith('SELECT conname FROM pg_constraint')) return { rows: [] };
+    if (t.startsWith('SELECT id, name, body, image, images, auto_kind')) return { rows: args[0] === row.id ? [row] : [] };
+    if (t.includes('FROM sms_manual_sends WHERE sent_at')) return { rows: [{ n: 0 }] };
+    if (t.startsWith('INSERT INTO sms_manual_sends')) return { rows: [{ id: 1 }] };
+    if (t.startsWith('UPDATE sms_manual_sends')) return { rows: [] };
+    throw new Error(`예상 못 한 SQL ${t}`);
+  } });
+  const run = async variables => {
+    reset();
+    const calls = [];
+    const provider = { estimate: () => ({ unit: 45, total: 45 }), estimateKakao: ({ count }) => ({ unit: 13, total: 13 * count }), async sendEach() { throw new Error('실제 발송 금지'); }, async sendKakaoEach(input) { calls.push(input); return { accepted: input.messages.length, failed: 0, groupId: 'K1', uncertain: false, error: '' }; } };
+    const kakao = { async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables, content: '#{고객명}님' }, scope: { allowed: true, kind: 'channel' } }; } };
+    const out = await autoTest({ id: 7, to: '010-1234-4237', idempotencyKey: 'key-ata-v4-01' }, { db: mkDb(), provider, env: ENV, nowMs: NOW, kakao });
+    assert.equal(out.status, 200);
+    return calls[0].messages[0].variables;
+  };
+  assert.deepEqual(await run(['#{고객명}', '#{업체명}']), { 고객명: '고객', 업체명: '고객' });
+  assert.deepEqual(await run(['#{고객명}']), { 고객명: '고객' });
 });

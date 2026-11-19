@@ -8,7 +8,7 @@ import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePar
 import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseAutoChain, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { STEPS } from './steps.js';
 import { BMS_TEMPLATE_ID, bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
-import { ataReady, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
+import { ataReady, ataSendVars, nameVars, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -730,6 +730,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   const bms = isBmsTemplate(template); // 브랜드메시지(자유형)도 알림톡 갈래를 타되 BMS_FREE 로 보낸다
   if (!vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function') return errorReply(503, '발송 업체가 설정되지 않았습니다.');
   let pfId = '';
+  let ataNames = [];
   const bmsCfg = bms ? parseBmsConfig(template.auto_bms) : null;
   if (bms) { // 채널·사진(저장 때 올린 imageId)·글자 수 확인(쏠라피 호출 없음)
     const checked = bmsReady(template);
@@ -744,6 +745,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
       return errorReply(400, `카카오 승인 전에는 알림톡 시험을 보낼 수 없습니다(현재 상태: ${status}).`, { reason: 'ata_not_ready' });
     }
     pfId = ready.pfId;
+    ataNames = ready.names || [];
   }
   const info = isInfoTemplate(template); // 안내 문구는 예시 값으로 치환
   const parts = ata ? [{ ata: true, image: -1 }] : info ? buildEventParts(template, template.images.length) : buildParts(template, template.images.length);
@@ -786,7 +788,7 @@ export async function autoTest(body, { db, provider, env = process.env, nowMs = 
   for (const [partIndex, part] of parts.entries()) {
     if (stop) { results.push('skipped'); continue; }
     await waitBeforePart(partIndex, { env, sleep });
-    const item = bms ? { to, text: fillVars(String(template.body).trim(), { 고객명: '고객' }), ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons } : ata ? { to, templateId: template.auto_ata_template, variables: { 고객명: '고객' } } : { to, text: info ? eventExampleText(part, template) : partText(part, template, '고객'), ...(!info ? subjectOf(template) : {}) };
+    const item = bms ? { to, text: fillVars(String(template.body).trim(), { 고객명: '고객' }), ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons } : ata ? { to, templateId: template.auto_ata_template, variables: ataSendVars({ vars: nameVars('고객') }, ataNames) } : { to, text: info ? eventExampleText(part, template) : partText(part, template, '고객'), ...(!info ? subjectOf(template) : {}) };
     if (!ata && part.image >= 0) item.fileId = fileIds[part.image];
     let result;
     try { result = bms ? await vendor.sendBmsEach({ from, pfId, messages: [item] }, { fetchImpl }) : ata ? await vendor.sendKakaoEach({ from, pfId, messages: [item], disableSms: true }, { fetchImpl }) : await vendor.sendEach({ from, messages: [item] }, { fetchImpl }); } catch { result = { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; }

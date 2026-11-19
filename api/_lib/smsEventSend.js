@@ -110,7 +110,7 @@ const orderSize = order => (order.width && order.depth && order.height ? `${orde
 const specLine = order => [order.door_type || '', orderSize(order)].filter(Boolean).join(' ');
 const fmtDate = value => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || '')); return m ? `${m[1]}-${m[2]}-${m[3]}` : '협의 예정'; };
 const cleanValue = value => String(value ?? '').replace(/#\{|\}/g, '').replace(/\s+/g, ' ').trim();
-const nameVars = name => { const value = cleanValue(name).slice(0, 20) || '고객'; return { 고객명: value, 업체명: value }; }; // 알림톡 변수: #{업체명} 은 #{고객명} 과 같은 값(2026-11-19 S1)
+export const nameVars = name => { const value = cleanValue(name).slice(0, 20) || '고객'; return { 고객명: value, 업체명: value }; }; // 알림톡 변수: #{업체명} 은 #{고객명} 과 같은 값(2026-11-19 S1)
 
 export function orderVars(order, audience, trackUrl = '') {
   const qty = parsePositiveIntegerQuantity(order.quantity);
@@ -472,7 +472,7 @@ export async function ataReady(templateId, { kakao = kakaoTemplates, kakaoOpts, 
 const ataVars = item => item.vars || nameVars(item.order?.client_name);
 
 // 템플릿이 #{업체명} 을 쓰지 않으면 업체명은 보내지 않는다(기존 알림톡 문구의 전송 변수는 그대로 고객명 하나).
-const ataSendVars = (item, names) => { const vars = { ...ataVars(item) }; if (!names.includes('업체명')) delete vars.업체명; return vars; };
+export const ataSendVars = (item, names) => { const vars = { ...ataVars(item) }; if (!names.includes('업체명')) delete vars.업체명; return vars; };
 
 // plain(auto_chain.plain === true) 안내 문구는 주문 변수 필수 검사(info_needs_order_var)만 면제한다(S3). 다른 검사는 그대로.
 function infoBlocked(template, ata) {
