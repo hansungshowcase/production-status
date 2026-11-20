@@ -284,6 +284,24 @@ export default function KakaoTemplateManager({
     [autoStatusMap],
   );
 
+  // 브랜드메시지(BMS)는 문자용 080 줄을 쓰지 않는 운영 원칙(2026-11-18)이고 하루 상한 도달은 정상 발송 완료 상태이므로
+  // 화면 신호등에서는 거짓 주의/경고 대신 초록 '켜짐'(상한 시 '오늘 상한 완료' 칩)으로 표시한다.
+  const displayLightOf = useCallback((entry) => {
+    const eff = effOf(entry);
+    const st = autoStatusMap[entry.id] || null;
+    if (eff.tone === 'part' && !eff.blocked && !st?.catchup_paused) {
+      const skip = String(st?.auto_skip_reason || '').trim();
+      const blockedCode = String(st?.enable_blocked_reason || '').trim();
+      if (/^하루 상한/.test(skip)) {
+        return { tone: 'on', label: '켜짐', note: skip, capNote: '오늘 상한 완료' };
+      }
+      if (!skip && blockedCode === 'no_optout_080') {
+        return { tone: 'on', label: '켜짐', note: '', capNote: '' };
+      }
+    }
+    return { tone: autoLightClass(eff), label: compactLightLabel(eff), note: eff.text, capNote: '' };
+  }, [effOf, autoStatusMap]);
+
   // 직접 관리되는 브랜드메시지(자유형) + 연결 알림톡이 목록에 없는 예외 자동 문구
   const managedKakaoEntries = useMemo(() => {
     const bmsList = kakaoMineEntries.filter((entry) => entry.autoAtaTemplate === BMS_TEMPLATE_ID);
@@ -310,7 +328,7 @@ export default function KakaoTemplateManager({
     const linkedList = linkedTextEntries(textItems, ataId);
     return linkedList.some((entry) => ['on', 'part'].includes(effOf(entry).tone));
   }, [textItems, effOf]);
-  const isDbAttention = useCallback((entry) => isAttentionTone(effOf(entry).tone) || Boolean(autoStatusMap[entry.id]?.catchup_paused), [effOf, autoStatusMap]);
+  const isDbAttention = useCallback((entry) => isAttentionTone(displayLightOf(entry).tone) || Boolean(autoStatusMap[entry.id]?.catchup_paused), [displayLightOf, autoStatusMap]);
   const isAtaAttention = useCallback((item) => item.status === 'REJECTED' || Boolean(nonMakeExtras(item.id, sent)?.off), [sent]);
   const isRoAttention = useCallback((entry) => isAttentionTone(itemLight(entry).tone), []);
 
@@ -777,6 +795,7 @@ export default function KakaoTemplateManager({
   const renderBmsDetail = (entry) => {
     const st = autoStatusMap[entry.id] || null;
     const eff = effOf(entry);
+    const light = displayLightOf(entry);
     const ch = channelCostOf(entry);
     const summary = buildConditionSummary(entry, { isMine: true });
     const paused = catchupPausedText(st);
@@ -795,7 +814,13 @@ export default function KakaoTemplateManager({
             <Icon name="back" /> 목록
           </button>
           <div className="stl-detail-meta">
-            <span className={`stl-light stl-light--${autoLightClass(eff)}`}>{eff.text}</span>
+            <span className={`stl-light stl-light--${light.tone}`}>{light.label}</span>
+            {light.capNote ? (
+              <>
+                <span className="stl-meta-sep" aria-hidden="true">·</span>
+                <span className="ktm-badge ktm-badge--info">{light.capNote}</span>
+              </>
+            ) : null}
             <span className="stl-meta-sep" aria-hidden="true">·</span>
             <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
             <span className="stl-meta-sep" aria-hidden="true">·</span>
@@ -833,79 +858,85 @@ export default function KakaoTemplateManager({
               <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다)</span>
             </p>
           ) : null}
-          {!paused && (eff.tone === 'blocked' || eff.tone === 'part') ? (
-            <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{eff.text}</p>
+          {!paused && light.capNote ? (
+            <p className="ktm-cap-note" role="status">{light.note}</p>
+          ) : !paused && (eff.tone === 'blocked' || light.tone === 'part') ? (
+            <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{light.note}</p>
           ) : null}
         </div>
 
-        {renderConditionBoard(summary, st, true)}
-
-        <div className="ktm-preview-stage">
-          <div className="stl-card-subhead">
-            <div className="stl-card-subhead-left">
-              <span className="stl-card-subhead-title">발송 내용 미리보기</span>
-              {rawBody ? <span className="stl-char-count">{rawBody.length}자</span> : null}
-            </div>
-            <div className="stl-card-subhead-right">
-              {rawBody && hasVars ? (
-                <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} onClick={() => setPreviewFilled((v) => !v)}>
-                  {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
-                </button>
-              ) : null}
-              {photos.length > 0 ? (
-                <button type="button" className="ktm-btn stl-mini-btn" onClick={() => openLightbox(photos, 0, entry.name)}>
-                  <Icon name="zoom" /> 크게 보기
-                </button>
-              ) : null}
-              {rawBody ? (
-                <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyBody(rawBody)}>
-                  <Icon name="copy" /> {copiedBody ? '복사됨 ✓' : '문구 복사'}
-                </button>
-              ) : null}
-            </div>
+        <div className="stl-detail-split">
+          <div className="ktm-cond-col">
+            {renderConditionBoard(summary, st, true)}
           </div>
 
-          {detail.loading && !detail.item ? (
-            <div className="ktm-empty">문구와 첨부 사진을 불러오는 중…</div>
-          ) : detail.error && !detail.item ? (
-            <div className="ktm-error" role="alert">
-              <p>{detail.error}</p>
-              <button type="button" className="ktm-btn" onClick={() => ensureBmsDetail(entry.id, true)}>다시 시도</button>
+          <div className="ktm-preview-stage">
+            <div className="stl-card-subhead">
+              <div className="stl-card-subhead-left">
+                <span className="stl-card-subhead-title">발송 내용 미리보기</span>
+                {rawBody ? <span className="stl-char-count">{rawBody.length}자</span> : null}
+              </div>
+              <div className="stl-card-subhead-right">
+                {rawBody && hasVars ? (
+                  <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} onClick={() => setPreviewFilled((v) => !v)}>
+                    {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
+                  </button>
+                ) : null}
+                {photos.length > 0 ? (
+                  <button type="button" className="ktm-btn stl-mini-btn" onClick={() => openLightbox(photos, 0, entry.name)}>
+                    <Icon name="zoom" /> 크게 보기
+                  </button>
+                ) : null}
+                {rawBody ? (
+                  <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyBody(rawBody)}>
+                    <Icon name="copy" /> {copiedBody ? '복사됨 ✓' : '문구 복사'}
+                  </button>
+                ) : null}
+              </div>
             </div>
-          ) : (
-            <div className="ktm-detail-split">
-              <KakaoTemplatePreview
-                banner={isBms ? (isAd ? '브랜드메시지 (광고)' : '브랜드메시지') : '알림톡 도착'}
-                onImageClick={photos.length ? () => openLightbox(photos, 0, entry.name) : undefined}
-                template={{
-                  name: entry.name,
-                  content: previewFilled ? previewFill(rawBody) : rawBody,
-                  emphasizeType: photos.length ? 'IMAGE' : 'NONE',
-                  imageUrl: photos[0] || '',
-                  buttons: buttons.map((b) => ({ type: 'WL', name: b.name })),
-                  targetName: '한성쇼케이스그룹',
-                }}
-              />
-              <dl className="ktm-info">
-                <dt>종류 · 단가</dt><dd>{ch.kindLabel}{ch.costDetail ? ` · ${ch.costDetail}` : ''}</dd>
-                <dt>발송 시점</dt><dd>{summary.whenMain}{summary.whenSub ? ` (${summary.whenSub})` : ''}</dd>
-                <dt>발송 대상</dt><dd>{summary.whoMain}{summary.whoSub ? ` · ${summary.whoSub}` : ''}</dd>
-                <dt>버튼 링크</dt>
-                <dd>
-                  {buttons.length === 0 ? '없음' : (
-                    <ul className="ktm-bms-links">
-                      {buttons.map((b, i) => (
-                        <li key={`${b.name}-${i}`}>
-                          <strong>{b.name}</strong>
-                          <span>{b.link}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </dd>
-              </dl>
-            </div>
-          )}
+
+            {detail.loading && !detail.item ? (
+              <div className="ktm-empty">문구와 첨부 사진을 불러오는 중…</div>
+            ) : detail.error && !detail.item ? (
+              <div className="ktm-error" role="alert">
+                <p>{detail.error}</p>
+                <button type="button" className="ktm-btn" onClick={() => ensureBmsDetail(entry.id, true)}>다시 시도</button>
+              </div>
+            ) : (
+              <div className="ktm-detail-split">
+                <KakaoTemplatePreview
+                  banner={isBms ? (isAd ? '브랜드메시지 (광고)' : '브랜드메시지') : '알림톡 도착'}
+                  onImageClick={photos.length ? () => openLightbox(photos, 0, entry.name) : undefined}
+                  template={{
+                    name: entry.name,
+                    content: previewFilled ? previewFill(rawBody) : rawBody,
+                    emphasizeType: photos.length ? 'IMAGE' : 'NONE',
+                    imageUrl: photos[0] || '',
+                    buttons: buttons.map((b) => ({ type: 'WL', name: b.name })),
+                    targetName: '한성쇼케이스그룹',
+                  }}
+                />
+                <dl className="ktm-info">
+                  <dt>종류 · 단가</dt><dd>{ch.kindLabel}{ch.costDetail ? ` · ${ch.costDetail}` : ''}</dd>
+                  <dt>발송 시점</dt><dd>{summary.whenMain}{summary.whenSub ? ` (${summary.whenSub})` : ''}</dd>
+                  <dt>발송 대상</dt><dd>{summary.whoMain}{summary.whoSub ? ` · ${summary.whoSub}` : ''}</dd>
+                  <dt>버튼 링크</dt>
+                  <dd>
+                    {buttons.length === 0 ? '없음' : (
+                      <ul className="ktm-bms-links">
+                        {buttons.map((b, i) => (
+                          <li key={`${b.name}-${i}`}>
+                            <strong>{b.name}</strong>
+                            <span>{b.link}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </dd>
+                </dl>
+              </div>
+            )}
+          </div>
         </div>
       </article>
     );
@@ -948,32 +979,36 @@ export default function KakaoTemplateManager({
           </div>
         </div>
 
-        {renderConditionBoard(summary, null, false)}
-
-        <div className="ktm-preview-stage">
-          <div className="stl-card-subhead">
-            <div className="stl-card-subhead-left">
-              <span className="stl-card-subhead-title">발송 내용 미리보기</span>
-              {entry.body ? <span className="stl-char-count">{entry.body.length}자</span> : null}
-            </div>
+        <div className="stl-detail-split">
+          <div className="ktm-cond-col">
+            {renderConditionBoard(summary, null, false)}
           </div>
-          <div className="ktm-detail-split">
-            <KakaoTemplatePreview
-              banner={entry.channel === 'BMS' ? '브랜드메시지' : '알림톡 도착'}
-              onImageClick={entry.image ? () => openLightbox([entry.image], 0, entry.name) : undefined}
-              template={{
-                name: entry.name, content: entry.body || '', emphasizeType: entry.image ? 'IMAGE' : undefined, imageUrl: entry.image || '',
-                buttons: [], targetName: entry.sender || '',
-              }}
-            />
-            <dl className="ktm-info">
-              <dt>종류 · 비용</dt><dd>{[ch.kindLabel, ch.costDetail].filter(Boolean).join(' · ')}</dd>
-              <dt>보내는 곳</dt><dd>{entry.sender}</dd>
-              <dt>업무 분류</dt><dd>{entry.kind}</dd>
-              {entry.who ? <><dt>대상</dt><dd>{entry.who}</dd></> : null}
-              {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
-              {entry.scenario ? <><dt>자동화 이름</dt><dd>{entry.scenario}</dd></> : null}
-            </dl>
+
+          <div className="ktm-preview-stage">
+            <div className="stl-card-subhead">
+              <div className="stl-card-subhead-left">
+                <span className="stl-card-subhead-title">발송 내용 미리보기</span>
+                {entry.body ? <span className="stl-char-count">{entry.body.length}자</span> : null}
+              </div>
+            </div>
+            <div className="ktm-detail-split">
+              <KakaoTemplatePreview
+                banner={entry.channel === 'BMS' ? '브랜드메시지' : '알림톡 도착'}
+                onImageClick={entry.image ? () => openLightbox([entry.image], 0, entry.name) : undefined}
+                template={{
+                  name: entry.name, content: entry.body || '', emphasizeType: entry.image ? 'IMAGE' : undefined, imageUrl: entry.image || '',
+                  buttons: [], targetName: entry.sender || '',
+                }}
+              />
+              <dl className="ktm-info">
+                <dt>종류 · 비용</dt><dd>{[ch.kindLabel, ch.costDetail].filter(Boolean).join(' · ')}</dd>
+                <dt>보내는 곳</dt><dd>{entry.sender}</dd>
+                <dt>업무 분류</dt><dd>{entry.kind}</dd>
+                {entry.who ? <><dt>대상</dt><dd>{entry.who}</dd></> : null}
+                {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
+                {entry.scenario ? <><dt>자동화 이름</dt><dd>{entry.scenario}</dd></> : null}
+              </dl>
+            </div>
           </div>
         </div>
       </article>
@@ -1058,171 +1093,175 @@ export default function KakaoTemplateManager({
           ) : null}
         </div>
 
-        {singleLinked ? (
-          <>
-            <div className="ktm-linked-bar">
-              <div className="ktm-linked-titlewrap">
-                <span className={`stl-light stl-light--${autoLightClass(singleLinkedEff)}`} title={singleLinkedEff.text}>{compactLightLabel(singleLinkedEff)}</span>
-                <span className="ktm-linked-step">{flowStepText(singleLinked)}</span>
-                <strong className="ktm-linked-name">{singleLinked.name}</strong>
-              </div>
-              <div className="ktm-linked-actions">
-                <SmsAutoControls
-                  compact
-                  id={singleLinked.id}
-                  enabled={Boolean(singleLinkedStatus?.enabled ?? singleLinked.autoEnabled)}
-                  photos={singleLinked.imageCount}
-                  ata
-                  onChanged={() => refreshAfterAutoChange(singleLinked.id)}
-                >
-                  <button type="button" className="ktm-btn" onClick={() => editAutoEntry(singleLinked)}>수정</button>
-                  <button type="button" className="ktm-btn ktm-btn--danger-outline" disabled={busy} onClick={() => deleteAutoEntry(singleLinked)}>
-                    {deleteAutoConfirm === singleLinked.id ? '삭제 확인' : '삭제'}
-                  </button>
-                </SmsAutoControls>
-              </div>
-            </div>
-            {renderConditionBoard(singleLinkedSummary, singleLinkedStatus, true)}
-          </>
-        ) : (
-          <section className="stl-cond-board" aria-label="이 템플릿에 적용된 발송 조건">
-            {linkedEntries.length > 1 ? (
+        <div className="stl-detail-split">
+          <div className="ktm-cond-col">
+            {singleLinked ? (
               <>
-                <div className="ktm-linked-headrow">
-                  <span className="ktm-linked-head">이 템플릿에 적용된 발송 조건 ({linkedEntries.length}단계)</span>
-                  <span className="ktm-kind-count">
-                    켜짐 {linkedEntries.filter((e) => ['on', 'part'].includes(effOf(e).tone)).length}/{linkedEntries.length}
-                  </span>
+                <div className="ktm-linked-bar ktm-linked-bar--col">
+                  <div className="ktm-linked-titlewrap">
+                    <span className={`stl-light stl-light--${autoLightClass(singleLinkedEff)}`} title={singleLinkedEff.text}>{compactLightLabel(singleLinkedEff)}</span>
+                    <span className="ktm-linked-step">{flowStepText(singleLinked)}</span>
+                    <strong className="ktm-linked-name">{singleLinked.name}</strong>
+                  </div>
+                  <div className="ktm-linked-actions">
+                    <SmsAutoControls
+                      compact
+                      id={singleLinked.id}
+                      enabled={Boolean(singleLinkedStatus?.enabled ?? singleLinked.autoEnabled)}
+                      photos={singleLinked.imageCount}
+                      ata
+                      onChanged={() => refreshAfterAutoChange(singleLinked.id)}
+                    >
+                      <button type="button" className="ktm-btn" onClick={() => editAutoEntry(singleLinked)}>수정</button>
+                      <button type="button" className="ktm-btn ktm-btn--danger-outline" disabled={busy} onClick={() => deleteAutoEntry(singleLinked)}>
+                        {deleteAutoConfirm === singleLinked.id ? '삭제 확인' : '삭제'}
+                      </button>
+                    </SmsAutoControls>
+                  </div>
                 </div>
-                <ul className="ktm-linked-list">
-                  {linkedEntries.map((entry) => {
-                    const st = autoStatusMap[entry.id] || null;
-                    const eff = effOf(entry);
-                    const summary = buildConditionSummary(entry, { isMine: true });
-                    const paused = catchupPausedText(st);
-                    const timeStr = compactTimeText(summary);
-                    return (
-                      <li key={entry.id} className="ktm-linked-card">
-                        <div className="ktm-linked-top">
-                          <div className="ktm-linked-titlewrap">
-                            <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span>
-                            <span className="ktm-linked-step">{flowStepText(entry)}</span>
-                            <strong className="ktm-linked-name">{entry.name}</strong>
-                          </div>
-                          <div className="ktm-linked-actions">
-                            <SmsAutoControls
-                              compact
-                              id={entry.id}
-                              enabled={Boolean(st?.enabled ?? entry.autoEnabled)}
-                              photos={entry.imageCount}
-                              ata
-                              onChanged={() => refreshAfterAutoChange(entry.id)}
-                            >
-                              <button type="button" className="ktm-btn" onClick={() => editAutoEntry(entry)}>수정</button>
-                              <button type="button" className="ktm-btn ktm-btn--danger-outline" disabled={busy} onClick={() => deleteAutoEntry(entry)}>
-                                {deleteAutoConfirm === entry.id ? '삭제 확인' : '삭제'}
-                              </button>
-                            </SmsAutoControls>
-                          </div>
-                        </div>
-                        <p className="ktm-linked-cond">
-                          {[summary.whenMain, timeStr, summary.whoMain, summary.howMain].filter(Boolean).join(' · ')}
-                        </p>
-                        {st ? (
-                          <p className="ktm-linked-kpis">
-                            <span>오늘 대상 <strong>{Number(st.today_targets) || 0}</strong></span>
-                            <span>최근 7일 <strong>{Number(st.sent_7d) || 0}</strong></span>
-                            <span>누적 <strong>{Number(st.sent_total) || 0}</strong></span>
-                            {(Number(st.uncertain_total) || 0) > 0 ? <span className="ktm-linked-warn">확인 필요 {st.uncertain_total}건</span> : null}
-                            <span>마지막 {formatKpiDate(st.last_sent_date)}</span>
-                          </p>
-                        ) : null}
-                        {paused ? (
-                          <p className="ktm-alert ktm-linked-alert" role="alert">
-                            {paused}
-                            <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다)</span>
-                          </p>
-                        ) : null}
-                        {!paused && (eff.tone === 'blocked' || eff.tone === 'part') ? (
-                          <p className={eff.tone === 'blocked' ? 'ktm-alert ktm-linked-alert' : 'ktm-warn ktm-linked-alert'} role="status">{eff.text}</p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
+                {renderConditionBoard(singleLinkedSummary, singleLinkedStatus, true)}
               </>
-            ) : showSelectedExt ? (
-              <div className="stl-cond-grid">
-                <div className="stl-cond-tile stl-cond-tile--when">
-                  <span className="stl-cond-label">언제 보낼까</span>
-                  <strong className="stl-cond-val">{selectedExt.trigger || '연동 조건에 따라 발송'}</strong>
-                </div>
-                <div className="stl-cond-tile">
-                  <span className="stl-cond-label">누구에게</span>
-                  <strong className="stl-cond-val">{selectedExt.who || '고객'}</strong>
-                </div>
-                <div className="stl-cond-tile">
-                  <span className="stl-cond-label">보내는 곳 · 비용</span>
-                  <strong className="stl-cond-val">{selectedExt.sender}</strong>
-                  <span className="stl-cond-sub">알림톡 · 건당 {ataUnit.toLocaleString('ko-KR')}원</span>
-                </div>
-              </div>
             ) : (
-              <p className="ktm-linked-empty">적용된 자동 발송 조건이 없습니다. 우측 <strong>+ 자동 발송 설정</strong> 버튼으로 바로 연결할 수 있습니다.</p>
+              <section className="stl-cond-board" aria-label="이 템플릿에 적용된 발송 조건">
+                {linkedEntries.length > 1 ? (
+                  <>
+                    <div className="ktm-linked-headrow">
+                      <span className="ktm-linked-head">이 템플릿에 적용된 발송 조건 ({linkedEntries.length}단계)</span>
+                      <span className="ktm-kind-count">
+                        켜짐 {linkedEntries.filter((e) => ['on', 'part'].includes(effOf(e).tone)).length}/{linkedEntries.length}
+                      </span>
+                    </div>
+                    <ul className="ktm-linked-list">
+                      {linkedEntries.map((entry) => {
+                        const st = autoStatusMap[entry.id] || null;
+                        const eff = effOf(entry);
+                        const summary = buildConditionSummary(entry, { isMine: true });
+                        const paused = catchupPausedText(st);
+                        const timeStr = compactTimeText(summary);
+                        return (
+                          <li key={entry.id} className="ktm-linked-card">
+                            <div className="ktm-linked-top">
+                              <div className="ktm-linked-titlewrap">
+                                <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span>
+                                <span className="ktm-linked-step">{flowStepText(entry)}</span>
+                                <strong className="ktm-linked-name">{entry.name}</strong>
+                              </div>
+                              <div className="ktm-linked-actions">
+                                <SmsAutoControls
+                                  compact
+                                  id={entry.id}
+                                  enabled={Boolean(st?.enabled ?? entry.autoEnabled)}
+                                  photos={entry.imageCount}
+                                  ata
+                                  onChanged={() => refreshAfterAutoChange(entry.id)}
+                                >
+                                  <button type="button" className="ktm-btn" onClick={() => editAutoEntry(entry)}>수정</button>
+                                  <button type="button" className="ktm-btn ktm-btn--danger-outline" disabled={busy} onClick={() => deleteAutoEntry(entry)}>
+                                    {deleteAutoConfirm === entry.id ? '삭제 확인' : '삭제'}
+                                  </button>
+                                </SmsAutoControls>
+                              </div>
+                            </div>
+                            <p className="ktm-linked-cond">
+                              {[summary.whenMain, timeStr, summary.whoMain, summary.howMain].filter(Boolean).join(' · ')}
+                            </p>
+                            {st ? (
+                              <p className="ktm-linked-kpis">
+                                <span>오늘 대상 <strong>{Number(st.today_targets) || 0}</strong></span>
+                                <span>최근 7일 <strong>{Number(st.sent_7d) || 0}</strong></span>
+                                <span>누적 <strong>{Number(st.sent_total) || 0}</strong></span>
+                                {(Number(st.uncertain_total) || 0) > 0 ? <span className="ktm-linked-warn">확인 필요 {st.uncertain_total}건</span> : null}
+                                <span>마지막 {formatKpiDate(st.last_sent_date)}</span>
+                              </p>
+                            ) : null}
+                            {paused ? (
+                              <p className="ktm-alert ktm-linked-alert" role="alert">
+                                {paused}
+                                <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다)</span>
+                              </p>
+                            ) : null}
+                            {!paused && (eff.tone === 'blocked' || eff.tone === 'part') ? (
+                              <p className={eff.tone === 'blocked' ? 'ktm-alert ktm-linked-alert' : 'ktm-warn ktm-linked-alert'} role="status">{eff.text}</p>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : showSelectedExt ? (
+                  <div className="stl-cond-grid">
+                    <div className="stl-cond-tile stl-cond-tile--when">
+                      <span className="stl-cond-label">언제 보낼까</span>
+                      <strong className="stl-cond-val">{selectedExt.trigger || '연동 조건에 따라 발송'}</strong>
+                    </div>
+                    <div className="stl-cond-tile">
+                      <span className="stl-cond-label">누구에게</span>
+                      <strong className="stl-cond-val">{selectedExt.who || '고객'}</strong>
+                    </div>
+                    <div className="stl-cond-tile">
+                      <span className="stl-cond-label">보내는 곳 · 비용</span>
+                      <strong className="stl-cond-val">{selectedExt.sender}</strong>
+                      <span className="stl-cond-sub">알림톡 · 건당 {ataUnit.toLocaleString('ko-KR')}원</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="ktm-linked-empty">적용된 자동 발송 조건이 없습니다. 우측 <strong>+ 자동 발송 설정</strong> 버튼으로 바로 연결할 수 있습니다.</p>
+                )}
+              </section>
             )}
-          </section>
-        )}
-
-        <div className="ktm-preview-stage">
-          <div className="stl-card-subhead">
-            <div className="stl-card-subhead-left">
-              <span className="stl-card-subhead-title">발송 내용 미리보기</span>
-              {selected.content ? <span className="stl-char-count">{selected.content.length}자</span> : null}
-            </div>
-            <div className="stl-card-subhead-right">
-              {selected.content ? (
-                <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyBody(selected.content)}>
-                  <Icon name="copy" /> {copiedBody ? '복사됨 ✓' : '문구 복사'}
-                </button>
-              ) : null}
-            </div>
           </div>
 
-          <div className="ktm-detail-split">
-            <KakaoTemplatePreview template={{
-              name: selected.name, content: selected.content, emphasizeType: selected.emphasizeType,
-              emphasizeTitle: selected.emphasizeTitle, emphasizeSubtitle: selected.emphasizeSubtitle,
-              extra: selected.extra, buttons: (selected.buttons || []).map((b) => ({ type: b.type, name: b.name })),
-              targetName: selected.target?.name || '',
-            }} />
-            <dl className="ktm-info">
-              <dt>종류 · 비용</dt><dd>알림톡 · 건당 {ataUnit.toLocaleString('ko-KR')}원</dd>
-              <dt>템플릿 ID</dt>
-              <dd className="ktm-id">
-                <code>{selected.id}</code>
-                <button type="button" className="ktm-btn ktm-btn--icon stl-mini-btn" onClick={() => copyId(selected.id)} aria-label="템플릿 ID 복사">
-                  <Icon name="copy" /> {copied ? '복사됨' : '복사'}
-                </button>
-              </dd>
-              <dt>채널/그룹</dt><dd>{selected.target?.name || '-'}{selected.target?.kind === 'group' ? ' (그룹)' : ''}</dd>
-              <dt>유형</dt><dd>{emphasizeLabel(selected.emphasizeType)} · {messageLabel(selected.messageType)}</dd>
-              <dt>카테고리</dt><dd>{selected.categoryCode || '-'}</dd>
-              <dt>등록/수정</dt><dd>{formatDate(selected.dateCreated) || '-'} / {formatDate(selected.dateUpdated) || '-'}</dd>
-              <dt>변수</dt><dd>{variables.length ? variables.map((v) => (/^#\{.*\}$/.test(String(v)) ? String(v) : `#{${v}}`)).join(', ') : '없음'}</dd>
-              <dt>검수 의견</dt>
-              <dd>
-                {comments.length === 0 ? '없음' : (
-                  <ul className="ktm-comments">
-                    {comments.map((c, index) => (
-                      <li key={index}>
-                        <span className="ktm-comment-meta">{c.isAdmin ? '검수자' : '요청'} · {formatDate(c.date) || '-'}</span>
-                        <span className="ktm-comment-text">{c.content}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </dd>
-            </dl>
+          <div className="ktm-preview-stage">
+            <div className="stl-card-subhead">
+              <div className="stl-card-subhead-left">
+                <span className="stl-card-subhead-title">발송 내용 미리보기</span>
+                {selected.content ? <span className="stl-char-count">{selected.content.length}자</span> : null}
+              </div>
+              <div className="stl-card-subhead-right">
+                {selected.content ? (
+                  <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyBody(selected.content)}>
+                    <Icon name="copy" /> {copiedBody ? '복사됨 ✓' : '문구 복사'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="ktm-detail-split">
+              <KakaoTemplatePreview template={{
+                name: selected.name, content: selected.content, emphasizeType: selected.emphasizeType,
+                emphasizeTitle: selected.emphasizeTitle, emphasizeSubtitle: selected.emphasizeSubtitle,
+                extra: selected.extra, buttons: (selected.buttons || []).map((b) => ({ type: b.type, name: b.name })),
+                targetName: selected.target?.name || '',
+              }} />
+              <dl className="ktm-info">
+                <dt>종류 · 비용</dt><dd>알림톡 · 건당 {ataUnit.toLocaleString('ko-KR')}원</dd>
+                <dt>템플릿 ID</dt>
+                <dd className="ktm-id">
+                  <code>{selected.id}</code>
+                  <button type="button" className="ktm-btn ktm-btn--icon stl-mini-btn" onClick={() => copyId(selected.id)} aria-label="템플릿 ID 복사">
+                    <Icon name="copy" /> {copied ? '복사됨' : '복사'}
+                  </button>
+                </dd>
+                <dt>채널/그룹</dt><dd>{selected.target?.name || '-'}{selected.target?.kind === 'group' ? ' (그룹)' : ''}</dd>
+                <dt>유형</dt><dd>{emphasizeLabel(selected.emphasizeType)} · {messageLabel(selected.messageType)}</dd>
+                <dt>카테고리</dt><dd>{selected.categoryCode || '-'}</dd>
+                <dt>등록/수정</dt><dd>{formatDate(selected.dateCreated) || '-'} / {formatDate(selected.dateUpdated) || '-'}</dd>
+                <dt>변수</dt><dd>{variables.length ? variables.map((v) => (/^#\{.*\}$/.test(String(v)) ? String(v) : `#{${v}}`)).join(', ') : '없음'}</dd>
+                <dt>검수 의견</dt>
+                <dd>
+                  {comments.length === 0 ? '없음' : (
+                    <ul className="ktm-comments">
+                      {comments.map((c, index) => (
+                        <li key={index}>
+                          <span className="ktm-comment-meta">{c.isAdmin ? '검수자' : '요청'} · {formatDate(c.date) || '-'}</span>
+                          <span className="ktm-comment-text">{c.content}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+              </dl>
+            </div>
           </div>
         </div>
       </article>
@@ -1231,7 +1270,7 @@ export default function KakaoTemplateManager({
 
   // ----- 왼쪽 카드: 브랜드메시지(DB) — 문자 템플릿과 동일한 컴팩트 행 -----
   const renderManagedCard = (entry) => {
-    const eff = effOf(entry);
+    const light = displayLightOf(entry);
     const ch = channelCostOf(entry);
     const summary = buildConditionSummary(entry, { isMine: true });
     const timeStr = compactTimeText(summary);
@@ -1253,7 +1292,7 @@ export default function KakaoTemplateManager({
         >
           <div className="stl-item-top">
             <span className="stl-item-name">{entry.name}</span>
-            <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span>
+            <span className={`stl-light stl-light--${light.tone}`} title={light.note || light.label}>{light.label}</span>
           </div>
           <div className="stl-item-cond">
             <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
@@ -1266,9 +1305,10 @@ export default function KakaoTemplateManager({
               </React.Fragment>
             ))}
           </div>
-          {paused ? (
+          {paused || light.capNote ? (
             <div className="stl-item-badges">
-              <span className="ktm-badge ktm-badge--danger">일괄 발송만 멈춤</span>
+              {paused ? <span className="ktm-badge ktm-badge--danger">일괄 발송만 멈춤</span> : null}
+              {!paused && light.capNote ? <span className="ktm-badge ktm-badge--info">{light.capNote}</span> : null}
             </div>
           ) : null}
         </button>

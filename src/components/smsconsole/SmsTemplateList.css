@@ -1,13 +1,45 @@
 /* 문자 템플릿 목록: 2단 마스터-디테일 레이아웃(왼쪽 목록 · 오른쪽 문구/이미지 미리보기 및 관리). 알림톡 위 자동 발송 조건(.stl-kakao)은 전용 규칙 유지. */
 
-/* 신호등: 점 + 상태 텍스트(배경 알약 없이 단정하게) */
-.stl-rows .stl-light { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 0; border-radius: 0; background: transparent; font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap; }
-.stl-rows .stl-light::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
-.stl-rows .stl-light--on { color: #15803d; }
+/* 신호등: 켜짐(초록)·꺼짐(빨강)·주의(주황) 깜빡임 효과 */
+@keyframes smsc-light-blink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.86); }
+}
+@keyframes smsc-ring-on {
+  0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); }
+  70% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+}
+@keyframes smsc-ring-off {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+  70% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+@keyframes smsc-ring-part {
+  0% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.55); }
+  70% { box-shadow: 0 0 0 5px rgba(217, 119, 6, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); }
+}
+
+.stl-rows .stl-light {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  padding: 1px 8px; border-radius: 999px; background: #f2f4f6;
+  font-size: 11.5px; font-weight: 700; line-height: 18px; white-space: nowrap;
+}
+.stl-rows .stl-light::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.stl-rows .stl-light--on { color: #15803d; background: #ecfdf3; }
+.stl-rows .stl-light--on::before { background: #16a34a; animation: smsc-light-blink 1.6s ease-in-out infinite, smsc-ring-on 1.6s ease-out infinite; }
 .stl-rows .stl-light--off,
-.stl-rows .stl-light--blocked { color: #d92d20; }
-.stl-rows .stl-light--part { color: #b45309; }
-.stl-rows .stl-light--unknown { color: #6b7684; }
+.stl-rows .stl-light--blocked { color: #dc2626; background: #fef2f2; }
+.stl-rows .stl-light--off::before,
+.stl-rows .stl-light--blocked::before { background: #ef4444; animation: smsc-light-blink 1.4s ease-in-out infinite, smsc-ring-off 1.4s ease-out infinite; }
+.stl-rows .stl-light--part { color: #b45309; background: #fffbeb; }
+.stl-rows .stl-light--part::before { background: #f59e0b; animation: smsc-light-blink 1.5s ease-in-out infinite, smsc-ring-part 1.5s ease-out infinite; }
+.stl-rows .stl-light--unknown { color: #6b7684; background: #f2f4f6; }
+.stl-rows .stl-light--unknown::before { background: #94a3b8; }
+@media (prefers-reduced-motion: reduce) {
+  .stl-rows .stl-light::before { animation: none !important; }
+}
 
 /* 검색·필터 통합 1줄 바(목록과 상세가 같은 높이에서 시작하도록 .stl-layout 위에 배치) */
 .stl-rows .stl-toolbar {
@@ -30,11 +62,11 @@
 .stl-rows .stl-total { font-size: 12px; color: var(--smsc-muted, #6b7684); white-space: nowrap; }
 
 /* 마스터-디테일 2단 배치 */
-.stl-layout { display: grid; grid-template-columns: minmax(310px, 380px) minmax(0, 1fr); gap: 10px; align-items: start; }
+.stl-layout { display: grid; grid-template-columns: minmax(290px, 340px) minmax(0, 1fr); gap: 10px; align-items: start; }
 .stl-list-pane { min-width: 0; }
 .stl-detail-pane { position: sticky; top: 8px; min-width: 0; padding-bottom: 4px; }
 @media (max-width: 1240px) and (min-width: 1024px) {
-  .stl-layout { grid-template-columns: minmax(275px, 330px) minmax(0, 1fr); gap: 8px; }
+  .stl-layout { grid-template-columns: minmax(260px, 305px) minmax(0, 1fr); gap: 8px; }
 }
 
 /* 왼쪽 목록 카드 묶음 + 고대비 카테고리 헤더 */
@@ -171,15 +203,52 @@
 .ktm-btn--danger-outline { color: #d92d20; border-color: #f3d0ce; background: #fff; }
 .ktm-btn--danger-outline:hover:not(:disabled) { background: #fef2f2; border-color: #ebb7b4; }
 
+/* 상세 내부 좌우 2단: 좌측 발송 조건(세로) + 우측 발송 내용·이미지 */
+.stl-detail-split { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+
 /* 문구 + 이미지 미리보기 스테이지(좌우 2단 컴팩트 배치로 위아래 스크롤 최소화) */
-.stl-preview-stage { display: flex; flex-direction: column; gap: 0; }
-@media (min-width: 1160px) {
+.stl-preview-stage { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+@media (min-width: 1280px) {
+  .stl-detail-split .stl-preview-stage.has-media,
   .stl-preview-stage.has-media {
-    display: grid; grid-template-columns: minmax(0, 1fr) 232px; gap: 10px; align-items: start;
+    display: grid; grid-template-columns: minmax(0, 1fr) 196px; gap: 10px; align-items: start;
     padding-top: 8px;
   }
   .stl-preview-stage.has-media .stl-msg-card,
   .stl-preview-stage.has-media .stl-media-card { padding-top: 0; margin-top: 0; border-top: 0; }
+}
+@media (min-width: 1120px) {
+  .stl-detail-split {
+    display: grid; grid-template-columns: 214px minmax(0, 1fr); gap: 12px; align-items: start;
+    padding-top: 8px;
+  }
+  .stl-detail-split .stl-cond-board {
+    padding: 0 12px 0 0; border-bottom: 0; border-right: 1px solid #eef0f3;
+  }
+  .stl-detail-split .stl-cond-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .stl-detail-split .stl-cond-tile { padding: 0 0 7px 0; }
+  .stl-detail-split .stl-cond-tile + .stl-cond-tile {
+    padding: 7px 0 7px 0; border-left: 0; border-top: 1px solid #f0f2f5;
+  }
+  .stl-detail-split .stl-cond-tile:last-child { padding-bottom: 0; }
+  .stl-detail-split .stl-cond-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px;
+    margin-top: 8px; padding: 7px 8px; border-top: 0; border-radius: 7px;
+    background: #fafbfc; border: 1px solid #eef0f3;
+  }
+  .stl-detail-split .stl-kpi,
+  .stl-detail-split .stl-kpi + .stl-kpi { padding: 0; border-left: 0; }
+  .stl-detail-split .stl-cond-kpis > :last-child {
+    grid-column: 1 / -1; padding-top: 5px; border-top: 1px solid #eceff2;
+    flex-direction: row; align-items: baseline; justify-content: space-between;
+  }
+  .stl-detail-split .stl-preview-stage,
+  .stl-detail-split .stl-preview-stage.has-media { padding-top: 0; }
+  .stl-detail-split .stl-msg-card,
+  .stl-detail-split .stl-media-card { padding-top: 0; }
+  .stl-detail-split .stl-msg-body { max-height: 360px; }
+  .stl-detail-split .stl-media-viewport { max-height: 360px; }
+  .stl-detail-split .stl-media-img { max-height: 335px; }
 }
 
 .stl-msg-card,

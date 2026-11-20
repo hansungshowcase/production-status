@@ -908,11 +908,12 @@ function renderConditionBoard(summary, st, isMineAuto) {
             {mineError ? <p className="ktm-alert stl-detail-banner" role="alert">{mineError}</p> : null}
           </div>
 
-          {renderConditionBoard(summary, st, Boolean(entry.autoKind))}
-
-          <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
-            {msgCard}
-            {mediaCard}
+          <div className="stl-detail-split">
+            {renderConditionBoard(summary, st, Boolean(entry.autoKind))}
+            <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
+              {msgCard}
+              {mediaCard}
+            </div>
           </div>
         </article>
       );
@@ -1037,11 +1038,12 @@ function renderConditionBoard(summary, st, isMineAuto) {
           ) : null}
         </div>
 
-        {renderConditionBoard(summary, null, false)}
-
-        <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
-          {msgCard}
-          {mediaCard}
+        <div className="stl-detail-split">
+          {renderConditionBoard(summary, null, false)}
+          <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
+            {msgCard}
+            {mediaCard}
+          </div>
         </div>
       </article>
     );
