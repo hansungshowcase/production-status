@@ -336,13 +336,13 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   } : null;
   const summary = summaryEntry ? buildConditionSummary(summaryEntry, { isMine: true }) : null;
 
-  const showAdvSubject = Boolean(autoKind && !ataTemplate);
-  const showAdvFrom = Boolean(autoKind && !ataTemplate);
+  const showAdvSubject = Boolean(autoKind && (!ataTemplate || chainSubject));
+  const showAdvFrom = Boolean(autoKind && (!ataTemplate || chainFrom));
   const showAdvRepeat = Boolean((dayKind && !ataTemplate) || dateKind);
   const showAdvSales = Boolean(dateKind && audience !== AUDIENCE_SALES);
   const showAdvDaysOff = Boolean(dateKind);
   const showAdvCopy = Boolean((autoKind === AUTO_KIND || autoKind === AUTO_KIND_ORDER) && !ataTemplate);
-  const showAdvPlain = Boolean(autoKind && !ataTemplate);
+  const showAdvPlain = Boolean(autoKind && (!ataTemplate || chainPlain));
   const showAdvCatchup = autoKind === AUTO_KIND;
   const showAdvSection = showAdvSubject || showAdvFrom || showAdvRepeat || showAdvSales || showAdvDaysOff || showAdvCopy || showAdvPlain || showAdvCatchup || Boolean(chainAfter);
 
@@ -446,8 +446,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         audience: f.audience, staff: f.staff, step: f.step, ataTemplate: f.ataTemplate,
         catchupOn: f.catchupOn, catchupFrom: f.catchupFrom, catchupAt: f.catchupAt, catchupDaily: f.catchupDaily,
         copyTo: f.copyTo, imageCount: merge && f.images.length >= 2 ? 1 : f.images.length, bmsButtons: f.bmsButtons,
-        chainSubject: f.autoKind && !f.ataTemplate ? f.chainSubject : '',
-        chainFrom: f.autoKind && !f.ataTemplate ? f.chainFrom : '',
+        chainSubject: f.autoKind ? f.chainSubject : '',
+        chainFrom: f.autoKind ? f.chainFrom : '',
         chainSales: fDate ? f.chainSales : '',
       });
       if (!chk.ok) { failAt(i, textFormStopText(chk.reason)); return; }
@@ -479,11 +479,11 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             catchupAt: f.catchupAt, catchupDaily: f.catchupDaily,
           },
           chain: {
-            subject: f.autoKind && !f.ataTemplate ? f.chainSubject : '',
-            from: f.autoKind && !f.ataTemplate ? f.chainFrom : '',
+            subject: f.autoKind ? f.chainSubject : '',
+            from: f.autoKind ? f.chainFrom : '',
             sales: fDate ? f.chainSales : '',
             daysOff: fDate ? f.chainDaysOff : [],
-            plain: f.autoKind && !f.ataTemplate ? f.chainPlain : false,
+            plain: f.autoKind ? f.chainPlain : false,
             after: f.autoKind ? f.chainAfter : null,
             hadChain: Boolean(f.hadChain),
           },

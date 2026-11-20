@@ -10,7 +10,9 @@
 .stf-form .stf-chip,
 .stf-form .stf-stage-add,
 .stf-form .stf-stage-clone { min-height: 30px; padding: 0 10px; font-size: 12.5px; border-radius: 6px; flex: none; }
-.stf-form .stf-chip.is-active { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
+.stf-form .stf-chip.is-active,
+.stf-form .stf-chip.is-active:hover:not(:disabled),
+.stf-form .stf-chip.is-active:focus-visible { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
 .stf-form .stf-chip.is-dup,
 .stf-form .stf-chip.is-failed { border-color: #d92d20; color: #b42318; }
 .stf-dot { display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: #3b82f6; vertical-align: middle; }
@@ -121,7 +123,9 @@
 
 /* 직원 선택 칩 */
 .stf-form .stf-staff { min-height: 32px; padding: 0 10px; font-size: 12.5px; border-radius: 6px; }
-.stf-form .stf-staff.is-active { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
+.stf-form .stf-staff.is-active,
+.stf-form .stf-staff.is-active:hover:not(:disabled),
+.stf-form .stf-staff.is-active:focus-visible { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
 
 /* 4단계: 추가 설정 접기/펼치기 */
 .stf-adv { border: 1px solid #e5e8eb; border-radius: 10px; background: #fff; overflow: hidden; }
@@ -138,7 +142,9 @@
 
 .stf-presets { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
 .stf-form .stf-preset { min-height: 26px; padding: 0 9px; font-size: 11.5px; border-radius: 5px; }
-.stf-form .stf-preset.is-active { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
+.stf-form .stf-preset.is-active,
+.stf-form .stf-preset.is-active:hover:not(:disabled),
+.stf-form .stf-preset.is-active:focus-visible { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
 
 .stf-days-grid { display: flex; flex-wrap: wrap; gap: 4px; }
 .stf-day-btn {
@@ -208,7 +214,7 @@
   .stf-split { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .stf-mob-preview-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid #e5e8eb; border-radius: 8px; background: #fafbfc; }
   .stf-mob-preview-cost { font-size: 12.5px; font-weight: 700; color: #191f28; font-variant-numeric: tabular-nums; }
-  .stf-preview { position: static; }
+  .stf-preview { position: static; order: -1; }
   .stf-preview.is-mob-collapsed { display: none; }
 }
 @media (max-width: 640px) {

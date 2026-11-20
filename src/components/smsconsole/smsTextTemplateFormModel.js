@@ -494,10 +494,14 @@ export function duplicateStages(forms) {
   seen.forEach((list) => { if (list.length > 1) list.forEach((i) => out.add(i)); });
   return out;
 }
-// 바뀜 판정용 짧은 서명(사진은 길이·앞뒤 일부만 본다)
+// 바뀜 판정용 짧은 서명(키 순서를 고정해 formValuesFromItem 과 collect 순서를 같게 맞추고, 사진은 길이·앞뒤 일부만 본다)
 export function stageDirtySig(f) {
   const photo = (item) => { const d = String(item?.data || item?.url || ''); return `${d.length}:${d.slice(0, 24)}:${d.slice(-24)}`; };
-  return JSON.stringify({ ...f, images: (f.images || []).map(photo) });
+  const norm = {};
+  Object.keys(f || {}).sort().forEach((k) => {
+    norm[k] = k === 'images' ? (f.images || []).map(photo) : f[k];
+  });
+  return JSON.stringify(norm);
 }
 // 새 단계의 폼 값. 기본은 조건만 복사하고 이름·내용·사진을 비운다. withContent 면 내용까지 복사하고 일수만 비운다.
 export function newStageValues(from, withContent) {
