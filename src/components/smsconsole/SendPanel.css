@@ -2,7 +2,7 @@
 .smsc-send { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--smsc-text, #1c2330); }
 .smsc-send__aside { position: sticky; top: 8px; min-width: 0; padding: 14px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 12px; background: var(--smsc-surface, #fff); display: flex; flex-direction: column; gap: 10px; }
 .smsc-send__asidetitle { font-size: 14px; font-weight: 700; color: var(--smsc-text, #1c2330); }
-.smsc-send__phone { box-sizing: border-box; padding: 18px 12px; border: 6px solid #1c2330; border-radius: 24px; background: var(--smsc-bg, #f5f6f8); min-height: 220px; max-height: min(520px, calc(100dvh - 240px)); overflow-y: auto; }
+.smsc-send__phone { box-sizing: border-box; padding: 16px 12px; border: 2px solid #333d4b; border-radius: 18px; background: #f2f4f6; min-height: 220px; max-height: min(520px, calc(100dvh - 240px)); overflow-y: auto; }
 .smsc-send__bubble { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 4px 14px 14px 14px; background: #fff; border: 1px solid var(--smsc-line, #dfe3ea); font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
 .smsc-send__pimg { display: block; width: 100%; height: auto; border-radius: 8px; }
 .smsc-send__pempty { margin: 24px 8px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--smsc-muted, #667085); }
@@ -33,8 +33,8 @@
 .smsc-send__locked { background: var(--smsc-bg, #f5f6f8); color: var(--smsc-muted, #667085); }
 .smsc-send__actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; position: sticky; bottom: 0; z-index: 1; padding: 8px 0; background: var(--smsc-surface, #fff); border-top: 1px solid var(--smsc-line, #dfe3ea); }
 .smsc-send__actions .smsc-send__preview { flex: 1 1 auto; min-width: 0; padding: 6px 10px; font-size: 14px; }
-.smsc-send__btn { min-height: 44px; padding: 0 14px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 8px; background: var(--smsc-surface, #fff); color: inherit; font: inherit; font-size: 15px; cursor: pointer; overflow-wrap: anywhere; min-width: 110px; }
-.smsc-send__btn--primary { border-color: var(--smsc-accent, #2457d6); background: var(--smsc-accent, #2457d6); color: #fff; }
+.smsc-send__btn { min-height: 44px; padding: 0 14px; border: 1px solid #d5dbe1; border-radius: 7px; background: var(--smsc-surface, #fff); color: inherit; font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; overflow-wrap: anywhere; min-width: 110px; }
+.smsc-send__btn--primary { border-color: #191f28; background: #191f28; color: #fff; font-weight: 600; }
 .smsc-send__btn:disabled { opacity: 0.55; cursor: not-allowed; }
 @media (max-width: 640px) {
   .smsc-send__actions { flex-direction: column; align-items: stretch; }

@@ -1,13 +1,13 @@
 .smsd {
-  --smsd-accent: var(--smsc-accent, #2457d6);
-  --smsd-accent-weak: var(--smsc-accent-weak, #eaf0ff);
-  --smsd-line: var(--smsc-line, #dfe3ea);
+  --smsd-accent: var(--smsc-accent, #1b64da);
+  --smsd-accent-weak: var(--smsc-accent-weak, #f1f5fd);
+  --smsd-line: var(--smsc-line, #e5e8eb);
   --smsd-surface: var(--smsc-surface, #fff);
-  --smsd-text: var(--smsc-text, #1c2330);
-  --smsd-muted: var(--smsc-muted, #667085);
-  --smsd-ok: var(--smsc-ok, #157f3c);
+  --smsd-text: var(--smsc-text, #191f28);
+  --smsd-muted: var(--smsc-muted, #6b7684);
+  --smsd-ok: var(--smsc-ok, #15803d);
   --smsd-warn: var(--smsc-warn, #b45309);
-  --smsd-danger: var(--smsc-danger, #c62828);
+  --smsd-danger: var(--smsc-danger, #d92d20);
   color: var(--smsd-text);
   min-width: 0;
 }

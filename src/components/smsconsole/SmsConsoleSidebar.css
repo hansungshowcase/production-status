@@ -2,12 +2,12 @@
 .smsc-side { min-width: 0; }
 
 .smsc-icon {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -25,58 +25,63 @@
 
 .smsc-item {
   width: 100%;
-  min-height: 44px;
-  padding: 8px 12px;
+  min-height: 38px;
+  padding: 7px 12px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 0 8px 8px 0;
+  border-radius: 8px;
   background: transparent;
-  color: var(--smsc-text, #1c2330);
-  font-size: 15px;
-  font-weight: 700;
+  color: #4e5968;
+  font-size: 14px;
+  font-weight: 500;
   text-align: left;
   overflow-wrap: anywhere;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.smsc-item:hover { background: var(--smsc-bg, #f5f6f8); }
+.smsc-item:hover { background: #eceff2; color: #191f28; }
 
 .smsc-item.is-active {
-  border-left-color: var(--smsc-accent, #2457d6);
-  background: var(--smsc-accent-weak, #eaf0ff);
-  color: var(--smsc-accent, #2457d6);
+  background: #ffffff;
+  color: #191f28;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(25, 31, 40, 0.06), inset 0 0 0 1px #e5e8eb;
 }
+
+.smsc-item.is-active .smsc-icon { color: var(--smsc-accent, #1b64da); }
 
 .smsc-sub { margin: 2px 0 6px; }
 
 .smsc-subitem {
   width: 100%;
-  min-height: 40px;
-  padding: 6px 12px 6px 36px;
+  min-height: 34px;
+  padding: 6px 12px 6px 38px;
   display: block;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
-  color: var(--smsc-muted, #667085);
-  font-size: 14px;
+  color: #6b7684;
+  font-size: 13.5px;
+  font-weight: 500;
   text-align: left;
   overflow-wrap: anywhere;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.smsc-subitem:hover { background: var(--smsc-bg, #f5f6f8); }
+.smsc-subitem:hover { background: #eceff2; color: #191f28; }
 
 .smsc-subitem.is-active {
-  color: var(--smsc-accent, #2457d6);
-  font-weight: 800;
+  color: var(--smsc-accent, #1b64da);
+  font-weight: 600;
 }
 
 .smsc-note {
-  margin: 16px 12px 0;
-  color: var(--smsc-muted, #667085);
-  font-size: 12px;
-  line-height: 1.4;
+  margin: 18px 12px 0;
+  color: #8b95a1;
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 .smsc-item:focus-visible,
@@ -102,10 +107,10 @@
   }
 
   .smsc-nav {
-    padding: 8px 0;
-    border: 1px solid var(--smsc-line, #dfe3ea);
-    border-radius: 10px;
-    background: var(--smsc-surface, #fff);
+    padding: 2px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 }
 

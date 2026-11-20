@@ -249,6 +249,8 @@ test('buildConditionSummary: 내 자동 문구(출고 후·주문 당일·공정
   assert.ok(shipSummary.tags.includes('출고완료 주문 대상'));
   assert.ok(shipSummary.tags.includes('2026-11-01 이후부터 적용'));
   assert.ok(shipSummary.tags.includes('사본 동시 발송: 5678'));
+  assert.ok(!shipSummary.tags.includes('수신거부 제외'));
+  assert.ok(!shipSummary.tags.includes('같은 번호 중복 제외'));
 
   const sameDayOrder = buildConditionSummary({
     id: 'm2',
@@ -263,6 +265,7 @@ test('buildConditionSummary: 내 자동 문구(출고 후·주문 당일·공정
   assert.equal(sameDayOrder.howMain, '번호당 1번만');
   assert.ok(sameDayOrder.tags.includes('취소 주문 제외'));
   assert.ok(!sameDayOrder.tags.includes('발송 놓친 건 3일 내 보충'));
+  assert.ok(!sameDayOrder.tags.includes('수신거부 제외'));
 
   const processSummary = buildConditionSummary({
     id: 'm3',
@@ -273,6 +276,7 @@ test('buildConditionSummary: 내 자동 문구(출고 후·주문 당일·공정
   }, { isMine: true });
   assert.equal(processSummary.whenMain, '후가공 공정 시작 5일 뒤');
   assert.equal(processSummary.whenSub, '오후 2:00 발송');
+  assert.ok(processSummary.tags.includes('수신거부 제외'));
 
   const dueSummary = buildConditionSummary({
     id: 'm4',

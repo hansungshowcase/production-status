@@ -5,7 +5,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, kindBadges, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
 import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill, sendCostText } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
@@ -544,6 +544,13 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const repeatCount = Number(entry.autoRepeat) || 1;
     const showRepeat = Boolean(entry.autoKind && repeatCount > 1);
     const paused = catchupPausedText(autoStatus[entry.id]);
+    const metaParts = [
+      showTime ? compactTime : '',
+      cp?.who || '',
+      cp?.via || '',
+      entry.hasImage ? photoBadgeText(entry) : '',
+      showRepeat ? `최대 ${repeatCount}회` : '',
+    ].filter(Boolean);
     return (
       <li key={`${prefix}${entry.id}`} className={`stl-item${prefix === 'step-' ? ' stl-item--step' : ''}${isSelected ? ' is-selected' : ''}`}>
         <button type="button" className="stl-item-btn" aria-current={isSelected ? 'true' : undefined} onClick={() => setSelectedKey(key)}>
@@ -554,21 +561,21 @@ function renderConditionBoard(summary, st, isMineAuto) {
           {summary ? (
             <div className="stl-item-cond">
               <span className="stl-when">{summary.whenMain}</span>
-              {showTime ? <span className="stl-list-time">{compactTime}</span> : null}
-              {cp?.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
-              {cp?.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
+              {metaParts.map((part, idx) => (
+                <React.Fragment key={`${idx}-${part}`}>
+                  <span className="stl-meta-sep" aria-hidden="true">·</span>
+                  <span>{part}</span>
+                </React.Fragment>
+              ))}
             </div>
           ) : (
             <div className="stl-item-cond">
               <span className="stl-preview-line">{entry.preview || '내용 없음'}</span>
             </div>
           )}
-          {entry.hasImage || entry.sendCost || showRepeat || paused ? (
+          {paused ? (
             <div className="stl-item-badges">
-              {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
-              {entry.sendCost ? <span className="ktm-badge ktm-badge--muted">{sendCostText(entry.sendCost)}</span> : null}
-              {showRepeat ? <span className="ktm-badge ktm-badge--info">최대 {repeatCount}회</span> : null}
-              {paused ? <span className="ktm-badge ktm-badge--danger">일괄 발송 멈춤</span> : null}
+              <span className="ktm-badge ktm-badge--danger">일괄 발송 멈춤</span>
             </div>
           ) : null}
         </button>
@@ -582,8 +589,19 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const isSelected = selectedKey === key;
     const light = itemLight(item);
     const summary = buildConditionSummary(item, { isMine: false, recipients });
-    const secondary = item.audience?.id !== 'customer' && summary.whoMain ? summary.whoMain : summary.whenSub;
-    const badges = [...smsBadges(item), ...kindBadges(item)].filter((badge) => badge.text !== '꺼짐');
+    const detailPart = item.audience?.id !== 'customer' && summary.whoMain
+      ? summary.whoMain
+      : (item.count !== null && item.count > 0 ? `7일 ${item.count}건` : (summary.whenSub || ''));
+    const metaParts = [
+      item.audience.label,
+      [item.sender, item.channel].filter(Boolean).join(' '),
+      detailPart,
+    ].filter(Boolean);
+    const exceptionBadges = [];
+    if (item.config?.status === 'incomplete') exceptionBadges.push({ tone: 'danger', text: item.config.label || '설정 미완료' });
+    if (item.policy?.status === 'paused') exceptionBadges.push({ tone: 'warn', text: item.policy.label || '정책 중단' });
+    if (item.ad) exceptionBadges.push({ tone: 'info', text: '광고' });
+    if (item.count === null) exceptionBadges.push({ tone: 'muted', text: '발송 확인 안 됨' });
     return (
       <li key={item.id} className={`stl-item${isSelected ? ' is-selected' : ''}`}>
         <button type="button" className="stl-item-btn" aria-current={isSelected ? 'true' : undefined} onClick={() => setSelectedKey(key)}>
@@ -592,15 +610,17 @@ function renderConditionBoard(summary, st, isMineAuto) {
             <span className={`stl-light stl-light--${light.tone}`} title={light.text}>{light.text}</span>
           </div>
           <div className="stl-item-cond">
-            <span className="ktm-chip">{item.audience.label}</span>
-            <span className="ktm-chip ktm-chip--sender">{item.sender}</span>
-            {item.channel ? <span className="ktm-chan">{item.channel}</span> : null}
             {summary.whenMain ? <span className="stl-when">{summary.whenMain}</span> : null}
-            {secondary ? <span className="stl-line-inline">{secondary}</span> : null}
+            {metaParts.map((part, idx) => (
+              <React.Fragment key={`${idx}-${part}`}>
+                {(summary.whenMain || idx > 0) ? <span className="stl-meta-sep" aria-hidden="true">·</span> : null}
+                <span>{part}</span>
+              </React.Fragment>
+            ))}
           </div>
-          {badges.length > 0 ? (
+          {exceptionBadges.length > 0 ? (
             <div className="stl-item-badges">
-              {badges.map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
+              {exceptionBadges.map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
             </div>
           ) : null}
         </button>
@@ -723,12 +743,14 @@ function renderConditionBoard(summary, st, isMineAuto) {
             <button type="button" className="ktm-btn stl-back" onClick={() => setSelectedKey('')}>
               <SmsIcon name="back" /> 목록으로
             </button>
-            <div className="stl-detail-badges">
-              {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`}>{eff.text}</span> : <span className="ktm-chip">수동 발송 문구</span>}
-              {cp?.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
-              <span className="ktm-chip ktm-chip--sender">내 문구</span>
-              {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
-              {entry.sendCost ? <span className="ktm-badge ktm-badge--muted">{sendCostText(entry.sendCost)}</span> : null}
+            <div className="stl-detail-meta">
+              {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`}>{eff.text}</span> : <span className="stl-detail-kind">수동 발송</span>}
+              {['내 문구', cp?.who, entry.hasImage ? photoBadgeText(entry) : '', entry.sendCost ? sendCostText(entry.sendCost) : ''].filter(Boolean).map((part, idx) => (
+                <React.Fragment key={`${idx}-${part}`}>
+                  <span className="stl-meta-sep" aria-hidden="true">·</span>
+                  <span>{part}</span>
+                </React.Fragment>
+              ))}
             </div>
             <h3 className="stl-detail-title">{entry.name}</h3>
             {paused ? <p className="ktm-alert stl-detail-banner" role="alert">{paused}</p> : null}
@@ -736,29 +758,28 @@ function renderConditionBoard(summary, st, isMineAuto) {
               <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{eff.text}</p>
             ) : null}
             {mineError ? <p className="ktm-alert stl-detail-banner" role="alert">{mineError}</p> : null}
-          </div>
-
-          <div className="stl-detail-actions">
-            {entry.autoKind ? (
-              <SmsAutoControls
-                key={entry.id}
-                id={entry.id}
-                enabled={Boolean(st?.enabled ?? entry.autoEnabled)}
-                photos={entry.imageCount}
-                ata={Boolean(entry.autoAtaTemplate)}
-                bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID}
-                onChanged={() => { loadMine(); }}
-              >
-                <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
-                <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
-              </SmsAutoControls>
-            ) : (
-              <div className="stl-detail-btnrow">
-                <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>
-                <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>
-                <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
-              </div>
-            )}
+            <div className="stl-detail-actions">
+              {entry.autoKind ? (
+                <SmsAutoControls
+                  key={entry.id}
+                  id={entry.id}
+                  enabled={Boolean(st?.enabled ?? entry.autoEnabled)}
+                  photos={entry.imageCount}
+                  ata={Boolean(entry.autoAtaTemplate)}
+                  bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID}
+                  onChanged={() => { loadMine(); }}
+                >
+                  <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
+                  <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+                </SmsAutoControls>
+              ) : (
+                <div className="stl-detail-btnrow">
+                  <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>
+                  <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>
+                  <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+                </div>
+              )}
+            </div>
           </div>
 
           {renderConditionBoard(summary, st, Boolean(entry.autoKind))}
@@ -779,7 +800,6 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const hasMedia = Boolean(item.image);
     const hasVars = /#\{[^{}\n]{1,40}\}/.test(rawBody);
     const isLongBody = rawBody.length > 120 || rawBody.split('\n').length > 4;
-    const badges = [...smsBadges(item), ...kindBadges(item)].filter((badge) => badge.text !== '꺼짐');
     const isTall = Boolean(tallImgMap[`i-${item.id}`]);
     const imgBroken = Boolean(extImgError[item.id]);
     const msgCard = (
@@ -864,12 +884,14 @@ function renderConditionBoard(summary, st, isMineAuto) {
           <button type="button" className="ktm-btn stl-back" onClick={() => setSelectedKey('')}>
             <SmsIcon name="back" /> 목록으로
           </button>
-          <div className="stl-detail-badges">
+          <div className="stl-detail-meta">
             <span className={`stl-light stl-light--${light.tone}`}>{light.text}</span>
-            <span className="ktm-chip">{item.audience.label}</span>
-            <span className="ktm-chip ktm-chip--sender">{item.sender}</span>
-            {item.channel ? <span className="ktm-chip">{item.channel}</span> : null}
-            {badges.map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
+            {[item.audience.label, item.sender, item.channel, item.ad ? '광고' : ''].filter(Boolean).map((part, idx) => (
+              <React.Fragment key={`${idx}-${part}`}>
+                <span className="stl-meta-sep" aria-hidden="true">·</span>
+                <span>{part}</span>
+              </React.Fragment>
+            ))}
           </div>
           <h3 className="stl-detail-title">{item.name}</h3>
           {item.config?.status === 'incomplete' ? (

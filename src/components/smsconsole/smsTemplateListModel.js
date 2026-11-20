@@ -462,7 +462,7 @@ function buildMineConditionSummary(entry) {
     whoSub = '취소 주문 제외';
   }
 
-  if (aud === 'customer' && ['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind)) {
+  if (aud === 'customer' && ['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind) && !whoSub.includes('수신거부')) {
     tags.push('수신거부 제외', '같은 번호 중복 제외');
   }
   if (entry.autoSendFrom) tags.push(`${entry.autoSendFrom} 이후부터 적용`);
