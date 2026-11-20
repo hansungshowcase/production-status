@@ -19,7 +19,7 @@
 .ktm-btn--danger { background: var(--smsc-danger, #d92d20); border-color: var(--smsc-danger, #d92d20); color: #fff; }
 .ktm-btn--danger-outline { color: #d92d20; border-color: #f3d0ce; background: #fff; }
 .ktm-btn--danger-outline:hover:not(:disabled) { background: #fef2f2; border-color: #ebb7b4; }
-.ktm-btn--icon { min-height: 30px; padding: 0 8px; }
+.ktm-btn--icon { min-height: 28px; padding: 0 8px; }
 
 .ktm-lockbar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -310,5 +310,45 @@
 .stl-lb-close { background: rgba(255, 255, 255, 0.16); }
 .stl-lb-stage { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 20px; display: flex; justify-content: center; align-items: flex-start; }
 .stl-lb-img { display: block; border-radius: 8px; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45); background: #fff; }
-.stl-lb-img--width { width: min(680px, 100%); max-width: 100%; height: auto; }
-.stl-lb-img--contain { max-width: 100%; max-height: calc(100vh - 104px); width: auto; height: auto; margin: auto 0; }
+.ktm-root .stl-lb-img--width { width: min(680px, 100%); max-width: 100%; height: auto; }
+.ktm-root .stl-lb-img--contain { max-width: 100%; max-height: calc(100vh - 104px); width: auto; height: auto; margin: auto 0; }
+
+/* ============ 카카오톡 템플릿 통일 레이아웃(.ktm-kakao) ============ */
+.ktm-kakao .ktm-ata-item { display: flex; align-items: stretch; }
+.ktm-kakao .ktm-ata-item .stl-item-btn { flex: 1 1 auto; min-width: 0; padding-right: 4px; }
+.ktm-kakao .ktm-ata-item .ktm-menu-wrap { padding: 4px 4px 0 0; align-items: flex-start; }
+.ktm-kakao .ktm-ata-item .ktm-more { width: 32px; height: 32px; }
+.ktm-kakao .stl-item-top .ktm-card-name {
+  flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 600; line-height: 1.4;
+  letter-spacing: -0.015em; color: #191f28; overflow-wrap: anywhere; word-break: keep-all;
+  display: block; -webkit-line-clamp: unset;
+}
+.ktm-kakao .ktm-card-target {
+  display: block; flex: none; margin-top: 2px; font-size: 11.5px; color: #8b95a1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.ktm-kakao .stl-cond-board {
+  padding: 12px 0; background: transparent; border: 0; border-bottom: 1px solid #eef0f3; border-radius: 0;
+}
+.ktm-kakao .ktm-linked-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+  padding: 10px 0 8px; border-bottom: 1px solid #f0f2f5;
+}
+.ktm-kakao .ktm-preview-stage { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; min-width: 0; }
+.ktm-kakao .ktm-detail-split {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; min-width: 0;
+}
+@media (min-width: 1180px) {
+  .ktm-kakao .ktm-detail-split { grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); }
+}
+.ktm-kakao .ktp-board { padding: 12px 10px 10px; min-width: 0; }
+.ktm-kakao .ktp-bubble { max-width: 100%; }
+.ktm-kakao .ktm-info {
+  padding: 12px 14px; border: 1px solid #eceff2; border-radius: 8px; background: #fafbfc;
+  grid-template-columns: 74px minmax(0, 1fr); gap: 7px 10px; font-size: 12.5px; min-width: 0;
+}
+.ktm-kakao .ktm-id code { word-break: break-all; font-size: 11.5px; }
+@media (max-width: 1023px) {
+  .ktm-kakao .ktm-ata-item .ktm-more { width: 40px; height: 40px; }
+}
