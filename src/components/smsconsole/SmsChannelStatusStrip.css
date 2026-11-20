@@ -380,6 +380,11 @@
 }
 .scss-issue-chip--info:hover { background: #dbeafe; }
 
+.scss-issue-chip.is-active { box-shadow: 0 0 0 2px rgba(25, 31, 40, 0.14); }
+.scss-issue-chip--danger.is-active { background: #dc2626; border-color: #b91c1c; color: #ffffff; }
+.scss-issue-chip--warn.is-active { background: #d97706; border-color: #b45309; color: #ffffff; }
+.scss-issue-chip--info.is-active { background: #1d4ed8; border-color: #1e40af; color: #ffffff; }
+
 .scss-issue-ok {
   display: inline-flex;
   align-items: center;

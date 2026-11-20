@@ -60,10 +60,10 @@ export default function SmsConsoleSidebar({ state, onSelect }) {
   };
 
   const subs = current.subs || [];
-  const subPatch = sub => {
-    if (current.id === 'log') return { aud: sub.aud, ch: sub.ch };
+  const subPatch = (menuId, sub) => {
+    if (menuId === 'log') return { aud: sub.aud, ch: sub.ch };
     if (sub.mode) return { mode: sub.mode, tpl: '' };
-    if (current.id === 'templates') return { ch: sub.ch, tpl: '', mode: '' };
+    if (menuId === 'templates') return { ch: sub.ch, tpl: '', mode: '' };
     return { tpl: '', mode: '' };
   };
 
@@ -94,7 +94,7 @@ export default function SmsConsoleSidebar({ state, onSelect }) {
               type="button"
               className={`smsc-pill${subId === sub.id ? ' is-active' : ''}`}
               aria-current={subId === sub.id ? 'true' : undefined}
-              onClick={() => choose(current.id, subPatch(sub))}
+              onClick={() => choose(current.id, subPatch(current.id, sub))}
             >
               {sub.label}
             </button>
@@ -120,15 +120,15 @@ export default function SmsConsoleSidebar({ state, onSelect }) {
                   <MenuIcon id={menu.id} />
                   <span>{menu.label}</span>
                 </button>
-                {selected && menu.subs && (
+                {(selected || menu.id === 'templates') && menu.subs && (
                   <ul className="smsc-sub">
                     {menu.subs.map(sub => (
                       <li key={sub.id}>
                         <button
                           type="button"
-                          className={`smsc-subitem${subId === sub.id ? ' is-active' : ''}`}
-                          aria-current={subId === sub.id ? 'page' : undefined}
-                          onClick={() => choose(menu.id, subPatch(sub))}
+                          className={`smsc-subitem${selected && subId === sub.id ? ' is-active' : ''}`}
+                          aria-current={selected && subId === sub.id ? 'page' : undefined}
+                          onClick={() => choose(menu.id, subPatch(menu.id, sub))}
                         >
                           {sub.label}
                         </button>

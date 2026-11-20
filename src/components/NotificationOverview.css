@@ -319,6 +319,7 @@
 .notification-overview-chpill--bms[aria-pressed='true'] { border-color: #6d28d9; background: #6d28d9; }
 .notification-overview-chpill--ata[aria-pressed='true'] { border-color: #b45309; background: #b45309; }
 .notification-overview-chpill--sms[aria-pressed='true'] { border-color: #1d4ed8; background: #1d4ed8; }
+.notification-overview-chpill--other[aria-pressed='true'] { border-color: #64748b; background: #64748b; }
 
 /* 카테고리 그룹 헤더 */
 .notification-overview-cathead {
@@ -727,9 +728,9 @@
     padding: 6px 10px;
   }
 
-  .notification-overview-item { padding: 9px 12px; }
+  .notification-overview-item { padding: 0; }
 
-  .notification-overview-item__row { grid-template-columns: minmax(0, 1fr); }
+  .notification-overview-item__row { padding: 9px 12px; grid-template-columns: minmax(0, 1fr); }
 
   .notification-overview-disclosure {
     width: 100%;

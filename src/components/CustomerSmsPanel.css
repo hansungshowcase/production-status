@@ -372,6 +372,14 @@
 
 .customer-sms-chevron {
   display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
   transition: transform 140ms ease;
 }
 .customer-sms-chevron.is-open { transform: rotate(180deg); }
@@ -567,7 +575,8 @@
   .customer-sms-filters input,
   .customer-sms-filters select { flex: 1 1 auto; }
   .customer-sms-campaign { margin: 10px 12px 0; padding: 10px 12px; }
-  .customer-sms-item { padding: 10px 12px; }
+  .customer-sms-item { padding: 0; }
+  .customer-sms-item__trigger { padding: 9px 12px; }
   .customer-sms-review-item { grid-template-columns: auto minmax(0, 1fr); padding: 9px 12px; }
   .customer-sms-attempts li { grid-template-columns: minmax(0, 1fr) auto; }
   .customer-sms-attempts li > span:last-child { grid-column: 1 / -1; }

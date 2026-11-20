@@ -65,6 +65,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const [mineError, setMineError] = useState('');
   const [pageNo, setPageNo] = useState(1); // 목록은 10행씩 쪽으로 나눈다
   const [cond, setCond] = useState(''); // 발송 조건 거르기('' = 전체)
+  const [issueFilter, setIssueFilter] = useState(''); // '' | 'catchup-paused' | 'off-blocked' | 'on-zero-send'
   const [copiedKey, setCopiedKey] = useState('');
   const [previewFilled, setPreviewFilled] = useState(false);
   const [expandedImg, setExpandedImg] = useState(false);
@@ -456,21 +457,32 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     total: autoAll + items.length,
     attention: attentionTotal,
   }), [runningAll, activeCatalogAll, autoAll, items.length, attentionTotal]);
+  const SMS_ISSUE_LABELS = {
+    'catchup-paused': '일괄 발송 멈춤',
+    'off-blocked': '꺼짐 · 설정 미완료',
+    'on-zero-send': '켜짐 · 최근 발송 없음',
+  };
+  const isEntryCatchupPaused = (entry) => Boolean(entry.autoKind && catchupPausedText(autoStatus[entry.id]));
+  const isEntryOffBlocked = (entry) => Boolean(entry.autoKind && ['off', 'blocked'].includes(effOf(entry).tone));
+  const isItemOffBlocked = (item) => ['off', 'blocked'].includes(itemLight(item).tone);
+  const isEntryOnZeroSend = (entry) => {
+    const st = autoStatus[entry.id];
+    return Boolean(entry.autoKind && st && effOf(entry).tone !== 'off' && !(Number(st.sent_7d) > 0) && !st.last_sent_date);
+  };
+  const isItemOnZeroSend = (item) => itemLight(item).tone === 'on' && item.count === 0 && !item.lastSentAt;
+
   const smsIssues = useMemo(() => {
-    const pausedCount = allMine.filter((entry) => entry.autoKind && catchupPausedText(autoStatus[entry.id])).length;
-    const offBlockedMine = allMine.filter((entry) => entry.autoKind && ['off', 'blocked'].includes(effOf(entry).tone)).length;
-    const offBlockedItems = items.filter((item) => ['off', 'blocked'].includes(itemLight(item).tone)).length;
-    const onZeroMine = allMine.filter((entry) => {
-      const st = autoStatus[entry.id];
-      return entry.autoKind && st && effOf(entry).tone !== 'off' && !(Number(st.sent_7d) > 0) && !st.last_sent_date;
-    }).length;
-    const onZeroItems = items.filter((item) => itemLight(item).tone === 'on' && item.count === 0 && !item.lastSentAt).length;
+    const pausedCount = allMine.filter(isEntryCatchupPaused).length;
+    const offBlockedMine = allMine.filter(isEntryOffBlocked).length;
+    const offBlockedItems = items.filter(isItemOffBlocked).length;
+    const onZeroMine = allMine.filter(isEntryOnZeroSend).length;
+    const onZeroItems = items.filter(isItemOnZeroSend).length;
     return [
-      { key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, onClick: () => pickFilter('attention') },
-      { key: 'off-blocked', tone: 'danger', label: '꺼짐 · 설정 미완료', count: offBlockedMine + offBlockedItems, onClick: () => pickFilter('attention') },
-      { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, onClick: () => pickFilter('in_use') },
+      { key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, active: issueFilter === 'catchup-paused', onClick: () => toggleIssueFilter('catchup-paused') },
+      { key: 'off-blocked', tone: 'danger', label: '꺼짐 · 설정 미완료', count: offBlockedMine + offBlockedItems, active: issueFilter === 'off-blocked', onClick: () => toggleIssueFilter('off-blocked') },
+      { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, active: issueFilter === 'on-zero-send', onClick: () => toggleIssueFilter('on-zero-send') },
     ];
-  }, [allMine, autoStatus, items]);
+  }, [allMine, autoStatus, items, issueFilter]);
   const pills = useMemo(() => {
     const base = smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll }));
     return [
@@ -489,12 +501,21 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     [query, sortedMine],
   );
   const attentionAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [sortedMine, autoStatus]);
-  const shownAutos = isMineTab ? [] : (isAttentionTab ? attentionAutos : (tab === 'in_use' ? [...runningAutos, ...manualMatched] : [...allAutos, ...manualMatched]));
+  const shownAutos = isMineTab ? [] : (
+    issueFilter === 'catchup-paused' ? sortedMine.filter(isEntryCatchupPaused)
+      : issueFilter === 'off-blocked' ? sortedMine.filter(isEntryOffBlocked)
+        : issueFilter === 'on-zero-send' ? sortedMine.filter(isEntryOnZeroSend)
+          : (isAttentionTab ? attentionAutos : (tab === 'in_use' ? [...runningAutos, ...manualMatched] : [...allAutos, ...manualMatched]))
+  );
   const sectionItems = useMemo(() => {
-    if (isMineTab) return [];
-    const filtered = tab === 'in_use' ? condItems.filter((item) => (item.count ?? 0) > 0) : (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems);
+    if (isMineTab || issueFilter === 'catchup-paused') return [];
+    const filtered = issueFilter === 'off-blocked'
+      ? condItems.filter(isItemOffBlocked)
+      : issueFilter === 'on-zero-send'
+        ? condItems.filter(isItemOnZeroSend)
+        : (tab === 'in_use' ? condItems.filter((item) => (item.count ?? 0) > 0) : (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems));
     return sortSmsItems(filtered);
-  }, [condItems, isMineTab, isAttentionTab, tab]);
+  }, [condItems, isMineTab, isAttentionTab, tab, issueFilter]);
 
   // 비즈니스 카테고리(리뷰 이벤트 · 소개/혜택 · 주문/출고/주의사항 · 직원/관리자)로 일관되게 묶는다
   const displayGroups = useMemo(() => {
@@ -529,12 +550,22 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   }, [isMineTab, flowRows, displayGroups]);
   const paged = paginateRows(rowKeys, pageNo, 20);
   const pageSet = new Set(paged.rows);
-  const pickCond = (value) => { setCond(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
-  const pickFilter = (id) => { setPicked(id); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
+  const pickCond = (value) => { setIssueFilter(''); setCond(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
+  const pickFilter = (id) => { setIssueFilter(''); setPicked(id); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
+  const toggleIssueFilter = (key) => {
+    setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey('');
+    setIssueFilter((prev) => {
+      if (prev === key) return '';
+      setPicked('all');
+      setCond('');
+      setQuery('');
+      return key;
+    });
+  };
   const goPage = (next) => { setPageNo(next); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const changeQuery = (value) => { setQuery(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
-  const hasActiveFilters = Boolean(query.trim() || cond || tab !== 'all');
-  const resetFilters = () => { setQuery(''); setCond(''); setPicked('all'); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
+  const hasActiveFilters = Boolean(query.trim() || cond || issueFilter || tab !== 'all');
+  const resetFilters = () => { setQuery(''); setCond(''); setIssueFilter(''); setPicked('all'); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
 
   // 현재 쪽에서 선택 가능한 항목 키 목록(표시 순서)
   const visibleCandidateKeys = useMemo(() => {
@@ -1231,7 +1262,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
           </div>
           <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
             {pills.map((pill) => (
-              <button type="button" key={pill.id} className={`ktm-pill${tab === pill.id ? ' is-active' : ''}`} aria-pressed={tab === pill.id} onClick={() => pickFilter(pill.id)}>
+              <button type="button" key={pill.id} className={`ktm-pill${!issueFilter && tab === pill.id ? ' is-active' : ''}`} aria-pressed={!issueFilter && tab === pill.id} onClick={() => pickFilter(pill.id)}>
                 {pill.label} {pill.count}
               </button>
             ))}
@@ -1245,6 +1276,13 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
             <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
           </span>
         </div>
+
+        {issueFilter && !isMineTab ? (
+          <div className="stl-issue-active-bar" role="status">
+            <span>지금 확인 중인 이슈: <strong>{SMS_ISSUE_LABELS[issueFilter] || issueFilter}</strong> ({rowKeys.length}건)</span>
+            <button type="button" className="ktm-btn stl-mini-btn" onClick={resetFilters}>전체 보기</button>
+          </div>
+        ) : null}
 
         <div className={`stl-layout${selectedKey ? ' has-detail' : ''}`}>
           <section className="stl-list-pane" aria-label="문자 템플릿 목록">

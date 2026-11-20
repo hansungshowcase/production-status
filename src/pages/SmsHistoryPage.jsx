@@ -157,7 +157,7 @@ export default function SmsHistoryPage() {
 
         {(isMounted('customer') || isMounted('staff')) && (
           <div className="sms-console-campaign" hidden={state.menu !== 'customer' && state.menu !== 'staff'}>
-            <button type="button" className="sms-console-new-text" onClick={() => selectMenu('templates', { mode: 'new', kind: KIND_SMS })}>새 문자 등록</button>
+            <button type="button" className="sms-console-new-text" onClick={() => selectMenu('templates', { mode: 'new', kind: KIND_SMS })}>+ 새 발송 등록</button>
           </div>
         )}
 

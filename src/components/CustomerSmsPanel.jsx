@@ -158,7 +158,7 @@ export default function CustomerSmsPanel() {
           <label><span>안내 유형</span><select aria-label="안내 유형" value={kind} onChange={event => { setKind(event.target.value); setHistoryPage(1); setExpandedId(null); }}><option value="">전체 유형</option>{history.kinds.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <button type="button" disabled={date === todayInKst() && !kind} onClick={() => { setDate(todayInKst()); setKind(''); setHistoryPage(1); setExpandedId(null); }}>조건 초기화</button>
         </div>
-        {history.status === 'ready' && history.reviewSync.notice && <p className={`customer-sms-sync-notice is-${history.reviewSync.state}`} role="status"><span>{history.reviewSync.notice}</span>{history.reviewSync.checked_at && <time dateTime={history.reviewSync.checked_at}>확인 {formatCustomerSmsTime(history.reviewSync.checked_at)}</time>}</p>}
+        {history.status === 'ready' && history.reviewSync.notice && <p className={`customer-sms-sync-notice is-${history.reviewSync.state}`} role="status"><span>{String(history.reviewSync.notice).replace(/\bSOLAPI\b/g, '쏠라피')}</span>{history.reviewSync.checked_at && <time dateTime={history.reviewSync.checked_at}>확인 {formatCustomerSmsTime(history.reviewSync.checked_at)}</time>}</p>}
         <div className="customer-sms-summary" aria-label="고객 발송 요약">
           <div><span>전체</span><strong>{history.counts.total}</strong></div><div className="is-success"><span>수신 완료</span><strong>{history.counts.delivery.received}</strong></div><div className="is-failed"><span>전달 실패</span><strong>{history.counts.delivery.failed}</strong></div><div><span>미발송·확인 중</span><strong>{history.counts.delivery.pending + history.counts.delivery.unknown + history.counts.delivery.not_sent + history.counts.delivery.uncertain}</strong></div>
         </div>
@@ -198,7 +198,6 @@ export default function CustomerSmsPanel() {
                           </div>
                           <p className="customer-sms-meta">
                             <span>{item.kind_label || '안내 유형 미확인'}</span>
-                            <span>{item.channel || '채널 미확인'}</span>
                             <time dateTime={item.sent_at || undefined}>{formatCustomerSmsTime(item.sent_at)}</time>
                             {Number(item.attempt_count) > 0 && <span>발송 시도 {item.attempt_count}회</span>}
                             {item.delivery?.code && <span>결과 코드 {item.delivery.code}</span>}
@@ -215,7 +214,9 @@ export default function CustomerSmsPanel() {
                             onClick={event => { event.stopPropagation(); toggleItem(); }}
                           >
                             <span>{expanded ? '접기' : '보기'}</span>
-                            <span className={`customer-sms-chevron${expanded ? ' is-open' : ''}`} aria-hidden="true">⌄</span>
+                            <svg className={`customer-sms-chevron${expanded ? ' is-open' : ''}`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path d="m6 9 6 6 6-6" />
+                            </svg>
                           </button>
                         </div>
                         {expanded && (
@@ -227,7 +228,7 @@ export default function CustomerSmsPanel() {
                                 <ul>
                                   {item.attempts.map((attempt, index) => (
                                     <li key={`${attempt.channel}-${attempt.code}-${index}`}>
-                                      <strong>{attempt.channel || '채널 미확인'}</strong>
+                                      <strong>{customerChannelBadge(attempt.channel).label}</strong>
                                       <span className={`customer-sms-badge is-${customerDeliveryTone(attempt.state)}`}>{attempt.label || '결과 미확인'}</span>
                                       <span>결과 코드 {attempt.code || '없음'}</span>
                                     </li>

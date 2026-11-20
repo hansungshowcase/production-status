@@ -172,6 +172,7 @@ const CUSTOMER_CHANNEL_FILTERS = [
   { id: 'bms', label: '브랜드메시지' },
   { id: 'ata', label: '알림톡' },
   { id: 'sms', label: '문자' },
+  { id: 'other', label: '보내지 않음' },
 ];
 
 function matchesOverviewQuery(item, normalizedQuery, shortPhones) {
@@ -232,7 +233,7 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
     (count, group) => count + (group.items || []).filter(item => item.policy?.status === 'paused').length,
     0,
   );
-  const channelCounts = { all: 0, bms: 0, ata: 0, sms: 0 };
+  const channelCounts = { all: 0, bms: 0, ata: 0, sms: 0, other: 0 };
   if (onlyGroup === 'customer') {
     for (const group of groups) {
       for (const item of group.items || []) {

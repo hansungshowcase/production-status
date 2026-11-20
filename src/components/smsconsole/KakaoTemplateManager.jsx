@@ -130,6 +130,7 @@ export default function KakaoTemplateManager({
   const [query, setQuery] = useState('');
   const [pickedFilter, setPickedFilter] = useState('all');
   const [inspectFilter, setInspectFilter] = useState('');
+  const [issueFilter, setIssueFilter] = useState(''); // '' | 'bms-zero-send'
   const [pageNo, setPageNo] = useState(1);
   const [menuId, setMenuId] = useState('');
   const [dialog, setDialog] = useState(null);
@@ -381,9 +382,21 @@ export default function KakaoTemplateManager({
 
   const statusFilter = pickedFilter || 'all';
 
+  const isBmsZeroSend = useCallback((entry) => {
+    const st = autoStatusMap[entry.id];
+    return Boolean(st && displayLightOf(entry).tone === 'on' && !(Number(st.sent_7d) > 0) && !st.last_sent_date);
+  }, [autoStatusMap, displayLightOf]);
+
   // 브랜드메시지(DB) 필터링
   const visibleManaged = useMemo(() => {
     if (inspectFilter) return [];
+    if (issueFilter === 'bms-zero-send') {
+      return managedKakaoEntries.filter((entry) => {
+        if (!isBmsZeroSend(entry)) return false;
+        const bodyText = bmsDetailMap[entry.id]?.item?.body ?? entry.preview ?? '';
+        return matchesSmsQuery({ ...entry, body: bodyText }, query);
+      });
+    }
     if (!['in_use', 'all', 'bms', 'attention'].includes(statusFilter)) return [];
     return managedKakaoEntries.filter((entry) => {
       if (statusFilter === 'in_use' && !['on', 'part'].includes(effOf(entry).tone)) return false;
@@ -391,7 +404,7 @@ export default function KakaoTemplateManager({
       const bodyText = bmsDetailMap[entry.id]?.item?.body ?? entry.preview ?? '';
       return matchesSmsQuery({ ...entry, body: bodyText }, query);
     });
-  }, [inspectFilter, managedKakaoEntries, statusFilter, effOf, isDbAttention, bmsDetailMap, query]);
+  }, [inspectFilter, issueFilter, managedKakaoEntries, statusFilter, effOf, isDbAttention, isBmsZeroSend, bmsDetailMap, query]);
 
   const kakaoIssues = useMemo(() => {
     const rejectedCount = items.filter((item) => item.status === 'REJECTED').length;
@@ -400,22 +413,64 @@ export default function KakaoTemplateManager({
     const attentionCount = managedKakaoEntries.filter(isDbAttention).length
       + items.filter(isAtaAttention).length
       + allReadOnly.filter(isRoAttention).length;
-    const onZeroBms = managedKakaoEntries.filter((entry) => {
-      const st = autoStatusMap[entry.id];
-      return st && displayLightOf(entry).tone === 'on' && !(Number(st.sent_7d) > 0) && !st.last_sent_date;
-    }).length;
+    const onZeroBms = managedKakaoEntries.filter(isBmsZeroSend).length;
+    const toggleInspect = (status) => {
+      userClearedRef.current = false;
+      setIssueFilter('');
+      setPickedFilter('all');
+      setQuery('');
+      setInspectFilter((prev) => (prev === status ? '' : status));
+      setPageNo(1);
+      setSelectedBmsId(null);
+      setOpenRoId('');
+    };
     return [
-      { key: 'ata-rejected', tone: 'danger', label: '검수 반려', count: rejectedCount, onClick: () => { userClearedRef.current = false; setPickedFilter('all'); setInspectFilter('REJECTED'); setPageNo(1); } },
-      { key: 'ata-pending', tone: 'warn', label: '검수 전', count: pendingCount, onClick: () => { userClearedRef.current = false; setPickedFilter('all'); setInspectFilter('PENDING'); setPageNo(1); } },
-      { key: 'ata-inspecting', tone: 'info', label: '검수 중', count: inspectingCount, onClick: () => { userClearedRef.current = false; setPickedFilter('all'); setInspectFilter('INSPECTING'); setPageNo(1); } },
-      { key: 'kakao-attention', tone: 'danger', label: '꺼짐 · 확인 필요', count: attentionCount, onClick: () => pickFilter('attention') },
-      { key: 'bms-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroBms, onClick: () => pickFilter('bms') },
+      { key: 'ata-rejected', tone: 'danger', label: '검수 반려', count: rejectedCount, active: inspectFilter === 'REJECTED', onClick: () => toggleInspect('REJECTED') },
+      { key: 'ata-pending', tone: 'warn', label: '검수 전', count: pendingCount, active: inspectFilter === 'PENDING', onClick: () => toggleInspect('PENDING') },
+      { key: 'ata-inspecting', tone: 'info', label: '검수 중', count: inspectingCount, active: inspectFilter === 'INSPECTING', onClick: () => toggleInspect('INSPECTING') },
+      {
+        key: 'kakao-attention',
+        tone: 'danger',
+        label: '꺼짐 · 확인 필요',
+        count: attentionCount,
+        active: !inspectFilter && !issueFilter && statusFilter === 'attention',
+        onClick: () => {
+          if (!inspectFilter && !issueFilter && statusFilter === 'attention') pickFilter('all');
+          else {
+            userClearedRef.current = false;
+            setIssueFilter('');
+            setInspectFilter('');
+            setQuery('');
+            setPickedFilter('attention');
+            setPageNo(1);
+            setSelectedBmsId(null);
+            setOpenRoId('');
+          }
+        },
+      },
+      {
+        key: 'bms-zero-send',
+        tone: 'info',
+        label: '켜짐 · 최근 발송 없음',
+        count: onZeroBms,
+        active: issueFilter === 'bms-zero-send',
+        onClick: () => {
+          userClearedRef.current = false;
+          setIssueFilter((prev) => (prev === 'bms-zero-send' ? '' : 'bms-zero-send'));
+          setPickedFilter('all');
+          setInspectFilter('');
+          setQuery('');
+          setPageNo(1);
+          setSelectedBmsId(null);
+          setOpenRoId('');
+        },
+      },
     ];
-  }, [items, managedKakaoEntries, allReadOnly, isDbAttention, isAtaAttention, isRoAttention, autoStatusMap, displayLightOf]);
+  }, [items, managedKakaoEntries, allReadOnly, isDbAttention, isAtaAttention, isRoAttention, isBmsZeroSend, inspectFilter, issueFilter, statusFilter]);
 
   // 알림톡 필터링(알약 상태 + 검수 상태 드롭다운 + 검색어, 띄어쓰기 무시)
   const visible = useMemo(() => {
-    if (statusFilter === 'bms') return [];
+    if (issueFilter === 'bms-zero-send' || statusFilter === 'bms') return [];
     const q = String(query || '').trim().toLowerCase();
     const qNoSpace = q.replace(/\s+/g, '');
     return items.filter((item) => {
@@ -434,17 +489,17 @@ export default function KakaoTemplateManager({
       const linkedEntries = linkedTextEntries(textItems, item.id);
       return linkedEntries.some((entry) => matchesSmsQuery(entry, q));
     });
-  }, [statusFilter, inspectFilter, query, items, usage, sent, hasLinkedOn, isAtaAttention, textItems]);
+  }, [issueFilter, statusFilter, inspectFilter, query, items, usage, sent, hasLinkedOn, isAtaAttention, textItems]);
 
   const readOnly = useMemo(() => {
-    if (inspectFilter) return [];
+    if (inspectFilter || issueFilter === 'bms-zero-send') return [];
     const roStatus = statusFilter === 'in_use' ? 'in_use' : 'all';
     const list = readOnlyKakaoItems(items, sent, { status: roStatus, query })
       .filter((entry) => entry.sender !== SENDERS.make)
       .filter((entry) => (statusFilter === 'bms' ? entry.channel === 'BMS' : true))
       .filter((entry) => (statusFilter === 'attention' ? isRoAttention(entry) : true));
     return list;
-  }, [inspectFilter, items, sent, statusFilter, query, isRoAttention]);
+  }, [inspectFilter, issueFilter, items, sent, statusFilter, query, isRoAttention]);
 
   // 비즈니스 카테고리(리뷰 이벤트 · 소개/혜택 · 주문/출고 · 상담/문의 · 직원 알림)로 통일 묶기
   const displayGroups = useMemo(() => {
@@ -481,6 +536,7 @@ export default function KakaoTemplateManager({
 
   const pickFilter = (id) => {
     userClearedRef.current = false;
+    setIssueFilter('');
     setPickedFilter(id);
     setPageNo(1);
     setSelectedBmsId(null);
@@ -488,6 +544,7 @@ export default function KakaoTemplateManager({
   };
   const pickInspect = (val) => {
     userClearedRef.current = false;
+    setIssueFilter('');
     setInspectFilter(val);
     setPageNo(1);
     setSelectedBmsId(null);
@@ -504,11 +561,12 @@ export default function KakaoTemplateManager({
     setSelectedBmsId(null);
     setOpenRoId('');
   };
-  const hasActiveFilters = Boolean(query.trim() || inspectFilter || statusFilter !== 'all');
+  const hasActiveFilters = Boolean(query.trim() || inspectFilter || issueFilter || statusFilter !== 'all');
   const resetFilters = () => {
     userClearedRef.current = false;
     setQuery('');
     setInspectFilter('');
+    setIssueFilter('');
     setPickedFilter('all');
     setPageNo(1);
     setSelectedBmsId(null);
@@ -1213,6 +1271,8 @@ export default function KakaoTemplateManager({
     const singleLinkedPaused = singleLinkedStatus ? catchupPausedText(singleLinkedStatus) : '';
 
     const hasAtaVars = /#\{[^{}\n]{1,40}\}/.test(String(selected.content || ''));
+    const isApproved = selected.status === 'APPROVED';
+    const detailActions = availableActions(selected);
     const ataLightTone = linkedEntries.length > 0
       ? (linkedEntries.some((e) => ['on', 'part'].includes(effOf(e).tone)) ? 'on' : 'off')
       : (selected.status === 'APPROVED' && (selected.program_use || selectedExt || (usageSuccess(usage, selected.id, sent) ?? 0) > 0) ? 'on' : 'off');
@@ -1267,19 +1327,39 @@ export default function KakaoTemplateManager({
                 </SmsAutoControls>
               ) : (
                 <div className="stl-detail-btnrow">
-                  <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => openAutoSetting(selected.id)}>
-                    {linkedEntries.length ? '+ 자동 발송' : '+ 자동 발송 설정'}
-                  </button>
+                  {isApproved ? (
+                    <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => openAutoSetting(selected.id)}>
+                      {linkedEntries.length ? '+ 자동 발송' : '+ 자동 발송 설정'}
+                    </button>
+                  ) : (
+                    <>
+                      {detailActions.includes('edit') && !writeOff ? (
+                        <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => runAction('edit', selected)}>
+                          {selected.status === 'REJECTED' ? '수정 후 재검수' : '내용 수정'}
+                        </button>
+                      ) : null}
+                      {detailActions.includes('inspect') && !writeOff ? (
+                        <button type="button" className="ktm-btn" onClick={() => runAction('inspect', selected)}>검수 요청</button>
+                      ) : null}
+                      {selected.status === 'INSPECTING' ? <span className="ktm-badge ktm-badge--info">카카오 검수 중</span> : null}
+                    </>
+                  )}
                   {canAddStep ? (
                     <button type="button" className="ktm-btn" onClick={() => addStepForFlow(flowForFirst)}>+ 단계 추가</button>
                   ) : null}
-                  {selected.status === 'APPROVED' && onSend ? (
+                  {isApproved && onSend ? (
                     <button type="button" className="ktm-btn" onClick={() => onSend(selected.id)}>보내기</button>
                   ) : null}
                 </div>
               )}
             </div>
           </div>
+          {selected.status === 'REJECTED' ? (
+            <div className="ktm-reject-box" role="alert">
+              <strong>카카오 검수 반려 사유{comments[0]?.date ? ` (${formatDate(comments[0].date)})` : ''}</strong>
+              <p>{comments[0]?.content || '반려 사유가 아직 등록되지 않았습니다. 아래 상세 정보에서 검수 의견을 확인해 주세요.'}</p>
+            </div>
+          ) : null}
           {singleLinked && singleLinkedPaused ? (
             <p className="ktm-alert stl-detail-banner" role="alert">
               {singleLinkedPaused}
@@ -1402,7 +1482,15 @@ export default function KakaoTemplateManager({
                 ) : (
                   <>
                     <div className="stl-section-eyebrow">발송 조건</div>
-                    <p className="ktm-linked-empty">아직 자동 발송이 연결되지 않았습니다. 위 <strong>+ 자동 발송 설정</strong> 버튼을 누르면 바로 설정할 수 있습니다.</p>
+                    {selected.status === 'REJECTED' ? (
+                      <p className="ktm-linked-empty">카카오 검수에서 반려된 템플릿입니다. 위 반려 사유를 확인해 수정·재검수 후 승인이 완료되면 자동 발송을 연결할 수 있습니다.</p>
+                    ) : selected.status === 'PENDING' ? (
+                      <p className="ktm-linked-empty">검수 요청 전 상태입니다. 검수 요청 후 카카오 승인이 완료되면 자동 발송을 연결할 수 있습니다.</p>
+                    ) : selected.status === 'INSPECTING' ? (
+                      <p className="ktm-linked-empty">카카오 검수가 진행 중입니다. 승인이 완료되면 자동 발송을 연결할 수 있습니다.</p>
+                    ) : (
+                      <p className="ktm-linked-empty">아직 자동 발송이 연결되지 않았습니다. 위 <strong>+ 자동 발송 설정</strong> 버튼을 누르면 바로 설정할 수 있습니다.</p>
+                    )}
                     <div className="stl-cond-kpis stl-cond-kpis--compact" aria-label="최근 발송 현황">
                       <div className="stl-kpi">
                         <span className="stl-kpi-label">최근 7일 발송</span>
@@ -1452,13 +1540,6 @@ export default function KakaoTemplateManager({
                 buttons: (selected.buttons || []).map((b) => ({ type: b.type, name: b.name })),
                 targetName: selected.target?.name || '',
               }} />
-
-              {selected.status === 'REJECTED' && comments.length > 0 ? (
-                <div className="ktm-reject-box" role="status">
-                  <strong>카카오 반려 사유 ({formatDate(comments[0].date) || '-'})</strong>
-                  <p>{comments[0].content}</p>
-                </div>
-              ) : null}
 
               <details className="ktm-tech-details">
                 <summary>상세 정보 · 템플릿 ID 보기</summary>
@@ -1761,6 +1842,10 @@ export default function KakaoTemplateManager({
       .map((group) => ({ group, pageItems: group.items.filter((entry) => pageSet.has(`ro-${entry.id}`)) }))
       .filter((entry) => entry.pageItems.length > 0);
 
+    const activeIssueLabel = issueFilter === 'bms-zero-send'
+      ? '켜짐 · 최근 발송 없음'
+      : (inspectFilter ? (inspectPills.find((p) => p.id === inspectFilter)?.label || inspectFilter) : '');
+
     body = (
       <>
         <div className="stl-toolbar">
@@ -1773,8 +1858,8 @@ export default function KakaoTemplateManager({
               <button
                 type="button"
                 key={pill.id}
-                className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`}
-                aria-pressed={statusFilter === pill.id}
+                className={`ktm-pill${!issueFilter && !inspectFilter && statusFilter === pill.id ? ' is-active' : ''}`}
+                aria-pressed={!issueFilter && !inspectFilter && statusFilter === pill.id}
                 onClick={() => pickFilter(pill.id)}
               >
                 {pill.label} {pill.count}
@@ -1792,6 +1877,12 @@ export default function KakaoTemplateManager({
             <span className="stl-total">{paged.pages > 1 ? `총 ${totalVisible}건 · ${paged.page}/${paged.pages}쪽` : `총 ${totalVisible}건`}</span>
           </span>
         </div>
+        {activeIssueLabel ? (
+          <div className="stl-issue-active-bar" role="status">
+            <span>지금 확인 중인 이슈: <strong>{activeIssueLabel}</strong> ({totalVisible}건)</span>
+            <button type="button" className="ktm-btn stl-mini-btn" onClick={resetFilters}>전체 보기</button>
+          </div>
+        ) : null}
         {data.unresolved_groups > 0 ? <p className="ktm-hint">범위를 확인하지 못한 템플릿 {data.unresolved_groups}개는 숨겼습니다</p> : null}
 
         <div className={`stl-layout${hasDetail ? ' has-detail' : ''}`}>

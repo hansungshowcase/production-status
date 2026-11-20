@@ -229,6 +229,15 @@ export default function StaffSmsPanel({ active = true }) {
                 ? `이 날 ${recipientWithPhoneTail(selected, selectedPerson?.tail)}님에게 보낸 문자가 없습니다.`
                 : '이 날 보낸 직원 문자가 없습니다.'}
             </strong>
+            {selectedCat ? (
+              <button type="button" className="staff-sms__empty-btn" onClick={() => { setSelectedCat(''); setExpandedId(null); }}>
+                전체 종류 보기
+              </button>
+            ) : date === today && !selected ? (
+              <button type="button" className="staff-sms__empty-btn" onClick={() => changeDate(shiftYmd(today, -1))}>
+                어제 기록 보기
+              </button>
+            ) : null}
           </div>
         )}
 

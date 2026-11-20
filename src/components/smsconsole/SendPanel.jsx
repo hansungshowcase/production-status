@@ -6,7 +6,7 @@ import { AutoOffNotice } from './SmsTextTemplateForm.jsx';
 import './SendPanel.css';
 
 const wonText = value => (value === null || value === undefined ? '모름' : `${Number(value || 0).toLocaleString('ko-KR')}원`);
-const typeText = type => (type === 'ATA' ? '알림톡' : type === 'MMS' ? '사진 문자' : type);
+const typeText = type => (type === 'ATA' ? '알림톡' : type === 'MMS' ? '사진 문자' : type === 'LMS' ? '장문 문자' : type === 'SMS' ? '단문 문자' : type);
 
 // 문자 직접 보내기. 화면이 처음 열릴 때 설정을 1번만 읽고, 이후 요청은 미리보기·보내기를 누를 때뿐이다.
 export default function SendPanel({ active = true, template = '', text: textParam = '' }) {
@@ -98,7 +98,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
   const disabledHint = (locked || busy || canPreview || previewOk) ? ''
     : invalid > 0 ? '휴대폰 번호 형식을 확인해 주세요.'
     : recipients.length === 0 ? '받는 번호를 입력하거나 직원을 선택해 주세요.'
-    : !contentReady ? (template ? '알림톡 변수를 모두 입력해 주세요.' : (info.tooLong ? '내용이 2,000바이트를 넘습니다.' : '보낼 내용을 입력해 주세요.'))
+    : !contentReady ? (template ? '알림톡 변수를 모두 입력해 주세요.' : (info.tooLong ? '내용이 최대 길이를 넘습니다(한글 약 1,000자 이내로 줄여 주세요).' : '보낼 내용을 입력해 주세요.'))
     : (scheduleOn && !template && !schedule.ok) ? (schedule.error || '예약 시각을 지금부터 5분 뒤 이후로 정해 주세요.')
     : '';
 
@@ -181,12 +181,22 @@ export default function SendPanel({ active = true, template = '', text: textPara
   if (!options) return <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
   return (
+    <div className="smsc-send-wrap">
+    <div className="smsc-send-header">
+      <h2>{template ? '알림톡 직접 보내기' : '직접 보내기'}</h2>
+      <p className="smsc-send-header__sub">수동 · 예약 발송 전용 · <strong>1회 최대 {options.max || 50}명 / 하루 최대 300건</strong> (엑셀 대량 발송 미지원)</p>
+    </div>
     <div className="smsc-send-layout">
     <form className="smsc-send" onSubmit={event => event.preventDefault()} noValidate>
       <div className="smsc-send__field">
         <div className="smsc-send__labelrow">
           <label htmlFor="smsc-send-phones">받는 번호</label>
-          <span className={`smsc-send__badge${recipients.length > 0 ? ' is-active' : ''}`}>받는 사람 {recipients.length}명</span>
+          <div className="smsc-send__row">
+            {(phoneText || staffIds.length > 0) ? (
+              <button type="button" className="smsc-send__clear" onClick={() => { setPhoneText(''); setStaffIds([]); setPreview(null); setResult(null); }}>비우기</button>
+            ) : null}
+            <span className={`smsc-send__badge${recipients.length > 0 ? ' is-active' : ''}`}>받는 사람 {recipients.length}명</span>
+          </div>
         </div>
         <textarea id="smsc-send-phones" rows={4} value={phoneText} inputMode="tel" autoComplete="off"
           placeholder="010-1234-5678 (줄바꿈 또는 쉼표로 여러 명 입력)"
@@ -244,7 +254,10 @@ export default function SendPanel({ active = true, template = '', text: textPara
       <div className="smsc-send__field" hidden={Boolean(template)}>
         <label htmlFor="smsc-send-text">내용</label>
         <textarea id="smsc-send-text" rows={6} value={text} placeholder="보낼 문자 내용을 입력하세요" onChange={event => { setText(event.target.value); setResult(null); }} />
-        <p className="smsc-send__count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}</p>
+        <p className="smsc-send__count">
+          {[...text.trim()].length}자 · {photo ? '사진 문자 (건당 110원)' : (info.type === 'SMS' ? '단문 문자 (건당 18원)' : info.type === 'LMS' ? '장문 문자 (건당 45원)' : '한글 약 45자까지 단문 18원 · 초과 시 장문 45원')}
+          {info.tooLong ? ' · 글자 수가 너무 깁니다' : ''}
+        </p>
         {!template ? (
           <div className="smsc-send__row">
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
@@ -304,7 +317,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
       <div className="smsc-send__labelrow">
         <strong className="smsc-send__asidetitle">수신 미리보기</strong>
         <span className="smsc-send__badge">
-          {recipients.length > 0 ? `${recipients.length}명` : '수신자 미선택'} · {template ? '알림톡' : (photo ? '사진 문자(MMS)' : (info.type || '문자'))}
+          {recipients.length > 0 ? `${recipients.length}명` : '수신자 미선택'} · {template ? '알림톡' : (photo ? '사진 문자' : (info.type ? typeText(info.type) : '문자'))}
         </span>
       </div>
       <div className="smsc-send__phone">
@@ -322,6 +335,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
         )}
       </div>
     </aside>
+    </div>
     </div>
   );
 }
