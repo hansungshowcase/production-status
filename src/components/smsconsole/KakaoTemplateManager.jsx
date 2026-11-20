@@ -723,8 +723,13 @@ export default function KakaoTemplateManager({
               </SmsAutoControls>
             </div>
           </div>
-          {paused ? <p className="ktm-alert" role="alert">{paused}</p> : null}
-          {(eff.tone === 'blocked' || eff.tone === 'part') ? (
+          {paused ? (
+            <p className="ktm-alert" role="alert">
+              {paused}
+              <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다)</span>
+            </p>
+          ) : null}
+          {!paused && (eff.tone === 'blocked' || eff.tone === 'part') ? (
             <p className={eff.tone === 'blocked' ? 'ktm-alert' : 'ktm-warn'} role="status">{eff.text}</p>
           ) : null}
         </div>
@@ -949,8 +954,13 @@ export default function KakaoTemplateManager({
                         <span>마지막 {formatKpiDate(st.last_sent_date)}</span>
                       </p>
                     ) : null}
-                    {paused ? <p className="ktm-alert ktm-linked-alert" role="alert">{paused}</p> : null}
-                    {(eff.tone === 'blocked' || eff.tone === 'part') ? (
+                    {paused ? (
+                      <p className="ktm-alert ktm-linked-alert" role="alert">
+                        {paused}
+                        <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다)</span>
+                      </p>
+                    ) : null}
+                    {!paused && (eff.tone === 'blocked' || eff.tone === 'part') ? (
                       <p className={eff.tone === 'blocked' ? 'ktm-alert ktm-linked-alert' : 'ktm-warn ktm-linked-alert'} role="status">{eff.text}</p>
                     ) : null}
                   </li>

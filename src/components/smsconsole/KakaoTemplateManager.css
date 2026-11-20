@@ -144,14 +144,28 @@
 
 /* 종류별 묶음 머리글·보내는 곳 칩·펼친 문구(문자·알림톡 템플릿 공용) */
 .ktm-kind { margin: 0 0 14px; }
-.ktm-kind-head { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--smsc-text, #1c2330); }
-.ktm-kind-count { margin-left: 4px; font-weight: 400; color: var(--smsc-muted, #667085); }
+.ktm-kind-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 0 8px; padding: 7px 11px;
+  background: #eef2f7; border: 1px solid #d5dce6; border-left: 4px solid #475569; border-radius: 7px;
+  font-size: 13.5px; font-weight: 800; color: #191f28;
+}
+.ktm-kind-count {
+  margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; padding: 1px 8px; border-radius: 999px;
+  background: #ffffff; border: 1px solid #cbd5e1; font-size: 12px; font-weight: 800; color: #191f28;
+  font-variant-numeric: tabular-nums;
+}
 .ktm-chip--sender { background: var(--smsc-accent-weak, #eaf0ff); border-color: transparent; color: var(--smsc-accent, #2457d6); }
 .ktm-chan { font-size: 11px; color: var(--smsc-muted, #667085); }
 .ktm-open { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; font-size: 13px; }
 .ktm-open-line { display: block; overflow-wrap: anywhere; color: var(--smsc-text, #1c2330); }
 .ktm-open-line b { margin-right: 6px; color: var(--smsc-muted, #667085); font-weight: 600; }
-.ktm-kind-head--sub { margin: 4px 0 8px; font-size: 13px; color: var(--smsc-muted, #667085); }
+.ktm-kind-head--sub {
+  margin: 4px 0 6px; padding: 5px 9px;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #94a3b8; border-radius: 6px;
+  font-size: 12.5px; font-weight: 700; color: #334155;
+}
 .ktm-aud-sub + .ktm-aud-sub { margin-top: 12px; }
 .ktm-open-img { display: block; max-width: 100%; height: auto; border-radius: 8px; }
 .ktm-open-body { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 8px; background: var(--smsc-bg, #f5f6f8); }
@@ -159,7 +173,11 @@
 .ktm-cards + .ktm-kind { margin-top: 16px; }
 /* 고객 전용 / 직원 전용 큰 머리글(종류 머리글보다 한 단계 크게) */
 .ktm-aud { margin: 0 0 20px; }
-.ktm-kind-head--aud { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--smsc-border, #e3e6ec); font-size: 16px; font-weight: 800; }
+.ktm-kind-head--aud {
+  margin: 0 0 10px; padding: 8px 12px;
+  background: #eaf1fd; border: 1px solid #cfe0fb; border-left: 4px solid #1b64da; border-radius: 7px;
+  font-size: 14.5px; font-weight: 800; color: #102a5c;
+}
 .ktm-card.is-selected .ktm-chip--sender { background: #fff; }
 
 /* 알림톡 목록 카드: 1줄 = 제목 + 오른쪽 ⋮, 2줄 = 상태·단가 배지, 3줄 = 대상/적용 조건, 4줄 = 보조 칩 */
@@ -261,6 +279,7 @@
 .ktm-bms-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .ktm-bms-links li { display: flex; flex-direction: column; font-size: 12.5px; }
 .ktm-bms-links span { color: var(--smsc-muted, #6b7684); word-break: break-all; }
+.stl-detail-banner-sub { font-weight: 500; color: #7f1d1d; }
 
 @media (max-width: 900px) {
   .ktm-linked-actions .sac,

@@ -656,7 +656,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
           )}
           {paused ? (
             <div className="stl-item-badges">
-              <span className="ktm-badge ktm-badge--danger">일괄 발송 멈춤</span>
+              <span className="ktm-badge ktm-badge--danger" title={paused}>일괄 발송만 멈춤</span>
             </div>
           ) : null}
         </button>
@@ -676,7 +676,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
       : (item.count !== null && item.count > 0 ? `7일 ${item.count}건` : (summary.whenSub || ''));
     const metaParts = [
       item.audience.label,
-      item.sender,
+      item.external ? '' : item.sender,
       detailPart,
     ].filter(Boolean);
     const exceptionBadges = [];
@@ -693,6 +693,12 @@ function renderConditionBoard(summary, st, isMineAuto) {
           </div>
           <div className="stl-item-cond">
             <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
+            {item.external && item.sender ? (
+              <>
+                <span className="stl-meta-sep" aria-hidden="true">·</span>
+                <span className="stl-sender-chip">{item.sender}</span>
+              </>
+            ) : null}
             {summary.whenMain ? (
               <>
                 <span className="stl-meta-sep" aria-hidden="true">·</span>
@@ -874,8 +880,13 @@ function renderConditionBoard(summary, st, isMineAuto) {
                 )}
               </div>
             </div>
-            {paused ? <p className="ktm-alert stl-detail-banner" role="alert">{paused}</p> : null}
-            {entry.autoKind && (eff.tone === 'blocked' || eff.tone === 'part') ? (
+            {paused ? (
+              <p className="ktm-alert stl-detail-banner" role="alert">
+                {paused}
+                <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다. 일괄 발송이 끝났다면 [수정]에서 일괄 발송 예약을 비워 주세요.)</span>
+              </p>
+            ) : null}
+            {!paused && entry.autoKind && (eff.tone === 'blocked' || eff.tone === 'part') ? (
               <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{eff.text}</p>
             ) : null}
             {mineError ? <p className="ktm-alert stl-detail-banner" role="alert">{mineError}</p> : null}
@@ -1002,6 +1013,9 @@ function renderConditionBoard(summary, st, isMineAuto) {
             ))}
           </div>
           <h3 className="stl-detail-title">{item.name}</h3>
+          {item.external && item.sender === '메이크' ? (
+            <p className="stl-ext-note">외부 {item.sender} 자동화로 발송되는 문구입니다(읽기 전용). 내 문구에도 같은 이벤트가 켜져 있으면 중복 발송될 수 있습니다.</p>
+          ) : null}
           {item.config?.status === 'incomplete' ? (
             <p className="ktm-alert stl-detail-banner" role="status">{item.config.label || '설정 미완료'}: 현재 자동 발송이 비활성화되어 있습니다.</p>
           ) : null}
@@ -1109,18 +1123,33 @@ function renderConditionBoard(summary, st, isMineAuto) {
             ) : visibleGroupSections.length === 0 ? (
               <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div>
             ) : visibleGroupSections.map((aud) => (
-              aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => (
-                <section key={`${aud.group}/${section.kind || ''}`} className="stl-group" aria-label={section.kind || aud.group}>
-                  <h3 className="stl-grouphead">
-                    {aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.length > 0 && section.items.length === 0 ? '내 문구 › 자동 발송' : (section.kind ? `${aud.group} › ${section.kind}` : aud.group)}{' '}
-                    <span className="ktm-kind-count">{section.kind ? section.items.length + (aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0) : aud.count}</span>
-                  </h3>
-                  <ul className="ktm-cards stl-cards">
-                    {aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.filter((entry) => pageSet.has(`run-${entry.id}`)).map((entry) => renderMineListCard(entry, 'run-')) : null}
-                    {section.items.filter((item) => pageSet.has(`i-${item.id}`)).map(renderItemListCard)}
-                  </ul>
-                </section>
-              ))
+              aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => {
+                const isMyAutoGroup = aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.length > 0 && section.items.length === 0;
+                const pageAutoCount = aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0;
+                const totalCount = section.kind ? section.items.length + pageAutoCount : aud.count;
+                const hasExt = section.items.some((i) => i.external);
+                const hasProg = section.items.some((i) => !i.external);
+                const originTag = isMyAutoGroup
+                  ? '직접 관리'
+                  : (hasExt && hasProg ? '시스템·외부 연동' : (hasExt ? '외부 연동 · 읽기 전용' : '시스템 자동'));
+                const groupMod = isMyAutoGroup ? 'stl-group--mine' : (aud.group === '직원 전용' ? 'stl-group--staff' : 'stl-group--cust');
+                const headTitle = isMyAutoGroup ? '내 문구 › 자동 발송' : (section.kind ? `${aud.group} › ${section.kind}` : aud.group);
+                return (
+                  <section key={`${aud.group}/${section.kind || ''}`} className={`stl-group ${groupMod}`} aria-label={section.kind || aud.group}>
+                    <h3 className="stl-grouphead">
+                      <span className="stl-grouphead-left">
+                        <span>{headTitle}</span>
+                        <span className="stl-grouphead-tag">{originTag}</span>
+                      </span>
+                      <span className="ktm-kind-count">{totalCount}</span>
+                    </h3>
+                    <ul className="ktm-cards stl-cards">
+                      {aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.filter((entry) => pageSet.has(`run-${entry.id}`)).map((entry) => renderMineListCard(entry, 'run-')) : null}
+                      {section.items.filter((item) => pageSet.has(`i-${item.id}`)).map(renderItemListCard)}
+                    </ul>
+                  </section>
+                );
+              })
             ))}
           </div>
 
