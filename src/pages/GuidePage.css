@@ -1,390 +1,727 @@
 .guide-page {
-  --gp-bg: #eef1f6;
-  --gp-card: #ffffff;
-  --gp-card-soft: #f6f8fc;
-  --gp-text: #16202e;
-  --gp-text-soft: #475569;
-  --gp-text-faint: #64748b;
-  --gp-line: #dce3ee;
-  --gp-brand: #0f4c81;
-  --gp-brand-solid: #0f4c81;
-  --gp-brand-2: #1d76c9;
-  --gp-brand-soft: #e8f1fb;
-  --gp-accent: #047857;
-  --gp-accent-soft: #ecfdf5;
-  --gp-warn: #92400e;
-  --gp-warn-soft: #fffbeb;
-  --gp-danger: #991b1b;
-  --gp-danger-soft: #fef2f2;
-  --gp-shadow: 0 4px 18px rgba(19, 42, 74, 0.07);
+  --gs: 1;
+  --gp-paper: #f4f3ef;
+  --gp-surface: #ffffff;
+  --gp-surface-sub: #f8f8f5;
+  --gp-ink: #111111;
+  --gp-ink-soft: #27272a;
+  --gp-border: #1e293b;
+  --gp-border-light: #cbd5e1;
+  --gp-navy: #0f294a;
+  --gp-navy-soft: #eff6ff;
+  --gp-navy-border: #1e40af;
+  --gp-red: #b91c1c;
+  --gp-red-dark: #991b1b;
+  --gp-red-soft: #fef2f2;
+  --gp-warn-bg: #fef9c3;
+  --gp-warn-border: #854d0e;
+  --gp-green: #166534;
+  --gp-green-soft: #f0fdf4;
+  --gp-kakao-bg: #fee500;
 
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--gp-bg);
-  color: var(--gp-text);
-  line-height: 1.55;
+  background: var(--gp-paper);
+  color: var(--gp-ink);
+  font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  line-height: 1.58;
   word-break: keep-all;
-  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  padding-bottom: 108px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .guide-page {
-    --gp-bg: #0c1118;
-    --gp-card: #131b26;
-    --gp-card-soft: #172230;
-    --gp-text: #eaf0f8;
-    --gp-text-soft: #b2c1d4;
-    --gp-text-faint: #8496ad;
-    --gp-line: #223142;
-    --gp-brand: #4aa3ec;
-    --gp-brand-solid: #1d4ed8;
-    --gp-brand-2: #6bb8f5;
-    --gp-brand-soft: #14324e;
-    --gp-accent: #34d399;
-    --gp-accent-soft: #0e382d;
-    --gp-warn: #fbbf24;
-    --gp-warn-soft: #312510;
-    --gp-danger: #fca5a5;
-    --gp-danger-soft: #3b171b;
-    --gp-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  }
+.guide-page--large {
+  --gs: 1.15;
 }
 
-.guide-wrap {
-  max-width: 560px;
+.guide-page--xlarge {
+  --gs: 1.3;
+}
+
+.guide-page *,
+.guide-page *::before,
+.guide-page *::after {
+  box-sizing: border-box;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.guide-nowrap {
+  white-space: nowrap;
+}
+
+.guide-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--gp-navy);
+  color: #ffffff;
+  padding: 10px 14px;
+  font-weight: 800;
+  z-index: 200;
+}
+
+.guide-skip-link:focus {
+  left: 12px;
+  top: 12px;
+}
+
+/* ── 공식 매뉴얼 상단 헤더 ── */
+.guide-masthead {
+  background: var(--gp-surface);
+  border-bottom: 3px solid var(--gp-navy);
+  padding: 14px 16px;
+}
+
+.guide-masthead-inner {
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 16px 14px calc(40px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.guide-header {
+.guide-brand-block {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 4px 2px 12px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.guide-logo {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--gp-brand), var(--gp-brand-2));
+.guide-emblem {
+  width: 44px;
+  height: 44px;
+  background: var(--gp-navy);
   color: #ffffff;
-  display: flex;
+  border: 2px solid var(--gp-ink);
+  border-radius: 4px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 17px;
   font-weight: 900;
-  font-size: 16px;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
 }
 
-.guide-header-text {
+.guide-brand-titles {
+  flex: 1 1 200px;
   min-width: 0;
-  flex: 1 1 auto;
 }
 
-.guide-brand {
-  font-size: 16px;
+.guide-brand-kicker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.guide-brand-kicker {
+  font-size: calc(14px * var(--gs));
   font-weight: 800;
+  color: var(--gp-navy);
+  line-height: 1.25;
 }
 
-.guide-sub {
-  font-size: 12px;
-  color: var(--gp-text-faint);
+.guide-page-title {
+  margin: 2px 0 0;
+  font-size: calc(19.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
 }
 
 .guide-order-badge {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--gp-card);
-  border: 1px solid var(--gp-line);
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--gp-text-soft);
-  font-variant-numeric: tabular-nums;
+  background: var(--gp-navy);
+  color: #ffffff;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: calc(14px * var(--gs));
+  font-weight: 900;
+  white-space: nowrap;
 }
 
-.guide-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.guide-nav-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 6px 13px;
-  border-radius: 999px;
-  background: var(--gp-card);
-  border: 1px solid var(--gp-line);
-  color: var(--gp-text);
-  font-size: 12.5px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.guide-card {
-  background: var(--gp-card);
-  border: 1px solid var(--gp-line);
-  border-radius: 16px;
-  box-shadow: var(--gp-shadow);
-  padding: 18px 16px;
-  margin-bottom: 14px;
-  scroll-margin-top: 16px;
-}
-
-.guide-sec-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--gp-brand);
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.guide-sec-title::before {
-  content: "";
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-  background: var(--gp-brand-2);
-}
-
-.guide-alert-card {
-  border-color: #fca5a5;
-}
-
-.guide-alert-title {
-  font-size: 16px;
-  font-weight: 800;
-  margin-bottom: 6px;
-}
-
-.guide-alert-desc {
-  margin: 0 0 12px;
-  font-size: 13.5px;
-  color: var(--gp-text-soft);
-}
-
-.guide-client-row {
+/* ── 글자 크기 전환 바 ── */
+.guide-font-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
-.guide-client-name {
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.guide-warranty-pill {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--gp-card-soft);
-  border: 1px solid var(--gp-line);
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--gp-text-soft);
-}
-
-.guide-warranty-pill--active {
-  background: var(--gp-accent-soft);
-  border-color: transparent;
-  color: var(--gp-accent);
-}
-
-.guide-spec-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.guide-spec-cell {
-  background: var(--gp-card-soft);
-  border: 1px solid var(--gp-line);
-  border-radius: 10px;
   padding: 10px 12px;
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
+}
+
+.guide-font-label {
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  white-space: nowrap;
+}
+
+.guide-font-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.guide-font-btn {
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--gp-ink);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  max-width: 140px;
+}
+
+.guide-font-btn.is-active {
+  background: var(--gp-navy);
+  border-color: var(--gp-navy);
+  color: #ffffff;
+}
+
+/* ── 본문 레이아웃 셸 ── */
+.guide-shell {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px 12px 0;
+}
+
+.guide-sidebar {
+  display: none;
+}
+
+.guide-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   min-width: 0;
 }
 
-.guide-spec-k {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--gp-text-faint);
+.guide-sheet {
+  background: var(--gp-surface);
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
+  padding: 16px;
+  scroll-margin-top: 16px;
 }
 
-.guide-spec-v {
-  font-size: 14px;
-  font-weight: 700;
-  margin-top: 2px;
-  overflow-wrap: anywhere;
+.guide-skel {
+  background: #e2e8f0;
+  border-radius: 4px;
 }
 
-.guide-spec-v.mono {
-  font-variant-numeric: tabular-nums;
-}
-
-.guide-sticker-warn {
-  margin-top: 10px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--gp-danger);
-}
-
-.guide-preset-head {
+.guide-sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
 
-.guide-preset-badge {
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: var(--gp-brand-soft);
-  color: var(--gp-brand);
-  font-size: 14px;
-  font-weight: 800;
+.guide-sheet-h2 {
+  margin: 0;
+  font-size: calc(18px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.3;
 }
 
-.guide-preset-range {
-  font-size: 12.5px;
+.guide-sec-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid var(--gp-border);
+}
+
+.guide-sec-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.guide-sec-num--green {
+  background: var(--gp-green);
+}
+
+.guide-sec-heading {
+  margin: 0;
+  font-size: calc(19px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.3;
+}
+
+.guide-sec-lead {
+  margin: -4px 0 12px;
+  font-size: calc(16px * var(--gs));
   font-weight: 700;
-  color: var(--gp-text-soft);
+  color: var(--gp-ink-soft);
 }
 
-.guide-preset-metrics {
+.guide-sub-h3 {
+  margin: 0 0 10px;
+  font-size: calc(17px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-navy);
+  line-height: 1.35;
+}
+
+/* ── 커스텀 일러스트 도해 카드 ── */
+.guide-illus-box {
+  margin: 0 0 16px;
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.guide-illus-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #ffffff;
+}
+
+.guide-illus-steps {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--gp-surface-sub);
+  border-top: 1.5px solid var(--gp-border);
+  font-size: calc(15px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
+}
+
+.guide-illus-steps strong {
+  color: var(--gp-navy);
+  font-weight: 900;
+}
+
+/* ── 모바일 상황별 바로가기 버튼 ── */
+.guide-quick-sheet .guide-sheet-h2 {
+  margin-bottom: 12px;
+}
+
+.guide-quick-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.guide-metric {
-  background: var(--gp-card-soft);
-  border: 1px solid var(--gp-line);
-  border-radius: 12px;
-  padding: 10px 8px;
+.guide-quick-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 58px;
+  padding: 10px;
+  background: var(--gp-surface-sub);
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  color: var(--gp-ink);
+  text-decoration: none;
+}
+
+.guide-quick-btn:focus-visible {
+  outline: 3px solid var(--gp-navy);
+  outline-offset: 2px;
+}
+
+.guide-quick-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 900;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.guide-quick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.guide-quick-text strong {
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.25;
+}
+
+.guide-quick-text span {
+  font-size: calc(14px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink-soft);
+  line-height: 1.25;
+}
+
+/* ── 상단 요약 2열 (내 제품 / 권장세팅) ── */
+.guide-summary-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.guide-warranty-tag {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1.5px solid var(--gp-border);
+  background: var(--gp-surface-sub);
+  color: var(--gp-ink);
+  font-size: calc(14px * var(--gs));
+  font-weight: 900;
+}
+
+.guide-warranty-tag.is-active {
+  background: var(--gp-green-soft);
+  border-color: var(--gp-green);
+  color: var(--gp-green);
+}
+
+.guide-client-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.guide-client-name {
+  font-size: calc(20px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+}
+
+.guide-inline-order {
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-navy);
+}
+
+.guide-kv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.guide-kv-cell {
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border-light);
+  border-radius: 5px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.guide-kv-cell--em {
+  background: var(--gp-navy-soft);
+  border: 2px solid var(--gp-navy);
+}
+
+.guide-kv-cell--wide {
+  grid-column: 1 / -1;
+}
+
+.guide-kv-k {
+  font-size: calc(14px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-ink-soft);
+}
+
+.guide-kv-v {
+  margin-top: 2px;
+  font-size: calc(17px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  overflow-wrap: anywhere;
+}
+
+.guide-kv-v--nowrap {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.guide-seal-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--gp-red-soft);
+  border: 1.5px solid var(--gp-red);
+  border-radius: 5px;
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-red-dark);
+}
+
+.guide-setting-badge {
+  padding: 5px 12px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  border-radius: 4px;
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+}
+
+.guide-setting-range {
+  margin-bottom: 10px;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink-soft);
+}
+
+.guide-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.guide-metric-box {
+  background: var(--gp-surface-sub);
+  border: 2px solid var(--gp-border);
+  border-radius: 5px;
+  padding: 12px 8px;
   text-align: center;
 }
 
 .guide-metric-k {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--gp-text-faint);
+  font-size: calc(14px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-ink-soft);
 }
 
 .guide-metric-v {
-  font-size: 15px;
-  font-weight: 800;
-  margin-top: 3px;
+  margin-top: 4px;
+  font-size: calc(20px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-navy);
+  line-height: 1.2;
 }
 
-.guide-rule-list {
+.guide-setting-tips {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border-light);
+  border-radius: 5px;
+}
+
+.guide-setting-tips-title {
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-navy);
+  margin-bottom: 6px;
+}
+
+.guide-setting-tips-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: calc(15px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
+}
+
+.guide-setting-tips-list li + li {
+  margin-top: 4px;
+}
+
+/* ── "def" 긴급 확인 배너 ── */
+.guide-def-sheet {
+  background: var(--gp-navy-soft);
+  border: 2.5px solid var(--gp-navy-border);
+}
+
+.guide-def-layout {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.guide-def-led-box {
+  background: #090d16;
+  border: 2.5px solid var(--gp-ink);
+  border-radius: 6px;
+  padding: 12px 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.guide-def-led-digits {
+  font-size: calc(36px * var(--gs));
+  font-weight: 900;
+  color: #ff453a;
+  letter-spacing: 0.14em;
+  line-height: 1.05;
+}
+
+.guide-def-led-cap {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.guide-def-kicker {
+  display: inline-block;
+  padding: 3px 10px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  border-radius: 4px;
+  font-size: calc(14px * var(--gs));
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.guide-def-title {
+  margin: 0 0 6px;
+  font-size: calc(19px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.3;
+}
+
+.guide-def-body {
+  margin: 0;
+  font-size: calc(16px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink);
+}
+
+/* ── 안전 수칙 카드 ── */
+.guide-rule-grid {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
-.guide-rule {
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--gp-card-soft);
-  border: 1px solid var(--gp-line);
+.guide-rule-card {
+  padding: 14px;
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
 }
 
-.guide-rule--danger {
-  background: var(--gp-danger-soft);
-  border-color: #fca5a5;
+.guide-rule-card--danger {
+  background: var(--gp-red-soft);
+  border: 2.5px solid var(--gp-red);
 }
 
 .guide-rule-title {
+  margin: 0 0 6px;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14.5px;
-  font-weight: 800;
+  font-size: calc(17px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.3;
 }
 
-.guide-rule-num {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  border-radius: 50%;
-  background: var(--gp-brand-solid);
-  color: #ffffff;
+.guide-rule-card--danger .guide-rule-title {
+  color: var(--gp-red-dark);
+}
+
+.guide-rule-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 800;
+  width: 26px;
+  height: 26px;
+  background: var(--gp-ink);
+  color: #ffffff;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 900;
+  flex-shrink: 0;
 }
 
-.guide-rule--danger .guide-rule-num {
-  background: #dc2626;
+.guide-rule-card--danger .guide-rule-badge {
+  background: var(--gp-red);
 }
 
 .guide-rule-body {
-  margin: 6px 0 0;
-  font-size: 13.5px;
-  color: var(--gp-text-soft);
-}
-
-.guide-rule--danger .guide-rule-body {
-  color: var(--gp-text);
-  font-weight: 600;
-}
-
-.guide-callout {
-  padding: 12px 13px;
-  border-radius: 12px;
-  font-size: 13px;
-  margin-bottom: 14px;
-}
-
-.guide-callout strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 13.5px;
-}
-
-.guide-callout p {
   margin: 0;
+  font-size: calc(16px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
 }
 
-.guide-callout--info {
-  background: var(--gp-brand-soft);
-  color: var(--gp-text);
+/* ── 도면 & 2단 영역 ── */
+.guide-two-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.guide-callout--warn {
-  margin-top: 14px;
-  background: var(--gp-warn-soft);
-  color: var(--gp-text);
+.guide-col {
+  min-width: 0;
 }
 
-.guide-callout--danger {
-  margin-top: 12px;
-  margin-bottom: 0;
-  background: var(--gp-danger-soft);
-  color: var(--gp-text);
+.guide-diagram-box {
+  margin: 0;
+  padding: 10px;
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
 }
 
-.guide-subsec {
-  margin-top: 14px;
+.guide-diagram-svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
-.guide-subsec-title {
-  margin: 0 0 8px;
-  font-size: 14px;
+.guide-diagram-caption {
+  margin-top: 8px;
+  font-size: calc(14.5px * var(--gs));
   font-weight: 800;
+  color: var(--gp-ink-soft);
+  text-align: center;
+}
+
+.guide-diagram-tip {
+  margin-top: 10px;
+  padding: 11px 12px;
+  background: var(--gp-navy-soft);
+  border: 1.5px solid var(--gp-navy-border);
+  border-radius: 5px;
+  font-size: calc(15px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
 }
 
 .guide-dl {
@@ -395,239 +732,900 @@
 }
 
 .guide-dl-row {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 8px;
-  padding: 9px 10px;
-  border-radius: 10px;
-  background: var(--gp-card-soft);
-  border: 1px solid var(--gp-line);
+  padding: 12px;
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border-light);
+  border-radius: 5px;
 }
 
 .guide-dl-row dt {
-  font-weight: 800;
-  font-size: 13.5px;
+  font-size: calc(16.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-navy);
+  margin-bottom: 3px;
 }
 
 .guide-dl-row dd {
   margin: 0;
-  font-size: 13px;
-  color: var(--gp-text-soft);
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
+}
+
+.guide-steps-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.guide-step-panel {
+  padding: 14px;
+  background: var(--gp-surface-sub);
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
 }
 
 .guide-ol,
 .guide-ul {
   margin: 0;
-  padding-left: 18px;
-  font-size: 13.5px;
-  color: var(--gp-text-soft);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  padding-left: 22px;
+  font-size: calc(16px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
 }
 
-.guide-callout--danger .guide-ul {
-  color: var(--gp-text);
+.guide-ol li,
+.guide-ul li {
+  margin-bottom: 8px;
 }
 
+.guide-ol li:last-child,
+.guide-ul li:last-child {
+  margin-bottom: 0;
+}
+
+.guide-ol--emphasis li {
+  font-weight: 700;
+}
+
+/* ── 경고 / 안내 박스 ── */
+.guide-callout {
+  padding: 14px;
+  border-radius: 6px;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink);
+}
+
+.guide-callout-title {
+  font-size: calc(17px * var(--gs));
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.guide-callout p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.guide-callout--warn {
+  background: var(--gp-warn-bg);
+  border: 2px solid var(--gp-warn-border);
+}
+
+.guide-callout--warn .guide-callout-title {
+  color: #713f12;
+}
+
+.guide-callout--danger {
+  background: var(--gp-red-soft);
+  border: 2px solid var(--gp-red);
+}
+
+.guide-callout--danger .guide-callout-title {
+  color: var(--gp-red-dark);
+}
+
+/* ── 10종 기준표 (PC 테이블 vs 모바일 카드) ── */
 .guide-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--gp-line);
-  border-radius: 10px;
+  display: none;
 }
 
 .guide-table {
   width: 100%;
-  min-width: 420px;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: calc(15px * var(--gs));
+}
+
+.guide-col-type { width: 26%; }
+.guide-col-range { width: 20%; }
+.guide-col-factory { width: 20%; }
+.guide-col-cycle { width: 17%; }
+.guide-col-time { width: 17%; }
+
+.guide-td-nowrap {
+  white-space: nowrap;
 }
 
 .guide-table th,
 .guide-table td {
-  border-bottom: 1px solid var(--gp-line);
-  padding: 8px 9px;
-  text-align: center;
-}
-
-.guide-table th:first-child,
-.guide-table td:first-child {
+  padding: 11px 12px;
+  border: 1.5px solid var(--gp-border);
   text-align: left;
-  font-weight: 700;
+  color: var(--gp-ink);
 }
 
 .guide-table thead th {
-  background: var(--gp-card-soft);
-  font-weight: 800;
-  white-space: nowrap;
+  background: var(--gp-navy);
+  color: #ffffff;
+  font-weight: 900;
 }
 
-.guide-table tbody tr:last-child td {
-  border-bottom: 0;
+.guide-table tbody tr:nth-child(even) {
+  background: var(--gp-surface-sub);
 }
 
-.guide-table-row--active {
-  background: var(--gp-brand-soft);
+.guide-table tbody tr.is-active {
+  background: var(--gp-green-soft);
+}
+
+.guide-table tbody th {
+  font-weight: 900;
 }
 
 .guide-row-tag {
   display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--gp-brand-solid);
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--gp-green);
   color: #ffffff;
-  font-size: 10.5px;
-  font-weight: 800;
-}
-
-.guide-details {
-  border: 1px solid var(--gp-line);
-  border-radius: 12px;
-  background: var(--gp-card-soft);
-}
-
-.guide-details-summary {
-  min-height: 44px;
-  padding: 10px 14px;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.guide-details-body {
-  padding: 0 14px 14px 32px;
-}
-
-.guide-event-card {
-  background: linear-gradient(135deg, #065f46, #047857);
-  border-color: transparent;
-  color: #ffffff;
-}
-
-.guide-event-badge {
-  display: inline-block;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.18);
-  font-size: 11.5px;
-  font-weight: 800;
-  margin-bottom: 8px;
-}
-
-.guide-event-title {
-  margin: 0 0 6px;
-  font-size: 19px;
+  font-size: calc(14px * var(--gs));
   font-weight: 900;
+  vertical-align: middle;
 }
 
-.guide-event-desc {
-  margin: 0 0 14px;
-  font-size: 13.5px;
-  opacity: 0.94;
-}
-
-.guide-support-desc {
-  margin: 0 0 14px;
-  font-size: 13.5px;
-  color: var(--gp-text-soft);
-}
-
-.guide-support-actions {
+.guide-preset-cards {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.guide-btn {
+.guide-preset-card {
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: var(--gp-surface-sub);
+}
+
+.guide-preset-card.is-active {
+  background: var(--gp-green-soft);
+  border: 2.5px solid var(--gp-green);
+}
+
+.guide-preset-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 7px;
+  margin-bottom: 7px;
+  border-bottom: 1.5px solid var(--gp-border-light);
+}
+
+.guide-preset-card-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.guide-preset-card-title {
+  font-size: calc(16.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+}
+
+.guide-preset-factory-pill {
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 900;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.guide-preset-card-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.guide-preset-ck {
+  display: block;
+  font-size: calc(14px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-ink-soft);
+}
+
+.guide-preset-cv {
+  display: block;
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+}
+
+/* ── 수평 조절 아코디언 ── */
+.guide-details {
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  background: var(--gp-surface-sub);
+}
+
+.guide-details-summary {
+  min-height: 54px;
+  padding: 14px 16px;
+  font-size: calc(16.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-navy);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.guide-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.guide-details-summary::after {
+  content: '열기 +';
+  font-size: calc(14px * var(--gs));
+  font-weight: 900;
+  padding: 4px 10px;
+  border: 1.5px solid var(--gp-navy);
+  border-radius: 4px;
+  background: #ffffff;
+  color: var(--gp-navy);
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.guide-details[open] .guide-details-summary::after {
+  content: '닫기 -';
+  background: var(--gp-navy);
+  color: #ffffff;
+}
+
+.guide-details-content {
+  padding: 14px 16px 16px;
+  border-top: 1.5px solid var(--gp-border);
+}
+
+.guide-details-body {
+  padding-left: 22px;
+}
+
+/* ── 07. 리뷰 이벤트 통합 허브 ── */
+.guide-review-hub {
+  border: 2px solid var(--gp-green);
+}
+
+.guide-review-hero-box {
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--gp-green-soft);
+  border: 2px solid var(--gp-green);
+  border-radius: 6px;
+}
+
+.guide-review-total {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.guide-review-total span {
+  font-size: calc(15px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-green);
+}
+
+.guide-review-total strong {
+  font-size: calc(20px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  line-height: 1.3;
+}
+
+.guide-review-jump-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.guide-review-jump-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  padding: 10px 14px;
-  border-radius: 11px;
-  border: 1px solid transparent;
-  font-size: 14px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 2px solid var(--gp-green);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--gp-ink);
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  line-height: 1.25;
+  text-decoration: none;
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
+.guide-review-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.guide-review-card {
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  padding: 16px;
+  background: var(--gp-surface);
+  scroll-margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.guide-review-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.guide-review-channel {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 4px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  font-size: calc(14px * var(--gs));
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+
+.guide-review-title {
+  margin: 0;
+  font-size: calc(18.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+}
+
+.guide-review-reward-pill {
+  padding: 5px 10px;
+  border-radius: 5px;
+  background: var(--gp-green);
+  color: #ffffff;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 900;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.guide-review-timing {
+  margin: 8px 0 12px;
+  font-size: calc(15px * var(--gs));
   font-weight: 800;
+  color: var(--gp-green);
+}
+
+.guide-review-tier-list {
+  border: 1.5px solid var(--gp-border);
+  border-radius: 5px;
+  background: var(--gp-surface-sub);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.guide-review-tier-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 700;
+  border-top: 1px solid var(--gp-border-light);
+}
+
+.guide-review-tier-row:first-child {
+  border-top: 0;
+}
+
+.guide-review-tier-row span {
+  flex: 1 1 160px;
+}
+
+.guide-review-tier-row strong {
+  color: var(--gp-navy);
+  font-weight: 900;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.guide-copy-box {
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--gp-warn-bg);
+  border: 2px solid var(--gp-warn-border);
+  border-radius: 6px;
+}
+
+.guide-copy-k {
+  font-size: calc(14px * var(--gs));
+  font-weight: 900;
+  color: #713f12;
+  margin-bottom: 4px;
+}
+
+.guide-copy-v {
+  font-size: calc(16px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  margin-bottom: 4px;
+}
+
+.guide-copy-ex {
+  font-size: calc(14px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink-soft);
+  margin-bottom: 10px;
+}
+
+.guide-review-reqs {
+  margin-bottom: 14px;
+}
+
+.guide-review-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── 08. A/S ── */
+.guide-as-desc {
+  margin: 0 0 14px;
+  font-size: calc(16px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
+}
+
+.guide-as-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-btn {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 6px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 2px solid var(--gp-ink);
+  font-size: calc(16.5px * var(--gs));
+  font-weight: 900;
   text-decoration: none;
   cursor: pointer;
-  font-family: inherit;
   text-align: center;
 }
 
 .guide-btn--primary {
-  background: var(--gp-brand-solid);
+  background: var(--gp-navy);
+  border-color: var(--gp-navy);
   color: #ffffff;
 }
 
-.guide-btn--secondary {
-  background: var(--gp-brand-soft);
-  color: var(--gp-brand);
+.guide-btn--event {
+  background: var(--gp-green);
+  border-color: var(--gp-green);
+  color: #ffffff;
 }
 
 .guide-btn--kakao {
-  background: #fee500;
-  color: #191919;
+  background: var(--gp-kakao-bg);
+  border-color: var(--gp-ink);
+  color: var(--gp-ink);
 }
 
-.guide-btn--event {
+.guide-btn--secondary {
   background: #ffffff;
-  color: #065f46;
+  border-color: var(--gp-navy);
+  color: var(--gp-navy);
+}
+
+.guide-btn--copy {
+  background: #ffffff;
+  border-color: var(--gp-ink);
+  color: var(--gp-ink);
 }
 
 .guide-inquiry-hint {
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink-soft);
   text-align: center;
-  font-size: 12px;
-  color: var(--gp-text-faint);
 }
 
 .guide-sub-links {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid var(--gp-line);
+  border-top: 1.5px solid var(--gp-border-light);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   flex-wrap: wrap;
+  gap: 10px 18px;
 }
 
 .guide-text-link {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--gp-brand);
-  text-decoration: none;
+  min-height: 46px;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-navy);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
+/* ── 푸터 ── */
 .guide-foot {
+  max-width: 1120px;
+  margin: 18px auto 0;
+  padding: 14px 16px 8px;
   text-align: center;
-  font-size: 12px;
-  color: var(--gp-text-faint);
-  padding-top: 6px;
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink-soft);
+  border-top: 1.5px solid var(--gp-border-light);
 }
 
-.guide-skel {
-  border-radius: 8px;
-  background: linear-gradient(90deg, var(--gp-card-soft) 25%, var(--gp-line) 50%, var(--gp-card-soft) 75%);
-  background-size: 200% 100%;
-  animation: guide-shimmer 1.4s ease-in-out infinite;
+/* ── 모바일 하단 고정 A/S 바 ── */
+.guide-mobile-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: #ffffff;
+  border-top: 2.5px solid var(--gp-navy);
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-@keyframes guide-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+.guide-dock-top-btn {
+  min-height: 48px;
+  padding: 8px 11px;
+  border-radius: 6px;
+  border: 2px solid var(--gp-border);
+  background: var(--gp-surface-sub);
+  color: var(--gp-ink);
+  font-size: 14.5px;
+  font-weight: 900;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
+.guide-dock-call-btn {
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--gp-navy);
+  border: 2px solid var(--gp-navy);
+  color: #ffffff;
+  font-size: 15.5px;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── 초소형 모바일 (<= 360px) ── */
 @media (max-width: 360px) {
-  .guide-preset-metrics {
+  .guide-quick-grid {
     grid-template-columns: 1fr;
   }
-  .guide-spec-grid {
+  .guide-metric-grid {
     grid-template-columns: 1fr;
+  }
+  .guide-kv-grid {
+    grid-template-columns: 1fr;
+  }
+  .guide-preset-card-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+  .guide-font-btn {
+    padding: 8px 10px;
+    font-size: 15px;
+  }
+  .guide-dock-top-btn {
+    font-size: 14px;
+    padding: 8px 8px;
+  }
+  .guide-dock-call-btn {
+    font-size: 14.5px;
+  }
+  .guide-kv-v--nowrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ── 태블릿 이상 (>= 768px) ── */
+@media (min-width: 768px) {
+  .guide-masthead {
+    padding: 18px 24px;
+  }
+  .guide-masthead-inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .guide-font-bar {
+    flex: 0 0 auto;
+    padding: 8px 10px;
+  }
+  .guide-font-btn {
+    padding: 8px 11px;
+  }
+  .guide-shell {
+    padding: 20px 24px 0;
+  }
+  .guide-sheet {
+    padding: 22px;
+  }
+  .guide-illus-steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .guide-illus-steps--2col {
+    grid-template-columns: 1.55fr 1fr;
+  }
+  .guide-illus-steps span + span {
+    border-left: 1.5px solid var(--gp-border-light);
+    padding-left: 12px;
+  }
+  .guide-summary-pair {
+    grid-template-columns: 1.15fr 1fr;
+    align-items: stretch;
+  }
+  .guide-setting-sheet--solo {
+    grid-column: 1 / -1;
+  }
+  .guide-def-layout {
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+  }
+  .guide-def-led-box {
+    min-width: 170px;
+  }
+  .guide-rule-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .guide-rule-card--danger {
+    grid-column: 1 / -1;
+  }
+  .guide-two-col {
+    grid-template-columns: 1.05fr 1fr;
+    align-items: start;
+  }
+  .guide-steps-pair {
+    grid-template-columns: 1fr 1fr;
+  }
+  .guide-table-wrap {
+    display: block;
+    overflow-x: auto;
+  }
+  .guide-preset-cards {
+    display: none;
+  }
+  .guide-review-jump-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .guide-review-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+  .guide-review-card:first-child,
+  .guide-review-card--compact {
+    grid-column: 1 / -1;
+  }
+}
+
+/* sticky 사이드바 동작 보장: desktop.css의 body/html overflow-x: hidden 무력화 */
+html:has(.guide-page),
+body:has(.guide-page),
+#root:has(.guide-page) {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+/* ── PC 2단 공식 매뉴얼 레이아웃 (>= 1024px) ── */
+@media (min-width: 1024px) {
+  .guide-page {
+    padding-bottom: 40px;
+  }
+  .guide-shell {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+  .guide-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: sticky;
+    top: 14px;
+  }
+  .guide-side-box {
+    background: var(--gp-surface);
+    border: 1.5px solid var(--gp-border);
+    border-radius: 6px;
+    padding: 12px;
+  }
+  .guide-side-box--as {
+    border: 2px solid var(--gp-navy);
+  }
+  .guide-side-kicker {
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--gp-navy);
+  }
+  .guide-side-phone {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--gp-ink);
+    margin: 4px 0 10px;
+    letter-spacing: -0.02em;
+  }
+  .guide-side-track-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1.5px solid var(--gp-navy);
+    border-radius: 5px;
+    background: var(--gp-navy-soft);
+    text-align: center;
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--gp-navy);
+    text-decoration: none;
+  }
+  .guide-side-track-link:hover {
+    background: #dbeafe;
+  }
+  .guide-side-toc-title {
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--gp-ink);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1.5px solid var(--gp-border-light);
+  }
+  .guide-toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .guide-toc-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    color: var(--gp-ink);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .guide-toc-link:hover {
+    background: var(--gp-navy-soft);
+    color: var(--gp-navy);
+  }
+  .guide-toc-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    background: var(--gp-surface-sub);
+    border: 1.5px solid var(--gp-border);
+    font-size: 14px;
+    font-weight: 900;
+    flex-shrink: 0;
+  }
+  .guide-side-seal {
+    background: var(--gp-red-soft);
+    border: 1.5px solid var(--gp-red);
+    font-size: 14px;
+    color: var(--gp-red-dark);
+  }
+  .guide-side-seal strong {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 900;
+    margin-bottom: 4px;
+  }
+  .guide-side-seal p {
+    margin: 0;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .guide-quick-sheet {
+    display: none;
+  }
+  .guide-mobile-dock {
+    display: none;
+  }
+}
+
+@media print {
+  .guide-page,
+  .guide-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .guide-font-bar,
+  .guide-sidebar,
+  .guide-quick-sheet,
+  .guide-mobile-dock {
+    display: none !important;
+  }
+  .guide-page {
+    background: #ffffff;
+    color: #111111;
+    padding-bottom: 0;
+  }
+  .guide-masthead,
+  .guide-emblem,
+  .guide-sec-num,
+  .guide-review-channel,
+  .guide-card,
+  .guide-rule-card {
+    border: 1.5px solid #111111;
+  }
+  .guide-shell {
+    display: block;
+    padding: 0;
   }
 }

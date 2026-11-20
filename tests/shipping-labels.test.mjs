@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  DEFAULT_SHOWCASE_SETTING,
+  SHOWCASE_GUIDE_BRAND,
   SHOWCASE_GUIDE_PRESETS,
+  SHOWCASE_REVIEW_EVENTS,
   buildGuideUrl,
   calculateWarrantyEndDate,
   getGuidePresetByKey,
@@ -11,6 +14,7 @@ import {
 } from '../shared/showcaseGuide.js';
 import { generateQrSvg } from '../src/utils/qrSvg.js';
 import {
+  DEFAULT_LABEL_SIZE_KEY,
   LABEL_SIZES,
   buildShippingLabelData,
   buildShippingLabelPrintHtml,
@@ -76,11 +80,74 @@ test('generateQrSvg는 203dpi 흑백 감열 인쇄용 crispEdges SVG를 생성�
   assert.throws(() => generateQrSvg(''));
 });
 
-test('buildShippingLabelData와 buildShippingLabelPrintHtml은 규격·출고일자·주의문구·XSS·내부품명 차단을 지킨다', () => {
+test('buildShippingLabelData와 buildShippingLabelPrintHtml은 명함 4장 기본 규격·전체 내용·출고일자·제거금지·XSS 차단을 지킨다', () => {
   const xssOrder = {
     ...sampleOrder,
     door_type: '앞문<script>alert(1)</script>',
   };
+
+  assert.equal(DEFAULT_LABEL_SIZE_KEY, '180x100');
+  const defaultPlate = buildShippingLabelData(xssOrder, {
+    presetKey: 'bakery',
+    shipDate: '2026-11-21',
+    copies: 2,
+    token: 'AbCdEfGhIj1234567890',
+  });
+  const plateHtml = buildShippingLabelPrintHtml(defaultPlate);
+
+  assert.equal(defaultPlate.size.key, '180x100');
+  assert.equal(defaultPlate.size.widthMm, 180);
+  assert.equal(defaultPlate.size.heightMm, 100);
+  assert.match(plateHtml, /@page \{ size: 180mm 100mm; margin: 0; \}/);
+  assert.equal((plateHtml.match(/class="plate-sheet/g) || []).length, 2);
+  for (const requiredText of [
+    '절대 제거·훼손 금지',
+    '임의 제거 금지',
+    '출고일자',
+    '2026.11.21',
+    '12개월 (~2027.11.21)',
+    '반드시 단독 코드',
+    '2~3시간',
+    '별도 보관',
+    '15~20cm',
+    '냉장 전용',
+    '물받이통',
+    '전원',
+    '조명',
+    '결로팬',
+    '잠금',
+    '제상주기',
+    '제상시간',
+    'def',
+    '라지에이터',
+    '월 1회',
+    '장갑',
+    '위·아래',
+    '유상 처리',
+    '031-986-2458',
+  ]) {
+    assert.ok(plateHtml.includes(requiredText), `180x100 인쇄 HTML에 '${requiredText}'가 빠졌습니다.`);
+  }
+  for (const reviewHint of ['최대 14만원', '블로그', '인스타', '구글']) {
+    assert.ok(plateHtml.includes(reviewHint), `180x100 인쇄 HTML에 리뷰 키워드 '${reviewHint}'가 빠졌습니다.`);
+  }
+  assert.match(plateHtml, /<svg[^>]*shape-rendering="crispEdges"/);
+  assert.match(plateHtml, /id="g1-0"/);
+  assert.match(plateHtml, /id="g1-1"/);
+  assert.match(plateHtml, /제과\(5℃ · 제상 3시간 \/ 15분\) 유지/);
+  assert.doesNotMatch(plateHtml, /알앤에프냉동덧방/);
+  assert.doesNotMatch(plateHtml, /<script>alert\(1\)<\/script>/);
+  assert.match(plateHtml, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+
+  const butcherPlate = buildShippingLabelData(xssOrder, {
+    presetKey: 'butcher',
+    shipDate: '2026-11-21',
+    copies: 1,
+    token: 'AbCdEfGhIj1234567890',
+  });
+  const butcherHtml = buildShippingLabelPrintHtml(butcherPlate);
+  assert.match(butcherHtml, /정육\(-2℃ · 제상 3시간 \/ 10분\) 유지/);
+  assert.doesNotMatch(butcherHtml, /기본세팅\(5℃\/2시간\/15분\) 유지/);
 
   for (const sizeKey of ['100x100', '100x80']) {
     const data = buildShippingLabelData(xssOrder, {
@@ -220,8 +287,22 @@ test('SalesOrderCard와 App에 라벨 출력 버튼과 /guide/:token 공개 라�
   assert.match(modalSource, /onCloseRef\.current/);
   assert.match(appSource, /<Route path="\/guide" element=\{<GuidePage \/>\} \/>/);
   assert.match(appSource, /<Route path="\/guide\/:token" element=\{<GuidePage \/>\} \/>/);
+  assert.match(appSource, /!isPublicGuideRoute && <InstallPrompt \/>/);
   assert.doesNotMatch(guideSource, /data\.product_type|data\?\.product_type/);
   assert.match(guideSource, /if \(!hasToken\)/);
   assert.match(guideSource, /queryPresetKey === DEFAULT_SHOWCASE_SETTING\.key/);
   assert.match(guideSource, /!notFound && orderNo/);
+  assert.match(guideSource, /hs_guide_font_scale_v1/);
+  assert.match(guideSource, /ControllerDiagramSvg/);
+  assert.match(guideSource, /RadiatorDiagramSvg/);
+  assert.match(guideSource, /id="sec-reviews"/);
+  assert.match(guideSource, /\/images\/guide\/installation-safety\.webp/);
+  assert.match(guideSource, /\/images\/guide\/radiator-cleaning-steps\.webp/);
+  assert.match(guideSource, /\/images\/guide\/leveling-guide\.webp/);
+  assert.match(guideSource, /\/images\/guide\/review-photo-tip\.webp/);
+  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'blog'));
+  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'sns'));
+  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'google'));
+  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'smartstore'));
+  assert.equal(SHOWCASE_GUIDE_BRAND.blogReviewFormUrl, 'https://forms.gle/LnxodxFTxWjcVwx37');
 });

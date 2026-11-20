@@ -53,6 +53,11 @@ function MobileHeaderBar() {
 
 function AnimatedPage({ children }) {
   const location = useLocation();
+  const isPublicGuideRoute = location.pathname === '/guide' || location.pathname.startsWith('/guide/');
+
+  if (isPublicGuideRoute) {
+    return children;
+  }
 
   return (
     <div key={location.pathname} className="page-transition-enter-active" style={{
@@ -110,6 +115,29 @@ function AppRoutes() {
   );
 }
 
+function AppShell({ appReady, isOffline }) {
+  const { pathname } = useLocation();
+  const isPublicGuideRoute = pathname === '/guide' || pathname.startsWith('/guide/');
+
+  return (
+    <>
+      <ScrollToTop />
+      {!appReady && !isPublicGuideRoute && <SplashScreen />}
+      <MobileHeaderBar />
+      <OfflineBanner show={isOffline} />
+      {!isPublicGuideRoute && <InstallPrompt />}
+      <ChunkErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <AppRoutes />
+        </Suspense>
+      </ChunkErrorBoundary>
+      {!isPublicGuideRoute && (
+        <footer className="app-footer-brand">잘 만든 제품은 고객의 삶을 바꿉니다.</footer>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [appReady, setAppReady] = useState(false);
@@ -144,17 +172,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <ScrollToTop />
-      {!appReady && <SplashScreen />}
-      <MobileHeaderBar />
-      <OfflineBanner show={isOffline} />
-      <InstallPrompt />
-      <ChunkErrorBoundary>
-        <Suspense fallback={<PageLoader />}>
-          <AppRoutes />
-        </Suspense>
-      </ChunkErrorBoundary>
-      <footer className="app-footer-brand">잘 만든 제품은 고객의 삶을 바꿉니다.</footer>
+      <AppShell appReady={appReady} isOffline={isOffline} />
     </BrowserRouter>
   );
 }
