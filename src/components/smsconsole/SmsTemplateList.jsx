@@ -8,7 +8,7 @@ import {
   CONDITION_GROUPS, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, formatLastSentLabel, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsDisplayCategory, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
 import { SENDERS } from '../../../shared/smsTemplateKinds.js';
-import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, catchupPausedText, cloneConditionInitial, autoConditionLine, autoConditionParts, autoTargetText, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
@@ -153,6 +153,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   // 알림톡 상세에서 들어오면(ata 주소) 출고 완료 후 + 그 알림톡이 골라진 새 등록 팝업을 연다(저장은 사장님이 직접)
   const [editInit, setEditInit] = useState(null); // 고치는 문구의 양식 초기값(단건 조회)
   const [formOpts, setFormOpts] = useState({}); // 같은 흐름의 문구(siblings)와 새 단계 여부(startNew)
+  const pendingCreatedIdRef = useRef(null);
   useEffect(() => { if (active && openNew && editPreset) { editMine({ id: Number(editPreset) }); onNewHandled?.(); return; } if (active && openNew) { if (ataPreset) setEditInit({ id: undefined, autoKind: 'ship_plus_days', days: '2', ataTemplate: ataPreset }); setAdding(true); onNewHandled?.(); } }, [active, openNew]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadInit = (id) => fetchSmsConsole('text_template', { id }).then((res) => formInitialFromItem(res?.item));
   const editMine = (entry, flow = null) => {
@@ -171,6 +172,16 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
       const last = siblings[siblings.length - 1];
       setFormOpts({ siblings, startNew: true });
       setEditInit({ ...last, id: undefined, name: '', body: '', images: [] });
+      setAdding(true);
+    }).catch((err) => setMineError(err.message || '불러오지 못했습니다.'));
+  };
+  // 같은 문구·사진·설정을 그대로 복사해 발송 조건(날짜·시점)만 추가한다
+  const cloneMine = (entry) => {
+    setMineError('');
+    const existingNames = allMine.map((m) => m.name);
+    loadInit(entry.id).then((init) => {
+      setFormOpts({ siblings: undefined, startNew: false, cloneFromName: entry.name, existingNames });
+      setEditInit(cloneConditionInitial(init, existingNames));
       setAdding(true);
     }).catch((err) => setMineError(err.message || '불러오지 못했습니다.'));
   };
@@ -552,9 +563,29 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     [selectedKey, items],
   );
 
+  // "같은 문구로 조건 추가" 저장 직후 새 항목이 목록에 들어오면 해당 쪽으로 이동하고 바로 선택한다
+  useEffect(() => {
+    const targetId = pendingCreatedIdRef.current;
+    if (isKakao || !active || !targetId || !mineLoaded) return;
+    if (!allMine.some((entry) => entry.id === targetId)) return;
+    const rowKey = isMineTab
+      ? flowRows.find((row) => (row.single ? row.entry.id === targetId : row.steps.some((step) => step.id === targetId)))?.key
+      : `run-${targetId}`;
+    if (rowKey) {
+      const idx = rowKeys.indexOf(rowKey);
+      if (idx >= 0) {
+        const targetPage = Math.floor(idx / 20) + 1;
+        if (targetPage !== pageNo) setPageNo(targetPage);
+      }
+      if (isMineTab) setFlowOpen(rowKey);
+    }
+    setSelectedKey(`m-${targetId}`);
+    pendingCreatedIdRef.current = null;
+  }, [isKakao, active, mineLoaded, allMine, isMineTab, flowRows, rowKeys, pageNo]);
+
   // PC(>=1024px)에서는 카탈로그·내 문구 모두 읽은 뒤 목록 첫 항목을 자동으로 골라 오른쪽 미리보기를 바로 채운다
   useEffect(() => {
-    if (isKakao || !active || !state.loaded || !mineLoaded) return;
+    if (isKakao || !active || !state.loaded || !mineLoaded || pendingCreatedIdRef.current) return;
     if (!isDesktopViewport()) {
       if (selectedKey && !selectedMine && !selectedItem) setSelectedKey('');
       return;
@@ -590,7 +621,7 @@ const formatKpiDate = (value) => {
 };
 
 // 상세 상단 3단 발송 조건·규칙·현황 보드
-function renderConditionBoard(summary, st, isMineAuto, catalogStats = null) {
+function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCloneCondition = null) {
   const thirdLabel = isMineAuto || summary.manual ? '횟수 · 비용' : '종류 · 비용';
   const todayCount = Number(st?.today_targets) || 0;
   const recent7d = Number(st?.sent_7d) || 0;
@@ -670,6 +701,11 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null) {
             <strong className="stl-kpi-val">{formatLastSentLabel(catalogStats.lastSentAt) || '기록 없음'}</strong>
           </div>
         </div>
+      ) : null}
+      {onCloneCondition ? (
+        <button type="button" className="stl-cond-clone-btn" onClick={onCloneCondition}>
+          + 같은 문구로 조건 추가
+        </button>
       ) : null}
     </section>
   );
@@ -977,7 +1013,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null) {
           </div>
 
           <div className="stl-detail-split">
-            {renderConditionBoard(summary, st, Boolean(entry.autoKind))}
+            {renderConditionBoard(summary, st, Boolean(entry.autoKind), null, () => cloneMine(entry))}
             <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
               {msgCard}
               {mediaCard}
@@ -1191,7 +1227,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null) {
         <div className="stl-toolbar">
           <div className="ktm-search stl-search">
             <SmsIcon name="search" />
-            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·문구·발송 조건 검색 (띄어쓰기 무관)" aria-label="문자 템플릿 검색" />
+            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·문구·조건 검색" aria-label="문자 템플릿 검색" />
           </div>
           <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
             {pills.map((pill) => (
@@ -1303,8 +1339,27 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null) {
       />
       {body}
       {adding ? (
-        <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit?.id ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
-          <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={() => loadMine(true)} onCancel={closeForm} />
+        <SmsModal title={formOpts.cloneFromName ? '같은 문구로 발송 조건 추가' : (formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit?.id ? '문자 템플릿 수정' : '문자 템플릿 등록'))} onClose={closeForm}>
+          <SmsTextTemplateForm
+            key={editInit?.id || (formOpts.cloneFromName ? `clone-${formOpts.cloneFromName}` : 'new')}
+            pausedText={catchupPausedText(autoStatus[editInit?.id])}
+            initial={editInit || undefined}
+            siblings={formOpts.siblings}
+            startNew={Boolean(formOpts.startNew)}
+            cloneFromName={formOpts.cloneFromName || ''}
+            existingNames={formOpts.existingNames || []}
+            onSend={(id) => onSendText?.(id)}
+            onSaved={(savedItem) => {
+              if (savedItem?.id) {
+                pendingCreatedIdRef.current = savedItem.id;
+                if (tab === 'in_use' && !savedItem.auto_enabled) setPicked('all');
+                if (cond) setCond('');
+                if (query.trim()) setQuery('');
+              }
+              loadMine(true);
+            }}
+            onCancel={closeForm}
+          />
         </SmsModal>
       ) : null}
       {renderLightbox()}

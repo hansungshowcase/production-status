@@ -239,3 +239,72 @@ test('추가 옵션(auto_chain)과 BMS linkPc 읽기·저장·지우기 및 기�
   assert.equal(validateTextForm({ name: 'a', body: 'b', chainFrom: '1234' }).reason, 'chain_from');
   assert.equal(validateTextForm({ name: 'a', body: 'b', chainSales: '가'.repeat(21) }).reason, 'chain_sales');
 });
+
+test('같은 문구로 조건 추가: 이름 조건 괄호 교체·중복 회피·내용/사진/BMS 버튼 보존·안전 필드 초기화', async () => {
+  const { stripConditionSuffix, suggestCloneName, cloneConditionInitial, formInitialFromItem } = await import('../src/components/smsconsole/smsTextTemplateFormModel.js');
+  assert.equal(stripConditionSuffix('블로그 리뷰 이벤트(출고+1일)'), '블로그 리뷰 이벤트');
+  assert.equal(stripConditionSuffix('구글 리뷰 안내(출고 2일 후)'), '구글 리뷰 안내');
+  assert.equal(stripConditionSuffix('블로그 리뷰 이벤트(설비 진입)'), '블로그 리뷰 이벤트');
+  assert.equal(stripConditionSuffix('소개 혜택 안내'), '소개 혜택 안내');
+
+  assert.equal(
+    suggestCloneName('블로그 리뷰 이벤트(출고+1일)', { autoKind: 'ship_plus_days', days: '2' }, ['블로그 리뷰 이벤트(출고+1일)']),
+    '블로그 리뷰 이벤트(출고+2일)',
+  );
+  assert.equal(
+    suggestCloneName('블로그 리뷰 이벤트(출고+1일)', { autoKind: 'ship_plus_days', days: '2' }, ['블로그 리뷰 이벤트(출고+1일)', '블로그 리뷰 이벤트(출고+2일)']),
+    '블로그 리뷰 이벤트(출고+2일) 2',
+  );
+  assert.ok(
+    [...suggestCloneName('매우긴제목의리뷰이벤트안내문구테스트입니다정말길어요(출고+1일)', { autoKind: 'ship_plus_days', days: '12' }, [])].length <= 40,
+  );
+
+  const srcItem = formInitialFromItem({
+    id: 20,
+    name: '블로그 리뷰 이벤트(출고+1일)',
+    body: '#{고객명}님 블로그 리뷰 남기고 현금 7만원 받기',
+    images: ['AAAABBBB'],
+    auto_kind: 'ship_plus_days',
+    auto_days: 1,
+    auto_send_time: '12:00',
+    auto_ata_template: 'BMS_FREE',
+    auto_bms_buttons: [{ name: '리뷰 남기기', link: 'https://m.cafe.naver.com/1', linkPc: 'https://cafe.naver.com/1' }],
+    auto_catchup_from: '2026-10-01',
+    auto_catchup_at: '2026-11-18T10:00',
+    auto_catchup_daily: 50,
+    auto_chain: { after: 4, from: '01077314237' },
+  });
+
+  // +2일이 이미 있으면 +3일을 자동 제안하고 본문·사진·BMS 버튼(linkPc 포함)·발신시간/번호는 그대로 복사한다
+  const cloned = cloneConditionInitial(srcItem, ['블로그 리뷰 이벤트(출고+1일)', '블로그 리뷰 이벤트(출고+2일)']);
+  assert.equal(cloned.id, undefined);
+  assert.equal(cloned.autoKind, 'ship_plus_days');
+  assert.equal(cloned.days, '3');
+  assert.equal(cloned.name, '블로그 리뷰 이벤트(출고+3일)');
+  assert.equal(cloned.body, '#{고객명}님 블로그 리뷰 남기고 현금 7만원 받기');
+  assert.equal(cloned.images.length, 1);
+  assert.equal(cloned.images[0].data, 'AAAABBBB');
+  assert.equal(cloned.ataTemplate, 'BMS_FREE');
+  assert.deepEqual(cloned.bmsButtons, [{ name: '리뷰 남기기', link: 'https://m.cafe.naver.com/1', linkPc: 'https://cafe.naver.com/1' }]);
+  assert.equal(cloned.sendTime, '12:00');
+  assert.equal(cloned.chainFrom, '01077314237');
+  assert.equal(cloned.catchupOn, false);
+  assert.equal(cloned.catchupAt, '');
+  assert.equal(cloned.catchupFrom, '');
+  assert.equal(cloned.catchupDaily, '');
+  assert.equal(cloned.chainAfter, null);
+  assert.equal(cloned.hadChain, false);
+
+  // 즉시 발송 또는 수동 문구를 복제할 때는 출고+1일 자동 발송을 기본 제안한다
+  const immCloned = cloneConditionInitial(formInitialFromItem({
+    id: 24,
+    name: '블로그 리뷰 이벤트(설비 진입)',
+    body: '설비 진입 안내',
+    auto_kind: 'process_started',
+    auto_step: '설비작업',
+    auto_ata_template: 'BMS_FREE',
+  }), ['블로그 리뷰 이벤트(설비 진입)']);
+  assert.equal(immCloned.autoKind, 'ship_plus_days');
+  assert.equal(immCloned.days, '1');
+  assert.equal(immCloned.name, '블로그 리뷰 이벤트(출고+1일)');
+});

@@ -14,7 +14,7 @@ import {
 import { SENDERS } from '../../../shared/smsTemplateKinds.js';
 import {
   BMS_TEMPLATE_ID, KIND_KAKAO, autoConditionLine, autoTargetText, catchupPausedText,
-  formInitialFromItem, imageUrlsFromItem, linkedTextEntries, myTextSection, photoBadgeText, previewFill,
+  cloneConditionInitial, formInitialFromItem, imageUrlsFromItem, linkedTextEntries, myTextSection, photoBadgeText, previewFill,
 } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import {
@@ -147,6 +147,7 @@ export default function KakaoTemplateManager({
   const [lightboxDims, setLightboxDims] = useState(null);
   const startedRef = useRef(false);
   const userClearedRef = useRef(false);
+  const pendingCreatedRef = useRef(null);
 
   const loadTextItems = useCallback((force = false) => {
     if (force) clearSmsConsoleClientCache();
@@ -514,15 +515,40 @@ export default function KakaoTemplateManager({
     setOpenRoId('');
   };
 
-  // URL tpl 로 선택된 항목이 다른 쪽에 있으면 해당 쪽으로 자동 이동
+  // "같은 문구로 조건 추가" 저장 직후 새 항목이 목록에 들어오면 해당 쪽으로 이동하고 바로 선택한다
   useEffect(() => {
-    if (!selectedId) return;
-    const idx = rowKeys.indexOf(`ata-${selectedId}`);
+    const pending = pendingCreatedRef.current;
+    if (!pending || !pending.id) return;
+    const isManaged = managedKakaoEntries.some((entry) => entry.id === pending.id);
+    const rowKey = isManaged ? `bms-${pending.id}` : (pending.ata ? `ata-${pending.ata}` : '');
+    if (!rowKey || !rowKeys.includes(rowKey)) return;
+    const idx = rowKeys.indexOf(rowKey);
     if (idx >= 0) {
       const targetPage = Math.floor(idx / 20) + 1;
       if (targetPage !== pageNo) setPageNo(targetPage);
     }
-  }, [selectedId, rowKeys]); // eslint-disable-line react-hooks/exhaustive-deps
+    setOpenRoId('');
+    if (isManaged) {
+      if (selectedId) onRoute({ tpl: '', mode: '' });
+      setSelectedBmsId(pending.id);
+      ensureBmsDetail(pending.id, true);
+    } else if (pending.ata && selectedId !== pending.ata) {
+      setSelectedBmsId(null);
+      onRoute({ tpl: pending.ata, mode: '' });
+    }
+    pendingCreatedRef.current = null;
+  }, [managedKakaoEntries, rowKeys, pageNo, selectedId, onRoute]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // URL tpl 또는 선택된 BMS 항목이 다른 쪽에 있으면 해당 쪽으로 자동 이동
+  useEffect(() => {
+    const key = selectedId ? `ata-${selectedId}` : (selectedBmsId ? `bms-${selectedBmsId}` : '');
+    if (!key) return;
+    const idx = rowKeys.indexOf(key);
+    if (idx >= 0) {
+      const targetPage = Math.floor(idx / 20) + 1;
+      if (targetPage !== pageNo) setPageNo(targetPage);
+    }
+  }, [selectedId, selectedBmsId, rowKeys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selected = selectedId ? items.find((item) => item.id === selectedId) || null : null;
   const selectedBms = !selectedId && selectedBmsId ? kakaoMineById.get(selectedBmsId) || null : null;
@@ -530,7 +556,7 @@ export default function KakaoTemplateManager({
 
   // 데스크톱 첫 진입·쪽 이동 시 현재 쪽 최상단 항목 자동 선택
   useEffect(() => {
-    if (!active || !tplState.loaded || !data || mode === 'new' || mode === 'edit' || userClearedRef.current) return;
+    if (!active || !tplState.loaded || !data || mode === 'new' || mode === 'edit' || userClearedRef.current || pendingCreatedRef.current) return;
     if (!isDesktopViewport()) return;
     const activeKey = selectedId ? `ata-${selectedId}` : (selectedBmsId ? `bms-${selectedBmsId}` : (openRoId ? `ro-${openRoId}` : ''));
     if (activeKey && pageSet.has(activeKey)) return;
@@ -624,6 +650,24 @@ export default function KakaoTemplateManager({
           initial: { ...last, id: undefined, name: '', body: '', images: [] },
           siblings,
           startNew: true,
+          pausedText: '',
+        });
+      })
+      .catch((err) => setNotice({ kind: 'error', text: err.message || '불러오지 못했습니다.' }));
+  };
+
+  const cloneAutoEntry = (entry) => {
+    setNotice(null);
+    const existingNames = textItems.map((m) => m.name);
+    loadSingleInit(entry.id)
+      .then((init) => {
+        setAutoModal({
+          title: '같은 문구로 발송 조건 추가',
+          initial: cloneConditionInitial(init, existingNames),
+          siblings: undefined,
+          startNew: false,
+          cloneFromName: entry.name,
+          existingNames,
           pausedText: '',
         });
       })
@@ -767,7 +811,7 @@ export default function KakaoTemplateManager({
     ? <div className="ktm-lockbar ktm-lockbar--off"><Icon name="lock" /><span>등록·삭제가 꺼져 있습니다(서버 설정 SMS_CONSOLE_WRITE=off)</span></div>
     : null;
 
-  const renderConditionBoard = (summary, st, isMineAuto = true, catalogStats = null) => {
+  const renderConditionBoard = (summary, st, isMineAuto = true, catalogStats = null, onCloneCondition = null) => {
     const todayCount = Number(st?.today_targets) || 0;
     const recent7d = Number(st?.sent_7d) || 0;
     const sentTotal = Number(st?.sent_total) || 0;
@@ -839,6 +883,11 @@ export default function KakaoTemplateManager({
               <strong className="stl-kpi-val">{formatLastSentLabel(catalogStats.lastSentAt) || '기록 없음'}</strong>
             </div>
           </div>
+        ) : null}
+        {onCloneCondition ? (
+          <button type="button" className="stl-cond-clone-btn" onClick={onCloneCondition}>
+            + 같은 문구로 조건 추가
+          </button>
         ) : null}
       </section>
     );
@@ -925,7 +974,7 @@ export default function KakaoTemplateManager({
 
         <div className="stl-detail-split">
           <div className="ktm-cond-col">
-            {renderConditionBoard(summary, st, true)}
+            {renderConditionBoard(summary, st, true, null, () => cloneAutoEntry(entry))}
           </div>
 
           {detail.loading && !detail.item ? (
@@ -1250,7 +1299,7 @@ export default function KakaoTemplateManager({
                   <span className="ktm-linked-step">{flowStepText(singleLinked)}</span>
                   {singleLinked.name && singleLinked.name !== selected.name ? <span className="ktm-step-name">{singleLinked.name}</span> : null}
                 </div>
-                {renderConditionBoard(singleLinkedSummary, singleLinkedStatus, true)}
+                {renderConditionBoard(singleLinkedSummary, singleLinkedStatus, true, null, () => cloneAutoEntry(singleLinked))}
               </>
             ) : (
               <section className="stl-cond-board" aria-label="이 템플릿에 적용된 발송 조건">
@@ -1717,7 +1766,7 @@ export default function KakaoTemplateManager({
         <div className="stl-toolbar">
           <div className="ktm-search stl-search">
             <Icon name="search" />
-            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·발송 조건·템플릿 ID 검색 (띄어쓰기 무관)" aria-label="카카오톡 템플릿 검색" />
+            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·조건·ID 검색" aria-label="카카오톡 템플릿 검색" />
           </div>
           <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
             {pills.map((pill) => (
@@ -1853,13 +1902,26 @@ export default function KakaoTemplateManager({
       {autoModal ? (
         <SmsModal title={autoModal.title} onClose={closeAutoModal}>
           <SmsTextTemplateForm
-            key={autoModal.initial?.id || `new-${autoModal.initial?.ataTemplate || 'bms'}`}
+            key={autoModal.initial?.id || `new-${autoModal.cloneFromName || autoModal.initial?.ataTemplate || 'bms'}`}
             pausedText={autoModal.pausedText}
             initial={autoModal.initial}
             siblings={autoModal.siblings}
             startNew={autoModal.startNew}
+            cloneFromName={autoModal.cloneFromName || ''}
+            existingNames={autoModal.existingNames || []}
             onSend={(id) => onSendText?.(id)}
-            onSaved={() => { setPickedFilter('all'); refreshAfterAutoChange(autoModal.initial?.id); }}
+            onSaved={(savedItem) => {
+              if (savedItem?.id) {
+                pendingCreatedRef.current = { id: savedItem.id, ata: savedItem.auto_ata_template || '' };
+                if (pickedFilter === 'in_use' && !savedItem.auto_enabled) setPickedFilter('all');
+                if (inspectFilter) setInspectFilter('');
+                if (query.trim()) setQuery('');
+                refreshAfterAutoChange(savedItem.id);
+              } else {
+                setPickedFilter('all');
+                refreshAfterAutoChange(autoModal.initial?.id);
+              }
+            }}
             onCancel={closeAutoModal}
           />
         </SmsModal>

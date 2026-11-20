@@ -206,6 +206,11 @@
 /* 저장 버튼·완료·경고 */
 .stf-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
 .stf-done { margin: 0; padding: 12px 14px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; font-size: 14.5px; font-weight: 600; }
+.stf-clone-banner {
+  margin: 0; padding: 10px 12px; border-radius: 8px;
+  background: #f1f5fd; border: 1px solid #bfdbfe; color: #1e3a8a;
+  font-size: 13px; line-height: 1.5; word-break: keep-all;
+}
 .stf-autooff { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: #fdeceb; color: var(--smsc-danger, #c62828); font-size: 14px; font-weight: 600; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .stf-autooff p { margin: 0; }
 .stf-autooff .stf-autooff-line { font-weight: 400; font-size: 13px; }

@@ -831,3 +831,133 @@ export function imageFromItem(item) {
   if (!data) return null;
   return { data, bytes: Math.floor((data.length * 3) / 4), url: `data:image/jpeg;base64,${data}` };
 }
+
+const CONDITION_SUFFIX_RE = /\s*\((?:출고|주문|가입|문의|납기|출고예정|출고·납기|설비|도면|용접|분체|조립|포장|공정)[^)]*\)\s*$/;
+const sliceCodepoints = (text, max) => [...String(text || '')].slice(0, Math.max(0, max)).join('');
+
+// 기존 템플릿 이름 끝의 조건 괄호("(출고+1일)", "(설비 진입)" 등)를 정리해 기본 문구 이름을 얻는다
+export function stripConditionSuffix(name) {
+  const raw = String(name || '').trim();
+  const stripped = raw.replace(CONDITION_SUFFIX_RE, '').trim();
+  return stripped || raw;
+}
+
+// 현재 폼 조건을 이름 뒤 괄호용 짧은 꼬리표로 만든다
+export function conditionTagForName(form = {}) {
+  const kind = String(form.autoKind || '').trim();
+  if (!kind) return '';
+  const daysRaw = String(form.days ?? '').trim();
+  const hasDays = /^\d+$/.test(daysRaw);
+  const daysNum = hasDays ? Number(daysRaw) : null;
+  const stepShort = String(form.step || '공정').trim().replace(/작업$/, '') || '공정';
+
+  if (kind === AUTO_KIND) return hasDays ? `출고+${daysNum}일` : '출고 후';
+  if (kind === AUTO_KIND_ORDER) return hasDays ? (daysNum === 0 ? '주문 당일' : `주문+${daysNum}일`) : '주문 후';
+  if (kind === AUTO_KIND_PROCESS_PLUS) return hasDays ? `${stepShort}+${daysNum}일` : `${stepShort} 후`;
+  if (kind === AUTO_KIND_LEAD_PLUS) {
+    const src = form.leadSource === 'airtable' ? '문의' : '가입';
+    return hasDays ? (daysNum === 0 ? `${src} 당일` : `${src}+${daysNum}일`) : `${src} 후`;
+  }
+  if (isDateKind(kind)) {
+    const prefix = kind === AUTO_KIND_SHIP_PLAN ? '출고예정' : (kind === AUTO_KIND_SHIP_OR_DUE ? '출고·납기' : '납기');
+    if (form.offsetDir === 'same') return `${prefix} 당일`;
+    const offRaw = String(form.offsetDays ?? '').trim();
+    const offOk = /^\d+$/.test(offRaw);
+    if (!offOk) return prefix;
+    return form.offsetDir === 'before' ? `${prefix} ${Number(offRaw)}일 전` : `${prefix}+${Number(offRaw)}일`;
+  }
+  if (kind === AUTO_KIND_ORDER_CREATED) return '주문 등록 시';
+  if (kind === AUTO_KIND_PROCESS_STARTED) return `${stepShort} 진입`;
+  if (kind === AUTO_KIND_PROCESS_COMPLETED) return `${stepShort} 완료`;
+  if (kind === AUTO_KIND_MEMBER_JOINED) return '회원가입 시';
+  return '';
+}
+
+// 원본 이름 + 바뀐 조건에 맞는 고유한 템플릿 이름(40자 이내)을 제안한다
+export function suggestCloneName(sourceName, form, existingNames = []) {
+  const base = stripConditionSuffix(sourceName) || '문구';
+  const tag = conditionTagForName(form);
+  const suffix = tag ? `(${tag})` : '';
+  const buildWithIndex = (copyIdx) => {
+    const copyTag = copyIdx > 1 ? ` ${copyIdx}` : '';
+    const keepLen = Math.max(1, TEXT_NAME_MAX - [...suffix].length - [...copyTag].length);
+    return sliceCodepoints(`${sliceCodepoints(base, keepLen).trim()}${suffix}${copyTag}`, TEXT_NAME_MAX);
+  };
+  const used = new Set((Array.isArray(existingNames) ? existingNames : []).map((n) => String(n || '').trim().toLowerCase()).filter(Boolean));
+  for (let n = 1; n <= 50; n += 1) {
+    const candidate = buildWithIndex(n);
+    if (!used.has(candidate.toLowerCase())) return candidate;
+  }
+  return buildWithIndex(51);
+}
+
+// 기존 문구·사진·버튼·발송 수단은 그대로 두고 id·일괄발송·연쇄만 비운 뒤 다음 조건/이름을 채워 새 등록 초기값 생성
+export function cloneConditionInitial(sourceInit, existingNames = []) {
+  const v = formValuesFromItem(sourceInit);
+  const used = new Set((Array.isArray(existingNames) ? existingNames : []).map((n) => String(n || '').trim().toLowerCase()).filter(Boolean));
+  const next = {
+    ...v,
+    id: undefined,
+    images: (v.images || []).map((img) => ({
+      data: img.data,
+      ...(img.bytes ? { bytes: img.bytes } : {}),
+      url: img.data ? `data:image/jpeg;base64,${img.data}` : img.url,
+    })),
+    bmsButtons: (v.bmsButtons || []).map((b) => normalizeBmsButton(b, { trimLinkPc: true })),
+    staff: [...(v.staff || [])],
+    chainDaysOff: [...(v.chainDaysOff || [])],
+    catchupOn: false,
+    catchupFrom: '',
+    catchupAt: '',
+    catchupDaily: '',
+    chainAfter: null,
+    hadChain: false,
+  };
+
+  const dayKinds = [AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_LEAD_PLUS];
+  if (dayKinds.includes(v.autoKind)) {
+    const startDay = Math.min(365, (Number(v.days) || 0) + 1);
+    let pickedDay = startDay;
+    for (let step = 0; step < 30 && startDay + step <= 365; step += 1) {
+      const candidateDays = String(startDay + step);
+      const previewName = suggestCloneName(sourceInit?.name, { ...next, days: candidateDays }, []);
+      if (!used.has(previewName.toLowerCase())) {
+        pickedDay = startDay + step;
+        break;
+      }
+    }
+    next.days = String(pickedDay);
+  } else if (isDateKind(v.autoKind)) {
+    if (v.offsetDir === 'same') {
+      next.offsetDir = 'after';
+      next.offsetDays = '1';
+    } else {
+      const startOff = Math.min(365, Math.max(0, Number(v.offsetDays) || 0) + 1);
+      let pickedOff = startOff;
+      for (let step = 0; step < 30 && startOff + step <= 365; step += 1) {
+        const candidateOff = String(startOff + step);
+        const previewName = suggestCloneName(sourceInit?.name, { ...next, offsetDays: candidateOff }, []);
+        if (!used.has(previewName.toLowerCase())) {
+          pickedOff = startOff + step;
+          break;
+        }
+      }
+      next.offsetDays = String(pickedOff);
+    }
+  } else {
+    next.autoKind = AUTO_KIND;
+    let pickedDay = 1;
+    for (let step = 0; step < 30; step += 1) {
+      const candidateDays = String(1 + step);
+      const previewName = suggestCloneName(sourceInit?.name, { ...next, autoKind: AUTO_KIND, days: candidateDays }, []);
+      if (!used.has(previewName.toLowerCase())) {
+        pickedDay = 1 + step;
+        break;
+      }
+    }
+    next.days = String(pickedDay);
+  }
+
+  next.name = suggestCloneName(sourceInit?.name, next, existingNames);
+  return next;
+}

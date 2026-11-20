@@ -12,7 +12,7 @@ import {
   estimateFormSendCost, normalizeRepeat, normalizeInterval, normalizeOffset, dirDaily, catchupSpanText,
   SEND_TIMES, sendTimeLabel, hasSendTime, defaultSendTime, bootStages, stageOrder, stageLabel,
   duplicateStages, stageDirtySig, newStageValues, hasStageRow, LEAD_SOURCES, LEAD_SOURCE_OPTION_LABEL,
-  autoConfirmLine, toggleRejectText,
+  autoConfirmLine, toggleRejectText, suggestCloneName,
 } from './smsTextTemplateFormModel.js';
 import { buildConditionSummary } from './smsTemplateListModel.js';
 import { ModalFoot } from './SmsModal.jsx';
@@ -53,7 +53,13 @@ function hasAdvancedValues(v) {
 
 // 저장 직후 꺼짐 경고: 서버가 본문·조건 변경으로 자동 발송을 껐을 때(item.auto_disabled) 다시 켜기 전까지 고객에게 안 나간다는 것을 보인다.
 // [다시 켜기]는 목록의 켜기와 같은 auto_toggle 흐름(dry_run 확인 줄 → 켜기 확인)을 쓴다.
-export function AutoOffNotice({ id, photos = 0 }) {
+export function AutoOffNotice({
+  id,
+  photos = 0,
+  heading = '자동 발송이 꺼졌습니다. 다시 켜야 고객에게 나갑니다',
+  buttonLabel = '다시 켜기',
+  onEnabled,
+}) {
   const [confirm, setConfirm] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -63,16 +69,16 @@ export function AutoOffNotice({ id, photos = 0 }) {
     setBusy(true); setError('');
     try {
       if (!confirm) setConfirm(await postSmsConsole('auto_toggle', { id, enabled: true, dry_run: true }));
-      else { await postSmsConsole('auto_toggle', { id, enabled: true }); setConfirm(null); setDone(true); }
+      else { await postSmsConsole('auto_toggle', { id, enabled: true }); setConfirm(null); setDone(true); onEnabled?.(); }
     } catch (err) { setConfirm(null); setError(toggleRejectText(err?.data?.reason || err?.data?.error?.reason || '') || err?.message || '다시 켜지 못했습니다.'); } finally { setBusy(false); }
   };
   if (done) return <p className="stf-done" role="status">다시 켰습니다</p>;
   return (
     <div className="stf-autooff" role="alert" data-auto-off-notice>
-      <p>자동 발송이 꺼졌습니다. 다시 켜야 고객에게 나갑니다</p>
+      <p>{heading}</p>
       {confirm ? <p className="stf-autooff-line">{autoConfirmLine(confirm, photos)}</p> : null}
       {error ? <p className="stf-autooff-line">{error}</p> : null}
-      <button type="button" className="ktm-btn ktm-btn--primary" disabled={busy} onClick={run}>{confirm ? '켜기 확인' : '다시 켜기'}</button>
+      <button type="button" className="ktm-btn ktm-btn--primary" disabled={busy} onClick={run}>{confirm ? '켜기 확인' : buttonLabel}</button>
     </div>
   );
 }
@@ -105,13 +111,15 @@ async function mergeImages(list) {
 }
 
 // 문자 템플릿 등록·수정: 초보자용 4단계 흐름 + 실시간 단가/미리보기
-export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial, siblings, startNew, pausedText = '' }) {
+export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial, siblings, startNew, pausedText = '', cloneFromName = '', existingNames = [] }) {
   const [boot] = useState(() => bootStages(initial, siblings, startNew));
   const v0 = boot.values;
   const [stages, setStages] = useState(boot.stages); // 단계별 보관 값(지금 편집 중인 단계의 최신 값은 아래 칸 상태에 있다)
   const [activeKey, setActiveKey] = useState(boot.activeKey);
   const nextKey = useRef(2);
   const pendingError = useRef('');
+  const nameEditedRef = useRef(false);
+  const cloneBootedRef = useRef(false);
   const [name, setName] = useState(v0.name);
   const [body, setBody] = useState(v0.body);
   const [images, setImages] = useState(v0.images); // 최대 3장
@@ -190,6 +198,16 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   useEffect(() => {
     setError(pendingError.current); pendingError.current = '';
   }, [name, body, images, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, unlessStep, unlessMode, daily, weekdays, step, audience, staff, ataTemplate, ataSelected, bmsButtons, adMark, sendTime, copyTo, catchupOn, catchupFrom, catchupAt, catchupDaily, leadSource, chainSubject, chainFrom, chainSales, chainDaysOff, chainPlain]);
+
+  // "같은 문구로 조건 추가"에서 발송 조건/일수를 바꿀 때 사용자가 이름을 직접 고치기 전까지는 이름 뒤 괄호도 같이 맞춘다
+  useEffect(() => {
+    if (!cloneFromName || nameEditedRef.current) return;
+    if (!cloneBootedRef.current) {
+      cloneBootedRef.current = true;
+      return;
+    }
+    setName(suggestCloneName(cloneFromName, { autoKind, days, step, leadSource, offsetDir, offsetDays }, existingNames));
+  }, [cloneFromName, autoKind, days, step, leadSource, offsetDir, offsetDays, existingNames]);
 
   // 이미 출고된 주문 1회 발송 미리보기(읽기만)
   const catchupShown = autoKind === AUTO_KIND && catchupOn;
@@ -383,7 +401,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const dirtyOf = (item, f) => item.base === null || stageDirtySig(f) !== item.base || (merge && f.images.length >= 2);
   const multi = stages.length > 1;
   const dirtyCount = multi ? stages.filter((item, i) => dirtyOf(item, forms[i])).length : 0;
-  const showStages = hasStageRow(autoKind, siblings) || multi;
+  const showStages = !cloneFromName && (hasStageRow(autoKind, siblings) || multi);
   const chips = stages.map((item, i) => ({ key: item.key, label: stageLabel(forms[i]), order: stageOrder(forms[i]), dirty: multi && dirtyOf(item, forms[i]), dup: dupSet.has(i), failed: item.failed && item.key !== activeKey, idx: i })).sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.idx - b.idx);
   const switchTo = key => {
     if (key === activeKey) return;
@@ -500,16 +518,33 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     }
     setBusy(false);
     if (last) onSaved?.(last);
-    if (!broke) setSaved(last || { id: stages.find(x => x.key === activeKey)?.id });
+    if (!broke) {
+      const savedPhotos = merge && images.length >= 2 ? 1 : images.length;
+      const baseSaved = last || { id: stages.find(x => x.key === activeKey)?.id };
+      setSaved(baseSaved ? { ...baseSaved, _photos: savedPhotos } : null);
+    }
   };
 
   if (saved) {
+    const savedPhotos = Number(saved._photos ?? saved.image_count ?? (saved.has_image ? 1 : 0)) || 0;
+    const isFreshAutoSaved = Boolean(saved.id && autoKind && !initial?.id && offItems.length === 0);
     return (
       <div className="stf-form">
-        <p className="stf-done" role="status">등록했습니다</p>
-        {offItems.map(item => <AutoOffNotice key={item.id} id={item.id} photos={item.photos} />)}
+        <p className="stf-done" role="status">{cloneFromName ? '새 조건으로 추가했습니다. 왼쪽 목록에도 바로 반영되었습니다.' : '등록했습니다'}</p>
+        {offItems.map(item => <AutoOffNotice key={item.id} id={item.id} photos={item.photos} onEnabled={() => onSaved?.({ ...saved, auto_enabled: true })} />)}
+        {isFreshAutoSaved ? (
+          <AutoOffNotice
+            id={saved.id}
+            photos={savedPhotos}
+            heading={cloneFromName
+              ? '새로 추가한 발송 조건은 안전을 위해 처음엔 꺼짐 상태로 저장됩니다. 바로 발송하려면 아래 [바로 켜기]를 눌러 주세요.'
+              : '새로 등록한 자동 발송은 안전을 위해 처음엔 꺼짐 상태로 저장됩니다. 바로 발송하려면 아래 [바로 켜기]를 눌러 주세요.'}
+            buttonLabel="바로 켜기"
+            onEnabled={() => onSaved?.({ ...saved, auto_enabled: true })}
+          />
+        ) : null}
         <div className="stf-actions">
-          {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>목록</button> : null}
+          {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>{cloneFromName ? '목록에서 보기' : '목록'}</button> : null}
           {autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSend(saved.id)}>이 문구로 보내기</button>}
         </div>
       </div>
@@ -528,6 +563,12 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             {mobilePreviewOpen ? '미리보기 접기' : '미리보기 보기'}
           </button>
         </div>
+
+        {cloneFromName ? (
+          <div className="stf-clone-banner" role="status">
+            <strong>“{cloneFromName}”</strong>의 문구·사진·버튼을 그대로 가져왔습니다. 아래에서 <strong>발송 조건(날짜·시점)</strong>만 확인하고 <strong>[추가 등록]</strong>을 누르면 왼쪽 목록에 새 항목으로 추가됩니다.
+          </div>
+        ) : null}
 
         {showStages ? (
           <div className="stf-stages-wrap">
@@ -776,7 +817,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           </div>
 
           <label className="stf-field stf-field-full">템플릿 이름 (관리용)
-            <input type="text" placeholder="예: 출고 20일 뒤 소개 혜택 안내 (고객에게는 안 보임)" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => setName(event.target.value)} />
+            <input type="text" placeholder="예: 출고 20일 뒤 소개 혜택 안내 (고객에게는 안 보임)" value={name} maxLength={TEXT_NAME_MAX} autoComplete="off" onChange={event => { nameEditedRef.current = true; setName(event.target.value); }} />
           </label>
 
           <label className="stf-field stf-field-full">메시지 내용
@@ -1022,7 +1063,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
           <div className="stf-actions">
             {onCancel ? <button type="button" className="ktm-btn" onClick={onCancel}>취소</button> : null}
             <button type="submit" form={formId} className="ktm-btn ktm-btn--primary" disabled={busy || mergePending}>
-              {busy ? (initial && !startNew ? '저장 중…' : '등록 중…') : (dirtyCount >= 2 ? `${dirtyCount}개 저장` : (initial && !startNew ? '저장' : '등록'))}
+              {busy ? (cloneFromName ? '추가 등록 중…' : (initial && !startNew ? '저장 중…' : '등록 중…')) : (cloneFromName ? '추가 등록' : (dirtyCount >= 2 ? `${dirtyCount}개 저장` : (initial && !startNew ? '저장' : '등록')))}
             </button>
           </div>
         </ModalFoot>
