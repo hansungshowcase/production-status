@@ -8,6 +8,16 @@ import './StaffSmsPanel.css';
 // 문자를 받도록 등록된 직원 이름 (끝 4자리)을 누르면 그날 그 사람에게 간 문자, [전체보기]는 그날 전체를 발송 순서(먼저 보낸 것 위)로.
 
 // 2026-11-11 사장님 "발송된 날짜가 떠야" — 줄마다 시각만이 아니라 발송 날짜+시각(KST, 예: 11/11 08:40).
+function shiftYmd(ymd, deltaDays) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+  if (!match) return getKstToday();
+  const dt = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + deltaDays));
+  const y = dt.getUTCFullYear();
+  const m = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(dt.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function formatSentAt(value) {
   return formatProcessCompletionTime(value) || '날짜 미확인';
 }
@@ -102,6 +112,12 @@ export default function StaffSmsPanel({ active = true }) {
       <div className="staff-sms__head">
         <h2 id="sms-history-title">직원 문자 발송내역</h2>
         <div className="staff-sms__date">
+          <button
+            type="button"
+            className="staff-sms__day-btn"
+            aria-label="이전 날짜"
+            onClick={() => changeDate(shiftYmd(date, -1))}
+          >‹</button>
           <input
             type="date"
             aria-label="발송 날짜"
@@ -109,6 +125,16 @@ export default function StaffSmsPanel({ active = true }) {
             max={today}
             onChange={event => changeDate(event.target.value)}
           />
+          <button
+            type="button"
+            className="staff-sms__day-btn"
+            aria-label="다음 날짜"
+            disabled={date >= today}
+            onClick={() => {
+              const next = shiftYmd(date, 1);
+              changeDate(next > today ? today : next);
+            }}
+          >›</button>
           <button type="button" disabled={date === today} onClick={() => changeDate(today)}>
             오늘
           </button>

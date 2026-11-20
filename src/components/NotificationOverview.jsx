@@ -111,7 +111,7 @@ function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
           </div>
           {triggerText && triggerText !== text(item.target) && (
             <div>
-              <dt>발송 시점</dt>
+              <dt>시점</dt>
               <dd>{triggerText}</dd>
             </div>
           )}
@@ -124,7 +124,7 @@ function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
           aria-controls={detailsId}
           onClick={onToggle}
         >
-          <span>{expanded ? '자세히 접기' : '자세히 보기'}</span>
+          <span>{expanded ? '접기' : '자세히 보기'}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="m6 9 6 6 6-6" />
           </svg>
@@ -162,6 +162,21 @@ const GROUP_COPY = {
   internal: { eyebrow: '직원 자동 문자 등록 현황', title: '직원에게 가는 자동 문자', count: '직원 자동 문자' },
 };
 
+function matchesOverviewQuery(item, normalizedQuery, shortPhones) {
+  if (!normalizedQuery) return true;
+  const target = notificationTextPresentation(item.target);
+  const trigger = notificationTextPresentation(item.trigger);
+  const channel = notificationChannelPresentation(item.configuration?.channel);
+  const haystack = [
+    item.name,
+    target,
+    shortPhones ? shortenPhonesInText(target) : '',
+    trigger,
+    channel,
+  ].join(' ').toLowerCase();
+  return haystack.includes(normalizedQuery);
+}
+
 export default function NotificationOverview({ group: onlyGroup = null } = {}) {
   const copy = GROUP_COPY[onlyGroup] || null;
   const titleId = useId();
@@ -169,6 +184,8 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
   const [overview, setOverview] = useState(null);
   const [activeGroupId, setActiveGroupId] = useState(copy ? onlyGroup : 'customer');
   const [expandedByGroup, setExpandedByGroup] = useState({ customer: null, internal: null });
+  const [query, setQuery] = useState('');
+  const [onlyPaused, setOnlyPaused] = useState(false);
   const requestIdRef = useRef(0);
 
   const loadOverview = useCallback(async (fresh = false) => {
@@ -202,6 +219,12 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
     0,
   );
   const catalogWarning = notificationCatalogWarning(overview?.catalog_status);
+  const normalizedQuery = query.trim().toLowerCase();
+  const hasFilter = Boolean(normalizedQuery || onlyPaused);
+  const resetFilter = () => {
+    setQuery('');
+    setOnlyPaused(false);
+  };
 
   return (
     <section
@@ -294,37 +317,81 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
             })}
           </div>
           )}
+          {shownCount > 0 && (
+            <div className="notification-overview-toolbar">
+              <input
+                type="search"
+                className="notification-overview-search"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                placeholder="이름·받는 사람·조건 검색"
+                aria-label="자동 문자 검색"
+              />
+              {pausedCount > 0 && (
+                <button
+                  type="button"
+                  className="notification-overview-filter-btn"
+                  aria-pressed={onlyPaused}
+                  onClick={() => setOnlyPaused(current => !current)}
+                >
+                  중지만 ({pausedCount})
+                </button>
+              )}
+              {hasFilter && (
+                <button
+                  type="button"
+                  className="notification-overview-filter-reset"
+                  onClick={resetFilter}
+                >
+                  초기화
+                </button>
+              )}
+            </div>
+          )}
           {copy && shownCount === 0 && (
             <div className="notification-overview-state" role="status">등록된 자동 문자가 없습니다.</div>
           )}
           <div className="notification-overview-scroll" aria-label={copy ? `${copy.count} 목록` : '자동 알림 종류 목록'} tabIndex={0}>
             <div className="notification-overview-groups">
-            {groups.map(group => (
-              <section
-                className="notification-overview-group"
-                role={copy ? undefined : 'tabpanel'}
-                id={`notification-overview-panel-${group.id}`}
-                aria-labelledby={copy ? undefined : `notification-overview-tab-${group.id}`}
-                key={group.id}
-                hidden={activeGroupId !== group.id}
-              >
-                <div className="notification-overview-list">
-                  {group.items.map(item => (
-                    <OverviewItem
-                      key={item.id}
-                      item={item}
-                      days={days}
-                      shortPhones={onlyGroup === 'internal'}
-                      expanded={expandedByGroup[group.id] === item.id}
-                      onToggle={() => setExpandedByGroup(current => ({
-                        ...current,
-                        [group.id]: current[group.id] === item.id ? null : item.id,
-                      }))}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+            {groups.map(group => {
+              const filteredItems = (group.items || []).filter(item => {
+                if (onlyPaused && item.policy?.status !== 'paused') return false;
+                return matchesOverviewQuery(item, normalizedQuery, onlyGroup === 'internal');
+              });
+              return (
+                <section
+                  className="notification-overview-group"
+                  role={copy ? undefined : 'tabpanel'}
+                  id={`notification-overview-panel-${group.id}`}
+                  aria-labelledby={copy ? undefined : `notification-overview-tab-${group.id}`}
+                  key={group.id}
+                  hidden={activeGroupId !== group.id}
+                >
+                  {filteredItems.length === 0 && (group.items || []).length > 0 ? (
+                    <div className="notification-overview-empty-filter" role="status">
+                      <span>검색 조건에 맞는 자동 문자가 없습니다.</span>
+                      <button type="button" onClick={resetFilter}>초기화</button>
+                    </div>
+                  ) : (
+                    <div className="notification-overview-list">
+                      {filteredItems.map(item => (
+                        <OverviewItem
+                          key={item.id}
+                          item={item}
+                          days={days}
+                          shortPhones={onlyGroup === 'internal'}
+                          expanded={expandedByGroup[group.id] === item.id}
+                          onToggle={() => setExpandedByGroup(current => ({
+                            ...current,
+                            [group.id]: current[group.id] === item.id ? null : item.id,
+                          }))}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
             </div>
           </div>
         </>

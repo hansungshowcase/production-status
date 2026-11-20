@@ -1,21 +1,25 @@
+/* 고객 문자 관리 — 플랫 헤어라인·고밀도 패널 */
 .customer-sms-panel {
   min-width: 0;
   display: flex;
   flex: 1;
   flex-direction: column;
-  padding: 16px;
-  border: 1px solid var(--smsc-line, var(--border));
+  padding: 0;
+  border: 1px solid var(--smsc-line, #e5e8eb);
   border-radius: 10px;
-  background: var(--sms-white, #fff);
-  color: var(--text);
+  background: var(--sms-white, #ffffff);
+  color: var(--smsc-text, #191f28);
+  overflow: hidden;
 }
 
+/* 헤더 + 세그먼트 탭 1줄 병합 */
 .customer-sms-intro {
-  padding: 0 0 12px;
+  padding: 10px 14px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   border: 0;
   border-bottom: 1px solid #eef0f3;
   border-radius: 0;
@@ -23,19 +27,42 @@
   box-shadow: none;
 }
 
-.customer-sms-intro h2 { margin: 0 0 2px; color: var(--smsc-text, #191f28); font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.02em; }
-.customer-sms-intro p { margin: 0; color: var(--smsc-muted, var(--text-mid)); font-size: 13px; line-height: 1.45; word-break: keep-all; }
-.customer-sms-intro .customer-sms-intro__notice { max-width: 280px; padding: 5px 10px; border-radius: 6px; background: #f5f7fa; color: #4e5968; font-size: 12px; font-weight: 600; }
+.customer-sms-intro__copy { min-width: 0; flex: 1 1 240px; }
 
+.customer-sms-intro h2 {
+  margin: 0 0 1px;
+  color: var(--smsc-text, #191f28);
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.customer-sms-intro p {
+  margin: 0;
+  color: #6b7684;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.customer-sms-intro .customer-sms-intro__notice {
+  color: #8b95a1;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+/* 슬림 플랫 세그먼트 탭 (흰색 활성 알약) */
 .customer-sms-tabs {
-  margin-top: 12px;
-  padding: 4px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  border: 1px solid var(--smsc-line, var(--border));
+  margin: 0;
+  padding: 3px;
+  display: inline-grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 2px;
+  border: 1px solid #e5e8eb;
   border-radius: 8px;
-  background: #f5f6f8;
+  background: #f2f4f6;
+  flex: 0 0 auto;
 }
 
 .customer-sms-tabs button,
@@ -43,19 +70,35 @@
 .customer-sms-state button,
 .customer-sms-send button,
 .customer-sms-filters button {
-  min-height: var(--control-min-height);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-mid);
+  min-height: 30px;
+  border: 1px solid #d5dbe1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #333d4b;
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-.customer-sms-tabs button { border: 0; background: transparent; }
-.customer-sms-tabs button[aria-selected='true'] { background: var(--blue); color: var(--surface); box-shadow: var(--shadow); }
+.customer-sms-tabs button {
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7684;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.customer-sms-tabs button[aria-selected='true'] {
+  background: #ffffff;
+  color: #191f28;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(25, 31, 40, 0.08);
+}
 
 .customer-sms-tabs button:focus-visible,
 .customer-sms-pagination button:focus-visible,
@@ -72,131 +115,388 @@
 }
 
 #customer-sms-history:not([hidden]),
-#customer-sms-reviews:not([hidden]) { min-height: 0; display: flex; flex: 1; flex-direction: column; }
+#customer-sms-reviews:not([hidden]) {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
 
+/* 1줄 인라인 필터 툴바 */
 .customer-sms-filters,
 .customer-sms-review-toolbar {
-  margin-top: 10px;
-  padding: 10px 12px;
-  display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(170px, 1fr) auto;
-  align-items: end;
-  gap: 10px;
-  border: 1px solid var(--smsc-line, var(--border));
-  border-radius: 8px;
+  margin-top: 0;
+  padding: 7px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid #eef0f3;
+  border-radius: 0;
   background: #fafbfc;
   box-shadow: none;
 }
 
 .customer-sms-filters label,
-.customer-sms-review-toolbar label { min-width: 0; display: grid; gap: 4px; color: #4e5968; font-size: 12.5px; font-weight: 600; }
+.customer-sms-review-toolbar label {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4e5968;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.customer-sms-date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.customer-sms-filters .customer-sms-day-btn {
+  min-width: 28px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #d5dbe1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #333d4b;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+}
+
 .customer-sms-filters input,
 .customer-sms-filters select,
-.customer-sms-review-toolbar select { width: 100%; min-height: 38px; box-sizing: border-box; padding: 0 10px; border: 1px solid #d5dbe1; border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; }
-.customer-sms-filters button { min-height: 38px; padding: 0 12px; color: #333d4b; }
+.customer-sms-review-toolbar select {
+  width: auto;
+  min-height: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid #d5dbe1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #191f28;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+}
 
-.customer-sms-sync-notice { margin: 8px 0 0; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; border: 1px solid var(--smsc-line, var(--border)); border-radius: 7px; background: #f5f7fa; color: #4e5968; font-size: 12px; font-weight: 600; line-height: 1.45; word-break: keep-all; }
+.customer-sms-filters button:not(.customer-sms-day-btn) {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
+  color: #333d4b;
+}
+
+.customer-sms-filters button:hover:not(:disabled) {
+  background: #f2f4f6;
+}
+
+.customer-sms-sync-notice {
+  margin: 0;
+  padding: 5px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid #f0f2f5;
+  border-radius: 0;
+  background: #fafbfc;
+  color: #6b7684;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: keep-all;
+}
+
 .customer-sms-sync-notice.is-error,
-.customer-sms-sync-notice.is-partial { background: var(--orange-light); }
-.customer-sms-sync-notice.is-date_required { background: var(--surface2); }
-.customer-sms-sync-notice time { color: var(--text-dim); white-space: nowrap; }
+.customer-sms-sync-notice.is-partial { background: var(--orange-light); color: #854d0e; }
+.customer-sms-sync-notice.is-date_required { background: #fafbfc; }
+.customer-sms-sync-notice time { color: #8b95a1; white-space: nowrap; }
 
-.customer-sms-summary { margin-top: 10px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--smsc-line, var(--border)); border-radius: 8px; background: var(--sms-white, #fff); overflow: hidden; }
-.customer-sms-summary > div { min-width: 0; min-height: 52px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 6px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+/* 초슬림 36px 요약 바 */
+.customer-sms-summary {
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 0;
+  border-bottom: 1px solid #eef0f3;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.customer-sms-summary > div {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .customer-sms-summary > div + div { border-left: 1px solid #eef0f3; }
-.customer-sms-summary span { color: #6b7684; font-size: 12.5px; font-weight: 600; }
-.customer-sms-summary strong { font-size: 19px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-.customer-sms-summary .is-success { background: #f4fbf6; }
+.customer-sms-summary span { color: #6b7684; font-size: 12px; font-weight: 600; }
+.customer-sms-summary strong { font-size: 15px; font-weight: 700; line-height: 1; color: #191f28; font-variant-numeric: tabular-nums; }
+.customer-sms-summary .is-success { background: transparent; }
 .customer-sms-summary .is-success strong { color: #15803d; }
-.customer-sms-summary .is-failed { background: #fef6f6; }
+.customer-sms-summary .is-failed { background: transparent; }
 .customer-sms-summary .is-failed strong { color: #d92d20; }
 
-.customer-sms-state { margin-top: 10px; min-height: 130px; padding: 20px 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--smsc-line, var(--border)); border-radius: 8px; background: #fafbfc; color: var(--text-mid); text-align: center; }
-.customer-sms-state--error { border-color: var(--red); background: var(--red-light); }
-.customer-sms-state button { padding: var(--space-2) var(--space-4); background: var(--blue); color: var(--surface); }
+.customer-sms-state {
+  margin: 14px;
+  min-height: 110px;
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed #e5e8eb;
+  border-radius: 8px;
+  background: #fafbfc;
+  color: #6b7684;
+  font-size: 13.5px;
+  text-align: center;
+}
 
+.customer-sms-state--error { border-color: var(--red); background: var(--red-light); color: #9f1239; }
+.customer-sms-state button { min-height: 32px; padding: 0 12px; background: #191f28; border-color: #191f28; color: #ffffff; }
+.customer-sms-state button.customer-sms-state__alt { background: #ffffff; border-color: #d5dbe1; color: #333d4b; }
+.customer-sms-state button.customer-sms-state__alt:hover { background: #f2f4f6; }
+
+/* 플러시 헤어라인 발송 목록 */
 .customer-sms-list,
-.customer-sms-review-list { flex-shrink: 0; min-height: 0; margin-top: 10px; display: grid; gap: 8px; }
-.customer-sms-item { min-width: 0; padding: 12px; border: 1px solid var(--smsc-line, var(--border)); border-left: 3px solid var(--smsc-accent, var(--blue)); border-radius: 8px; background: var(--surface); box-shadow: none; }
-.customer-sms-item__heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
-.customer-sms-item__heading > div { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
-.customer-sms-item__heading strong { font-size: 17px; }
-.customer-sms-item__heading > div:first-child span { color: var(--text-dim); font-size: 12px; font-weight: 700; }
-.customer-sms-badge { min-height: 26px; padding: var(--space-1) var(--space-2); display: inline-flex; align-items: center; border-radius: 999px; background: var(--surface2); color: var(--text-mid); font-size: 12px; font-weight: 800; }
+.customer-sms-review-list {
+  flex-shrink: 0;
+  min-height: 0;
+  margin-top: 0;
+  display: grid;
+  gap: 0;
+}
+
+.customer-sms-item {
+  min-width: 0;
+  padding: 9px 14px;
+  border: 0;
+  border-bottom: 1px solid #f0f2f5;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+  transition: background 120ms ease;
+}
+
+.customer-sms-item:last-child { border-bottom: 0; }
+.customer-sms-item:hover { background: #fafbfc; }
+
+.customer-sms-item__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-sms-item__heading > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-sms-item__heading strong { font-size: 14px; font-weight: 700; color: #191f28; }
+.customer-sms-item__heading > div:first-child span { color: #8b95a1; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.customer-sms-badge {
+  min-height: 20px;
+  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 4px;
+  background: #f2f4f6;
+  color: #4e5968;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .customer-sms-badge.is-success { background: var(--green-light); color: var(--green); }
 .customer-sms-badge.is-failed { background: var(--red-light); color: var(--red); }
 .customer-sms-badge.is-pending { background: var(--purple-light); color: var(--purple); }
 .customer-sms-badge.is-uncertain { background: var(--orange-light); color: var(--text-mid); }
-.customer-sms-badge.is-muted { background: var(--surface2); color: var(--text-dim); }
-.customer-sms-meta { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--text-dim); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
-.customer-sms-item h3 { margin: var(--space-2) 0 0; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
-.customer-sms-disclosure { width: 100%; min-height: var(--control-min-height); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text-mid); cursor: pointer; font: inherit; font-size: 14px; font-weight: 800; }
-.customer-sms-body { margin-top: var(--space-2); padding: var(--space-3); border-left: 3px solid var(--blue); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--blue-light); color: var(--text-mid); font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+.customer-sms-badge.is-muted { background: #f2f4f6; color: #8b95a1; }
+
+.customer-sms-meta {
+  margin: 3px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: #6b7684;
+  font-size: 11.5px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.customer-sms-item h3 {
+  margin: 2px 0 0;
+  color: #333d4b;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.customer-sms-disclosure {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  border: 1px solid #e5e8eb;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #4e5968;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.customer-sms-disclosure:hover { background: #f2f4f6; color: #191f28; }
+
+@media (min-width: 640px) {
+  .customer-sms-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'head action'
+      'meta action'
+      'subj action'
+      'body body';
+    align-items: center;
+    gap: 2px 12px;
+  }
+
+  .customer-sms-item__heading { grid-area: head; }
+  .customer-sms-meta { grid-area: meta; }
+  .customer-sms-item h3 { grid-area: subj; }
+  .customer-sms-disclosure {
+    grid-area: action;
+    width: auto;
+    min-height: 28px;
+    margin-top: 0;
+    padding: 0 9px;
+    white-space: nowrap;
+  }
+  .customer-sms-body { grid-area: body; }
+}
+
+.customer-sms-body {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid #e5e8eb;
+  border-left: 2.5px solid #1b64da;
+  border-radius: 6px;
+  background: #f8f9fb;
+  color: #333d4b;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 .customer-sms-body > p { margin: 0; }
-.customer-sms-attempts { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); white-space: normal; }
-.customer-sms-attempts h4 { margin: 0 0 var(--space-2); color: var(--text); font-size: 13px; }
-.customer-sms-attempts ul { margin: 0; padding: 0; display: grid; gap: var(--space-2); list-style: none; }
-.customer-sms-attempts li { min-width: 0; display: grid; grid-template-columns: minmax(84px, auto) auto minmax(0, 1fr); align-items: center; gap: var(--space-2); }
-.customer-sms-attempts li > span:last-child { color: var(--text-dim); font-size: 12px; overflow-wrap: anywhere; }
+.customer-sms-attempts { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e5e8eb; white-space: normal; }
+.customer-sms-attempts h4 { margin: 0 0 6px; color: #191f28; font-size: 12.5px; }
+.customer-sms-attempts ul { margin: 0; padding: 0; display: grid; gap: 6px; list-style: none; }
+.customer-sms-attempts li { min-width: 0; display: grid; grid-template-columns: minmax(84px, auto) auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.customer-sms-attempts li > span:last-child { color: #6b7684; font-size: 11.5px; overflow-wrap: anywhere; }
 
-.customer-sms-pagination { margin-top: var(--space-3); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--space-1); }
-.customer-sms-pagination button { min-width: var(--control-min-height); padding: var(--space-2); }
-.customer-sms-pagination button.is-selected { border-color: var(--blue); background: var(--blue); color: var(--surface); }
-.customer-sms-panel button:disabled { cursor: default; opacity: 0.5; }
+.customer-sms-pagination { margin: 10px 0 14px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; }
+.customer-sms-pagination button { min-width: 32px; min-height: 32px; padding: 0 8px; }
+.customer-sms-pagination button.is-selected { border-color: #191f28; background: #191f28; color: #ffffff; }
+.customer-sms-panel button:disabled { cursor: default; opacity: 0.45; }
 
-.customer-sms-connection { margin-top: var(--space-3); padding: var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--orange-light); color: var(--text-mid); font-size: 13px; }
-.customer-sms-connection strong { color: var(--text); }
+.customer-sms-connection { margin: 10px 14px 0; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid #e5e8eb; border-radius: 7px; background: var(--orange-light); color: #4e5968; font-size: 12.5px; }
+.customer-sms-connection strong { color: #191f28; }
 .customer-sms-connection.is-ready { background: var(--green-light); }
-.customer-sms-review-toolbar { grid-template-columns: minmax(220px, 1fr) auto; }
-.customer-sms-review-toolbar > div { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--text-mid); font-size: 13px; font-weight: 800; }
+.customer-sms-review-toolbar { justify-content: space-between; }
+.customer-sms-review-toolbar > div { display: flex; flex-wrap: wrap; gap: 10px; color: #4e5968; font-size: 12.5px; font-weight: 600; }
 
-.customer-sms-campaign { margin-top: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--blue-light); box-shadow: var(--shadow); }
-.customer-sms-campaign > div { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-.customer-sms-campaign > div span { color: var(--text-dim); font-size: 12px; font-weight: 700; }
-.customer-sms-campaign h3 { margin: var(--space-3) 0 var(--space-1); font-size: 16px; }
-.customer-sms-campaign p { margin: 0; color: var(--text-mid); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.customer-sms-campaign dl { margin: var(--space-3) 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
-.customer-sms-campaign dl div { min-width: 0; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--surface); }
-.customer-sms-campaign dt { color: var(--text-dim); font-size: 12px; font-weight: 700; }
-.customer-sms-campaign dd { margin: var(--space-1) 0 0; color: var(--text); font-size: 13px; font-weight: 800; overflow-wrap: anywhere; }
+.customer-sms-campaign { margin: 10px 14px 0; padding: 12px 14px; border: 1px solid #e5e8eb; border-radius: 8px; background: #f8f9fb; box-shadow: none; }
+.customer-sms-campaign > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.customer-sms-campaign > div span { color: #6b7684; font-size: 12px; font-weight: 600; }
+.customer-sms-campaign h3 { margin: 6px 0 4px; font-size: 14.5px; color: #191f28; }
+.customer-sms-campaign p { margin: 0; color: #4e5968; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.customer-sms-campaign dl { margin: 10px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.customer-sms-campaign dl div { min-width: 0; padding: 6px 8px; border: 1px solid #e5e8eb; border-radius: 6px; background: #ffffff; }
+.customer-sms-campaign dt { color: #8b95a1; font-size: 11px; font-weight: 600; }
+.customer-sms-campaign dd { margin: 2px 0 0; color: #191f28; font-size: 12.5px; font-weight: 600; overflow-wrap: anywhere; }
 
-.customer-sms-review-item { min-width: 0; min-height: var(--control-min-height); padding: var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow); cursor: pointer; }
-.customer-sms-review-item.is-disabled { background: var(--surface2); cursor: default; }
-.customer-sms-review-item input { width: 20px; height: 20px; margin: 0; accent-color: var(--blue); }
-.customer-sms-review-item__copy { min-width: 0; display: grid; gap: var(--space-1); }
-.customer-sms-review-item__copy strong { font-size: 15px; }
-.customer-sms-review-item__copy span { color: var(--text-dim); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
-.customer-sms-send { margin-top: var(--space-3); padding: var(--space-3); display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
-.customer-sms-send p { margin: 0; color: var(--text-mid); font-size: 13px; line-height: 1.5; word-break: keep-all; }
-.customer-sms-send button { flex: 0 0 auto; padding: var(--space-2) var(--space-4); background: var(--blue); color: var(--surface); }
+.customer-sms-review-item { min-width: 0; min-height: var(--control-min-height); padding: 9px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid #f0f2f5; border-radius: 0; background: #ffffff; box-shadow: none; cursor: pointer; }
+.customer-sms-review-item.is-disabled { background: #fafbfc; cursor: default; }
+.customer-sms-review-item input { width: 18px; height: 18px; margin: 0; accent-color: #191f28; }
+.customer-sms-review-item__copy { min-width: 0; display: grid; gap: 2px; }
+.customer-sms-review-item__copy strong { font-size: 13.5px; color: #191f28; }
+.customer-sms-review-item__copy span { color: #6b7684; font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.customer-sms-send { margin: 10px 14px 14px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #e5e8eb; border-radius: 8px; background: #fafbfc; }
+.customer-sms-send p { margin: 0; color: #4e5968; font-size: 12.5px; line-height: 1.5; word-break: keep-all; }
+.customer-sms-send button { flex: 0 0 auto; min-height: var(--control-min-height); padding: 0 14px; border-color: #191f28; background: #191f28; color: #ffffff; }
 
 @media (min-width: 1100px) {
   .customer-sms-panel { overflow: hidden; }
   #customer-sms-history:not([hidden]),
-  #customer-sms-reviews:not([hidden]) { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: var(--space-1); }
+  #customer-sms-reviews:not([hidden]) { overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-right: 0; }
+}
+
+@media (max-width: 768px) {
+  .customer-sms-tabs button,
+  .customer-sms-filters button,
+  .customer-sms-filters input,
+  .customer-sms-filters select,
+  .customer-sms-review-toolbar select,
+  .customer-sms-disclosure,
+  .customer-sms-pagination button { min-height: var(--control-min-height); }
 }
 
 @media (max-width: 720px) {
-  .customer-sms-intro { flex-direction: column; gap: var(--space-2); }
-  .customer-sms-intro .customer-sms-intro__notice { max-width: none; }
-  .customer-sms-filters { grid-template-columns: minmax(0, 1fr); }
+  .customer-sms-intro { align-items: flex-start; }
   .customer-sms-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .customer-sms-summary > div:nth-child(n+3) { border-top: 1px solid #eef0f3; }
+  .customer-sms-summary > div:nth-child(3) { border-left: 0; }
   .customer-sms-campaign dl { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 480px) {
-  .customer-sms-intro,
+  .customer-sms-intro { padding: 10px 12px; }
+  .customer-sms-tabs { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .customer-sms-filters,
-  .customer-sms-review-toolbar,
-  .customer-sms-campaign { padding: var(--space-3); }
-  .customer-sms-review-toolbar { grid-template-columns: minmax(0, 1fr); }
-  .customer-sms-summary { gap: var(--space-1); }
-  .customer-sms-summary > div { padding: var(--space-2); flex-direction: column; align-items: flex-start; justify-content: center; }
-  .customer-sms-review-item { grid-template-columns: auto minmax(0, 1fr); }
+  .customer-sms-review-toolbar { padding: 8px 12px; }
+  .customer-sms-filters label { width: 100%; justify-content: space-between; }
+  .customer-sms-filters input,
+  .customer-sms-filters select { flex: 1 1 auto; }
+  .customer-sms-campaign { margin: 10px 12px 0; padding: 10px 12px; }
+  .customer-sms-item { padding: 10px 12px; }
+  .customer-sms-review-item { grid-template-columns: auto minmax(0, 1fr); padding: 9px 12px; }
   .customer-sms-attempts li { grid-template-columns: minmax(0, 1fr) auto; }
   .customer-sms-attempts li > span:last-child { grid-column: 1 / -1; }
   .customer-sms-review-item > .customer-sms-badge { grid-column: 2; justify-self: start; }
-  .customer-sms-send { align-items: stretch; flex-direction: column; }
+  .customer-sms-send { margin: 10px 12px 12px; align-items: stretch; flex-direction: column; }
   .customer-sms-send button { width: 100%; }
 }
 

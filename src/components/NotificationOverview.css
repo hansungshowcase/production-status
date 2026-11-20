@@ -1,66 +1,71 @@
+/* 자동 문자 등록 현황 — 플랫 헤어라인 고밀도 목록 */
 .notification-overview {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  padding: 16px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--smsc-line, var(--border));
+  border: 1px solid var(--smsc-line, #e5e8eb);
   border-radius: 10px;
-  background: var(--sms-white);
-  color: var(--sms-ink);
+  background: var(--sms-white, #ffffff);
+  color: var(--smsc-text, #191f28);
   box-shadow: none;
 }
 
 .notification-overview__intro {
+  padding: 11px 14px 9px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: 10px;
+  border-bottom: 1px solid #eef0f3;
 }
 
 .notification-overview__eyebrow {
-  margin: 0 0 2px;
-  color: var(--smsc-accent, var(--sms-selected));
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  margin: 0 0 1px;
+  color: #8b95a1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .notification-overview__intro h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15.5px;
   font-weight: 700;
   line-height: 1.3;
   letter-spacing: -0.02em;
+  color: #191f28;
 }
 
 .notification-overview__intro p:not(.notification-overview__eyebrow) {
   margin: var(--space-1) 0 0;
   color: var(--text-mid);
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.45;
   word-break: keep-all;
 }
 
 .notification-overview__intro time {
   flex: 0 0 auto;
-  color: var(--text-dim);
-  font-size: 12px;
-  font-weight: 600;
+  color: #8b95a1;
+  font-size: 11.5px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 
 .notification-overview__notice,
 .notification-overview__log-warning {
-  margin: 8px 0 0;
-  padding: 6px 10px;
-  border-radius: 7px;
-  background: #f5f7fa;
-  color: var(--text-mid);
-  font-size: 12.5px;
-  font-weight: 600;
+  margin: 0;
+  padding: 5px 14px;
+  border-radius: 0;
+  border-bottom: 1px solid #f0f2f5;
+  background: #fafbfc;
+  color: #6b7684;
+  font-size: 11.5px;
+  font-weight: 500;
   line-height: 1.45;
   word-break: keep-all;
 }
@@ -72,122 +77,205 @@
 
 .notification-overview-state {
   min-height: 96px;
-  margin-top: var(--space-3);
+  margin: 12px 14px;
   padding: var(--space-4);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface2);
+  border: 1px dashed var(--smsc-line, #e5e8eb);
+  border-radius: 8px;
+  background: #fafbfc;
   color: var(--text-mid);
-  font-size: 14px;
+  font-size: 13.5px;
   text-align: center;
 }
 
 .notification-overview-state--error { background: var(--sms-paused-bg); color: var(--sms-paused-ink); }
-.notification-overview-state strong { color: var(--text); font-size: 16px; }
+.notification-overview-state strong { color: var(--text); font-size: 15px; }
 
 .notification-overview-state button {
   min-height: var(--control-min-height);
   margin-top: var(--space-1);
   padding: var(--space-2) var(--space-4);
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--blue);
-  color: var(--surface);
+  border-radius: 7px;
+  background: #191f28;
+  color: #ffffff;
   cursor: pointer;
   font: inherit;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 600;
 }
 
+/* 플랫 34px 요약 스트립(기존 52px 파스텔 블록 대체) */
 .notification-overview-summary {
-  min-height: 52px;
-  margin: var(--space-2) 0 0;
+  min-height: 34px;
+  margin: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--sms-white);
+  border: 0;
+  border-bottom: 1px solid #eef0f3;
+  border-radius: 0;
+  background: #fafbfc;
 }
 
 .notification-overview-summary > div {
   min-width: 0;
-  padding: var(--space-2);
+  padding: 6px 12px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
+  justify-content: space-between;
+  gap: 6px;
+  background: transparent;
 }
 
-.notification-overview-summary > div + div { border-left: 1px solid var(--border); }
-.notification-overview-summary > div:nth-child(1) { background: var(--sms-customer-bg); }
-.notification-overview-summary > div:nth-child(2) { background: var(--sms-employee-bg); }
-.notification-overview-summary > div:nth-child(3) { background: var(--sms-paused-bg); }
-.notification-overview-summary > div:nth-child(1) dd { color: var(--sms-customer-ink); }
-.notification-overview-summary > div:nth-child(2) dd { color: var(--sms-employee-ink); }
-.notification-overview-summary > div:nth-child(3) dd { color: var(--sms-paused-ink); }
-/* 한 대상만 보여 줄 때(고객 문자 관리·직원 문자 관리): [그 대상 수 | 보내지 않음] 두 칸 */
+.notification-overview-summary > div + div { border-left: 1px solid #eef0f3; }
 .notification-overview-summary--single { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.notification-overview-summary--single > div:nth-child(2) { background: var(--sms-paused-bg); }
-.notification-overview-summary--single > div:nth-child(2) dd { color: var(--sms-paused-ink); }
-.notification-overview-summary--internal > div:nth-child(1) { background: var(--sms-employee-bg); }
-.notification-overview-summary--internal > div:nth-child(1) dd { color: var(--sms-employee-ink); }
+.notification-overview-summary > div:nth-child(1) dd,
+.notification-overview-summary > div:nth-child(2) dd { color: #191f28; }
+.notification-overview-summary > div:nth-child(3) dd,
+.notification-overview-summary--single > div:nth-child(2) dd { color: #d92d20; }
+.notification-overview-summary--internal > div:nth-child(1) dd { color: #191f28; }
 
 .notification-overview-summary dt {
-  color: var(--sms-ink);
+  color: #6b7684;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .notification-overview-summary dd {
   margin: 0;
-  color: var(--text);
-  font-size: 17px;
-  font-weight: 900;
+  color: #191f28;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 초슬림 검색·필터 바 */
+.notification-overview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #eef0f3;
+  background: #ffffff;
+}
+
+.notification-overview-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid #e5e8eb;
+  border-radius: 6px;
+  background: #f8f9fb;
+  color: #191f28;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.notification-overview-search::placeholder { color: #8b95a1; }
+.notification-overview-search:focus {
+  background: #ffffff;
+  border-color: var(--smsc-accent, #1b64da);
+  outline: none;
+}
+
+.notification-overview-filter-btn,
+.notification-overview-filter-reset {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid #e5e8eb;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #4e5968;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notification-overview-filter-btn:hover,
+.notification-overview-filter-reset:hover {
+  background: #f2f4f6;
+  color: #191f28;
+}
+
+.notification-overview-filter-btn[aria-pressed='true'] {
+  border-color: #191f28;
+  background: #191f28;
+  color: #ffffff;
+}
+
+.notification-overview-empty-filter {
+  padding: 20px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #6b7684;
+  font-size: 13px;
+}
+
+.notification-overview-empty-filter button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d5dbe1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #191f28;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .notification-overview-group-tabs {
-  margin-top: var(--space-2);
+  margin: 8px 12px 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--sms-customer-bg);
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e5e8eb;
+  border-radius: 8px;
+  background: #f2f4f6;
 }
 
 .notification-overview-group-tabs button {
-  min-height: var(--control-min-height);
-  padding: var(--space-2) var(--space-3);
+  min-height: 32px;
+  padding: 4px 10px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   background: transparent;
-  color: var(--text-mid);
+  color: #6b7684;
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .notification-overview-group-tabs button[aria-selected='true'] {
-  background: var(--sms-selected);
-  color: var(--sms-white);
-  box-shadow: var(--shadow);
+  background: #ffffff;
+  color: #191f28;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(25, 31, 40, 0.08);
 }
 
 .notification-overview-scroll {
   min-width: 0;
   min-height: 0;
   flex: 1;
-  margin-top: var(--space-2);
+  margin-top: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding-right: var(--space-1);
+  padding-right: 0;
 }
 
 .notification-overview-groups,
@@ -195,68 +283,83 @@
 .notification-overview-list { display: grid; }
 
 .notification-overview-group[hidden] { display: none; }
-.notification-overview-list { gap: var(--space-2); }
+.notification-overview-list { gap: 0; }
 
+/* 플러시 헤어라인 행 */
 .notification-overview-item {
   min-width: 0;
-  padding: 11px 12px;
-  border: 1px solid var(--smsc-line, var(--border));
-  border-radius: 8px;
-  border-left: 3px solid var(--sms-unknown-ink);
-  background: var(--sms-white);
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 1px solid #f0f2f5;
+  border-radius: 0;
+  border-left: 2.5px solid transparent;
+  background: var(--sms-white, #ffffff);
+  transition: background 120ms ease;
 }
+
+.notification-overview-item:last-child { border-bottom: 0; }
+.notification-overview-item:hover { background: #fafbfc; }
 
 .notification-overview-item__row {
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 6px 10px;
+  align-items: center;
+  gap: 3px 8px;
 }
 
-.notification-overview-item__heading { min-width: 0; }
+.notification-overview-item__heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
 
 .notification-overview-item__heading h4 {
   margin: 0;
-  font-size: 14.5px;
-  font-weight: 700;
-  line-height: 1.4;
-  color: var(--smsc-text, #191f28);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #191f28;
   overflow-wrap: anywhere;
 }
 
 .notification-overview-badges {
-  margin-top: var(--space-1);
+  margin-top: 0;
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
 }
 
 .notification-overview-badge {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 2px 8px;
-  border-radius: 5px;
+  min-height: 20px;
+  padding: 1px 6px;
+  border-radius: 4px;
   background: var(--sms-unknown-bg);
   color: var(--sms-unknown-ink);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1.3;
+  white-space: nowrap;
 }
 
 .notification-overview-meta-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 2px 7px;
-  border-radius: 5px;
+  min-height: 20px;
+  padding: 1px 6px;
+  border-radius: 4px;
   background: #f2f4f6;
   color: #4e5968;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .notification-overview-meta-chip.is-active {
@@ -265,7 +368,11 @@
 }
 
 .notification-overview-meta-chip.is-zero {
+  background: transparent;
+  padding-left: 2px;
+  padding-right: 2px;
   color: #8b95a1;
+  font-weight: 500;
 }
 
 .notification-overview-badge--ready {
@@ -288,38 +395,69 @@
 .notification-overview-badge--test { background: var(--sms-test-bg); color: var(--sms-test-ink); }
 .notification-overview-badge--unknown { background: var(--sms-unknown-bg); color: var(--sms-unknown-ink); }
 
-.notification-overview-item--ready { border-left-color: var(--sms-employee-ink); }
+.notification-overview-item--ready { border-left-color: transparent; }
 .notification-overview-item--paused,
-.notification-overview-item--off { border-left-color: var(--sms-paused-ink); }
+.notification-overview-item--off { border-left-color: #e11d48; }
 .notification-overview-item--incomplete,
-.notification-overview-item--conditional { border-left-color: var(--sms-attention-ink); }
-.notification-overview-item--test { border-left-color: var(--sms-test-ink); }
-.notification-overview-item--unknown { border-left-color: var(--sms-unknown-ink); }
+.notification-overview-item--conditional { border-left-color: #d97706; }
+.notification-overview-item--test { border-left-color: #7c3aed; }
+.notification-overview-item--unknown { border-left-color: #94a3b8; }
 
+/* 인라인 1줄 메타(받는 사람 · 시점) — 세로 2줄 차지 제거 */
 .notification-overview-facts {
   grid-column: 1 / -1;
   margin: 0;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
 }
 
-.notification-overview-facts > div,
+.notification-overview-facts > div {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.notification-overview-facts > div + div::before {
+  content: '·';
+  color: #c5cdd6;
+  margin-right: 2px;
+}
+
 .notification-overview-details dl > div { min-width: 0; }
 
-.notification-overview-facts dt,
-.notification-overview-details dt {
-  color: #6b7684;
-  font-size: 12px;
-  font-weight: 700;
+.notification-overview-facts dt {
+  color: #8b95a1;
+  font-size: 11.5px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
-.notification-overview-facts dd,
+.notification-overview-details dt {
+  color: #6b7684;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.notification-overview-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: #4e5968;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
 .notification-overview-details dd {
   min-width: 0;
   margin: 2px 0 0;
-  color: #333d4b;
+  color: #191f28;
   font-size: 12.5px;
   font-weight: 500;
   line-height: 1.45;
@@ -328,31 +466,34 @@
 }
 
 .notification-overview-disclosure {
-  min-width: 108px;
-  min-height: 34px;
-  padding: 0 11px;
-  display: flex;
+  min-width: auto;
+  min-height: 26px;
+  padding: 0 8px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  border: 1px solid #d5dbe1;
-  border-radius: 7px;
-  background: var(--surface);
-  color: #333d4b;
+  gap: 2px;
+  border: 1px solid #e5e8eb;
+  border-radius: 6px;
+  background: var(--surface, #ffffff);
+  color: #4e5968;
   cursor: pointer;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .notification-overview-disclosure:hover {
   background: #f2f4f6;
+  border-color: #d5dbe1;
+  color: #191f28;
 }
 
 .notification-overview-disclosure svg {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   fill: none;
   stroke: currentColor;
@@ -368,28 +509,29 @@
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  margin-top: var(--space-2);
-  padding: var(--space-3);
-  border-left: 3px solid var(--sms-selected);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--sms-customer-bg);
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e5e8eb;
+  border-left: 2.5px solid #1b64da;
+  border-radius: 6px;
+  background: #f8f9fb;
 }
 
 .notification-overview-details dl {
   margin: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2) var(--space-4);
+  gap: 8px 14px;
 }
 
 .notification-overview-example-message {
   min-width: 0;
   max-width: 100%;
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--sms-white);
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e5e8eb;
+  border-radius: 6px;
+  background: var(--sms-white, #ffffff);
 }
 
 .notification-overview-example-message__label,
@@ -402,24 +544,24 @@
 
 .notification-overview-example-message__label {
   margin: 0;
-  color: var(--sms-selected);
-  font-size: 12px;
-  font-weight: 800;
+  color: #1b64da;
+  font-size: 11.5px;
+  font-weight: 700;
 }
 
 .notification-overview-example-message__subject {
-  margin: var(--space-1) 0 0;
-  color: var(--sms-ink);
-  font-size: 13px;
-  font-weight: 800;
+  margin: 3px 0 0;
+  color: #191f28;
+  font-size: 12.5px;
+  font-weight: 700;
   white-space: pre-wrap;
 }
 
 .notification-overview-example-message__text {
-  margin: var(--space-2) 0 0;
-  color: var(--text-mid);
-  font-size: 13px;
-  font-weight: 600;
+  margin: 6px 0 0;
+  color: #333d4b;
+  font-size: 12.5px;
+  font-weight: 500;
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -427,6 +569,9 @@
 .notification-overview-disclosure:focus-visible,
 .notification-overview-state button:focus-visible,
 .notification-overview-group-tabs button:focus-visible,
+.notification-overview-search:focus-visible,
+.notification-overview-filter-btn:focus-visible,
+.notification-overview-filter-reset:focus-visible,
 .notification-overview-scroll:focus-visible {
   outline: 3px solid var(--blue);
   outline-offset: var(--space-1);
@@ -449,7 +594,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--space-1) var(--space-2);
+    gap: 4px 6px;
   }
 
   .notification-overview-badges { margin-top: 0; }
@@ -462,19 +607,12 @@
   .notification-overview-facts {
     grid-row: 2;
   }
-
-  .notification-overview-facts > div {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: baseline;
-    gap: var(--space-2);
-  }
-
-  .notification-overview-facts dd { margin-top: 0; }
 }
 
 @media (max-width: 480px) {
-  .notification-overview { padding: var(--space-2); }
+  .notification-overview { padding: 0; }
+
+  .notification-overview__intro { padding: 10px 12px 8px; }
 
   .notification-overview__intro time {
     max-width: 88px;
@@ -483,29 +621,36 @@
 
   .notification-overview__notice,
   .notification-overview__log-warning {
-    padding: var(--space-1) var(--space-2);
-    font-size: 12px;
+    padding: 5px 12px;
+    font-size: 11.5px;
   }
 
-  .notification-overview-summary { min-height: 48px; }
+  .notification-overview-summary { min-height: 36px; }
 
   .notification-overview-summary > div {
-    padding: var(--space-1);
-    flex-direction: column;
-    gap: 0;
+    padding: 6px 10px;
   }
+
+  .notification-overview-item { padding: 9px 12px; }
 
   .notification-overview-item__row { grid-template-columns: minmax(0, 1fr); }
 
   .notification-overview-disclosure {
     width: 100%;
     min-width: 0;
+    min-height: 40px;
+    margin-top: 4px;
   }
+
+  .notification-overview-search,
+  .notification-overview-filter-btn,
+  .notification-overview-filter-reset { min-height: 36px; }
 
   .notification-overview-details dl { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .notification-overview-disclosure svg { transition: none; }
+  .notification-overview-disclosure svg,
+  .notification-overview-item { transition: none; }
   .notification-overview-disclosure[aria-expanded='true'] svg { transform: none; }
 }

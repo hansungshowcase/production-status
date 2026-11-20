@@ -1,15 +1,16 @@
-/* 직원 문자 관리 발송내역 — 미니멀 헤어라인(이름 버튼 + 컴팩트 발송 내역) */
+/* 직원 문자 관리 발송내역 — 고밀도 플랫 헤어라인(이름 필터 바 + 콤팩트 발송 기록) */
 .staff-sms {
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--smsc-line, var(--border));
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--smsc-line, #e5e8eb);
   border-radius: 10px;
-  background: var(--sms-white, #fff);
+  background: var(--sms-white, #ffffff);
+  overflow: hidden;
 }
 
 .staff-sms__head {
@@ -18,14 +19,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-bottom: 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid #eef0f3;
 }
 
 .staff-sms__head h2 {
   margin: 0;
   color: var(--smsc-text, #191f28);
-  font-size: 18px;
+  font-size: 15.5px;
   font-weight: 700;
   letter-spacing: -0.02em;
   word-break: keep-all;
@@ -34,93 +35,131 @@
 .staff-sms__date {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .staff-sms__date input {
-  min-height: 36px;
+  min-height: 30px;
+  height: 30px;
   padding: 0 8px;
   border: 1px solid #d5dbe1;
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--text);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #191f28;
   font: inherit;
-  font-size: 14px;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .staff-sms__date button,
 .staff-sms__people button {
-  min-height: 32px;
-  border: 1px solid #d5dbe1;
-  background: var(--surface);
-  color: #333d4b;
+  min-height: 26px;
+  border: 1px solid #dfe3e8;
+  background: #ffffff;
+  color: #191f28;
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .staff-sms__date button {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 7px;
-  font-size: 13px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
 }
 
+.staff-sms__date .staff-sms__day-btn {
+  min-width: 28px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.staff-sms__date button:hover:not(:disabled) { background: #f2f4f6; }
 .staff-sms__date button:disabled {
-  color: var(--text-dim);
+  color: #b0b8c1;
   cursor: default;
 }
 
+/* 콤팩트 직원 칩 바 — 받은 직원만 선명하게 강조, 0건은 옅은 고스트 처리로 가독성·높이 절약 */
 .staff-sms__people {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #eef0f3;
+  background: #fafbfc;
 }
 
 .staff-sms__people button {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
   text-align: left;
   overflow-wrap: anywhere;
 }
 
-.staff-sms__people button.is-empty { color: var(--text-dim); }
+.staff-sms__people button:hover {
+  border-color: #c5cdd6;
+  background: #f2f4f6;
+}
+
+.staff-sms__people button.is-empty {
+  border-color: transparent;
+  background: transparent;
+  color: #8b95a1;
+  font-weight: 500;
+}
+
+.staff-sms__people button.is-empty:hover {
+  background: #eef0f3;
+  color: #4e5968;
+}
 
 .staff-sms__who {
   display: inline-flex;
   flex-wrap: wrap;
-  column-gap: 4px;
+  column-gap: 3px;
   min-width: 0;
 }
 
 .staff-sms__who > span { white-space: nowrap; }
 
 .staff-sms__people button[aria-pressed='true'] {
-  border-color: var(--blue);
-  background: var(--blue);
-  color: #fff;
+  border-color: #191f28;
+  background: #191f28;
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .staff-sms__count {
   flex: 0 0 auto;
-  min-width: 22px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--surface2);
-  color: var(--text-mid);
-  font-size: 12px;
-  font-weight: 800;
-  text-align: center;
+  min-width: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #1b64da;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.staff-sms__people button.is-empty .staff-sms__count {
+  color: #a8b1bc;
+  font-weight: 500;
 }
 
 .staff-sms__people button[aria-pressed='true'] .staff-sms__count {
-  background: rgba(255, 255, 255, 0.24);
-  color: #fff;
+  background: transparent;
+  color: #dbeafe;
 }
 
 .staff-sms__date button:focus-visible,
@@ -130,10 +169,15 @@
   outline-offset: 2px;
 }
 
+.staff-sms__scroll { padding-right: 0; }
+
 .staff-sms__note {
-  margin: 0 0 var(--space-2);
-  color: var(--text-mid);
-  font-size: 13px;
+  margin: 0;
+  padding: 6px 14px;
+  border-bottom: 1px solid #f0f2f5;
+  background: #fafbfc;
+  color: #6b7684;
+  font-size: 12px;
 }
 
 .staff-sms__list {
@@ -141,16 +185,21 @@
   padding: 0;
   list-style: none;
   display: grid;
-  gap: var(--space-2);
+  gap: 0;
 }
 
 .staff-sms__item {
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--smsc-line, var(--border));
-  border-radius: 8px;
-  background: var(--surface);
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 1px solid #f0f2f5;
+  border-radius: 0;
+  background: #ffffff;
+  transition: background 120ms ease;
 }
+
+.staff-sms__item:last-child { border-bottom: 0; }
+.staff-sms__item:hover { background: #fafbfc; }
 
 @media (min-width: 640px) {
   .staff-sms__item {
@@ -161,22 +210,23 @@
       'title toggle'
       'body body';
     align-items: center;
-    gap: 4px 12px;
+    gap: 2px 10px;
   }
   .staff-sms__line { grid-area: meta; }
   .staff-sms__item h3 { grid-area: title; }
   .staff-sms__item .sms-history-disclosure {
     grid-area: toggle;
     width: auto;
-    min-height: 34px;
+    min-height: 26px;
     margin-top: 0;
-    padding: 0 10px;
-    gap: 4px;
-    font-size: 12.5px;
+    padding: 0 8px;
+    gap: 3px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
   }
-  .staff-sms__item .sms-history-disclosure svg { width: 16px; height: 16px; }
+  .staff-sms__item .sms-history-disclosure svg { width: 14px; height: 14px; }
   .staff-sms__item .sms-history-body { grid-area: body; }
 }
 
@@ -184,38 +234,40 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  color: var(--text-mid);
-  font-size: 14px;
+  gap: 6px;
+  color: #6b7684;
+  font-size: 12.5px;
 }
 
 .staff-sms__line time {
-  color: var(--text);
-  font-weight: 800;
+  color: #6b7684;
+  font-size: 12px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .staff-sms__line strong {
-  color: var(--text);
-  font-weight: 800;
+  color: #191f28;
+  font-size: 13px;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .staff-sms__item h3 {
-  margin: var(--space-1) 0 0;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.45;
+  margin: 2px 0 0;
+  color: #333d4b;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
   overflow-wrap: anywhere;
   word-break: keep-all;
 }
 
 .staff-sms__dot {
   flex: 0 0 auto;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--red);
 }
@@ -226,8 +278,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .staff-sms__flag--failed { color: var(--red); }
@@ -241,19 +293,22 @@
 }
 
 @media (max-width: 480px) {
-  .staff-sms { padding: 12px; }
+  .staff-sms { padding: 0; }
+  .staff-sms__head { padding: 10px 12px; }
   .staff-sms__people {
+    padding: 8px 12px;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+    gap: 5px;
   }
 
   .staff-sms__people button {
     gap: 4px;
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-md);
-    font-size: 13px;
+    border-radius: 6px;
+    font-size: 12.5px;
   }
 
-  .staff-sms__count { min-width: 20px; padding: 1px 5px; font-size: 11px; }
+  .staff-sms__item { padding: 9px 12px; }
+  .staff-sms__count { font-size: 11px; }
 }
