@@ -1476,40 +1476,41 @@ export default function KakaoTemplateManager({
       .filter((entry) => entry.pageItems.length > 0);
 
     body = (
-      <div className={`stl-layout${hasDetail ? ' has-detail' : ''}`}>
-        <section className="stl-list-pane" aria-label="카카오톡 템플릿 목록">
+      <>
+        <div className="stl-toolbar">
           <div className="ktm-search stl-search">
             <Icon name="search" />
             <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·발송 조건·템플릿 ID 검색" aria-label="카카오톡 템플릿 검색" />
           </div>
-          <div className="stl-tabs">
-            <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
-              {pills.map((pill) => (
-                <button
-                  type="button"
-                  key={pill.id}
-                  className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`}
-                  aria-pressed={statusFilter === pill.id}
-                  onClick={() => pickFilter(pill.id)}
-                >
-                  {pill.label} {pill.count}
-                </button>
-              ))}
-            </div>
-            <span className="stl-right">
-              <select className="stl-cond-select" aria-label="검수 상태" value={inspectFilter} onChange={(event) => pickInspect(event.target.value)}>
-                <option value="">검수 상태 전체</option>
-                {inspectPills.map((pill) => (
-                  <option key={pill.id} value={pill.id}>{pill.label} {pill.count}</option>
-                ))}
-              </select>
-              {hasActiveFilters ? <button type="button" className="ktm-btn stl-reset-btn" onClick={resetFilters}>초기화</button> : null}
-              <span className="stl-total">{paged.pages > 1 ? `총 ${totalVisible}건 · ${paged.page}/${paged.pages}쪽` : `총 ${totalVisible}건`}</span>
-            </span>
+          <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
+            {pills.map((pill) => (
+              <button
+                type="button"
+                key={pill.id}
+                className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`}
+                aria-pressed={statusFilter === pill.id}
+                onClick={() => pickFilter(pill.id)}
+              >
+                {pill.label} {pill.count}
+              </button>
+            ))}
           </div>
-          {data.unresolved_groups > 0 ? <p className="ktm-hint">범위를 확인하지 못한 템플릿 {data.unresolved_groups}개는 숨겼습니다</p> : null}
+          <span className="stl-right">
+            <select className="stl-cond-select" aria-label="검수 상태" value={inspectFilter} onChange={(event) => pickInspect(event.target.value)}>
+              <option value="">검수 상태 전체</option>
+              {inspectPills.map((pill) => (
+                <option key={pill.id} value={pill.id}>{pill.label} {pill.count}</option>
+              ))}
+            </select>
+            {hasActiveFilters ? <button type="button" className="ktm-btn stl-reset-btn" onClick={resetFilters}>초기화</button> : null}
+            <span className="stl-total">{paged.pages > 1 ? `총 ${totalVisible}건 · ${paged.page}/${paged.pages}쪽` : `총 ${totalVisible}건`}</span>
+          </span>
+        </div>
+        {data.unresolved_groups > 0 ? <p className="ktm-hint">범위를 확인하지 못한 템플릿 {data.unresolved_groups}개는 숨겼습니다</p> : null}
 
-          <div className="stl-list-card">
+        <div className={`stl-layout${hasDetail ? ' has-detail' : ''}`}>
+          <section className="stl-list-pane" aria-label="카카오톡 템플릿 목록">
+            <div className="stl-list-card">
             {totalVisible === 0 ? (
               <div className="ktm-empty">조건에 맞는 카카오톡 템플릿이 없습니다.</div>
             ) : (
@@ -1566,8 +1567,9 @@ export default function KakaoTemplateManager({
             </nav>
           ) : null}
         </section>
-        <section className="stl-detail-pane" aria-label="발송 조건 및 미리보기">{renderDetail()}</section>
-      </div>
+          <section className="stl-detail-pane" aria-label="발송 조건 및 미리보기">{renderDetail()}</section>
+        </div>
+      </>
     );
   } else body = null;
 

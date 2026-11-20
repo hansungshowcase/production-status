@@ -1100,31 +1100,32 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const visibleGroupSections = sections.filter((aud) => aud.kinds.some((section) => kindHasRow(aud, section)));
     const visibleFlows = flowRows.filter((row) => pageSet.has(row.key));
     body = (
-      <div className={`stl-layout${selectedKey ? ' has-detail' : ''}`}>
-        <section className="stl-list-pane" aria-label="문자 템플릿 목록">
+      <>
+        <div className="stl-toolbar">
           <div className="ktm-search stl-search">
             <SmsIcon name="search" />
             <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·문구·발송 조건 검색" aria-label="문자 템플릿 검색" />
           </div>
-          <div className="stl-tabs">
-            <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
-              {pills.map((pill) => (
-                <button type="button" key={pill.id} className={`ktm-pill${tab === pill.id ? ' is-active' : ''}`} aria-pressed={tab === pill.id} onClick={() => pickFilter(pill.id)}>
-                  {pill.label} {pill.count}
-                </button>
-              ))}
-            </div>
-            <span className="stl-right">
-              <select className="stl-cond-select" aria-label="발송 조건" value={cond} onChange={(event) => pickCond(event.target.value)}>
-                <option value="">조건 전체</option>
-                {CONDITION_GROUPS.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-              {hasActiveFilters ? <button type="button" className="ktm-btn stl-reset-btn" onClick={resetFilters}>초기화</button> : null}
-              <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
-            </span>
+          <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
+            {pills.map((pill) => (
+              <button type="button" key={pill.id} className={`ktm-pill${tab === pill.id ? ' is-active' : ''}`} aria-pressed={tab === pill.id} onClick={() => pickFilter(pill.id)}>
+                {pill.label} {pill.count}
+              </button>
+            ))}
           </div>
+          <span className="stl-right">
+            <select className="stl-cond-select" aria-label="발송 조건" value={cond} onChange={(event) => pickCond(event.target.value)}>
+              <option value="">조건 전체</option>
+              {CONDITION_GROUPS.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+            {hasActiveFilters ? <button type="button" className="ktm-btn stl-reset-btn" onClick={resetFilters}>초기화</button> : null}
+            <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
+          </span>
+        </div>
 
-          <div className="stl-list-card">
+        <div className={`stl-layout${selectedKey ? ' has-detail' : ''}`}>
+          <section className="stl-list-pane" aria-label="문자 템플릿 목록">
+            <div className="stl-list-card">
             {isMineTab ? (
               visibleFlows.length === 0
                 ? <div className="ktm-empty">조건에 맞는 내 문구가 없습니다.</div>
@@ -1178,10 +1179,11 @@ function renderConditionBoard(summary, st, isMineAuto) {
           <SmsOptoutRow active={active} />
         </section>
 
-        <section className="stl-detail-pane" aria-label="템플릿 미리보기 및 관리">
-          {renderDetailPane()}
-        </section>
-      </div>
+          <section className="stl-detail-pane" aria-label="템플릿 미리보기 및 관리">
+            {renderDetailPane()}
+          </section>
+        </div>
+      </>
     );
   }
 
