@@ -223,46 +223,49 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const mineById = useMemo(() => new Map(mine.map((item) => [item.id, item])), [mine]);
   const effOf = (entry) => autoEffective(autoStatus[entry.id] ?? (entry.autoEnabled ? null : { enabled: false }));
 
-  // channel='kakao' 용 단계 행(텍스트 선택 가능 + 이미지 잘림 없음 + 크게 보기)
-  const renderMine = (entry, prefix = '') => {
+  // channel='kakao' 용 컴팩트 1줄 단계 행(개발자 수식 제거 · 배지 중복 없음 · 버튼 영역 완전 분리)
+  const renderKakaoStep = (entry) => {
     const open = mineOpen === entry.id;
     const bodyText = mineById.get(entry.id)?.body || '';
     const photos = minePhoto[entry.id] || [];
     const pState = minePhotoState[entry.id];
     const eff = effOf(entry);
+    const ch = channelCostOf(entry);
+    const summary = buildConditionSummary(entry, { isMine: true });
+    const timeOnly = summary.whenSub.replace(/ 발송.*$/, '').replace(/\s*·\s*$/, '').trim();
+    const paused = catchupPausedText(autoStatus[entry.id]);
+    const stepMeta = [
+      summary.whenMain,
+      timeOnly && timeOnly !== summary.whenMain ? timeOnly : '',
+      entry.hasImage ? photoBadgeText(entry) : '',
+      ...summary.tags.filter((tag) => !tag.startsWith('광고성')),
+    ].filter(Boolean);
     return (
-      <li key={`${prefix}${entry.id}`} className={`ktm-card stl-row${prefix === 'step-' ? ' stl-step' : ''}${open ? ' is-selected' : ''}`}>
-        <button type="button" className="ktm-card-main" aria-expanded={open} onClick={() => openMine(entry)}>
-          <span className="ktm-card-name">{entry.name}</span>
-          {entry.autoKind ? (() => {
-            const cp = autoConditionParts(entry);
-            return (
-              <span className="ktm-card-meta stl-cond" title={autoConditionLine(entry)}>
-                <span className="stl-when">{cp.when}</span>
-                {cp.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
-                {cp.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
-                {cp.extras.length ? <span className="stl-extras">{cp.extras.join(' · ')}</span> : null}
-                {catchupPausedText(autoStatus[entry.id]) ? <span className="stl-extras ktm-alert" role="alert">{catchupPausedText(autoStatus[entry.id])}</span> : null}
-                {autoTargetText(entry) ? <span className="stl-extras stl-target">대상: {autoTargetText(entry)}</span> : null}
-              </span>
-            );
-          })() : <span className="ktm-card-meta"><span>{entry.preview}</span></span>}
-          {entry.autoKind || entry.hasImage || entry.sendCost ? (() => {
-            const ch = channelCostOf(entry);
-            return (
-              <span className="ktm-card-badges">
-                {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : null}
-                {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
-                {ch.fullLabel ? <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span> : null}
-              </span>
-            );
-          })() : null}
+      <li key={`step-${entry.id}`} className={`stl-kstep${open ? ' is-selected' : ''}`}>
+        <button type="button" className="stl-kstep-main" aria-expanded={open} onClick={() => openMine(entry)}>
+          <span className="stl-kstep-top">
+            <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span>
+            <span className="stl-kstep-badge">{flowStepText(entry)}</span>
+            <strong className="stl-kstep-name">{entry.name}</strong>
+          </span>
+          <span className="stl-kstep-sub">
+            {ch.fullLabel ? <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span> : null}
+            {stepMeta.map((part, idx) => (
+              <React.Fragment key={`${idx}-${part}`}>
+                <span className="stl-meta-sep" aria-hidden="true">·</span>
+                <span>{part}</span>
+              </React.Fragment>
+            ))}
+          </span>
+          {paused ? <span className="stl-kstep-warn" role="alert">{paused}</span> : null}
         </button>
-        {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button></SmsAutoControls> : null}
+        <div className="stl-kstep-actions">
+          <SmsAutoControls compact id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID} onChanged={() => { loadMine(); }}>
+            <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
+          </SmsAutoControls>
+        </div>
         {open ? (
-          <div className="ktm-open">
-            {entry.autoKind ? <p className="stl-open-cond">{autoConditionLine(entry)}</p> : null}
-            {entry.autoKind && autoTargetText(entry) ? <p className="stl-open-cond">대상: {autoTargetText(entry)}</p> : null}
+          <div className="stl-kstep-open">
             {entry.autoKind && (eff.tone === 'blocked' || eff.tone === 'part') ? <p className="sac-status">{eff.text}</p> : null}
             <div className={photos.length ? 'stl-open-split' : 'stl-open-plain'}>
               <div className="ktm-open-body">{renderBodyContent(bodyText, false)}</div>
@@ -278,7 +281,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                   {photos.length ? (
                     <div className="stl-open-imgs">
                       {photos.map((url, index) => (
-                        <button key={index} type="button" className="stl-thumb-btn" onClick={() => openLightbox(photos, index, entry.name)} title="크게 보기">
+                        <button key={index} type="button" className="stl-thumb-btn" onClick={() => openLightbox(photos, index, entry.name)} title="클릭하면 원본 크기로 봅니다">
                           <img className="ktm-open-img stl-open-img" src={url} alt={`${entry.name} 이미지 ${index + 1}`} />
                         </button>
                       ))}
@@ -287,20 +290,74 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                 </div>
               ) : null}
             </div>
-          </div>
-        ) : null}
-        {open ? (
-          <div className="ktm-modal-actions">
-            {entry.autoKind ? null : <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>}
-            {entry.autoKind ? null : <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>}
-            <button type="button" className="ktm-btn" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+            <div className="ktm-modal-actions">
+              <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+            </div>
           </div>
         ) : null}
       </li>
     );
   };
 
-  // 흐름 행: ▸ 기준 시점 | 단계 칩·받는 사람·수단·시각 | 켜짐 n/N | [단계 추가][수정].
+  // channel='kakao' 용 2열 요약 카드(한눈에 조건·단가·켜짐 수·시점 확인, 하단 독립 액션 바)
+  const renderKakaoFlow = (flow) => {
+    const open = flowOpen === flow.key;
+    const stepLabels = flow.steps.map((step) => flowStepText(step));
+    const shownSteps = stepLabels.slice(0, 4);
+    const hiddenCount = Math.max(0, stepLabels.length - shownSteps.length);
+    const channels = [...new Map(flow.steps.map((step) => {
+      const ch = channelCostOf(step);
+      return [ch.fullLabel, ch];
+    }).filter(([k]) => Boolean(k))).values()];
+    const firstSummary = flow.steps[0] ? buildConditionSummary(flow.steps[0], { isMine: true }) : null;
+    const tone = flowLightTone(flow.on, flow.total);
+    const statusText = tone === 'on'
+      ? (flow.total > 1 ? `모두 켜짐 (${flow.on}/${flow.total})` : '켜짐')
+      : tone === 'part'
+        ? `일부 켜짐 (${flow.on}/${flow.total})`
+        : (flow.total > 1 ? `모두 꺼짐 (0/${flow.total})` : '꺼짐');
+    return (
+      <li key={flow.key} className={`stl-kflow-card${open ? ' is-open' : ''}`}>
+        <div className="stl-kflow-top">
+          <div className="stl-kflow-head">
+            <span className="stl-kflow-title">{flow.label}</span>
+            <span className={`stl-light stl-light--${tone}`}>{statusText}</span>
+          </div>
+          <div className="stl-kflow-meta">
+            {channels.map((ch) => <span key={ch.fullLabel} className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>)}
+            {flow.who ? <span className={`ktm-chip stl-who ${flow.who === '고객' ? 'stl-who--cust' : (flow.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{flow.who}</span> : null}
+            {flow.time ? <span className="stl-kflow-time">{flow.time}</span> : null}
+            {shownSteps.map((lbl, idx) => <span key={`${idx}-${lbl}`} className="stl-kflow-step">{lbl}</span>)}
+            {hiddenCount > 0 ? <span className="stl-kflow-more">외 {hiddenCount}개 단계</span> : null}
+          </div>
+          {firstSummary?.tags?.length ? (
+            <div className="stl-kflow-tags">
+              {firstSummary.tags.slice(0, 2).map((tag) => <span key={tag} className="stl-rule-chip">{tag}</span>)}
+            </div>
+          ) : null}
+        </div>
+        <div className="stl-kflow-foot">
+          <button type="button" className="ktm-btn stl-kflow-toggle" aria-expanded={open} onClick={() => { setFlowOpen(open ? '' : flow.key); setMineOpen(''); setMineConfirm(''); }}>
+            {open ? '단계 접기 ▴' : `단계 보기 (${flow.total}) ▾`}
+          </button>
+          <span className="stl-kflow-btns">
+            {FLOW_NO_STEP_KINDS.includes(flow.steps[0]?.autoKind) ? null : <button type="button" className="ktm-btn" onClick={() => addStep(flow)}>단계 추가</button>}
+            <button type="button" className="ktm-btn" onClick={() => editMine(flow.steps[0], flow)}>수정</button>
+          </span>
+        </div>
+        {open ? <ul className="stl-ksteps">{flow.steps.map((step) => renderKakaoStep(step))}</ul> : null}
+      </li>
+    );
+  };
+
+  // channel='kakao' 단일 단계 호환 렌더러
+  const renderMine = (entry) => (
+    <li key={entry.id} className="stl-kflow-card is-open">
+      <ul className="stl-ksteps">{renderKakaoStep(entry)}</ul>
+    </li>
+  );
+
+  // 흐름 행(내 문구 탭에서 사용)
   const renderFlow = (flow, selectOnStep = false) => {
     const open = flowOpen === flow.key;
     const chips = flow.steps.map((step) => flowStepText(step)).join(' · ');
@@ -320,7 +377,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           {FLOW_NO_STEP_KINDS.includes(flow.steps[0]?.autoKind) ? null : <button type="button" className="ktm-btn" onClick={() => addStep(flow)}>단계 추가</button>}
           <button type="button" className="ktm-btn" onClick={() => editMine(flow.steps[0], flow)}>수정</button>
         </span>
-        {open ? <ul className="ktm-cards stl-steps">{flow.steps.map((step) => (selectOnStep ? renderMineListCard(step, 'step-') : renderMine(step, 'step-')))}</ul> : null}
+        {open ? <ul className="ktm-cards stl-steps">{flow.steps.map((step) => (selectOnStep ? renderMineListCard(step, 'step-') : renderKakaoStep(step)))}</ul> : null}
       </li>
     );
   };
@@ -726,7 +783,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
               <div className={`stl-media-viewport${expandedImg ? ' is-expanded' : ''}`}>
                 <div className="stl-media-stack">
                   {photos.map((url, index) => (
-                    <button key={index} type="button" className="stl-media-zoom-btn" onClick={() => openLightbox(photos, index, entry.name)} title="클릭하면 원본 크기로 봅니다">
+                    <button key={index} type="button" className="stl-media-zoom-btn" onClick={() => openLightbox(photos, index, entry.name)} title="클릭하면 원본 크기로 크게 봅니다">
                       <img
                         className="stl-media-img"
                         src={url}
@@ -742,7 +799,6 @@ function renderConditionBoard(summary, st, isMineAuto) {
                   ))}
                 </div>
               </div>
-              <p className="stl-media-hint">이미지를 클릭하면 잘림 없는 전체 화면으로 볼 수 있습니다.</p>
             </>
           ) : (
             <div className="stl-media-state">이미지를 준비하는 중…</div>
@@ -774,40 +830,44 @@ function renderConditionBoard(summary, st, isMineAuto) {
                 </React.Fragment>
               ))}
             </div>
-            <h3 className="stl-detail-title">{entry.name}</h3>
+            <div className="stl-detail-titlebar">
+              <h3 className="stl-detail-title">{entry.name}</h3>
+              <div className="stl-detail-actions">
+                {entry.autoKind ? (
+                  <SmsAutoControls
+                    compact
+                    key={entry.id}
+                    id={entry.id}
+                    enabled={Boolean(st?.enabled ?? entry.autoEnabled)}
+                    photos={entry.imageCount}
+                    ata={Boolean(entry.autoAtaTemplate)}
+                    bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID}
+                    onChanged={() => { loadMine(); }}
+                  >
+                    <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
+                    <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+                  </SmsAutoControls>
+                ) : (
+                  <div className="stl-detail-btnrow">
+                    <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>
+                    <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>
+                    <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
+                  </div>
+                )}
+              </div>
+            </div>
             {paused ? <p className="ktm-alert stl-detail-banner" role="alert">{paused}</p> : null}
             {entry.autoKind && (eff.tone === 'blocked' || eff.tone === 'part') ? (
               <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{eff.text}</p>
             ) : null}
             {mineError ? <p className="ktm-alert stl-detail-banner" role="alert">{mineError}</p> : null}
-            <div className="stl-detail-actions">
-              {entry.autoKind ? (
-                <SmsAutoControls
-                  key={entry.id}
-                  id={entry.id}
-                  enabled={Boolean(st?.enabled ?? entry.autoEnabled)}
-                  photos={entry.imageCount}
-                  ata={Boolean(entry.autoAtaTemplate)}
-                  bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID}
-                  onChanged={() => { loadMine(); }}
-                >
-                  <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
-                  <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
-                </SmsAutoControls>
-              ) : (
-                <div className="stl-detail-btnrow">
-                  <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => onSendText?.(entry.id)}>이 문구로 보내기</button>
-                  <button type="button" className="ktm-btn" onClick={() => editMine(entry)}>수정</button>
-                  <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
-                </div>
-              )}
-            </div>
           </div>
 
           {renderConditionBoard(summary, st, Boolean(entry.autoKind))}
 
-          <div className="stl-preview-stage">
-            {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
+          <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
+            {msgCard}
+            {mediaCard}
           </div>
         </article>
       );
@@ -879,7 +939,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
         ) : (
           <>
             <div className={`stl-media-viewport${expandedImg ? ' is-expanded' : ''}`}>
-              <button type="button" className="stl-media-zoom-btn" onClick={() => openLightbox([item.image], 0, item.name)} title="클릭하면 원본 크기로 봅니다">
+              <button type="button" className="stl-media-zoom-btn" onClick={() => openLightbox([item.image], 0, item.name)} title="클릭하면 원본 크기로 크게 봅니다">
                 <img
                   className="stl-media-img"
                   src={item.image}
@@ -894,7 +954,6 @@ function renderConditionBoard(summary, st, isMineAuto) {
                 />
               </button>
             </div>
-            <p className="stl-media-hint">이미지를 클릭하면 잘림 없는 전체 화면으로 볼 수 있습니다.</p>
           </>
         )}
       </section>
@@ -935,8 +994,9 @@ function renderConditionBoard(summary, st, isMineAuto) {
 
         {renderConditionBoard(summary, null, false)}
 
-        <div className="stl-preview-stage">
-          {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
+        <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
+          {msgCard}
+          {mediaCard}
         </div>
       </article>
     );
@@ -1069,14 +1129,16 @@ function renderConditionBoard(summary, st, isMineAuto) {
     if (!mySection) return null;
     return (
       <div className="ktm-root stl-rows stl-kakao" hidden={!active}>
-        <h3 className="stl-grouphead stl-flowhead">자동 발송 조건 <span className="ktm-kind-count">{flowRows.length}</span></h3>
-        <p className="stl-flowsub">고객에게 자동으로 나가는 문자 조건입니다</p>
-        {mineError ? <p className="ktm-alert" role="alert">{mineError}</p> : null}
-        <div className="stl-table">
-          <ul className="ktm-cards">
-            {flowRows.map((row) => (row.single ? renderMine(row.entry) : renderFlow(row, false)))}
-          </ul>
+        <div className="stl-kflow-topbar">
+          <div>
+            <h3 className="stl-grouphead stl-flowhead">자동 발송 조건 <span className="ktm-kind-count">{flowRows.length}</span></h3>
+            <p className="stl-flowsub">조건별 발송 현황과 건당 단가를 한눈에 보고 바로 켜고 끄거나 시험 발송할 수 있습니다.</p>
+          </div>
         </div>
+        {mineError ? <p className="ktm-alert" role="alert">{mineError}</p> : null}
+        <ul className="stl-kflow-grid">
+          {flowRows.map((row) => (row.single ? renderMine(row.entry) : renderKakaoFlow(row)))}
+        </ul>
         {adding ? (
           <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
             <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />

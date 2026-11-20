@@ -6,7 +6,7 @@ const newKey = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUU
 const reasonOf = (err) => err?.data?.reason || err?.data?.error?.reason || '';
 
 // 자동 발송 문구 카드의 [켜기/끄기] · [내 번호로 시험]. 켜기와 시험 발송은 dry_run 확인 줄을 보인 뒤 한 번 더 눌러 확정한다.
-export default function SmsAutoControls({ id, enabled, photos = 0, ata = false, bms = false, onChanged, children }) {
+export default function SmsAutoControls({ id, enabled, photos = 0, ata = false, bms = false, compact = false, onChanged, children }) {
   const [confirm, setConfirm] = useState(null); // 켜기 확인 줄
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -15,6 +15,7 @@ export default function SmsAutoControls({ id, enabled, photos = 0, ata = false, 
   const [preview, setPreview] = useState(null); // 시험 dry_run 결과
   const [result, setResult] = useState('');
   const keyRef = useRef('');
+  const fullTestLabel = bms ? '내 번호로 브랜드메시지 시험' : ata ? '내 번호로 알림톡 시험' : '내 번호로 시험';
 
   const fail = (err) => setError(toggleRejectText(reasonOf(err)) || err?.message || '처리하지 못했습니다.');
   const toggle = async () => {
@@ -56,7 +57,7 @@ export default function SmsAutoControls({ id, enabled, photos = 0, ata = false, 
       <div className="ktm-modal-actions sac-row">
         <button type="button" className="ktm-btn" disabled={busy} onClick={toggle}>{enabled ? '끄기' : (confirm ? '켜기 확인' : '켜기')}</button>
         {confirm ? <button type="button" className="ktm-btn" onClick={() => setConfirm(null)}>취소</button> : null}
-        <button type="button" className="ktm-btn" onClick={() => { setTestOpen((v) => !v); setPreview(null); setResult(''); setError(''); }}>{bms ? '내 번호로 브랜드메시지 시험' : ata ? '내 번호로 알림톡 시험' : '내 번호로 시험'}</button>
+        <button type="button" className="ktm-btn" title={fullTestLabel} aria-label={fullTestLabel} onClick={() => { setTestOpen((v) => !v); setPreview(null); setResult(''); setError(''); }}>{compact ? '시험 발송' : fullTestLabel}</button>
         {children}
       </div>
       {confirm ? <p className="sac-line">{autoConfirmLine(confirm, photos)}{confirm.overlap === true ? ' · 기존 알림과 겹칠 수 있음' : ''}</p> : null}
