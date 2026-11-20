@@ -5,9 +5,9 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildKindedItems, compactLightLabel, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, kindBadges, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, kindBadges, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
-import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill, sendCostText } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill, sendCostText } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
@@ -453,12 +453,96 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     if (active && !isKakao && selectedMine?.hasImage) ensureMinePhoto(selectedMine);
   }, [selectedKey, active, isKakao, selectedMine?.id, selectedMine?.hasImage]); // eslint-disable-line react-hooks/exhaustive-deps
 
+const formatKpiDate = (value) => {
+  const s = String(value || '').trim();
+  if (!s) return '없음';
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(s);
+  return m ? `${m[1]}/${m[2]}` : s;
+};
+
+// 상세 상단 3단 발송 조건·규칙·현황 보드
+function renderConditionBoard(summary, st, isMineAuto) {
+  const thirdLabel = isMineAuto || summary.manual ? '횟수 · 방식' : '최근 발송 · 경로';
+  const todayCount = Number(st?.today_targets) || 0;
+  const recent7d = Number(st?.sent_7d) || 0;
+  const sentTotal = Number(st?.sent_total) || 0;
+  const uncertain = Number(st?.uncertain_total) || 0;
+  return (
+    <section className="stl-cond-board" aria-label="발송 조건 및 현황">
+      <div className="stl-cond-grid">
+        <div className="stl-cond-tile stl-cond-tile--when">
+          <span className="stl-cond-label">언제 보낼까</span>
+          <strong className="stl-cond-val">{summary.whenMain}</strong>
+          {summary.whenSub ? <span className="stl-cond-sub">{summary.whenSub}</span> : null}
+        </div>
+        <div className="stl-cond-tile">
+          <span className="stl-cond-label">누구에게</span>
+          <strong className="stl-cond-val">{summary.whoMain}</strong>
+          {summary.whoSub ? <span className="stl-cond-sub">{summary.whoSub}</span> : null}
+        </div>
+        <div className="stl-cond-tile">
+          <span className="stl-cond-label">{thirdLabel}</span>
+          <strong className="stl-cond-val">{summary.howMain}</strong>
+          {summary.howSub ? <span className="stl-cond-sub">{summary.howSub}</span> : null}
+        </div>
+      </div>
+
+      {summary.catchup ? (
+        <div className="stl-cond-catchup" role="status">{summary.catchup}</div>
+      ) : null}
+
+      {summary.tags.length > 0 ? (
+        <div className="stl-cond-tags" aria-label="세부 규칙">
+          <span className="stl-cond-tags-label">세부 규칙</span>
+          {summary.tags.map((tag) => (
+            <span key={tag} className="stl-rule-chip">{tag}</span>
+          ))}
+        </div>
+      ) : null}
+
+      {isMineAuto ? (
+        st ? (
+          <div className="stl-cond-kpis" aria-label="발송 현황">
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">오늘 대상</span>
+              <strong className={`stl-kpi-val${todayCount > 0 ? ' is-accent' : ''}`}>{todayCount}건</strong>
+            </div>
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">최근 7일</span>
+              <strong className={`stl-kpi-val${recent7d > 0 ? ' is-accent' : ''}`}>{recent7d}건</strong>
+            </div>
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">누적 발송</span>
+              <strong className="stl-kpi-val">{sentTotal}건</strong>
+            </div>
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">확인 필요</span>
+              <strong className={`stl-kpi-val${uncertain > 0 ? ' is-warn' : ''}`}>{uncertain}건</strong>
+            </div>
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">마지막 발송</span>
+              <strong className="stl-kpi-val" title={st.last_sent_date || '발송 기록 없음'}>{formatKpiDate(st.last_sent_date)}</strong>
+            </div>
+          </div>
+        ) : (
+          <p className="stl-cond-loading">발송 현황 불러오는 중…</p>
+        )
+      ) : null}
+    </section>
+  );
+}
+
   // 왼쪽 목록 카드(내 문구 단일/단계 항목)
   const renderMineListCard = (entry, prefix = '') => {
     const key = `m-${entry.id}`;
     const isSelected = selectedKey === key;
     const eff = effOf(entry);
     const cp = entry.autoKind ? autoConditionParts(entry) : null;
+    const summary = entry.autoKind ? buildConditionSummary(entry, { isMine: true }) : null;
+    const compactTime = summary ? summary.whenSub.replace(/ 발송.*$/, '').trim() : '';
+    const showTime = Boolean(compactTime && /^(오전|오후|매일|당일|\d)/.test(compactTime));
+    const repeatCount = Number(entry.autoRepeat) || 1;
+    const showRepeat = Boolean(entry.autoKind && repeatCount > 1);
     const paused = catchupPausedText(autoStatus[entry.id]);
     return (
       <li key={`${prefix}${entry.id}`} className={`stl-item${prefix === 'step-' ? ' stl-item--step' : ''}${isSelected ? ' is-selected' : ''}`}>
@@ -467,22 +551,23 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             <span className="stl-item-name">{entry.name}</span>
             {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : null}
           </div>
-          {cp ? (
+          {summary ? (
             <div className="stl-item-cond">
-              <span className="stl-when">{cp.when}</span>
-              {cp.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
-              {cp.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
-              {cp.extras.length ? <span className="stl-extras-inline">{cp.extras[0]}</span> : null}
+              <span className="stl-when">{summary.whenMain}</span>
+              {showTime ? <span className="stl-list-time">{compactTime}</span> : null}
+              {cp?.who ? <span className={`ktm-chip stl-who ${cp.who === '고객' ? 'stl-who--cust' : (cp.who === '영업담당' ? 'stl-who--sales' : 'stl-who--staff')}`}>{cp.who}</span> : null}
+              {cp?.via ? <span className="ktm-chip stl-via">{cp.via}</span> : null}
             </div>
           ) : (
             <div className="stl-item-cond">
               <span className="stl-preview-line">{entry.preview || '내용 없음'}</span>
             </div>
           )}
-          {entry.hasImage || entry.sendCost || paused ? (
+          {entry.hasImage || entry.sendCost || showRepeat || paused ? (
             <div className="stl-item-badges">
               {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
               {entry.sendCost ? <span className="ktm-badge ktm-badge--muted">{sendCostText(entry.sendCost)}</span> : null}
+              {showRepeat ? <span className="ktm-badge ktm-badge--info">최대 {repeatCount}회</span> : null}
               {paused ? <span className="ktm-badge ktm-badge--danger">일괄 발송 멈춤</span> : null}
             </div>
           ) : null}
@@ -496,7 +581,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     const key = `i-${item.id}`;
     const isSelected = selectedKey === key;
     const light = itemLight(item);
-    const line = conditionLine(item, recipients);
+    const summary = buildConditionSummary(item, { isMine: false, recipients });
+    const secondary = item.audience?.id !== 'customer' && summary.whoMain ? summary.whoMain : summary.whenSub;
     const badges = [...smsBadges(item), ...kindBadges(item)].filter((badge) => badge.text !== '꺼짐');
     return (
       <li key={item.id} className={`stl-item${isSelected ? ' is-selected' : ''}`}>
@@ -509,7 +595,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             <span className="ktm-chip">{item.audience.label}</span>
             <span className="ktm-chip ktm-chip--sender">{item.sender}</span>
             {item.channel ? <span className="ktm-chan">{item.channel}</span> : null}
-            {line ? <span className="stl-line-inline">{line}</span> : null}
+            {summary.whenMain ? <span className="stl-when">{summary.whenMain}</span> : null}
+            {secondary ? <span className="stl-line-inline">{secondary}</span> : null}
           </div>
           {badges.length > 0 ? (
             <div className="stl-item-badges">
@@ -538,6 +625,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       const st = autoStatus[entry.id];
       const eff = effOf(entry);
       const cp = entry.autoKind ? autoConditionParts(entry) : null;
+      const summary = buildConditionSummary(entry, { isMine: true });
       const paused = catchupPausedText(st);
       const photos = minePhoto[entry.id] || [];
       const pState = minePhotoState[entry.id];
@@ -673,30 +761,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             )}
           </div>
 
-          <dl className="stl-info" aria-label="발송 조건 및 현황">
-            {entry.autoKind ? (
-              <>
-                <dt>발송 시점</dt><dd>{autoConditionLine(entry)}</dd>
-                {autoTargetText(entry) ? <><dt>발송 대상</dt><dd>{autoTargetText(entry)}</dd></> : null}
-                <dt>발송 현황</dt>
-                <dd>
-                  {st ? (
-                    <div className="stl-stats">
-                      <span className="stl-stat">오늘 대상 <b>{Number(st.today_targets) || 0}건</b></span>
-                      <span className="stl-stat">최근 7일 <b>{Number(st.sent_7d) || 0}건</b></span>
-                      <span className="stl-stat">누적 <b>{Number(st.sent_total) || 0}건</b></span>
-                      <span className="stl-stat">확인 필요 <b>{Number(st.uncertain_total) || 0}건</b></span>
-                      <span className="stl-stat">마지막 발송 <b>{st.last_sent_date || '없음'}</b></span>
-                    </div>
-                  ) : <span className="stl-muted-inline">현황 불러오는 중…</span>}
-                </dd>
-              </>
-            ) : (
-              <>
-                <dt>발송 조건</dt><dd>조건 없음 (보내기 화면에서 수동 발송)</dd>
-              </>
-            )}
-          </dl>
+          {renderConditionBoard(summary, st, Boolean(entry.autoKind))}
 
           <div className="stl-preview-stage">
             {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
@@ -708,7 +773,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     // 카탈로그·외부 문구 상세
     const item = selectedItem;
     const light = itemLight(item);
-    const line = conditionLine(item, recipients);
+    const summary = buildConditionSummary(item, { isMine: false, recipients });
     const rawBody = String(item.body || '');
     const hasBody = Boolean(rawBody.trim());
     const hasMedia = Boolean(item.image);
@@ -815,12 +880,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           ) : null}
         </div>
 
-        <dl className="stl-info" aria-label="발송 조건">
-          <dt>발송 조건</dt><dd>{line || item.trigger || '-'}</dd>
-          {item.external && item.trigger && item.trigger !== line ? <><dt>언제 나가나</dt><dd>{item.trigger}</dd></> : null}
-          {item.scenario ? <><dt>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{item.scenario}</dd></> : null}
-          <dt>보내는 곳</dt><dd>{[item.sender, item.channel, item.count === null ? '발송 확인 못 함' : `최근 7일 ${item.count}건`].filter(Boolean).join(' · ')}</dd>
-        </dl>
+        {renderConditionBoard(summary, null, false)}
 
         <div className="stl-preview-stage">
           {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}

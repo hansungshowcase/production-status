@@ -1,7 +1,7 @@
 import {
   EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
-import { autoConditionLine, autoConditionParts, autoTargetText, LEAD_SOURCE_FLOW_LABEL, viaLabel } from './smsTextTemplateFormModel.js';
+import { autoConditionLine, autoConditionParts, autoTargetText, LEAD_SOURCE_FLOW_LABEL, photoBadgeText, sendCostText, sendTimeLabel, viaLabel } from './smsTextTemplateFormModel.js';
 import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
@@ -328,3 +328,240 @@ export function compactLightLabel(effective) {
 
 // 꺼짐·주의·막힘·확인 안 됨 등 확인이 필요한 신호등인지 판별
 export const isAttentionTone = (tone) => tone === 'off' || tone === 'part' || tone === 'blocked' || tone === 'unknown';
+
+const DAY_OFF_LABELS = { sun: '일요일', mon: '월요일', tue: '화요일', wed: '수요일', thu: '목요일', fri: '금요일', sat: '토요일' };
+const DATE_TRIGGER_KINDS = new Set(['due_date', 'ship_scheduled', 'ship_or_due']);
+const IMMEDIATE_TRIGGER_KINDS = new Set(['order_created', 'process_started', 'process_completed', 'member_joined']);
+
+const uniqTags = (list) => [...new Set(list.filter(Boolean))];
+const phoneTailDigits = (value) => String(value || '').replace(/\D/g, '').slice(-4);
+
+function buildMineConditionSummary(entry) {
+  if (!entry.autoKind) {
+    const costStr = sendCostText(entry.sendCost);
+    const photoStr = entry.hasImage ? photoBadgeText(entry) : '';
+    const sub = [photoStr, costStr].filter(Boolean).join(' · ') || '일반 문자';
+    return {
+      manual: true,
+      whenMain: '수동 발송',
+      whenSub: '보내기 화면에서 직접 골라 보냄',
+      whoMain: '직접 고른 받는 사람',
+      whoSub: '자동 대상 조건 없음',
+      howMain: '원할 때마다 1번씩',
+      howSub: sub,
+      catchup: '',
+      tags: uniqTags([photoStr, costStr]),
+    };
+  }
+
+  const kind = entry.autoKind;
+  const days = Number(entry.autoDays) || 0;
+  const offset = Number(entry.autoOffset) || 0;
+  const step = String(entry.autoStep || '').trim();
+  const timeText = sendTimeLabel(entry.autoSendTime) || (entry.autoSendTime || '');
+  const aud = entry.autoAudience || 'customer';
+  const tags = [];
+
+  let whenMain = '';
+  let whenSub = '';
+
+  if (kind === 'ship_plus_days') {
+    whenMain = days === 0 ? '출고 완료 당일' : `출고 완료 ${days}일 뒤`;
+    whenSub = `${timeText || '오전 10:00'} 발송`;
+    tags.push('출고완료 주문 대상', '발송 놓친 건 3일 내 보충');
+  } else if (kind === 'order_plus_days') {
+    whenMain = days === 0 ? '주문 등록 당일' : `주문 등록 ${days}일 뒤`;
+    whenSub = `${timeText || '오전 10:00'} 발송`;
+    tags.push('취소 주문 제외');
+    if (days > 0) tags.push('발송 놓친 건 3일 내 보충');
+  } else if (kind === 'process_started_plus_days') {
+    whenMain = `${step ? `${step} 공정 ` : '공정 '}시작 ${days === 0 ? '당일' : `${days}일 뒤`}`;
+    whenSub = `${timeText || '오전 10:00'} 발송`;
+    tags.push('취소 주문 제외', '발송 놓친 건 3일 내 보충');
+  } else if (DATE_TRIGGER_KINDS.has(kind)) {
+    const dateLabel = kind === 'ship_or_due' ? '출고·납기일' : (kind === 'ship_scheduled' ? '출고예정일' : '납기일');
+    const t = timeText || '오전 10:00';
+    if (entry.autoDaily === 'until') {
+      whenMain = `${dateLabel} ${Math.abs(offset)}일 전부터 매일`;
+      whenSub = `당일까지 매일 ${t} 발송`;
+    } else if (entry.autoDaily === 'ongoing') {
+      whenMain = offset > 0 ? `${dateLabel} ${offset}일 지난 뒤 매일` : `${dateLabel} 당일부터 매일`;
+      whenSub = `매일 ${t} 발송`;
+    } else if (entry.autoDaily === 'once') {
+      whenMain = offset < 0 ? `${dateLabel} ${-offset}일 전 1번` : (offset > 0 ? `${dateLabel} ${offset}일 지남` : `${dateLabel} 당일`);
+      whenSub = `${t} 발송 · 놓친 건 ${dateLabel} 전까지 1회`;
+    } else {
+      whenMain = offset === 0 ? `${dateLabel} 당일` : (offset < 0 ? `${dateLabel} ${-offset}일 전` : `${dateLabel} ${offset}일 지남`);
+      whenSub = `${t} 발송`;
+    }
+    tags.push('제작 진행 중 주문만');
+    if (entry.autoWeekdays) tags.push('평일만 발송 (토·일 제외)');
+    if (entry.autoDaily === 'once' && Array.isArray(entry.autoDaysOff) && entry.autoDaysOff.length > 0) {
+      const offNames = entry.autoDaysOff.map((d) => DAY_OFF_LABELS[d]).filter(Boolean).join('·');
+      if (offNames) tags.push(`휴무 요일 제외: ${offNames}`);
+    }
+    if (entry.autoUnlessStep) {
+      tags.push(`${entry.autoUnlessStep} 공정 ${entry.autoUnlessMode === 'started' ? '미착수' : '미완료'} 주문만`);
+    }
+  } else if (kind === 'lead_plus_days') {
+    const leadLabel = LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || ''] || '가입·문의';
+    if (days > 0) {
+      whenMain = `${leadLabel} ${days}일 뒤`;
+      whenSub = `${timeText || '오전 9:30'} 발송`;
+    } else {
+      whenMain = `${leadLabel} 즉시 (당일)`;
+      whenSub = '접수 확인 후 바로 발송';
+    }
+    tags.push('연락처 있는 접수만');
+  } else if (kind === 'member_joined') {
+    whenMain = '자사몰 회원가입 즉시';
+    whenSub = '가입 감지 시 실시간 발송 (켠 뒤 24시간 내)';
+  } else if (kind === 'order_created') {
+    whenMain = '주문 등록 즉시';
+    whenSub = '등록 감지 시 실시간 발송 (켠 뒤 24시간 내)';
+    tags.push('취소 주문 제외');
+  } else if (kind === 'process_started' || kind === 'process_completed') {
+    const verb = kind === 'process_started' ? '시작' : '완료';
+    whenMain = `${step ? `${step} 공정 ` : '공정 '}${verb} 즉시`;
+    whenSub = `${verb} 시각 기록 시 실시간 발송`;
+    tags.push('취소 주문 제외');
+  } else {
+    whenMain = autoConditionParts(entry).when || '자동 발송';
+    whenSub = timeText ? `${timeText} 발송` : '';
+  }
+
+  let whoMain = '';
+  let whoSub = '';
+  if (aud === 'staff') {
+    whoMain = Number(entry.autoStaffCount) > 0 ? `등록 직원 ${Number(entry.autoStaffCount)}명` : '지정된 내부 직원';
+    whoSub = '내부 업무 알림 수신자';
+  } else if (aud === 'sales') {
+    whoMain = entry.autoSales ? `영업담당 (${entry.autoSales})` : '담당 영업사원';
+    whoSub = entry.autoUnlessStep
+      ? `${entry.autoUnlessStep} 공정 ${entry.autoUnlessMode === 'started' ? '미착수' : '미완료'} 주문만`
+      : '주문별 지정 영업담당';
+  } else if (kind === 'ship_plus_days') {
+    whoMain = '출고 완료된 고객';
+    whoSub = '수신거부·중복 번호 제외';
+  } else if (kind === 'order_plus_days' || kind === 'order_created') {
+    whoMain = '주문 고객';
+    whoSub = '취소 주문·수신거부·중복 번호 제외';
+  } else if (DATE_TRIGGER_KINDS.has(kind)) {
+    whoMain = '제작 중인 고객';
+    whoSub = entry.autoUnlessStep
+      ? `${entry.autoUnlessStep} 공정 ${entry.autoUnlessMode === 'started' ? '미착수' : '미완료'} 주문만`
+      : '제작 진행 상태인 주문';
+  } else if (kind === 'member_joined') {
+    whoMain = '자사몰 회원가입 고객';
+    whoSub = '가입 완료 회원';
+  } else if (kind === 'lead_plus_days') {
+    whoMain = `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || ''] || '가입·문의'} 고객`;
+    whoSub = '연락처가 남은 접수 건';
+  } else {
+    whoMain = '제작 주문 고객';
+    whoSub = '취소 주문 제외';
+  }
+
+  if (aud === 'customer' && ['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind)) {
+    tags.push('수신거부 제외', '같은 번호 중복 제외');
+  }
+  if (entry.autoSendFrom) tags.push(`${entry.autoSendFrom} 이후부터 적용`);
+
+  const copyTail = phoneTailDigits(entry.autoCopyTo);
+  if (copyTail) tags.push(`사본 동시 발송: ${copyTail}`);
+
+  let howMain = '';
+  if (['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind)) {
+    const rep = Number(entry.autoRepeat) || 1;
+    const interval = Number(entry.autoInterval) || 30;
+    howMain = rep > 1 ? `번호당 최대 ${rep}번 (${interval}일 간격)` : '번호당 1번만';
+  } else if (DATE_TRIGGER_KINDS.has(kind)) {
+    howMain = (entry.autoDaily === 'until' || entry.autoDaily === 'ongoing') ? '대상일 동안 하루 1번' : '주문·번호당 1번';
+  } else if (IMMEDIATE_TRIGGER_KINDS.has(kind) && kind !== 'member_joined') {
+    howMain = '주문·번호당 1번';
+  } else {
+    howMain = '번호당 1번만';
+  }
+
+  const via = viaLabel(entry);
+  const medium = via || (entry.hasImage ? '사진 문자' : '일반 문자');
+  const costStr = sendCostText(entry.sendCost);
+  const howSub = costStr || [medium, entry.hasImage ? photoBadgeText(entry) : ''].filter(Boolean).join(' · ');
+
+  let catchup = '';
+  if (kind === 'ship_plus_days' && entry.autoCatchupAt) {
+    const atText = String(entry.autoCatchupAt).replace('T', ' ');
+    const fromText = entry.autoCatchupFrom ? `${entry.autoCatchupFrom} ~ 오늘` : '처음 ~ 오늘';
+    const dailyText = entry.autoCatchupDaily ? ` · 하루 최대 ${entry.autoCatchupDaily}건` : '';
+    const doneText = entry.autoCatchupDone ? ' · 발송 완료됨' : '';
+    catchup = `기존 출고건 일괄 발송 예약: ${atText} (${fromText} 출고분${dailyText}${doneText})`;
+  }
+
+  return { manual: false, whenMain, whenSub, whoMain, whoSub, howMain, howSub, catchup, tags: uniqTags(tags) };
+}
+
+function buildCatalogConditionSummary(item, recipients) {
+  const triggerParts = String(item.trigger || '').split(' · ').map((s) => s.trim()).filter(Boolean);
+  let whenMain = '';
+  let whenSub = '';
+
+  if (triggerParts.length >= 2 && triggerParts[0] === '생산중') {
+    whenMain = triggerParts.slice(1).join(' · ');
+    whenSub = '생산중인 주문 대상';
+  } else if (triggerParts.length >= 2) {
+    whenMain = triggerParts[0];
+    whenSub = triggerParts.slice(1).join(' · ');
+  } else if (triggerParts.length === 1) {
+    whenMain = triggerParts[0];
+  } else {
+    whenMain = item.sender === '카페24' ? '쇼핑몰 주문·회원 이벤트' : '자동 조건 확인 필요';
+    whenSub = item.sender === '카페24' ? '카페24 설정 조건에 따라 자동 발송' : '';
+  }
+
+  let whoMain = '';
+  let whoSub = '';
+  if (item.audience?.id === 'customer') {
+    whoMain = item.external ? (item.who || '고객') : '제작 주문 고객';
+    whoSub = item.external ? '외부 연동 고객' : '제작 주문 수신 고객';
+  } else if (item.external) {
+    whoMain = item.who || item.audience?.label || '직원';
+    whoSub = '외부 연동 수신자';
+  } else if (Array.isArray(recipients)) {
+    const people = staffRecipientsOf(item.target, recipients);
+    if (people.length > 0) {
+      whoMain = staffRecipientsPhrase(people);
+      whoSub = `등록 ${item.audience?.label || '직원'} ${people.length}명`;
+    } else if (/\d{4}/.test(String(item.target || ''))) {
+      whoMain = shortenPhonesInText(item.target);
+      whoSub = item.audience?.label || '직원';
+    } else {
+      whoMain = staffRecipientsPhrase([]);
+      whoSub = item.target ? String(item.target) : '직원 알림 수신자 미등록';
+    }
+  } else {
+    whoMain = item.target ? shortenPhonesInText(item.target) : (item.audience?.label || '직원');
+    whoSub = item.target ? (item.audience?.label || '직원') : '수신자 정보 불러오는 중';
+  }
+
+  const howMain = item.count === null ? '발송 확인 안 됨' : `최근 7일 ${item.count}건`;
+  const howSub = [item.sender, item.channel].filter(Boolean).join(' · ');
+
+  const tags = [];
+  if (item.scenario) tags.push(item.sender === '메이크' ? `메이크 시나리오: ${item.scenario}` : `자동화: ${item.scenario}`);
+  if (item.ad) tags.push('광고성 문구 (수신동의·표기 적용)');
+  if (item.active === false) tags.push('꺼짐 상태 (자동화 꺼져 있음)');
+  if (item.policy?.status === 'paused') tags.push(item.policy.label || '정책 중단');
+  if (item.config?.status === 'incomplete') tags.push(item.config.label || '설정 미완료');
+  if (item.config?.status === 'test') tags.push('테스트 기록만 남음 (실제 미발송)');
+
+  return { manual: false, whenMain, whenSub, whoMain, whoSub, howMain, howSub, catchup: '', tags: uniqTags(tags) };
+}
+
+// 상세 카드·목록 카드용 비개발자 친화 발송 조건 요약
+export function buildConditionSummary(entryOrItem, { isMine = false, recipients = null } = {}) {
+  if (!entryOrItem || typeof entryOrItem !== 'object') {
+    return { manual: true, whenMain: '-', whenSub: '', whoMain: '-', whoSub: '', howMain: '-', howSub: '', catchup: '', tags: [] };
+  }
+  const treatAsMine = Boolean(isMine || entryOrItem.autoKind || (entryOrItem.preview !== undefined && !entryOrItem.sender && !entryOrItem.external));
+  return treatAsMine ? buildMineConditionSummary(entryOrItem) : buildCatalogConditionSummary(entryOrItem, recipients);
+}

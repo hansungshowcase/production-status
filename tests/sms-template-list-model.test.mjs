@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildSmsItems, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, isAttentionTone, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, buildConditionSummary, buildSmsItems, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, isAttentionTone, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -219,4 +219,140 @@ test('isAttentionTone: 꺼짐·주의·발송 막힘·확인 안 됨만 true', (
   assert.equal(isAttentionTone('blocked'), true);
   assert.equal(isAttentionTone('unknown'), true);
   assert.equal(isAttentionTone(''), false);
+});
+
+test('buildConditionSummary: 내 자동 문구(출고 후·주문 당일·공정·납기 기준일)', () => {
+  const shipSummary = buildConditionSummary({
+    id: 'm1',
+    autoKind: 'ship_plus_days',
+    autoDays: 20,
+    autoSendTime: '10:00',
+    autoRepeat: 3,
+    autoInterval: 30,
+    autoSendFrom: '2026-11-01',
+    autoCopyTo: '01012345678',
+    autoCatchupAt: '2026-11-20T14:00',
+    autoCatchupFrom: '2026-10-01',
+    autoCatchupDaily: '200',
+    hasImage: true,
+    imageCount: 1,
+    sendCost: { type: 'MMS', unit: 110 },
+  }, { isMine: true });
+  assert.equal(shipSummary.manual, false);
+  assert.equal(shipSummary.whenMain, '출고 완료 20일 뒤');
+  assert.equal(shipSummary.whenSub, '오전 10:00 발송');
+  assert.equal(shipSummary.whoMain, '출고 완료된 고객');
+  assert.equal(shipSummary.howMain, '번호당 최대 3번 (30일 간격)');
+  assert.match(shipSummary.howSub, /사진 문자/);
+  assert.match(shipSummary.catchup, /2026-11-20 14:00/);
+  assert.match(shipSummary.catchup, /2026-10-01 ~ 오늘/);
+  assert.ok(shipSummary.tags.includes('출고완료 주문 대상'));
+  assert.ok(shipSummary.tags.includes('2026-11-01 이후부터 적용'));
+  assert.ok(shipSummary.tags.includes('사본 동시 발송: 5678'));
+
+  const sameDayOrder = buildConditionSummary({
+    id: 'm2',
+    autoKind: 'order_plus_days',
+    autoDays: 0,
+    autoSendTime: '18:00',
+    autoRepeat: 1,
+  }, { isMine: true });
+  assert.equal(sameDayOrder.whenMain, '주문 등록 당일');
+  assert.equal(sameDayOrder.whenSub, '오후 6:00 발송');
+  assert.equal(sameDayOrder.whoMain, '주문 고객');
+  assert.equal(sameDayOrder.howMain, '번호당 1번만');
+  assert.ok(sameDayOrder.tags.includes('취소 주문 제외'));
+  assert.ok(!sameDayOrder.tags.includes('발송 놓친 건 3일 내 보충'));
+
+  const processSummary = buildConditionSummary({
+    id: 'm3',
+    autoKind: 'process_started_plus_days',
+    autoStep: '후가공',
+    autoDays: 5,
+    autoSendTime: '14:00',
+  }, { isMine: true });
+  assert.equal(processSummary.whenMain, '후가공 공정 시작 5일 뒤');
+  assert.equal(processSummary.whenSub, '오후 2:00 발송');
+
+  const dueSummary = buildConditionSummary({
+    id: 'm4',
+    autoKind: 'due_date',
+    autoOffset: -3,
+    autoDaily: 'until',
+    autoWeekdays: true,
+    autoUnlessStep: '포장',
+    autoUnlessMode: 'completed',
+    autoSendTime: '09:30',
+    autoAudience: 'sales',
+    autoSales: '김영희',
+  }, { isMine: true });
+  assert.equal(dueSummary.whenMain, '납기일 3일 전부터 매일');
+  assert.equal(dueSummary.whenSub, '당일까지 매일 오전 9:30 발송');
+  assert.equal(dueSummary.whoMain, '영업담당 (김영희)');
+  assert.equal(dueSummary.howMain, '대상일 동안 하루 1번');
+  assert.ok(dueSummary.tags.includes('평일만 발송 (토·일 제외)'));
+  assert.ok(dueSummary.tags.includes('포장 공정 미완료 주문만'));
+});
+
+test('buildConditionSummary: 수동 문구·카탈로그 고객/직원·외부 메이크 문구', () => {
+  const manual = buildConditionSummary({ id: 't1', name: '수동 인사', preview: '안녕하세요', hasImage: true, imageCount: 1 }, { isMine: true });
+  assert.equal(manual.manual, true);
+  assert.equal(manual.whenMain, '수동 발송');
+  assert.equal(manual.howMain, '원할 때마다 1번씩');
+
+  const customerItem = buildConditionSummary({
+    id: 'c1',
+    audience: { id: 'customer', label: '고객' },
+    trigger: '생산중 · 출고일 확정 시',
+    sender: '제작현황',
+    channel: '문자',
+    count: 12,
+    external: false,
+  });
+  assert.equal(customerItem.whenMain, '출고일 확정 시');
+  assert.equal(customerItem.whenSub, '생산중인 주문 대상');
+  assert.equal(customerItem.whoMain, '제작 주문 고객');
+  assert.equal(customerItem.howMain, '최근 7일 12건');
+  assert.equal(customerItem.howSub, '제작현황 · 문자');
+
+  const staffItem = buildConditionSummary({
+    id: 'i1',
+    audience: { id: 'staff', label: '직원' },
+    trigger: '매일 오전 9:00 · 당일 납기 미출고 건 요약',
+    target: '신은철, 이준형에게 발송',
+    sender: '제작현황',
+    channel: '문자',
+    count: 5,
+    external: false,
+  }, {
+    recipients: [
+      { name: '신은철', phone_tail: '7407' },
+      { name: '이준형', phone_tail: '4237' },
+    ],
+  });
+  assert.equal(staffItem.whenMain, '매일 오전 9:00');
+  assert.equal(staffItem.whenSub, '당일 납기 미출고 건 요약');
+  assert.equal(staffItem.whoMain, '신은철 (7407), 이준형 (4237)');
+  assert.equal(staffItem.whoSub, '등록 직원 2명');
+
+  const extMake = buildConditionSummary({
+    id: 'ext1',
+    audience: { id: 'customer', label: '고객' },
+    external: true,
+    who: '리뷰 대상 고객',
+    trigger: '매일 11:59 · 구글시트에 대상 행이 있을 때',
+    sender: '메이크',
+    channel: '알림톡',
+    count: 0,
+    scenario: '리뷰 카톡발송',
+    ad: true,
+    active: false,
+  });
+  assert.equal(extMake.whenMain, '매일 11:59');
+  assert.equal(extMake.whoMain, '리뷰 대상 고객');
+  assert.equal(extMake.howMain, '최근 7일 0건');
+  assert.equal(extMake.howSub, '메이크 · 알림톡');
+  assert.ok(extMake.tags.includes('메이크 시나리오: 리뷰 카톡발송'));
+  assert.ok(extMake.tags.includes('광고성 문구 (수신동의·표기 적용)'));
+  assert.ok(extMake.tags.includes('꺼짐 상태 (자동화 꺼져 있음)'));
 });

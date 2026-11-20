@@ -165,17 +165,65 @@
 }
 .stl-media-state--err { color: var(--smsc-danger, #c62828); border-color: #f2c4c1; background: #fff8f8; }
 
-/* 상세 발송 조건·현황 표(미리보기 상단) */
-.stl-info {
-  display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 0; padding: 10px 14px;
-  border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 10px; background: #f8fafc; font-size: 13px; line-height: 1.5;
+/* 목록 카드 보조 시각 칩 */
+.stl-list-time {
+  padding: 1px 6px; border-radius: 5px; background: #eef2ff; color: #2457d6;
+  font-size: 11.5px; font-weight: 700; white-space: nowrap;
 }
-.stl-info dt { color: var(--smsc-muted, #667085); font-weight: 700; }
-.stl-info dd { margin: 0; color: var(--smsc-text, #1c2330); overflow-wrap: anywhere; word-break: keep-all; }
-.stl-stats { display: flex; flex-wrap: wrap; gap: 6px; }
-.stl-stat { padding: 2px 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; font-size: 12px; color: var(--smsc-text, #1c2330); }
-.stl-stat b { font-weight: 800; }
-.stl-muted-inline { color: var(--smsc-muted, #667085); }
+
+/* 상세 상단 발송 조건 한눈에 보기 보드 */
+.stl-cond-board {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px 14px;
+  border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 12px; background: #f8fafc;
+}
+.stl-cond-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+}
+.stl-cond-tile {
+  display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; min-width: 0;
+  border: 1px solid #e2e8f0; border-radius: 9px; background: #fff;
+}
+.stl-cond-tile--when { background: #f0f5ff; border-color: #c7d7fe; }
+.stl-cond-label {
+  font-size: 11px; font-weight: 700; color: var(--smsc-muted, #667085); letter-spacing: -0.01em;
+}
+.stl-cond-tile--when .stl-cond-label { color: #2457d6; }
+.stl-cond-val {
+  font-size: 14px; font-weight: 800; line-height: 1.35; color: var(--smsc-text, #1c2330);
+  overflow-wrap: anywhere; word-break: keep-all;
+}
+.stl-cond-sub {
+  font-size: 12px; line-height: 1.4; color: var(--smsc-muted, #667085);
+  overflow-wrap: anywhere; word-break: keep-all;
+}
+.stl-cond-catchup {
+  padding: 7px 11px; border-radius: 8px; background: #fff8eb; border: 1px solid #f5d08a;
+  font-size: 12.5px; font-weight: 600; color: #92400e; overflow-wrap: anywhere; word-break: keep-all;
+}
+.stl-cond-tags {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;
+}
+.stl-cond-tags-label {
+  font-size: 11.5px; font-weight: 700; color: var(--smsc-muted, #667085); margin-right: 2px;
+}
+.stl-rule-chip {
+  display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid #dce3ee; background: #fff; color: #344054; font-size: 12px; font-weight: 600;
+  overflow-wrap: anywhere; word-break: keep-all;
+}
+.stl-cond-kpis {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px;
+  padding-top: 8px; border-top: 1px dashed #dce3ee;
+}
+.stl-kpi {
+  display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; min-width: 0;
+  border: 1px solid #e2e8f0; border-radius: 8px; background: #fff;
+}
+.stl-kpi-label { font-size: 11px; font-weight: 600; color: var(--smsc-muted, #667085); white-space: nowrap; }
+.stl-kpi-val { font-size: 13.5px; font-weight: 800; color: var(--smsc-text, #1c2330); font-variant-numeric: tabular-nums; }
+.stl-kpi-val.is-accent { color: #2457d6; }
+.stl-kpi-val.is-warn { color: #c62828; }
+.stl-cond-loading { font-size: 12px; color: var(--smsc-muted, #667085); margin: 0; padding-top: 4px; }
 
 /* 전체 화면 이미지 라이트박스 */
 .stl-lb-backdrop {
@@ -213,7 +261,11 @@
   .stl-layout.has-detail .stl-list-pane { display: none; }
   .stl-back { display: inline-flex; }
   .stl-item-btn, .stl-btn, .stl-back, .stl-lb-btn { min-height: 44px; }
-  .stl-info { grid-template-columns: 84px minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .stl-cond-grid { grid-template-columns: minmax(0, 1fr); }
+  .stl-cond-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stl-cond-kpis > :last-child { grid-column: 1 / -1; }
 }
 
 /* ============ 알림톡 화면 위 「자동 발송 조건」(.stl-kakao) ============ */
