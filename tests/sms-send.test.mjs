@@ -212,7 +212,7 @@ test('GET resource=send: 설정·직원(끝 4자리)만, 업체 호출 없음', 
 });
 
 test('화면 모델·메뉴', () => {
-  assert.deepEqual(CONSOLE_MENUS.map(m => m.id).slice(0, 2), ['dashboard', 'send']);
+  assert.deepEqual(CONSOLE_MENUS.map(m => m.id).slice(0, 2), ['templates', 'send']);
   assert.equal(parseConsoleQuery({ menu: 'send' }).menu, 'send');
   assert.deepEqual(parsePhoneInput('010-1234-5678\n01012345678, 123').map(i => i.ok), [true, false]);
   assert.deepEqual(buildRecipients('01012345678', ['contact-material']), { recipients: ['01012345678', 'contact-material'], invalid: 0 });

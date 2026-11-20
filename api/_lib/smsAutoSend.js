@@ -556,6 +556,28 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
   }, nowMs));
 }
 
+// 여러 자동 발송 문구의 현황을 한 번에 조회한다(N+1 HTTP 왕복 제거).
+export async function autoStatusBatch(db, { ids = [], nowMs = Date.now(), env = process.env } = {}) {
+  await ensureAutoSchema(db);
+  await ensureTextTemplateSchema(db);
+  let targetIds = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].slice(0, 60);
+  if (!targetIds.length) {
+    const rows = (await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE COALESCE(auto_kind, '') <> '' ORDER BY id ASC LIMIT 60", args: [] })).rows || [];
+    targetIds = rows.map(row => Number(row.id)).filter(n => Number.isInteger(n) && n > 0);
+  }
+  const statuses = {};
+  for (let i = 0; i < targetIds.length; i += 6) {
+    const chunk = targetIds.slice(i, i + 6);
+    const settled = await Promise.allSettled(chunk.map(id => autoStatus(db, { id, nowMs, env }).then(out => ({ id, out }))));
+    for (const item of settled) {
+      if (item.status === 'fulfilled' && item.value.out?.status === 200) {
+        statuses[item.value.id] = item.value.out.body;
+      }
+    }
+  }
+  return reply(200, { statuses });
+}
+
 // action auto_mark_sent { template_id, phones[] }: Make 에서 넘어올 때 이미 보낸 번호를 '보냄'으로만 기록한다(실제 발송 없음).
 // 기록 키는 그 문구 종류의 '발송 때 쓰는 dedupe 키'와 같은 형식이다(smsEventSend.js 의 dayCandidatesFor·expandItems 와 같은 규칙).
 //   출고 후 N일 + 알림톡·브랜드메시지  → sms_event_sends '<해시>:ship'

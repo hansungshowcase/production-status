@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchNotificationOverview } from '../../api/notificationOverview.js';
-import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
+import { clearSmsConsoleClientCache, fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
@@ -15,6 +15,7 @@ const FLOW_NO_STEP_KINDS = ['order_created', 'process_started', 'process_complet
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsAutoControls from './SmsAutoControls.jsx';
 import SmsOptoutRow from './SmsOptoutRow.jsx';
+import SmsChannelStatusStrip from './SmsChannelStatusStrip.jsx';
 import './KakaoTemplateManager.css';
 import './SmsAutoControls.css';
 import './SmsTemplateList.css';
@@ -41,7 +42,7 @@ const renderBodyContent = (text, filled) => {
 
 // 문자 템플릿: 왼쪽 목록 + 오른쪽 미리보기·관리(channel='sms').
 // channel 'kakao': 알림톡 템플릿 화면 위에 끼워 넣는 모드(알림톡이 붙은 자동 발송 흐름만 그린다)
-export default function SmsTemplateList({ active, onSendText, openNew, onNewHandled, channel = 'sms', ataPreset = '', editPreset = '' }) {
+export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew, onNewHandled, channel = 'sms', ataPreset = '', editPreset = '' }) {
   const isKakao = channel === 'kakao';
   const [state, setState] = useState({ loaded: false, error: '', items: [] });
   const [recipients, setRecipients] = useState(null); // 직원 문자 관리의 등록 직원(못 받으면 null — 조건만 보임)
@@ -86,14 +87,25 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     load();
   }, [active]);
 
-  // 내 문구는 화면이 열릴 때마다 가볍게 다시 읽는다(방금 등록한 문구가 바로 보이게)
-  const [autoStatus, setAutoStatus] = useState({}); // 자동 발송 문구별 현황(resource=auto_status)
-  const loadStatus = (id) => fetchSmsConsole('auto_status', { id }).then((res) => setAutoStatus((prev) => ({ ...prev, [id]: res }))).catch(() => {});
-  const loadMine = () => fetchSmsConsole('text_templates').then((res) => {
-    const items = Array.isArray(res?.items) ? res.items : [];
-    setMine(items);
-    items.filter((item) => item.auto_kind).forEach((item) => loadStatus(item.id));
-  }).catch(() => {}).finally(() => setMineLoaded(true));
+  // 내 문구는 처음 열릴 때 한 번 묶어 읽고, 수정·켜기/끄기 뒤에는 새로 읽는다
+  const [autoStatus, setAutoStatus] = useState({}); // 자동 발송 문구별 현황(resource=auto_status_batch)
+  const loadMine = (force = false) => {
+    if (force) clearSmsConsoleClientCache();
+    return fetchSmsConsole('text_templates', {}, { bypassCache: force }).then((res) => {
+      const items = Array.isArray(res?.items) ? res.items : [];
+      setMine(items);
+      const autoIds = items.filter((item) => item.auto_kind).map((item) => item.id);
+      if (autoIds.length) {
+        fetchSmsConsole('auto_status_batch', { ids: autoIds.join(',') }, { bypassCache: force })
+          .then((batch) => {
+            if (batch?.statuses && typeof batch.statuses === 'object') {
+              setAutoStatus((prev) => ({ ...prev, ...batch.statuses }));
+            }
+          })
+          .catch(() => {});
+      }
+    }).catch(() => {}).finally(() => setMineLoaded(true));
+  };
   useEffect(() => {
     if (!active) return;
     loadMine();
@@ -150,7 +162,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const closeForm = () => {
     setAdding(false); setEditInit(null); setFormOpts({});
     setMinePhoto({}); setMinePhotoState({});
-    loadMine();
+    loadMine(true);
   };
   const deleteMine = async (entry) => {
     if (mineConfirm !== entry.id) { setMineConfirm(entry.id); return; }
@@ -260,7 +272,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           {paused ? <span className="stl-kstep-warn" role="alert">{paused}</span> : null}
         </button>
         <div className="stl-kstep-actions">
-          <SmsAutoControls compact id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID} onChanged={() => { loadMine(); }}>
+          <SmsAutoControls compact id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID} onChanged={() => { loadMine(true); }}>
             <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
           </SmsAutoControls>
         </div>
@@ -409,6 +421,12 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const attentionAutosAll = useMemo(() => allMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [allMine, autoStatus]);
   const attentionItemsAll = useMemo(() => items.filter((item) => isAttentionTone(itemLight(item).tone)), [items]);
   const attentionTotal = attentionAutosAll.length + attentionItemsAll.length;
+  const activeCatalogAll = useMemo(() => items.filter((item) => itemLight(item).tone === 'on').length, [items]);
+  const smsAutoStats = useMemo(() => ({
+    on: runningAll + activeCatalogAll,
+    total: autoAll + items.length,
+    attention: attentionTotal,
+  }), [runningAll, activeCatalogAll, autoAll, items.length, attentionTotal]);
   const pills = useMemo(() => {
     const base = smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll }));
     return [
@@ -842,7 +860,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
                     photos={entry.imageCount}
                     ata={Boolean(entry.autoAtaTemplate)}
                     bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID}
-                    onChanged={() => { loadMine(); }}
+                    onChanged={() => { loadMine(true); }}
                   >
                     <button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button>
                     <button type="button" className="ktm-btn ktm-btn--danger-outline" onClick={() => deleteMine(entry)}>{mineConfirm === entry.id ? '삭제 확인' : '삭제'}</button>
@@ -1141,7 +1159,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
         </ul>
         {adding ? (
           <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
-            <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
+            <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={() => loadMine(true)} onCancel={closeForm} />
           </SmsModal>
         ) : null}
         {renderLightbox()}
@@ -1154,14 +1172,21 @@ function renderConditionBoard(summary, st, isMineAuto) {
       <div className="ktm-header">
         <div>
           <h2 className="ktm-title">문자 템플릿</h2>
-          <p className="ktm-sub">자동·수동 문자 문구와 첨부 이미지를 한눈에 보고 바로 수정·시험 발송합니다.</p>
+          <p className="ktm-sub">문자 발송 현황을 위에서 확인하고, 적용된 조건과 문구를 한눈에 보고 수정·시험 발송합니다.</p>
         </div>
         <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => setAdding(true)}>+ 템플릿 등록</button>
       </div>
+      <SmsChannelStatusStrip
+        channel="sms"
+        active={active}
+        autoStats={smsAutoStats}
+        onOpenLog={onOpenLog}
+        onAttentionClick={() => pickFilter('attention')}
+      />
       {body}
       {adding ? (
         <SmsModal title={formOpts.startNew ? '문자 템플릿 단계 추가' : (editInit?.id ? '문자 템플릿 수정' : '문자 템플릿 등록')} onClose={closeForm}>
-          <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={loadMine} onCancel={closeForm} />
+          <SmsTextTemplateForm key={editInit?.id || 'new'} pausedText={catchupPausedText(autoStatus[editInit?.id])} initial={editInit || undefined} siblings={formOpts.siblings} startNew={Boolean(formOpts.startNew)} onSend={(id) => onSendText?.(id)} onSaved={() => loadMine(true)} onCancel={closeForm} />
         </SmsModal>
       ) : null}
       {renderLightbox()}

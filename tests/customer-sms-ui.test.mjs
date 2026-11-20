@@ -16,12 +16,12 @@ const panelSource = readFileSync(new URL('../src/components/CustomerSmsPanel.jsx
 const panelCss = readFileSync(new URL('../src/components/CustomerSmsPanel.css', import.meta.url), 'utf8');
 const apiSource = readFileSync(new URL('../src/api/customerNotifications.js', import.meta.url), 'utf8');
 
-test('사이드바 메뉴(현황판 기본·발송 내역·고객/직원 관리) 안에 기존 패널이 함께 유지된다', () => {
-  // 11/11 장부 20번: 가로 탭 3개 → 쏠라피식 왼쪽 사이드바. 메뉴 이름은 shared/smsConsole.js 한 곳에서 관리.
+test('사이드바 메뉴(템플릿 기본·보내기·발송 내역·고객/직원 관리) 안에 기존 패널이 함께 유지된다', () => {
+  // 메뉴 이름은 shared/smsConsole.js 한 곳에서 관리. 현황판은 각 템플릿 상단에 채널별로 내장.
   assert.match(pageSource, /parseConsoleQuery\(/);
   assert.match(pageSource, /<SmsConsoleSidebar /);
-  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['현황판', '보내기', '발송 내역', '템플릿', '고객 문자 관리', '직원 문자 관리']);
-  assert.equal(parseConsoleQuery(new URLSearchParams('')).menu, 'dashboard');
+  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['템플릿', '보내기', '발송 내역', '고객 문자 관리', '직원 문자 관리']);
+  assert.equal(parseConsoleQuery(new URLSearchParams('')).menu, 'templates');
   assert.match(pageSource, /<SolapiMessageLog[\s>]/);
   assert.match(pageSource, /<CustomerSmsPanel \/>/);
   // 고객 메뉴: 고객 자동 문자 등록 현황(고객 대상만) + 발송 내역, 직원 메뉴: 직원 대상만

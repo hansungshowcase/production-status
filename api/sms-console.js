@@ -13,11 +13,11 @@ import { deleteTextTemplate, getTextTemplate, listTextTemplates, saveTextTemplat
 import { STEPS } from './_lib/steps.js';
 import { cafe24Connected } from './_lib/cafe24.js';
 import { authEnabled } from './_lib/auth.js';
-import { autoMarkSent, autoStatus, autoTest, sendCostOf, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
+import { autoMarkSent, autoStatus, autoStatusBatch, autoTest, sendCostOf, autoToggle, optoutAdd, optoutDelete, optoutList } from './_lib/smsAutoSend.js';
 import { catchupPreview } from './_lib/smsEventSend.js';
 import { readSolapiHealth } from './_lib/solapiHealth.js';
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts', 'catchup_preview']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'usage_sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_status_batch', 'auto_meta', 'optouts', 'catchup_preview']);
 const ACTIONS = new Set(['create', 'update', 'rename', 'inspect', 'cancel_inspect', 'delete', 'send', 'text_template_save', 'text_template_delete', 'send_cancel', 'kakao_image_upload', 'auto_toggle', 'auto_test', 'optout_add', 'optout_delete', 'auto_mark_sent']);
 const USAGE_DAYS = 7;
 const USAGE_TTL_MS = 10 * 60 * 1000;
@@ -35,7 +35,8 @@ export function programTemplateIds() {
 const markProgramUse = (items, ids) => (items || []).map(item => (ids.has(item?.id) ? { ...item, program_use: true } : item));
 
 let usageCache = null; // { at, value }
-export function _resetConsoleCacheForTest() { usageCache = null; }
+let usageInFlight = null;
+export function _resetConsoleCacheForTest() { usageCache = null; usageInFlight = null; }
 
 const queryValue = v => (Array.isArray(v) ? v[0] : v);
 const fail = (res, status, message) => res.status(status).json({ error: { message, status } });
@@ -81,41 +82,50 @@ function sentGroupList(sent) {
 
 async function computeUsage(fetchDay, nowMs, { fresh = false } = {}) {
   if (!fresh && usageCache && nowMs - usageCache.at >= 0 && nowMs - usageCache.at < USAGE_TTL_MS) return usageCache.value;
-  const dates = kstDates(nowMs, USAGE_DAYS);
-  const byTemplate = {};
-  const sent = new Map();
-  let partial = false;
-  let dayFailed = false;
-  const lastMs = {};
-  const readDay = async date => {
-    try {
-      let day;
-      try { day = await fetchDay(date, { nowMs }); } catch { day = await fetchDay(date, { nowMs }); } // 하루 조회 실패는 1번 더 시도한다
-      if (day?.partial) partial = true;
-      try { for (const entry of collapseReplacements(day?.messages || [])) addSent(sent, entry, nowMs); } catch { /* 묶음 판정 실패가 7일 사용량 셈을 막지 않게 한다 */ }
-      for (const message of day?.messages || []) {
-        if (message?.replacement === true) continue;
-        const id = message?.kakaoOptions?.templateId;
-        if (!id) continue;
-        const entry = byTemplate[id] || (byTemplate[id] = { count: 0, last_at: null });
-        entry.count += 1;
-        const at = Date.parse(message.dateCreated || '');
-        if (Number.isFinite(at) && at > (lastMs[id] || 0)) { lastMs[id] = at; entry.last_at = new Date(at).toISOString(); }
-      }
-    } catch { partial = true; dayFailed = true; }
-  };
-  for (let i = 0; i < dates.length; i += 2) await Promise.all(dates.slice(i, i + 2).map(readDay));
-  if (dayFailed && usageCache) { // 재시도 뒤에도 실패한 날이 있으면 직전 성공 값을 쓰고 오래된 값이라고 표시한다(캐시는 덮지 않는다)
-    const old = usageCache.value;
-    const stale = { ...old, stale: true };
-    if (old.sent) Object.defineProperty(stale, 'sent', { value: old.sent, enumerable: false });
-    return stale;
+  if (!fresh && usageInFlight) return usageInFlight;
+  const work = (async () => {
+    const dates = kstDates(nowMs, USAGE_DAYS);
+    const byTemplate = {};
+    const sent = new Map();
+    let partial = false;
+    let dayFailed = false;
+    const lastMs = {};
+    const readDay = async date => {
+      try {
+        let day;
+        try { day = await fetchDay(date, { nowMs }); } catch { day = await fetchDay(date, { nowMs }); } // 하루 조회 실패는 1번 더 시도한다
+        if (day?.partial) partial = true;
+        try { for (const entry of collapseReplacements(day?.messages || [])) addSent(sent, entry, nowMs); } catch { /* 묶음 판정 실패가 7일 사용량 셈을 막지 않게 한다 */ }
+        for (const message of day?.messages || []) {
+          if (message?.replacement === true) continue;
+          const id = message?.kakaoOptions?.templateId;
+          if (!id) continue;
+          const entry = byTemplate[id] || (byTemplate[id] = { count: 0, last_at: null });
+          entry.count += 1;
+          const at = Date.parse(message.dateCreated || '');
+          if (Number.isFinite(at) && at > (lastMs[id] || 0)) { lastMs[id] = at; entry.last_at = new Date(at).toISOString(); }
+        }
+      } catch { partial = true; dayFailed = true; }
+    };
+    for (let i = 0; i < dates.length; i += 2) await Promise.all(dates.slice(i, i + 2).map(readDay));
+    if (dayFailed && usageCache) { // 재시도 뒤에도 실패한 날이 있으면 직전 성공 값을 쓰고 오래된 값이라고 표시한다(캐시는 덮지 않는다)
+      const old = usageCache.value;
+      const stale = { ...old, stale: true };
+      if (old.sent) Object.defineProperty(stale, 'sent', { value: old.sent, enumerable: false });
+      return stale;
+    }
+    const value = { days: USAGE_DAYS, partial, by_template: byTemplate, checked_at: new Date(nowMs).toISOString() };
+    // 'sent' 는 usage 응답 모양을 바꾸지 않도록 열거되지 않는 칸으로만 붙인다(resource=sent 가 같은 훑기 결과를 재사용).
+    Object.defineProperty(value, 'sent', { value: sent, enumerable: false });
+    if (!fresh) usageCache = { at: nowMs, value };
+    return value;
+  })();
+  if (!fresh) usageInFlight = work;
+  try {
+    return await work;
+  } finally {
+    if (usageInFlight === work) usageInFlight = null;
   }
-  const value = { days: USAGE_DAYS, partial, by_template: byTemplate, checked_at: new Date(nowMs).toISOString() };
-  // 'sent' 는 usage 응답 모양을 바꾸지 않도록 열거되지 않는 칸으로만 붙인다(resource=sent 가 같은 훑기 결과를 재사용).
-  Object.defineProperty(value, 'sent', { value: sent, enumerable: false });
-  if (!fresh) usageCache = { at: nowMs, value };
-  return value;
 }
 
 function envIds() {
@@ -161,6 +171,13 @@ async function handleGet(req, res, ctx) {
       return res.status(out.status).json(out.body);
     } catch { return fail(res, 500, '자동 발송 현황을 불러오지 못했습니다.'); }
   }
+  if (resource === 'auto_status_batch') {
+    try {
+      const ids = String(queryValue(req.query?.ids) || '').split(',').map(Number).filter(n => Number.isInteger(n) && n > 0);
+      const out = await autoStatusBatch(deps.db || getDb(), { ids, nowMs, env: deps.env || process.env });
+      return res.status(out.status).json(out.body);
+    } catch { return fail(res, 500, '자동 발송 현황을 불러오지 못했습니다.'); }
+  }
   if (resource === 'catchup_preview') { // 이미 출고된 주문 1회 발송 미리보기(읽기만): 출고일 범위별 건수·예상 비용·잔액. 번호는 돌려주지 않는다
     try {
       const out = await catchupPreview(deps.db || getDb(), { from: String(queryValue(req.query?.from) || ''), templateId: queryValue(req.query?.id) || null, days: Number(queryValue(req.query?.days)) || 0, nowMs, env: deps.env || process.env, provider: deps.sendProvider, kakao, kakaoOpts: opts, bms: queryValue(req.query?.bms) === '1', dailyCap: Number(queryValue(req.query?.daily)) || 0, ad: queryValue(req.query?.ad) === '1' });
@@ -198,6 +215,15 @@ async function handleGet(req, res, ctx) {
       if (!configured) return res.status(200).json({ configured: false, days: USAGE_DAYS, partial: false, groups: [], checked_at });
       const usage = await computeUsage(ctx.fetchDay, nowMs);
       return res.status(200).json({ configured: true, days: USAGE_DAYS, partial: usage.partial, groups: sentGroupList(usage.sent), checked_at: usage.checked_at });
+    }
+    if (resource === 'usage_sent') {
+      if (!configured) return res.status(200).json({ configured: false, days: USAGE_DAYS, partial: false, by_template: {}, groups: [], checked_at });
+      const usage = await computeUsage(ctx.fetchDay, nowMs);
+      return res.status(200).json({
+        configured: true, days: USAGE_DAYS, partial: usage.partial,
+        ...(usage.stale ? { stale: true } : {}),
+        by_template: usage.by_template, groups: sentGroupList(usage.sent), checked_at: usage.checked_at,
+      });
     }
     if (resource === 'categories') {
       if (!configured) return res.status(200).json({ configured: false, items: [] });
@@ -463,7 +489,7 @@ export async function handleSmsConsole(req, res, deps = {}) {
   const guard = deps.guard || defaultGuard;
   let kakao = deps.kakao;
   if (req.method === 'GET') {
-    if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: 30, keySuffix: 'GET' })) return;
+    if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: 90, keySuffix: 'GET' })) return;
   }
   if (!kakao) kakao = await import('./_lib/kakaoTemplates.js');
   const ctx = { deps, kakao, guard, nowMs, opts: { fetchImpl: deps.fetchImpl, nowMs },

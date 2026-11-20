@@ -75,6 +75,10 @@ function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
   const text = value => (shortPhones
     ? shortenPhonesInText(notificationTextPresentation(value))
     : notificationTextPresentation(value));
+  const rawChannel = notificationChannelPresentation(item.configuration?.channel);
+  const channelChip = rawChannel && rawChannel !== '발송 안 함' && rawChannel !== '보내는 방법 확인 필요' ? rawChannel : '';
+  const recentTotal = item.recent?.state === 'unavailable' ? null : Number(item.recent?.counts?.total || 0);
+  const triggerText = item.trigger ? text(item.trigger) : '';
   return (
     <article
       className={`notification-overview-item notification-overview-item--${state.key}`}
@@ -87,6 +91,16 @@ function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
             <span className={`notification-overview-badge notification-overview-badge--${state.key}`}>
               {state.label}
             </span>
+            {channelChip && (
+              <span className="notification-overview-meta-chip">
+                {channelChip}
+              </span>
+            )}
+            {recentTotal !== null && (
+              <span className={`notification-overview-meta-chip${recentTotal > 0 ? ' is-active' : ' is-zero'}`}>
+                {recentTotal > 0 ? `7일 ${recentTotal}건` : '7일 0건'}
+              </span>
+            )}
           </div>
         </div>
 
@@ -95,6 +109,12 @@ function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
             <dt>받는 사람</dt>
             <dd>{text(item.target)}</dd>
           </div>
+          {triggerText && triggerText !== text(item.target) && (
+            <div>
+              <dt>발송 시점</dt>
+              <dd>{triggerText}</dd>
+            </div>
+          )}
         </dl>
 
         <button
@@ -151,12 +171,12 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
   const [expandedByGroup, setExpandedByGroup] = useState({ customer: null, internal: null });
   const requestIdRef = useRef(0);
 
-  const loadOverview = useCallback(async () => {
+  const loadOverview = useCallback(async (fresh = false) => {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setStatus('loading');
     try {
-      const data = await fetchNotificationOverview();
+      const data = await fetchNotificationOverview({ fresh: Boolean(fresh) });
       if (requestId !== requestIdRef.current) return;
       setOverview(data);
       setStatus('ready');
@@ -167,7 +187,7 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
   }, []);
 
   useEffect(() => {
-    loadOverview();
+    loadOverview(false);
   }, [loadOverview]);
 
   const days = Number(overview?.recent_period?.days) || 7;
@@ -218,7 +238,7 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
         <div className="notification-overview-state notification-overview-state--error" role="alert">
           <strong>{stateLabel}을 불러오지 못했습니다.</strong>
           <span>{onlyGroup === 'customer' ? '고객 문자 발송 내역은 계속 확인할 수 있습니다.' : '아래 직원 문자 발송내역은 계속 확인할 수 있습니다.'}</span>
-          <button type="button" onClick={loadOverview}>현황 다시 불러오기</button>
+          <button type="button" onClick={() => loadOverview(true)}>현황 다시 불러오기</button>
         </div>
       )}
 

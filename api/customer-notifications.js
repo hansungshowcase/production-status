@@ -43,7 +43,8 @@ export async function handleCustomerNotifications(req, res, dependencies = {}) {
   const db = dependencies.db || getDb();
   const filter = filters(date, kind?.id || '');
   const base = `FROM notification_log n LEFT JOIN orders o ON o.id = n.order_id WHERE ${filter.where}`;
-  const countsResult = await db.execute({ sql: `SELECT COUNT(*) AS total,
+  const wantReviews = !requestedKind || requestedKind.startsWith('review_');
+  const countsPromise = db.execute({ sql: `SELECT COUNT(*) AS total,
     COUNT(*) FILTER (WHERE (${CUSTOMER_STATUS_SQL}) = 'success') AS success,
     COUNT(*) FILTER (WHERE (${CUSTOMER_STATUS_SQL}) = 'failed') AS failed,
     COUNT(*) FILTER (WHERE (${CUSTOMER_STATUS_SQL}) = 'queued') AS queued,
@@ -57,23 +58,27 @@ export async function handleCustomerNotifications(req, res, dependencies = {}) {
     COUNT(*) FILTER (WHERE (${CUSTOMER_DELIVERY_SQL}) = 'unknown') AS delivery_unknown,
     COUNT(*) FILTER (WHERE (${CUSTOMER_DELIVERY_SQL}) = 'not_sent') AS delivery_not_sent,
     COUNT(*) FILTER (WHERE (${CUSTOMER_DELIVERY_SQL}) = 'uncertain') AS delivery_uncertain ${base}`, args: filter.args });
+  const reviewFetchPromise = wantReviews && date
+    ? (dependencies.fetchReviewMessages || fetchReviewMessages)(date).then(source => ({ ok: true, source }), () => ({ ok: false }))
+    : Promise.resolve(null);
+  const [countsResult, reviewFetch] = await Promise.all([countsPromise, reviewFetchPromise]);
   const countRow = countsResult.rows?.[0] || {};
   const localTotal = countValue(countRow.total);
   const counts = { total: localTotal, success: countValue(countRow.success), failed: countValue(countRow.failed), queued: countValue(countRow.queued), sending: countValue(countRow.sending), uncertain: countValue(countRow.uncertain), skipped: countValue(countRow.skipped), dry_run: countValue(countRow.dry_run), delivery: { received: countValue(countRow.delivery_received), failed: countValue(countRow.delivery_failed), pending: countValue(countRow.delivery_pending), unknown: countValue(countRow.delivery_unknown), not_sent: countValue(countRow.delivery_not_sent), uncertain: countValue(countRow.delivery_uncertain) } };
   let reviews = [];
   let reviewSync = { state: 'not_requested', notice: '' };
-  if (!requestedKind || requestedKind.startsWith('review_')) {
+  if (wantReviews) {
     reviewSync = { state: 'date_required', notice: '기존 리뷰 발송이력은 날짜를 선택하면 함께 조회됩니다.' };
     if (date) {
-      try {
-        const source = await (dependencies.fetchReviewMessages || fetchReviewMessages)(date);
+      if (reviewFetch?.ok) {
+        const { source } = reviewFetch;
         const checkedAt = new Date().toISOString();
         const customerNames = await resolveCustomerNames(db, source.messages);
         reviews = buildReviewDeliveryHistory(source.messages, { checkedAt, complete: source.complete, customerNames })
           .filter(item => !requestedKind || item.kind === requestedKind);
         reviewSync = { state: source.complete ? 'ready' : 'partial', checked_at: checkedAt,
           notice: source.complete ? '기존 SOLAPI 리뷰 발송 결과가 반영됐습니다.' : '기존 리뷰 발송량이 많아 일부 기록만 조회됐습니다. 표시된 합계는 조회된 기록 기준입니다.' };
-      } catch {
+      } else {
         reviewSync = { state: 'error', notice: '기존 리뷰 발송이력을 조회하지 못했습니다. 아래에는 프로그램에 보관된 기록만 표시됩니다.' };
       }
     }

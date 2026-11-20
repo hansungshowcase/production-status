@@ -9,7 +9,6 @@ import SolapiMessageLog from '../components/SolapiMessageLog';
 import StaffSmsPanel from '../components/StaffSmsPanel';
 import './SmsHistoryPage.css';
 
-const SmsDashboard = lazy(() => import('../components/smsconsole/SmsDashboard.jsx'));
 const SendPanel = lazy(() => import('../components/smsconsole/SendPanel.jsx'));
 const KakaoTemplateManager = lazy(() => import('../components/smsconsole/KakaoTemplateManager.jsx'));
 const SmsTemplateList = lazy(() => import('../components/smsconsole/SmsTemplateList.jsx'));
@@ -98,14 +97,6 @@ export default function SmsHistoryPage() {
         <SmsConsoleSidebar state={state} onSelect={selectMenu} />
 
         <div className="sms-console-content">
-        {isMounted('dashboard') && (
-          <div className="sms-console-pane" hidden={state.menu !== 'dashboard'}>
-            <Suspense fallback={PANE_LOADING}>
-              <SmsDashboard active={state.menu === 'dashboard'} onNavigate={selectMenu} />
-            </Suspense>
-          </div>
-        )}
-
         {isMounted('send') && (
           <div className="sms-console-pane" hidden={state.menu !== 'send'}>
             <Suspense fallback={PANE_LOADING}>
@@ -135,19 +126,28 @@ export default function SmsHistoryPage() {
             <Suspense fallback={PANE_LOADING}>
               {(tplSeen.sms || tplKind === 'sms') && (
                 <div hidden={tplKind !== 'sms'}>
-                  <SmsTemplateList active={state.menu === 'templates' && tplKind === 'sms'} onSendText={id => selectMenu('send', { text: id })} openNew={oldSmsNew} ataPreset={oldSmsNew ? (searchParams.get('ata') || '') : ''} editPreset={oldSmsNew ? (searchParams.get('sedit') || '') : ''} onNewHandled={() => patchState({ mode: '', ch: 'sms' })} />
+                  <SmsTemplateList
+                    active={state.menu === 'templates' && tplKind === 'sms'}
+                    onSendText={id => selectMenu('send', { text: id })}
+                    onOpenLog={patch => selectMenu('log', patch)}
+                    openNew={oldSmsNew}
+                    ataPreset={oldSmsNew ? (searchParams.get('ata') || '') : ''}
+                    editPreset={oldSmsNew ? (searchParams.get('sedit') || '') : ''}
+                    onNewHandled={() => patchState({ mode: '', ch: 'sms' })}
+                  />
                 </div>
               )}
               {(tplSeen.kakao || tplKind === 'kakao') && (
                 <div hidden={tplKind !== 'kakao'}>
-                  <SmsTemplateList channel="kakao" active={state.menu === 'templates' && tplKind === 'kakao'} onSendText={id => selectMenu('send', { text: id })} />
                   <KakaoTemplateManager
                     active={state.menu === 'templates' && tplKind === 'kakao'}
                     selectedId={tplKind === 'kakao' ? state.tpl : ''}
                     mode={tplKind === 'kakao' ? state.mode : ''}
                     onRoute={patchState}
                     onSend={id => selectMenu('send', { template: id })}
+                    onSendText={id => selectMenu('send', { text: id })}
                     onOpenLog={openLog}
+                    onOpenChannelLog={patch => selectMenu('log', patch)}
                   />
                 </div>
               )}

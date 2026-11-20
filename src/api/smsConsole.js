@@ -1,7 +1,15 @@
 // 문자 관리 콘솔 API. 공용 client(request)는 401 이면 로그인 토큰을 지우므로 여기서는 fetch 를 직접 쓴다.
 // 등록·삭제에 비밀번호는 없다(2026-11-11 사장님 결정). POST 는 다시 보내지 않는다.
 
-const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_meta', 'optouts', 'catchup_preview']);
+const RESOURCES = new Set(['overview', 'templates', 'usage', 'categories', 'scope', 'sent', 'usage_sent', 'send', 'text_templates', 'text_template', 'auto_status', 'auto_status_batch', 'auto_meta', 'optouts', 'catchup_preview']);
+const CACHEABLE = new Set(['overview', 'templates', 'usage', 'sent', 'usage_sent', 'text_templates', 'auto_status_batch']);
+const CLIENT_CACHE_TTL_MS = 15000;
+const READ_CACHE = new Map();
+const IN_FLIGHT = new Map();
+
+export function clearSmsConsoleClientCache() {
+  READ_CACHE.clear();
+}
 const TIMEOUT_MS = 20000;
 
 async function call(url, init) {
@@ -32,21 +40,42 @@ async function call(url, init) {
 }
 
 // GET /api/sms-console?resource=… → JSON. 실패하면 Error(message) + err.status
-export function fetchSmsConsole(resource, params = {}) {
+export function fetchSmsConsole(resource, params = {}, { bypassCache = false } = {}) {
   if (!RESOURCES.has(resource)) return Promise.reject(Object.assign(new Error('알 수 없는 조회입니다.'), { status: 400 }));
   const query = new URLSearchParams({ resource });
   for (const [key, value] of Object.entries(params || {})) {
     if (value === undefined || value === null || value === '') continue;
     query.set(key, String(value));
   }
-  return call(`/api/sms-console?${query.toString()}`, { method: 'GET' });
+  const url = `/api/sms-console?${query.toString()}`;
+  const isFresh = bypassCache || Boolean(params?.fresh);
+  if (!isFresh && CACHEABLE.has(resource)) {
+    const hit = READ_CACHE.get(url);
+    if (hit && Date.now() - hit.at < CLIENT_CACHE_TTL_MS) return Promise.resolve(hit.value);
+    const pending = IN_FLIGHT.get(url);
+    if (pending) return pending;
+    const reqPromise = call(url, { method: 'GET' })
+      .then((data) => {
+        READ_CACHE.set(url, { at: Date.now(), value: data });
+        return data;
+      })
+      .finally(() => {
+        IN_FLIGHT.delete(url);
+      });
+    IN_FLIGHT.set(url, reqPromise);
+    return reqPromise;
+  }
+  return call(url, { method: 'GET' });
 }
 
 // POST /api/sms-console {action, ...body} → JSON. 실패하면 Error(message) + err.status
 export function postSmsConsole(action, body = {}) {
+  clearSmsConsoleClientCache();
   return call('/api/sms-console', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...(body || {}), action }),
+  }).finally(() => {
+    clearSmsConsoleClientCache();
   });
 }

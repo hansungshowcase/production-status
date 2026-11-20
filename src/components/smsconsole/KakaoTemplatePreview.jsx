@@ -2,17 +2,26 @@ import React from 'react';
 import { splitVariables } from './templateListModel.js';
 import './KakaoTemplatePreview.css';
 
-// 알림톡 미리보기 말풍선. 카카오 로고·상표는 쓰지 않고 글자만 쓴다.
-export default function KakaoTemplatePreview({ template }) {
+// 알림톡·브랜드메시지 미리보기 말풍선. 카카오 로고·상표는 쓰지 않고 글자만 쓴다.
+export default function KakaoTemplatePreview({ template, banner = '알림톡 도착', onImageClick }) {
   const t = template || {};
   const emphasized = t.emphasizeType === 'TEXT';
   const buttons = Array.isArray(t.buttons) ? t.buttons.filter((b) => b && b.name) : [];
   const parts = splitVariables(t.content);
+  const showImage = Boolean(t.imageUrl && (t.emphasizeType === 'IMAGE' || t.allowImage));
   return (
     <div className="ktp-board">
       <div className="ktp-bubble">
-        <div className="ktp-banner">알림톡 도착</div>
-        {t.emphasizeType === 'IMAGE' && t.imageUrl ? <img className="ktp-image" src={t.imageUrl} alt="" /> : null}
+        <div className="ktp-banner">{banner || '알림톡 도착'}</div>
+        {showImage ? (
+          onImageClick ? (
+            <button type="button" className="ktp-image-btn" onClick={() => onImageClick(t.imageUrl)} title="클릭하면 원본 크기로 봅니다">
+              <img className="ktp-image" src={t.imageUrl} alt={`${t.name || '메시지'} 이미지`} />
+            </button>
+          ) : (
+            <img className="ktp-image" src={t.imageUrl} alt="" />
+          )
+        ) : null}
         <div className="ktp-body">
           {t.targetName ? <div className="ktp-sender">{t.targetName}</div> : null}
           {emphasized && t.emphasizeSubtitle ? <div className="ktp-subtitle">{t.emphasizeSubtitle}</div> : null}

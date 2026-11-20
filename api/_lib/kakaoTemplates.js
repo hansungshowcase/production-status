@@ -15,8 +15,9 @@ const NAME_RULE = /^한성/;
 const GENERIC_ERROR = '쏠라피에서 불러오지 못했습니다';
 
 const CACHE = new Map();
-export function _resetKakaoCachesForTest() { CACHE.clear(); }
-export function clearTemplateCache() { CACHE.delete('templates'); }
+let templatesInFlight = null;
+export function _resetKakaoCachesForTest() { CACHE.clear(); templatesInFlight = null; }
+export function clearTemplateCache() { CACHE.delete('templates'); templatesInFlight = null; }
 
 export class SolapiKakaoError extends Error {
   constructor(status, publicMessage) {
@@ -198,32 +199,43 @@ function toTemplate(raw, scope) {
 export async function listTemplates({ fetchImpl = fetch, nowMs = Date.now(), fresh = false } = {}) {
   const hit = fresh ? null : cached('templates', TEMPLATE_TTL, nowMs);
   if (hit) return hit.value;
-  const directory = await listDirectory({ fetchImpl, nowMs });
-  const { items: rawList, partial } = await pagedList('kakao/v2/templates', 'templateList', { fetchImpl });
-  const envIds = envIdList();
-  const items = [];
-  const counts = { total: 0, APPROVED: 0, INSPECTING: 0, PENDING: 0, REJECTED: 0 };
-  let unresolvedGroups = 0;
-  for (const raw of rawList) {
-    if (!raw || raw.isHidden === true) continue;
-    const scope = scopeOf(raw, directory, envIds);
-    if (!scope.allowed) {
-      if (scope.kind === 'group' && !scope.name && !envIds.length) unresolvedGroups += 1;
-      continue;
+  if (!fresh && templatesInFlight) return templatesInFlight;
+  const work = (async () => {
+    const [directory, { items: rawList, partial }] = await Promise.all([
+      listDirectory({ fetchImpl, nowMs }),
+      pagedList('kakao/v2/templates', 'templateList', { fetchImpl }),
+    ]);
+    const envIds = envIdList();
+    const items = [];
+    const counts = { total: 0, APPROVED: 0, INSPECTING: 0, PENDING: 0, REJECTED: 0 };
+    let unresolvedGroups = 0;
+    for (const raw of rawList) {
+      if (!raw || raw.isHidden === true) continue;
+      const scope = scopeOf(raw, directory, envIds);
+      if (!scope.allowed) {
+        if (scope.kind === 'group' && !scope.name && !envIds.length) unresolvedGroups += 1;
+        continue;
+      }
+      const template = toTemplate(raw, scope);
+      items.push(template);
+      counts.total += 1;
+      if (template.status in counts) counts[template.status] += 1;
     }
-    const template = toTemplate(raw, scope);
-    items.push(template);
-    counts.total += 1;
-    if (template.status in counts) counts[template.status] += 1;
+    const targets = [
+      ...directory.channels.map(item => ({ kind: 'channel', ...item })),
+      ...directory.groups.map(item => ({ kind: 'group', ...item })),
+    ].filter(item => scopeOf(item.kind === 'group' ? { channelGroupId: item.id } : { channelId: item.id }, directory, envIds).allowed);
+    const value = { items, targets, counts, unresolved_groups: unresolvedGroups };
+    if (partial) value.partial = true;
+    CACHE.set('templates', { at: nowMs, value });
+    return value;
+  })();
+  if (!fresh) templatesInFlight = work;
+  try {
+    return await work;
+  } finally {
+    if (templatesInFlight === work) templatesInFlight = null;
   }
-  const targets = [
-    ...directory.channels.map(item => ({ kind: 'channel', ...item })),
-    ...directory.groups.map(item => ({ kind: 'group', ...item })),
-  ].filter(item => scopeOf(item.kind === 'group' ? { channelGroupId: item.id } : { channelId: item.id }, directory, envIds).allowed);
-  const value = { items, targets, counts, unresolved_groups: unresolvedGroups };
-  if (partial) value.partial = true;
-  CACHE.set('templates', { at: nowMs, value });
-  return value;
 }
 
 export async function getTemplateFresh(id, { fetchImpl = fetch, nowMs = Date.now() } = {}) {

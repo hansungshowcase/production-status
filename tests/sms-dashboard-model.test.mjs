@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  summarizeToday, matrixCells, hourlyBars, recentGroups, balanceState, templateCountsView, kstTime,
+  summarizeToday, matrixCells, hourlyBars, recentGroups, balanceState, templateCountsView, kstTime, summarizeChannelLog,
 } from '../src/components/smsconsole/dashboardModel.js';
 
 test('summarizeToday: 빈 값·null 은 0, 실패 경계', () => {
@@ -81,4 +81,37 @@ test('templateCountsView: null·반려 강조', () => {
   assert.deepEqual(v.items.map(i => i.count), [3, 1, 1, 1]);
   assert.equal(v.rejected, 1);
   assert.equal(templateCountsView({}).rejected, 0);
+});
+
+test('summarizeChannelLog: 채널별 현황 집계 및 matrix fallback', () => {
+  assert.deepEqual(summarizeChannelLog(null, 'sms'), {
+    total: 0, success: 0, pending: 0, failed: 0, hasFailed: false, customerTotal: 0, staffTotal: 0, recent: [],
+  });
+  const byCounts = summarizeChannelLog({
+    counts: {
+      all: { total: 12, success: 10, pending: 1, failed: 1 },
+      customer: { total: 8 },
+      staff: { total: 4 },
+    },
+    groups: [{ group_id: 'G1', created_at: '2026-11-20T01:00:00.000Z', type_label: '장문', total: 4, success: 4 }],
+  }, 'sms');
+  assert.equal(byCounts.total, 12);
+  assert.equal(byCounts.failed, 1);
+  assert.equal(byCounts.hasFailed, true);
+  assert.equal(byCounts.customerTotal, 8);
+  assert.equal(byCounts.staffTotal, 4);
+  assert.equal(byCounts.recent.length, 1);
+
+  const byMatrix = summarizeChannelLog({
+    matrix: {
+      customer: { kakao: { total: 5, success: 5, pending: 0, failed: 0 }, sms: { total: 9, success: 9, pending: 0, failed: 0 } },
+      staff: { kakao: { total: 2, success: 1, pending: 0, failed: 1 }, sms: { total: 1, success: 1, pending: 0, failed: 0 } },
+    },
+  }, 'kakao');
+  assert.equal(byMatrix.total, 7);
+  assert.equal(byMatrix.success, 6);
+  assert.equal(byMatrix.failed, 1);
+  assert.equal(byMatrix.hasFailed, true);
+  assert.equal(byMatrix.customerTotal, 5);
+  assert.equal(byMatrix.staffTotal, 2);
 });

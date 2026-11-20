@@ -334,3 +334,48 @@ test('GET usage: 하루 조회가 실패하면 1번 더 시도하고, 계속 실
   assert.equal(res.body.by_template.KA01.count, 7, '직전 성공 값');
   assert.equal(tries['2026-11-08'], 3, '첫 성공 1번 + 실패 뒤 재시도 포함 2번');
 });
+
+test('GET usage_sent & 동시 usage/sent 중복 훑기 방지', async () => {
+  reset();
+  let calls = 0;
+  const fetchSolapiDay = async (date) => {
+    calls += 1;
+    await new Promise(r => setTimeout(r, 8));
+    return {
+      partial: false,
+      messages: [
+        { messageId: `M-${date}`, groupId: `G-${date}`, to: '01011112222', type: 'ATA', statusCode: '4000', dateCreated: `${date}T01:00:00Z`, kakaoOptions: { templateId: 'KA01' } },
+      ],
+    };
+  };
+  const d = deps({ fetchSolapiDay });
+  const [uRes, sRes, usRes] = await Promise.all([
+    run(request('GET', { query: { resource: 'usage' } }), d),
+    run(request('GET', { query: { resource: 'sent' } }), d),
+    run(request('GET', { query: { resource: 'usage_sent' } }), d),
+  ]);
+  assert.equal(calls, 7, '동시 usage+sent+usage_sent 도 7일만 1번 훑는다');
+  assert.equal(uRes.body.by_template.KA01.count, 7);
+  assert.ok(Array.isArray(sRes.body.groups));
+  assert.equal(usRes.body.by_template.KA01.count, 7);
+  assert.ok(Array.isArray(usRes.body.groups));
+});
+
+test('GET auto_status_batch: 여러 ID 현황을 한 번에 돌려준다', async () => {
+  reset();
+  const db = {
+    async execute({ sql }) {
+      if (sql.includes('FROM sms_text_templates WHERE id = ?')) {
+        return { rows: [{ id: 1, name: '문구1', body: '안녕', auto_kind: 'ship_plus_days', auto_days: 2, auto_enabled: false }] };
+      }
+      if (sql.includes('FROM sms_text_templates WHERE COALESCE(auto_kind')) {
+        return { rows: [{ id: 1 }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const res = await run(request('GET', { query: { resource: 'auto_status_batch', ids: '1' } }), deps({ db }));
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.body.statuses && typeof res.body.statuses === 'object');
+  assert.equal(res.body.statuses[1].days, 2);
+});

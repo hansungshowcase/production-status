@@ -5,8 +5,8 @@ import {
   parseConsoleQuery, buildConsoleQuery, activeSubId,
 } from '../shared/smsConsole.js';
 
-test('메뉴 순서는 설계 그대로 5개', () => {
-  assert.deepEqual(CONSOLE_MENUS.map(m => m.id), ['dashboard', 'send', 'log', 'templates', 'customer', 'staff']);
+test('메뉴 순서는 5개(현황판 메뉴 제거 · 템플릿 첫 메뉴)', () => {
+  assert.deepEqual(CONSOLE_MENUS.map(m => m.id), ['templates', 'send', 'log', 'customer', 'staff']);
   assert.equal(CONSOLE_MENUS.find(m => m.id === 'log').subs.length, 5);
 });
 
@@ -117,10 +117,11 @@ test('toSolapiTemplateBody: 채널/그룹 중 하나만, 요청 칸 이름', () 
   assert.equal('channelId' in upd || 'channelGroupId' in upd, false);
 });
 
-test('parseConsoleQuery: 틀린 값은 기본값', () => {
-  assert.deepEqual(parseConsoleQuery(new URLSearchParams('')), { menu: 'dashboard', aud: 'all', ch: 'all', tpl: '', mode: '' });
+test('parseConsoleQuery: 틀린 값과 옛 dashboard 는 기본값(templates/sms)', () => {
+  assert.deepEqual(parseConsoleQuery(new URLSearchParams('')), { menu: 'templates', aud: 'all', ch: 'sms', tpl: '', mode: '' });
+  assert.deepEqual(parseConsoleQuery(new URLSearchParams('menu=dashboard')), { menu: 'templates', aud: 'all', ch: 'sms', tpl: '', mode: '' });
   assert.deepEqual(parseConsoleQuery(new URLSearchParams('menu=zzz&aud=x&ch=fax&tpl=a%20b&mode=del')),
-    { menu: 'dashboard', aud: 'all', ch: 'all', tpl: '', mode: '' });
+    { menu: 'templates', aud: 'all', ch: 'sms', tpl: '', mode: '' });
   assert.deepEqual(parseConsoleQuery(new URLSearchParams('menu=log&aud=staff&ch=kakao')),
     { menu: 'log', aud: 'staff', ch: 'kakao', tpl: '', mode: '' });
   assert.equal(parseConsoleQuery({ menu: 'templates', mode: 'edit' }).mode, '');
@@ -129,11 +130,16 @@ test('parseConsoleQuery: 틀린 값은 기본값', () => {
 
 test('buildConsoleQuery: 기본값·안 쓰는 값 생략, 왕복 일치', () => {
   assert.equal(buildConsoleQuery({}), '');
+  assert.equal(buildConsoleQuery({ menu: 'templates' }), '');
+  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'sms' }), '');
+  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'kakao' }), 'menu=templates&ch=kakao');
   assert.equal(buildConsoleQuery({ menu: 'log', aud: 'customer', ch: 'sms' }), 'menu=log&aud=customer&ch=sms');
   assert.equal(buildConsoleQuery({ menu: 'customer', aud: 'staff', tpl: 'X1' }), 'menu=customer');
-  assert.equal(buildConsoleQuery({ menu: 'templates', tpl: 'KA01TP1', mode: 'edit' }), 'menu=templates&tpl=KA01TP1&mode=edit');
+  assert.equal(buildConsoleQuery({ menu: 'templates', tpl: 'KA01TP1', mode: 'edit' }), 'menu=templates&ch=kakao&tpl=KA01TP1&mode=edit');
   const q = 'menu=log&aud=staff&ch=kakao';
   assert.equal(buildConsoleQuery(parseConsoleQuery(new URLSearchParams(q))), q);
+  const kq = 'menu=templates&ch=kakao&tpl=KA01TP1&mode=edit';
+  assert.equal(buildConsoleQuery(parseConsoleQuery(new URLSearchParams(kq))), kq);
 });
 
 test('activeSubId', () => {
@@ -141,23 +147,25 @@ test('activeSubId', () => {
   assert.equal(activeSubId({ menu: 'log', aud: 'customer', ch: 'kakao' }), 'customer-kakao');
   assert.equal(activeSubId({ menu: 'log', aud: 'other' }), null);
   assert.equal(activeSubId({ menu: 'log', aud: 'customer' }), null);
-  assert.equal(activeSubId({ menu: 'templates' }), 'kakao');
+  assert.equal(activeSubId({ menu: 'templates' }), 'sms');
+  assert.equal(activeSubId({ menu: 'templates', ch: 'kakao' }), 'kakao');
   assert.equal(activeSubId({ menu: 'templates', mode: 'new' }), 'kakao');
   assert.equal(activeSubId({ menu: 'templates', ch: 'sms', mode: 'new' }), 'kakao');
   assert.equal(activeSubId({ menu: 'templates', ch: 'sms' }), 'sms');
-  assert.equal(activeSubId({ menu: 'dashboard' }), null);
+  assert.equal(activeSubId({ menu: 'send' }), null);
 });
 
-test('템플릿 메뉴 ch 기본값은 kakao, sms 만 주소에 남는다', () => {
-  assert.equal(parseConsoleQuery({ menu: 'templates' }).ch, 'kakao');
-  assert.equal(parseConsoleQuery({ menu: 'templates', ch: 'all' }).ch, 'kakao');
+test('템플릿 메뉴 ch 기본값은 sms, kakao 만 주소에 남고 하위 메뉴는 카카오톡 템플릿', () => {
+  assert.equal(parseConsoleQuery({ menu: 'templates' }).ch, 'sms');
+  assert.equal(parseConsoleQuery({ menu: 'templates', ch: 'all' }).ch, 'sms');
   assert.equal(parseConsoleQuery({ menu: 'templates', ch: 'sms' }).ch, 'sms');
+  assert.equal(parseConsoleQuery({ menu: 'templates', ch: 'kakao' }).ch, 'kakao');
   assert.equal(parseConsoleQuery({ menu: 'log' }).ch, 'all');
-  assert.equal(buildConsoleQuery({ menu: 'templates' }), 'menu=templates');
-  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'kakao' }), 'menu=templates');
-  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'sms' }), 'menu=templates&ch=sms');
+  assert.equal(buildConsoleQuery({ menu: 'templates' }), '');
+  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'sms' }), '');
+  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'kakao' }), 'menu=templates&ch=kakao');
   assert.equal(parseConsoleQuery({ menu: 'templates', ch: 'sms', mode: 'new' }).ch, 'kakao');
-  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'sms', mode: 'new' }), 'menu=templates&mode=new');
+  assert.equal(buildConsoleQuery({ menu: 'templates', ch: 'sms', mode: 'new' }), 'menu=templates&ch=kakao&mode=new');
   const subs = CONSOLE_MENUS.find(m => m.id === 'templates').subs;
-  assert.deepEqual(subs.map(s => s.label), ['문자 템플릿', '알림톡 템플릿']);
+  assert.deepEqual(subs.map(s => s.label), ['문자 템플릿', '카카오톡 템플릿']);
 });

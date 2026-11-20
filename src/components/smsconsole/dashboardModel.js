@@ -108,3 +108,33 @@ export function templateCountsView(counts) {
   ].map(([key, label, tone]) => ({ key, label, tone, count: num(counts[key]) }));
   return { known: true, items, rejected: items[3].count };
 }
+
+/**
+ * Summarize channel-filtered Solapi logs ('sms' or 'kakao') for inline status strips.
+ * Falls back to summing customer/staff/other cells from `matrix[aud][channel]` if `counts` is missing.
+ */
+export function summarizeChannelLog(logData, channel = 'sms') {
+  const ch = channel === 'kakao' ? 'kakao' : 'sms';
+  const m = logData?.matrix && typeof logData.matrix === 'object' ? logData.matrix : null;
+  const custCell = cell(m?.customer?.[ch]);
+  const staffCell = cell(m?.staff?.[ch]);
+  const otherCell = cell(m?.other?.[ch]);
+  const allFromCounts = logData?.counts?.all ? cell(logData.counts.all) : null;
+  const all = allFromCounts && (allFromCounts.total > 0 || !m)
+    ? allFromCounts
+    : {
+        total: custCell.total + staffCell.total + otherCell.total,
+        success: custCell.success + staffCell.success + otherCell.success,
+        pending: custCell.pending + staffCell.pending + otherCell.pending,
+        failed: custCell.failed + staffCell.failed + otherCell.failed,
+      };
+  const customerTotal = logData?.counts?.customer ? num(logData.counts.customer.total) : custCell.total;
+  const staffTotal = logData?.counts?.staff ? num(logData.counts.staff.total) : staffCell.total;
+  return {
+    ...all,
+    hasFailed: all.failed > 0,
+    customerTotal,
+    staffTotal,
+    recent: recentGroups(logData?.groups, 3),
+  };
+}
