@@ -50,6 +50,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const [selectedKey, setSelectedKey] = useState(''); // 'm-<id>' | 'i-<id>'
   const startedRef = useRef(false);
   const [mine, setMine] = useState([]); // 내 문구(저장된 문자 문구). 목록에는 사진 본문 없이 has_image 만 온다
+  const [mineLoaded, setMineLoaded] = useState(false);
   const [mineOpen, setMineOpen] = useState(''); // channel='kakao' 단계 펼침
   const [minePhoto, setMinePhoto] = useState({}); // 단건 조회한 사진 URL 목록
   const [minePhotoState, setMinePhotoState] = useState({}); // { [id]: 'loading' | 'loaded' | 'error' }
@@ -92,7 +93,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     const items = Array.isArray(res?.items) ? res.items : [];
     setMine(items);
     items.filter((item) => item.auto_kind).forEach((item) => loadStatus(item.id));
-  }).catch(() => {});
+  }).catch(() => {}).finally(() => setMineLoaded(true));
   useEffect(() => {
     if (!active) return;
     loadMine();
@@ -407,9 +408,9 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     [selectedKey, items],
   );
 
-  // PC(>=1024px)에서는 목록 첫 항목을 자동으로 골라 오른쪽 미리보기를 바로 채운다
+  // PC(>=1024px)에서는 카탈로그·내 문구 모두 읽은 뒤 목록 첫 항목을 자동으로 골라 오른쪽 미리보기를 바로 채운다
   useEffect(() => {
-    if (isKakao || !active || !state.loaded) return;
+    if (isKakao || !active || !state.loaded || !mineLoaded) return;
     if (!isDesktopViewport()) {
       if (selectedKey && !selectedMine && !selectedItem) setSelectedKey('');
       return;
@@ -426,7 +427,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
         setSelectedKey('');
       }
     }
-  }, [isKakao, active, state.loaded, selectedKey, selectedMine, selectedItem, visibleCandidateKeys, isMineTab, flowRows]);
+  }, [isKakao, active, state.loaded, mineLoaded, selectedKey, selectedMine, selectedItem, visibleCandidateKeys, isMineTab, flowRows]);
 
   // 선택한 항목이 바뀌면 미리보기 보조 상태 초기화 + 첨부 이미지 자동 조회
   useEffect(() => {
@@ -529,8 +530,89 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
       const hasMedia = Boolean(entry.hasImage);
       const hasVars = /#\{[^{}\n]{1,40}\}/.test(rawBody);
       const isLongBody = rawBody.length > 120 || rawBody.split('\n').length > 4;
-      const splitPreview = hasBody && hasMedia && isLongBody;
       const isTall = Boolean(tallImgMap[`m-${entry.id}`]);
+      const msgCard = (
+        <section key="msg" className="stl-msg-card" aria-label="발송 문구">
+          <div className="stl-card-subhead">
+            <div className="stl-card-subhead-left">
+              <span className="stl-card-subhead-title">발송 문구</span>
+              {hasBody ? <span className="stl-char-count">{[...rawBody].length}자</span> : null}
+            </div>
+            <div className="stl-card-subhead-right">
+              {hasBody && hasVars ? (
+                <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} aria-pressed={previewFilled} onClick={() => setPreviewFilled((v) => !v)}>
+                  {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
+                </button>
+              ) : null}
+              {hasBody ? (
+                <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyText(rawBody, `m-${entry.id}`)}>
+                  <SmsIcon name="copy" /> {copiedKey === `m-${entry.id}` ? '복사됨 ✓' : '문구 복사'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {hasBody ? (
+            <div className="stl-msg-body">{renderBodyContent(rawBody, previewFilled)}</div>
+          ) : (
+            <p className="stl-msg-empty">등록된 문구 내용이 없습니다.</p>
+          )}
+        </section>
+      );
+      const mediaCard = hasMedia ? (
+        <section key="media" className="stl-media-card" aria-label="첨부 이미지">
+          <div className="stl-card-subhead">
+            <div className="stl-card-subhead-left">
+              <span className="stl-card-subhead-title">첨부 이미지</span>
+              <span className="stl-char-count">{photos.length ? `${photos.length}장` : photoBadgeText(entry)}</span>
+            </div>
+            {photos.length ? (
+              <div className="stl-card-subhead-right">
+                {isTall ? (
+                  <button type="button" className="ktm-btn stl-mini-btn" onClick={() => setExpandedImg((v) => !v)}>
+                    {expandedImg ? '높이 접기' : '전체 펼치기'}
+                  </button>
+                ) : null}
+                <button type="button" className="ktm-btn stl-mini-btn" onClick={() => openLightbox(photos, 0, entry.name)}>
+                  <SmsIcon name="zoom" /> 크게 보기
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {pState === 'loading' && !photos.length ? (
+            <div className="stl-media-state">이미지를 불러오는 중…</div>
+          ) : pState === 'error' && !photos.length ? (
+            <div className="stl-media-state stl-media-state--err">
+              <span>이미지를 불러오지 못했습니다.</span>
+              <button type="button" className="ktm-btn" onClick={() => ensureMinePhoto(entry, true)}>다시 시도</button>
+            </div>
+          ) : photos.length ? (
+            <>
+              <div className={`stl-media-viewport${expandedImg ? ' is-expanded' : ''}`}>
+                <div className="stl-media-stack">
+                  {photos.map((url, index) => (
+                    <button key={index} type="button" className="stl-media-zoom-btn" onClick={() => openLightbox(photos, index, entry.name)} title="클릭하면 원본 크기로 봅니다">
+                      <img
+                        className="stl-media-img"
+                        src={url}
+                        alt={`${entry.name} 첨부 이미지 ${index + 1}`}
+                        onLoad={(event) => {
+                          const img = event.currentTarget;
+                          if (img.naturalHeight > 460 && img.naturalHeight > img.naturalWidth * 1.1) {
+                            setTallImgMap((prev) => (prev[`m-${entry.id}`] ? prev : { ...prev, [`m-${entry.id}`]: true }));
+                          }
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="stl-media-hint">이미지를 클릭하면 잘림 없는 전체 화면으로 볼 수 있습니다.</p>
+            </>
+          ) : (
+            <div className="stl-media-state">이미지를 준비하는 중…</div>
+          )}
+        </section>
+      ) : null;
 
       return (
         <article className="stl-detail" aria-label={`${entry.name} 상세 보기`}>
@@ -576,88 +658,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             )}
           </div>
 
-          <div className={`stl-preview-stage${splitPreview ? ' is-split' : ''}`}>
-            <section className="stl-msg-card" aria-label="발송 문구">
-              <div className="stl-card-subhead">
-                <div className="stl-card-subhead-left">
-                  <span className="stl-card-subhead-title">발송 문구</span>
-                  {hasBody ? <span className="stl-char-count">{[...rawBody].length}자</span> : null}
-                </div>
-                <div className="stl-card-subhead-right">
-                  {hasBody && hasVars ? (
-                    <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} aria-pressed={previewFilled} onClick={() => setPreviewFilled((v) => !v)}>
-                      {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
-                    </button>
-                  ) : null}
-                  {hasBody ? (
-                    <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyText(rawBody, `m-${entry.id}`)}>
-                      <SmsIcon name="copy" /> {copiedKey === `m-${entry.id}` ? '복사됨 ✓' : '문구 복사'}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-              {hasBody ? (
-                <div className="stl-msg-body">{renderBodyContent(rawBody, previewFilled)}</div>
-              ) : (
-                <p className="stl-msg-empty">등록된 문구 내용이 없습니다.</p>
-              )}
-            </section>
-
-            {hasMedia ? (
-              <section className="stl-media-card" aria-label="첨부 이미지">
-                <div className="stl-card-subhead">
-                  <div className="stl-card-subhead-left">
-                    <span className="stl-card-subhead-title">첨부 이미지</span>
-                    <span className="stl-char-count">{photos.length ? `${photos.length}장` : photoBadgeText(entry)}</span>
-                  </div>
-                  {photos.length ? (
-                    <div className="stl-card-subhead-right">
-                      {isTall ? (
-                        <button type="button" className="ktm-btn stl-mini-btn" onClick={() => setExpandedImg((v) => !v)}>
-                          {expandedImg ? '높이 접기' : '전체 펼치기'}
-                        </button>
-                      ) : null}
-                      <button type="button" className="ktm-btn stl-mini-btn" onClick={() => openLightbox(photos, 0, entry.name)}>
-                        <SmsIcon name="zoom" /> 크게 보기
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                {pState === 'loading' && !photos.length ? (
-                  <div className="stl-media-state">이미지를 불러오는 중…</div>
-                ) : pState === 'error' && !photos.length ? (
-                  <div className="stl-media-state stl-media-state--err">
-                    <span>이미지를 불러오지 못했습니다.</span>
-                    <button type="button" className="ktm-btn" onClick={() => ensureMinePhoto(entry, true)}>다시 시도</button>
-                  </div>
-                ) : photos.length ? (
-                  <>
-                    <div className={`stl-media-viewport${expandedImg ? ' is-expanded' : ''}`}>
-                      <div className="stl-media-stack">
-                        {photos.map((url, index) => (
-                          <button key={index} type="button" className="stl-media-zoom-btn" onClick={() => openLightbox(photos, index, entry.name)} title="클릭하면 원본 크기로 봅니다">
-                            <img
-                              className="stl-media-img"
-                              src={url}
-                              alt={`${entry.name} 첨부 이미지 ${index + 1}`}
-                              onLoad={(event) => {
-                                const img = event.currentTarget;
-                                if (img.naturalHeight > 520 && img.naturalHeight > img.naturalWidth * 1.1) {
-                                  setTallImgMap((prev) => (prev[`m-${entry.id}`] ? prev : { ...prev, [`m-${entry.id}`]: true }));
-                                }
-                              }}
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <p className="stl-media-hint">이미지를 클릭하면 잘림 없는 전체 화면으로 볼 수 있습니다.</p>
-                  </>
-                ) : (
-                  <div className="stl-media-state">이미지를 준비하는 중…</div>
-                )}
-              </section>
-            ) : null}
+          <div className="stl-preview-stage">
+            {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
           </div>
 
           <dl className="stl-info">
@@ -704,10 +706,84 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
     const hasMedia = Boolean(item.image);
     const hasVars = /#\{[^{}\n]{1,40}\}/.test(rawBody);
     const isLongBody = rawBody.length > 120 || rawBody.split('\n').length > 4;
-    const splitPreview = hasBody && hasMedia && isLongBody;
     const badges = [...smsBadges(item), ...kindBadges(item)].filter((badge) => badge.text !== '꺼짐');
     const isTall = Boolean(tallImgMap[`i-${item.id}`]);
     const imgBroken = Boolean(extImgError[item.id]);
+    const msgCard = (
+      <section key="msg" className="stl-msg-card" aria-label="발송 문구">
+        <div className="stl-card-subhead">
+          <div className="stl-card-subhead-left">
+            <span className="stl-card-subhead-title">발송 문구</span>
+            {hasBody ? <span className="stl-char-count">{[...rawBody].length}자</span> : null}
+          </div>
+          <div className="stl-card-subhead-right">
+            {hasBody && hasVars ? (
+              <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} aria-pressed={previewFilled} onClick={() => setPreviewFilled((v) => !v)}>
+                {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
+              </button>
+            ) : null}
+            {hasBody ? (
+              <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyText(rawBody, `i-${item.id}`)}>
+                <SmsIcon name="copy" /> {copiedKey === `i-${item.id}` ? '복사됨 ✓' : '문구 복사'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {hasBody ? (
+          <div className="stl-msg-body">{renderBodyContent(rawBody, previewFilled)}</div>
+        ) : (
+          <p className="stl-msg-empty">{item.sender === '카페24' ? '카페24 쇼핑몰에서 직접 발송되는 문구입니다(외부 설정에서 본문 관리).' : '등록된 예시 문구가 없습니다.'}</p>
+        )}
+      </section>
+    );
+    const mediaCard = hasMedia ? (
+      <section key="media" className="stl-media-card" aria-label="첨부 이미지">
+        <div className="stl-card-subhead">
+          <div className="stl-card-subhead-left">
+            <span className="stl-card-subhead-title">첨부 이미지</span>
+            <span className="stl-char-count">1장</span>
+          </div>
+          {!imgBroken ? (
+            <div className="stl-card-subhead-right">
+              {isTall ? (
+                <button type="button" className="ktm-btn stl-mini-btn" onClick={() => setExpandedImg((v) => !v)}>
+                  {expandedImg ? '높이 접기' : '전체 펼치기'}
+                </button>
+              ) : null}
+              <button type="button" className="ktm-btn stl-mini-btn" onClick={() => openLightbox([item.image], 0, item.name)}>
+                <SmsIcon name="zoom" /> 크게 보기
+              </button>
+            </div>
+          ) : null}
+        </div>
+        {imgBroken ? (
+          <div className="stl-media-state stl-media-state--err">
+            <span>이미지를 불러오지 못했습니다.</span>
+            <button type="button" className="ktm-btn" onClick={() => setExtImgError((prev) => ({ ...prev, [item.id]: false }))}>다시 시도</button>
+          </div>
+        ) : (
+          <>
+            <div className={`stl-media-viewport${expandedImg ? ' is-expanded' : ''}`}>
+              <button type="button" className="stl-media-zoom-btn" onClick={() => openLightbox([item.image], 0, item.name)} title="클릭하면 원본 크기로 봅니다">
+                <img
+                  className="stl-media-img"
+                  src={item.image}
+                  alt={`${item.name} 첨부 이미지`}
+                  onLoad={(event) => {
+                    const img = event.currentTarget;
+                    if (img.naturalHeight > 460 && img.naturalHeight > img.naturalWidth * 1.1) {
+                      setTallImgMap((prev) => (prev[`i-${item.id}`] ? prev : { ...prev, [`i-${item.id}`]: true }));
+                    }
+                  }}
+                  onError={() => setExtImgError((prev) => ({ ...prev, [item.id]: true }))}
+                />
+              </button>
+            </div>
+            <p className="stl-media-hint">이미지를 클릭하면 잘림 없는 전체 화면으로 볼 수 있습니다.</p>
+          </>
+        )}
+      </section>
+    ) : null;
 
     return (
       <article className="stl-detail" aria-label={`${item.name} 상세 보기`}>
@@ -731,87 +807,14 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           ) : null}
         </div>
 
-        <div className={`stl-preview-stage${splitPreview ? ' is-split' : ''}`}>
-          <section className="stl-msg-card" aria-label="발송 문구">
-            <div className="stl-card-subhead">
-              <div className="stl-card-subhead-left">
-                <span className="stl-card-subhead-title">발송 문구</span>
-                {hasBody ? <span className="stl-char-count">{[...rawBody].length}자</span> : null}
-              </div>
-              <div className="stl-card-subhead-right">
-                {hasBody && hasVars ? (
-                  <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} aria-pressed={previewFilled} onClick={() => setPreviewFilled((v) => !v)}>
-                    {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
-                  </button>
-                ) : null}
-                {hasBody ? (
-                  <button type="button" className="ktm-btn stl-mini-btn" onClick={() => copyText(rawBody, `i-${item.id}`)}>
-                    <SmsIcon name="copy" /> {copiedKey === `i-${item.id}` ? '복사됨 ✓' : '문구 복사'}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            {hasBody ? (
-              <div className="stl-msg-body">{renderBodyContent(rawBody, previewFilled)}</div>
-            ) : (
-              <p className="stl-msg-empty">{item.sender === '카페24' ? '카페24 쇼핑몰에서 직접 발송되는 문구입니다(외부 설정에서 본문 관리).' : '등록된 예시 문구가 없습니다.'}</p>
-            )}
-          </section>
-
-          {hasMedia ? (
-            <section className="stl-media-card" aria-label="첨부 이미지">
-              <div className="stl-card-subhead">
-                <div className="stl-card-subhead-left">
-                  <span className="stl-card-subhead-title">첨부 이미지</span>
-                  <span className="stl-char-count">1장</span>
-                </div>
-                {!imgBroken ? (
-                  <div className="stl-card-subhead-right">
-                    {isTall ? (
-                      <button type="button" className="ktm-btn stl-mini-btn" onClick={() => setExpandedImg((v) => !v)}>
-                        {expandedImg ? '높이 접기' : '전체 펼치기'}
-                      </button>
-                    ) : null}
-                    <button type="button" className="ktm-btn stl-mini-btn" onClick={() => openLightbox([item.image], 0, item.name)}>
-                      <SmsIcon name="zoom" /> 크게 보기
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              {imgBroken ? (
-                <div className="stl-media-state stl-media-state--err">
-                  <span>이미지를 불러오지 못했습니다.</span>
-                  <button type="button" className="ktm-btn" onClick={() => setExtImgError((prev) => ({ ...prev, [item.id]: false }))}>다시 시도</button>
-                </div>
-              ) : (
-                <>
-                  <div className={`stl-media-viewport${expandedImg ? ' is-expanded' : ''}`}>
-                    <button type="button" className="stl-media-zoom-btn" onClick={() => openLightbox([item.image], 0, item.name)} title="클릭하면 원본 크기로 봅니다">
-                      <img
-                        className="stl-media-img"
-                        src={item.image}
-                        alt={`${item.name} 첨부 이미지`}
-                        onLoad={(event) => {
-                          const img = event.currentTarget;
-                          if (img.naturalHeight > 520 && img.naturalHeight > img.naturalWidth * 1.1) {
-                            setTallImgMap((prev) => (prev[`i-${item.id}`] ? prev : { ...prev, [`i-${item.id}`]: true }));
-                          }
-                        }}
-                        onError={() => setExtImgError((prev) => ({ ...prev, [item.id]: true }))}
-                      />
-                    </button>
-                  </div>
-                  <p className="stl-media-hint">이미지를 클릭하면 잘림 없는 전체 화면으로 볼 수 있습니다.</p>
-                </>
-              )}
-            </section>
-          ) : null}
+        <div className="stl-preview-stage">
+          {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
         </div>
 
         <dl className="stl-info">
           <dt>보내는 곳</dt><dd>{[item.sender, item.channel].filter(Boolean).join(' · ')}</dd>
           {line ? <><dt>발송 조건</dt><dd>{line}</dd></> : null}
-          {item.external && item.trigger ? <><dt>언제 나가나</dt><dd>{item.trigger}</dd></> : null}
+          {item.external && item.trigger && item.trigger !== line ? <><dt>언제 나가나</dt><dd>{item.trigger}</dd></> : null}
           {item.scenario ? <><dt>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{item.scenario}</dd></> : null}
           <dt>최근 7일 발송</dt><dd>{item.count === null ? '확인 못 함' : `${item.count}건`}</dd>
         </dl>

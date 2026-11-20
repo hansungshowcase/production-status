@@ -149,10 +149,10 @@
 .ktm-kind-head--aud { margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--smsc-border, #e3e6ec); font-size: 16px; font-weight: 800; }
 .ktm-card.is-selected .ktm-chip--sender { background: #fff; }
 
-/* 알림톡 목록 한 줄 카드(2026-11-16 사장님: 위아래로 길어지지 않게, 켜짐·꺼짐은 신호등). 칩은 고른 줄에서만 아래 줄로 보인다 */
-.ktm-card--slim .ktm-card-main { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 4px 6px 12px; min-height: 40px; box-sizing: border-box; }
-.ktm-card--slim .ktm-card-name { flex: 1 1 160px; min-width: 0; display: block; white-space: nowrap; text-overflow: ellipsis; }
-.ktm-card--slim .ktm-card-badges { flex: 0 1 auto; justify-content: flex-end; align-items: center; }
+/* 알림톡 목록 카드: 1줄 = 전체 제목(줄바꿈 허용, 잘림 없음) + 오른쪽 ⋮, 2줄 = 상태·건당 비용·최근 7일 배지, 3줄 = 대상·보내는 곳 칩 */
+.ktm-card--slim .ktm-card-main { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px 4px 8px 12px; min-height: 40px; box-sizing: border-box; }
+.ktm-card--slim .ktm-card-name { flex: 1 1 100%; min-width: 0; display: block; white-space: normal; overflow: visible; text-overflow: clip; -webkit-line-clamp: unset; word-break: keep-all; overflow-wrap: anywhere; }
+.ktm-card--slim .ktm-card-badges { flex: 1 1 100%; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
 .ktm-card--slim .ktm-card-meta, .ktm-card--slim .ktm-open { order: 3; flex: 1 1 100%; }
 .ktm-card--slim .ktm-menu-wrap { padding-top: 0; align-items: center; }
 .ktm-cards:has(> .ktm-card--slim) { gap: 4px; }
@@ -163,10 +163,6 @@
 .ktm-light--part { background: #fff1cc; color: #a86a00; }
 .ktm-light--unknown { background: #eceff3; color: #5f6b7a; }
 .ktm-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-/* 알림톡 목록 카드는 두 줄: 1줄 = 제목(말줄임) + 오른쪽 상태·최근 7일·⋮, 2줄 = 칩. 안쪽 위아래 여백도 줄였다 */
-.ktm-card--slim .ktm-card-main { gap: 2px 8px; padding: 4px 4px 4px 12px; min-height: 34px; }
-.ktm-card--slim .ktm-card-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ktm-card--slim .ktm-card-badges { flex: 0 0 auto; flex-wrap: nowrap; white-space: nowrap; }
 /* 알림톡 상세: 이 알림톡을 수단으로 쓰는 자동 발송 조건(눌러서 수정) */
 .ktm-linked { display: flex; flex-direction: column; gap: 6px; }
 .ktm-linked-head { margin: 0; font-size: 13px; color: var(--smsc-muted, #667085); }

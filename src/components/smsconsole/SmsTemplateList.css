@@ -19,7 +19,7 @@
 /* 마스터-디테일 2단 배치 */
 .stl-layout { display: grid; grid-template-columns: minmax(320px, 410px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .stl-list-pane { min-width: 0; }
-.stl-detail-pane { position: sticky; top: 4px; min-width: 0; max-height: calc(100dvh - 156px); overflow-y: auto; scrollbar-gutter: stable; padding-bottom: 8px; }
+.stl-detail-pane { position: sticky; top: 8px; min-width: 0; padding-bottom: 12px; }
 @media (max-width: 1240px) and (min-width: 1024px) {
   .stl-layout { grid-template-columns: minmax(290px, 348px) minmax(0, 1fr); gap: 12px; }
 }
@@ -118,12 +118,8 @@
 .ktm-btn--danger-outline { color: var(--smsc-danger, #c62828); border-color: #f3c1be; background: #fff; }
 .ktm-btn--danger-outline:hover { background: #fdeceb; }
 
-/* 문구 + 이미지 미리보기 스테이지 */
+/* 문구 + 이미지 미리보기 스테이지(항상 전체 폭 상하 배치) */
 .stl-preview-stage { display: flex; flex-direction: column; gap: 14px; }
-.stl-preview-stage.is-split { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr); gap: 14px; align-items: start; }
-@media (max-width: 1320px) {
-  .stl-preview-stage.is-split { grid-template-columns: minmax(0, 1fr); }
-}
 
 .stl-msg-card,
 .stl-media-card {
@@ -149,7 +145,7 @@
 /* 첨부 이미지: 절대로 object-fit: cover 로 자르지 않고 원본 비율 전체를 스크롤/확대 제공 */
 .stl-media-viewport {
   padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f1f5f9;
-  max-height: 520px; overflow-y: auto; overscroll-behavior: contain;
+  max-height: 480px; overflow-y: auto; overscroll-behavior: contain;
 }
 .stl-media-viewport.is-expanded { max-height: none; overflow-y: visible; }
 .stl-media-stack { display: flex; flex-direction: column; gap: 10px; align-items: center; }
