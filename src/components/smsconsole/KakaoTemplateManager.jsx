@@ -8,8 +8,8 @@ import SmsAutoControls from './SmsAutoControls.jsx';
 import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsChannelStatusStrip from './SmsChannelStatusStrip.jsx';
 import {
-  buildConditionSummary, channelCostOf, compactLightLabel, flowStepText, groupFlows,
-  isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, sortByNameNumeric,
+  buildConditionSummary, channelCostOf, compactLightLabel, flowStepText, formatLastSentLabel, groupFlows,
+  isAttentionTone, isKakaoEntry, itemLight, kakaoDisplayCategory, matchesSmsQuery, paginateRows, sortByNameNumeric,
 } from './smsTemplateListModel.js';
 import { SENDERS } from '../../../shared/smsTemplateKinds.js';
 import {
@@ -20,8 +20,8 @@ import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.
 import {
   ACTION_LABELS, availableActions, deleteConfirmed, deleteDecision,
   failBadge, formatDate, isValidRename, readOnlyAudienceSections,
-  readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras,
-  usageBadge, usageCount, usageFail, usageSuccess,
+  readOnlyKakaoItems, statusInfo, statusPills, templateAudienceKind, templateExtras,
+  usageBadge, usageCount, usageFail, usageLastAt, usageSuccess,
 } from './templateListModel.js';
 import './SmsAutoControls.css';
 import './SmsTemplateList.css';
@@ -392,10 +392,31 @@ export default function KakaoTemplateManager({
     });
   }, [inspectFilter, managedKakaoEntries, statusFilter, effOf, isDbAttention, bmsDetailMap, query]);
 
-  // 알림톡 필터링(알약 상태 + 검수 상태 드롭다운 + 검색어)
+  const kakaoIssues = useMemo(() => {
+    const rejectedCount = items.filter((item) => item.status === 'REJECTED').length;
+    const pendingCount = items.filter((item) => item.status === 'PENDING').length;
+    const inspectingCount = items.filter((item) => item.status === 'INSPECTING').length;
+    const attentionCount = managedKakaoEntries.filter(isDbAttention).length
+      + items.filter(isAtaAttention).length
+      + allReadOnly.filter(isRoAttention).length;
+    const onZeroBms = managedKakaoEntries.filter((entry) => {
+      const st = autoStatusMap[entry.id];
+      return st && displayLightOf(entry).tone === 'on' && !(Number(st.sent_7d) > 0) && !st.last_sent_date;
+    }).length;
+    return [
+      { key: 'ata-rejected', tone: 'danger', label: '검수 반려', count: rejectedCount, onClick: () => { userClearedRef.current = false; setPickedFilter('all'); setInspectFilter('REJECTED'); setPageNo(1); } },
+      { key: 'ata-pending', tone: 'warn', label: '검수 전', count: pendingCount, onClick: () => { userClearedRef.current = false; setPickedFilter('all'); setInspectFilter('PENDING'); setPageNo(1); } },
+      { key: 'ata-inspecting', tone: 'info', label: '검수 중', count: inspectingCount, onClick: () => { userClearedRef.current = false; setPickedFilter('all'); setInspectFilter('INSPECTING'); setPageNo(1); } },
+      { key: 'kakao-attention', tone: 'danger', label: '꺼짐 · 확인 필요', count: attentionCount, onClick: () => pickFilter('attention') },
+      { key: 'bms-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroBms, onClick: () => pickFilter('bms') },
+    ];
+  }, [items, managedKakaoEntries, allReadOnly, isDbAttention, isAtaAttention, isRoAttention, autoStatusMap, displayLightOf]);
+
+  // 알림톡 필터링(알약 상태 + 검수 상태 드롭다운 + 검색어, 띄어쓰기 무시)
   const visible = useMemo(() => {
     if (statusFilter === 'bms') return [];
     const q = String(query || '').trim().toLowerCase();
+    const qNoSpace = q.replace(/\s+/g, '');
     return items.filter((item) => {
       if (inspectFilter && item.status !== inspectFilter) return false;
       if (statusFilter === 'in_use') {
@@ -404,9 +425,11 @@ export default function KakaoTemplateManager({
         if (!isAtaAttention(item)) return false;
       }
       if (!q) return true;
-      if (String(item.name || '').toLowerCase().includes(q) || String(item.id || '').toLowerCase().includes(q)) return true;
+      const name = String(item.name || '').toLowerCase();
+      const id = String(item.id || '').toLowerCase();
+      if (name.includes(q) || id.includes(q) || (qNoSpace && name.replace(/\s+/g, '').includes(qNoSpace))) return true;
       const extras = nonMakeExtras(item.id, sent);
-      if (extras && [extras.trigger, extras.who, extras.sender].some((v) => String(v || '').toLowerCase().includes(q))) return true;
+      if (extras && [extras.trigger, extras.who, extras.sender].some((v) => String(v || '').toLowerCase().includes(q) || (qNoSpace && String(v || '').toLowerCase().replace(/\s+/g, '').includes(qNoSpace)))) return true;
       const linkedEntries = linkedTextEntries(textItems, item.id);
       return linkedEntries.some((entry) => matchesSmsQuery(entry, q));
     });
@@ -422,21 +445,37 @@ export default function KakaoTemplateManager({
     return list;
   }, [inspectFilter, items, sent, statusFilter, query, isRoAttention]);
 
-  const listSections = useMemo(() => templateAudienceSections(visible, sent), [visible, sent]);
+  // 비즈니스 카테고리(리뷰 이벤트 · 소개/혜택 · 주문/출고 · 상담/문의 · 직원 알림)로 통일 묶기
+  const displayGroups = useMemo(() => {
+    const byGroup = new Map();
+    const ensure = (meta) => {
+      let g = byGroup.get(meta.groupKey);
+      if (!g) {
+        g = { ...meta, rows: [] };
+        byGroup.set(meta.groupKey, g);
+      }
+      return g;
+    };
+    visibleManaged.forEach((entry) => {
+      ensure(kakaoDisplayCategory({ name: entry.name, audience: '고객' }, '이벤트·혜택')).rows.push({ type: 'bms', key: `bms-${entry.id}`, entry });
+    });
+    visible.forEach((item) => {
+      const info = templateAudienceKind(item.id, sent);
+      ensure(kakaoDisplayCategory({ name: item.name, audience: info.audience, kind: info.kind }, info.kind)).rows.push({ type: 'ata', key: `ata-${item.id}`, item });
+    });
+    return [...byGroup.values()].sort((a, b) => a.order - b.order);
+  }, [visibleManaged, visible, sent]);
   const readOnlySections = useMemo(() => readOnlyAudienceSections(readOnly), [readOnly]);
   const rowKeys = useMemo(() => {
     const keys = [];
-    visibleManaged.forEach((entry) => keys.push(`bms-${entry.id}`));
-    listSections.forEach((aud) => aud.kinds.forEach((section) => {
-      section.items.forEach((item) => keys.push(`ata-${item.id}`));
-    }));
+    displayGroups.forEach((group) => group.rows.forEach((r) => keys.push(r.key)));
     readOnlySections.forEach((group) => {
       group.items.forEach((entry) => keys.push(`ro-${entry.id}`));
     });
     return keys;
-  }, [visibleManaged, listSections, readOnlySections]);
+  }, [displayGroups, readOnlySections]);
 
-  const paged = paginateRows(rowKeys, pageNo);
+  const paged = paginateRows(rowKeys, pageNo, 20);
   const pageSet = new Set(paged.rows);
 
   const pickFilter = (id) => {
@@ -480,7 +519,7 @@ export default function KakaoTemplateManager({
     if (!selectedId) return;
     const idx = rowKeys.indexOf(`ata-${selectedId}`);
     if (idx >= 0) {
-      const targetPage = Math.floor(idx / 10) + 1;
+      const targetPage = Math.floor(idx / 20) + 1;
       if (targetPage !== pageNo) setPageNo(targetPage);
     }
   }, [selectedId, rowKeys]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -728,7 +767,7 @@ export default function KakaoTemplateManager({
     ? <div className="ktm-lockbar ktm-lockbar--off"><Icon name="lock" /><span>등록·삭제가 꺼져 있습니다(서버 설정 SMS_CONSOLE_WRITE=off)</span></div>
     : null;
 
-  const renderConditionBoard = (summary, st, isMineAuto = true) => {
+  const renderConditionBoard = (summary, st, isMineAuto = true, catalogStats = null) => {
     const todayCount = Number(st?.today_targets) || 0;
     const recent7d = Number(st?.sent_7d) || 0;
     const sentTotal = Number(st?.sent_total) || 0;
@@ -780,13 +819,26 @@ export default function KakaoTemplateManager({
                 <strong className={`stl-kpi-val${uncertain > 0 ? ' is-warn' : ''}`}>{uncertain}건</strong>
               </div>
               <div className="stl-kpi">
-                <span className="stl-kpi-label">마지막 발송</span>
-                <strong className="stl-kpi-val">{formatKpiDate(st.last_sent_date)}</strong>
+                <span className="stl-kpi-label">가장 최근 발송</span>
+                <strong className="stl-kpi-val">{formatLastSentLabel(st.last_sent_date) || '기록 없음'}</strong>
               </div>
             </div>
           ) : (
             <p className="stl-cond-loading">발송 현황 불러오는 중…</p>
           )
+        ) : catalogStats ? (
+          <div className="stl-cond-kpis stl-cond-kpis--compact" aria-label="최근 발송 현황">
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">최근 7일 발송</span>
+              <strong className={`stl-kpi-val${(catalogStats.count ?? 0) > 0 ? ' is-accent' : ''}`}>
+                {catalogStats.count === null ? '확인 못 함' : `${catalogStats.count}건`}
+              </strong>
+            </div>
+            <div className="stl-kpi">
+              <span className="stl-kpi-label">가장 최근 발송</span>
+              <strong className="stl-kpi-val">{formatLastSentLabel(catalogStats.lastSentAt) || '기록 없음'}</strong>
+            </div>
+          </div>
         ) : null}
       </section>
     );
@@ -807,6 +859,7 @@ export default function KakaoTemplateManager({
     const isBms = entry.autoAtaTemplate === BMS_TEMPLATE_ID;
     const isAd = /^\(광고\)/.test(rawBody.trim());
     const hasVars = /#\{[^{}\n]{1,40}\}/.test(rawBody);
+    const lastLabel = formatLastSentLabel(st?.last_sent_date);
 
     return (
       <article className="stl-detail ktm-detail-sheet">
@@ -832,6 +885,10 @@ export default function KakaoTemplateManager({
                 <span>{photoBadgeText(entry)}</span>
               </>
             ) : null}
+            <span className="stl-meta-sep" aria-hidden="true">·</span>
+            <span className={`stl-last-sent ${lastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {lastLabel ? `최근 발송 ${lastLabel}` : (st ? '발송 기록 없음' : '발송 확인 중')}
+            </span>
           </div>
           <div className="stl-detail-titlebar">
             <h3 className="stl-detail-title">{entry.name}</h3>
@@ -971,6 +1028,7 @@ export default function KakaoTemplateManager({
     const ch = channelCostOf(entry, { ataUnit: data?.ata_unit ?? 13 });
     const light = itemLight(entry);
     const summary = buildConditionSummary(entry, { isMine: false });
+    const roLastLabel = formatLastSentLabel(entry.lastSentAt);
     return (
       <article className="stl-detail ktm-detail-sheet">
         <div className="stl-detail-head">
@@ -985,6 +1043,10 @@ export default function KakaoTemplateManager({
                 <span>{part}</span>
               </React.Fragment>
             ))}
+            <span className="stl-meta-sep" aria-hidden="true">·</span>
+            <span className={`stl-last-sent ${roLastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {roLastLabel ? `최근 발송 ${roLastLabel}` : '최근 7일 발송 없음'}
+            </span>
           </div>
           <div className="stl-detail-titlebar">
             <h3 className="stl-detail-title">{entry.name}</h3>
@@ -1005,7 +1067,7 @@ export default function KakaoTemplateManager({
 
         <div className="stl-detail-split">
           <div className="ktm-cond-col">
-            {renderConditionBoard(summary, null, false)}
+            {renderConditionBoard(summary, null, false, { count: entry.count, lastSentAt: entry.lastSentAt })}
           </div>
 
           <div className={`stl-preview-stage ktm-preview-stage${entry.image ? ' has-media' : ''}`}>
@@ -1108,6 +1170,10 @@ export default function KakaoTemplateManager({
     const ataLightLabel = linkedEntries.length > 1
       ? `켜짐 ${linkedEntries.filter((e) => ['on', 'part'].includes(effOf(e).tone)).length}/${linkedEntries.length}`
       : (ataLightTone === 'on' ? '켜짐' : '꺼짐');
+    const linkedDates = linkedEntries.map((entry) => autoStatusMap[entry.id]?.last_sent_date).filter(Boolean).sort();
+    const ataLastAt = linkedDates.length ? linkedDates[linkedDates.length - 1] : (usageLastAt(usage, selected.id) || selectedExt?.lastSentAt || '');
+    const ataLastLabel = formatLastSentLabel(ataLastAt);
+    const ataRecentCount = usageCount(usage, selected.id);
 
     return (
       <article className="stl-detail ktm-detail-sheet">
@@ -1121,6 +1187,10 @@ export default function KakaoTemplateManager({
             <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
             <span className="stl-meta-sep" aria-hidden="true">·</span>
             <span>{selected.target?.name || '채널'}</span>
+            <span className="stl-meta-sep" aria-hidden="true">·</span>
+            <span className={`stl-last-sent ${ataLastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {ataLastLabel ? `최근 발송 ${ataLastLabel}` : '최근 발송 기록 없음'}
+            </span>
           </div>
           <div className="stl-detail-titlebar">
             <h3 className="stl-detail-title">{selected.name}</h3>
@@ -1267,11 +1337,35 @@ export default function KakaoTemplateManager({
                         <span className="stl-cond-sub">알림톡 · 건당 {ataUnit.toLocaleString('ko-KR')}원</span>
                       </div>
                     </div>
+                    <div className="stl-cond-kpis stl-cond-kpis--compact" aria-label="최근 발송 현황">
+                      <div className="stl-kpi">
+                        <span className="stl-kpi-label">최근 7일 발송</span>
+                        <strong className={`stl-kpi-val${(ataRecentCount ?? 0) > 0 ? ' is-accent' : ''}`}>
+                          {ataRecentCount === null || ataRecentCount === undefined ? '확인 못 함' : `${ataRecentCount}건`}
+                        </strong>
+                      </div>
+                      <div className="stl-kpi">
+                        <span className="stl-kpi-label">가장 최근 발송</span>
+                        <strong className="stl-kpi-val">{ataLastLabel || '기록 없음'}</strong>
+                      </div>
+                    </div>
                   </>
                 ) : (
                   <>
                     <div className="stl-section-eyebrow">발송 조건</div>
                     <p className="ktm-linked-empty">아직 자동 발송이 연결되지 않았습니다. 위 <strong>+ 자동 발송 설정</strong> 버튼을 누르면 바로 설정할 수 있습니다.</p>
+                    <div className="stl-cond-kpis stl-cond-kpis--compact" aria-label="최근 발송 현황">
+                      <div className="stl-kpi">
+                        <span className="stl-kpi-label">최근 7일 발송</span>
+                        <strong className={`stl-kpi-val${(ataRecentCount ?? 0) > 0 ? ' is-accent' : ''}`}>
+                          {ataRecentCount === null || ataRecentCount === undefined ? '확인 못 함' : `${ataRecentCount}건`}
+                        </strong>
+                      </div>
+                      <div className="stl-kpi">
+                        <span className="stl-kpi-label">가장 최근 발송</span>
+                        <strong className="stl-kpi-val">{ataLastLabel || '기록 없음'}</strong>
+                      </div>
+                    </div>
                   </>
                 )}
               </section>
@@ -1361,7 +1455,10 @@ export default function KakaoTemplateManager({
     const ch = channelCostOf(entry);
     const summary = buildConditionSummary(entry, { isMine: true });
     const timeStr = compactTimeText(summary);
-    const paused = catchupPausedText(autoStatusMap[entry.id]);
+    const st = autoStatusMap[entry.id] || null;
+    const paused = catchupPausedText(st);
+    const lastLabel = formatLastSentLabel(st?.last_sent_date);
+    const sent7d = Number(st?.sent_7d) || 0;
     const isSelected = !selectedId && selectedBmsId === entry.id;
     const metaParts = [timeStr, summary.whoMain, entry.hasImage ? photoBadgeText(entry) : ''].filter(Boolean);
     return (
@@ -1392,12 +1489,13 @@ export default function KakaoTemplateManager({
               </React.Fragment>
             ))}
           </div>
-          {paused || light.capNote ? (
-            <div className="stl-item-badges">
-              {paused ? <span className="ktm-badge ktm-badge--danger">일괄 발송만 멈춤</span> : null}
-              {!paused && light.capNote ? <span className="ktm-badge ktm-badge--info">{light.capNote}</span> : null}
-            </div>
-          ) : null}
+          <div className="stl-item-badges">
+            <span className={`stl-last-sent ${lastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {lastLabel ? `최근 발송 ${lastLabel}${sent7d > 0 ? ` · 7일 ${sent7d}건` : ''}` : (st ? '발송 기록 없음' : '확인 중')}
+            </span>
+            {paused ? <span className="ktm-badge ktm-badge--danger">일괄 발송만 멈춤</span> : null}
+            {!paused && light.capNote ? <span className="ktm-badge ktm-badge--info">{light.capNote}</span> : null}
+          </div>
         </button>
       </li>
     );
@@ -1421,6 +1519,9 @@ export default function KakaoTemplateManager({
     const picked = item.id === selectedId;
     const ataUnit = Number.isFinite(Number(data?.ata_unit)) && data.ata_unit !== null ? Number(data.ata_unit) : 13;
     const failInfo = failBadge(usageFail(item.id, sent));
+    const linkedDates = linkedEntries.map((entry) => autoStatusMap[entry.id]?.last_sent_date).filter(Boolean).sort();
+    const ataLastAt = linkedDates.length ? linkedDates[linkedDates.length - 1] : (usageLastAt(usage, item.id) || cardExtras?.lastSentAt || '');
+    const ataLastLabel = formatLastSentLabel(ataLastAt);
 
     let condShort = '';
     if (linkedEntries.length === 1) {
@@ -1463,13 +1564,14 @@ export default function KakaoTemplateManager({
             ) : null}
           </div>
           {targetEntry ? <span className="ktm-card-target">대상: {autoTargetText(targetEntry)}</span> : null}
-          {item.program_use || failInfo || (cardExtras && cardExtras.replaced7 > 0) ? (
-            <div className="stl-item-badges">
-              {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림</span> : null}
-              {cardExtras && cardExtras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {cardExtras.replaced7}건</span> : null}
-              {failInfo ? <span className="ktm-badge ktm-badge--danger">{failInfo.text}</span> : null}
-            </div>
-          ) : null}
+          <div className="stl-item-badges">
+            <span className={`stl-last-sent ${ataLastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {ataLastLabel ? `최근 발송 ${ataLastLabel}` : '최근 발송 없음'}
+            </span>
+            {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림</span> : null}
+            {cardExtras && cardExtras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {cardExtras.replaced7}건</span> : null}
+            {failInfo ? <span className="ktm-badge ktm-badge--danger">{failInfo.text}</span> : null}
+          </div>
         </button>
         <div className="ktm-menu-wrap">
           <button type="button" className="ktm-more" aria-haspopup="menu" aria-expanded={isOpen} aria-label={`${item.name} 동작 메뉴`} onClick={() => setMenuId(isOpen ? '' : item.id)}>
@@ -1495,6 +1597,7 @@ export default function KakaoTemplateManager({
     const ch = channelCostOf(entry, { ataUnit: data?.ata_unit ?? 13 });
     const light = itemLight(entry);
     const metaParts = [entry.sender, entry.trigger || (entry.count === null ? '확인 못 함' : `최근 7일 ${entry.count}건`)].filter(Boolean);
+    const roLastLabel = formatLastSentLabel(entry.lastSentAt);
     return (
       <li key={entry.id} className={`stl-item${opened ? ' is-selected' : ''}`}>
         <button
@@ -1519,6 +1622,11 @@ export default function KakaoTemplateManager({
                 <span>{part}</span>
               </React.Fragment>
             ))}
+          </div>
+          <div className="stl-item-badges">
+            <span className={`stl-last-sent ${roLastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {roLastLabel ? `최근 발송 ${roLastLabel}` : '최근 7일 발송 없음'}
+            </span>
           </div>
         </button>
       </li>
@@ -1594,10 +1702,12 @@ export default function KakaoTemplateManager({
     body = <div className="ktm-empty">쏠라피 연결 정보가 설정되지 않아 템플릿을 볼 수 없습니다.</div>;
   } else if (data) {
     const totalVisible = rowKeys.length;
-    const pagedManaged = visibleManaged.filter((entry) => pageSet.has(`bms-${entry.id}`));
-    const pagedAtaSections = listSections.flatMap((aud) => aud.kinds
-      .map((section) => ({ aud, section, pageItems: section.items.filter((item) => pageSet.has(`ata-${item.id}`)) }))
-      .filter((entry) => entry.pageItems.length > 0));
+    const pagedDisplayGroups = displayGroups
+      .map((group) => ({
+        ...group,
+        pageRows: group.rows.filter((row) => pageSet.has(row.key)),
+      }))
+      .filter((group) => group.pageRows.length > 0);
     const pagedRoSections = readOnlySections
       .map((group) => ({ group, pageItems: group.items.filter((entry) => pageSet.has(`ro-${entry.id}`)) }))
       .filter((entry) => entry.pageItems.length > 0);
@@ -1607,7 +1717,7 @@ export default function KakaoTemplateManager({
         <div className="stl-toolbar">
           <div className="ktm-search stl-search">
             <Icon name="search" />
-            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·발송 조건·템플릿 ID 검색" aria-label="카카오톡 템플릿 검색" />
+            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·발송 조건·템플릿 ID 검색 (띄어쓰기 무관)" aria-label="카카오톡 템플릿 검색" />
           </div>
           <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
             {pills.map((pill) => (
@@ -1642,29 +1752,17 @@ export default function KakaoTemplateManager({
               <div className="ktm-empty">조건에 맞는 카카오톡 템플릿이 없습니다.</div>
             ) : (
               <>
-                {pagedManaged.length > 0 ? (
-                  <section className="stl-group stl-group--mine" aria-label="브랜드메시지">
+                {pagedDisplayGroups.map((group) => (
+                  <section key={group.groupKey} className={`stl-group ${group.groupMod}`} aria-label={group.groupLabel}>
                     <h3 className="stl-grouphead">
                       <span className="stl-grouphead-left">
-                        <span>브랜드메시지 › 자동 발송</span>
-                        <span className="stl-grouphead-tag">직접 관리</span>
+                        <span>{group.groupLabel}</span>
                       </span>
-                      <span className="ktm-kind-count">{visibleManaged.length}</span>
+                      <span className="ktm-kind-count">{group.rows.length}</span>
                     </h3>
-                    <ul className="ktm-cards stl-cards">{pagedManaged.map(renderManagedCard)}</ul>
-                  </section>
-                ) : null}
-
-                {pagedAtaSections.map(({ aud, section, pageItems }) => (
-                  <section key={`${aud.group}/${section.kind || ''}`} className={`stl-group ${aud.group === '직원 전용' ? 'stl-group--staff' : 'stl-group--cust'}`} aria-label={section.kind || aud.group}>
-                    <h3 className="stl-grouphead">
-                      <span className="stl-grouphead-left">
-                        <span>{section.kind ? `${aud.group} › ${section.kind}` : aud.group}</span>
-                        <span className="stl-grouphead-tag">알림톡</span>
-                      </span>
-                      <span className="ktm-kind-count">{section.items.length}</span>
-                    </h3>
-                    <ul className="ktm-cards stl-cards">{pageItems.map(renderCard)}</ul>
+                    <ul className="ktm-cards stl-cards">
+                      {group.pageRows.map((row) => (row.type === 'bms' ? renderManagedCard(row.entry) : renderCard(row.item)))}
+                    </ul>
                   </section>
                 ))}
 
@@ -1726,6 +1824,7 @@ export default function KakaoTemplateManager({
         channel="kakao"
         active={active}
         autoStats={kakaoAutoStats}
+        issues={kakaoIssues}
         onOpenLog={onOpenChannelLog}
         onAttentionClick={() => pickFilter('attention')}
       />

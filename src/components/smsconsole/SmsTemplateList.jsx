@@ -5,10 +5,10 @@ import { clearSmsConsoleClientCache, fetchSmsConsole, postSmsConsole } from '../
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, formatLastSentLabel, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsDisplayCategory, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
 import { SENDERS } from '../../../shared/smsTemplateKinds.js';
-import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
@@ -445,6 +445,21 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     total: autoAll + items.length,
     attention: attentionTotal,
   }), [runningAll, activeCatalogAll, autoAll, items.length, attentionTotal]);
+  const smsIssues = useMemo(() => {
+    const pausedCount = allMine.filter((entry) => entry.autoKind && catchupPausedText(autoStatus[entry.id])).length;
+    const offBlockedMine = allMine.filter((entry) => entry.autoKind && ['off', 'blocked'].includes(effOf(entry).tone)).length;
+    const offBlockedItems = items.filter((item) => ['off', 'blocked'].includes(itemLight(item).tone)).length;
+    const onZeroMine = allMine.filter((entry) => {
+      const st = autoStatus[entry.id];
+      return entry.autoKind && st && effOf(entry).tone !== 'off' && !(Number(st.sent_7d) > 0) && !st.last_sent_date;
+    }).length;
+    const onZeroItems = items.filter((item) => itemLight(item).tone === 'on' && item.count === 0 && !item.lastSentAt).length;
+    return [
+      { key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, onClick: () => pickFilter('attention') },
+      { key: 'off-blocked', tone: 'danger', label: '꺼짐 · 설정 미완료', count: offBlockedMine + offBlockedItems, onClick: () => pickFilter('attention') },
+      { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, onClick: () => pickFilter('in_use') },
+    ];
+  }, [allMine, autoStatus, items]);
   const pills = useMemo(() => {
     const base = smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll }));
     return [
@@ -457,28 +472,51 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
   const isMineTab = tab === 'mine';
   const isAttentionTab = tab === 'attention';
-  const filter = isMineTab || isAttentionTab ? 'all' : tab;
   const allAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind), [sortedMine]);
+  const manualMatched = useMemo(
+    () => (query.trim() ? sortedMine.filter((entry) => !entry.autoKind) : []),
+    [query, sortedMine],
+  );
   const attentionAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [sortedMine, autoStatus]);
-  const shownAutos = isMineTab ? [] : (isAttentionTab ? attentionAutos : (tab === 'in_use' ? runningAutos : allAutos));
-  const sectionItems = useMemo(() => (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems), [condItems, isAttentionTab]);
-  // 내 자동 문구가 들어가는 '고객' 묶음을 맨 앞에 둔다(사장님이 켜고 끄는 문구가 먼저 보이게)
-  const sections = useMemo(() => {
-    const list = ensureAutoSection(audienceSections(sectionItems, filter), shownAutos.length);
-    return shownAutos.length ? [...list].sort((a, b) => Number(b.group === '고객') - Number(a.group === '고객')) : list;
-  }, [sectionItems, filter, shownAutos.length]);
+  const shownAutos = isMineTab ? [] : (isAttentionTab ? attentionAutos : (tab === 'in_use' ? [...runningAutos, ...manualMatched] : [...allAutos, ...manualMatched]));
+  const sectionItems = useMemo(() => {
+    if (isMineTab) return [];
+    const filtered = tab === 'in_use' ? condItems.filter((item) => (item.count ?? 0) > 0) : (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems);
+    return sortSmsItems(filtered);
+  }, [condItems, isMineTab, isAttentionTab, tab]);
 
-  // 쪽 나누기는 선택한 탭의 행에만 적용한다
+  // 비즈니스 카테고리(리뷰 이벤트 · 소개/혜택 · 주문/출고/주의사항 · 직원/관리자)로 일관되게 묶는다
+  const displayGroups = useMemo(() => {
+    if (isMineTab) return [];
+    const byGroup = new Map();
+    const ensureGroup = (meta) => {
+      let g = byGroup.get(meta.groupKey);
+      if (!g) {
+        g = { ...meta, mineEntries: [], items: [] };
+        byGroup.set(meta.groupKey, g);
+      }
+      return g;
+    };
+    shownAutos.forEach((entry) => {
+      ensureGroup(smsDisplayCategory(entry)).mineEntries.push(entry);
+    });
+    sectionItems.forEach((item) => {
+      ensureGroup(smsDisplayCategory(item)).items.push(item);
+    });
+    return [...byGroup.values()].sort((a, b) => a.order - b.order);
+  }, [isMineTab, shownAutos, sectionItems]);
+
+  // 쪽 나누기는 선택한 탭의 행에만 적용한다(카테고리 한 화면에 모이도록 20행 단위)
   const rowKeys = useMemo(() => {
     if (isMineTab) return flowRows.map((row) => row.key);
     const keys = [];
-    sections.forEach((aud) => aud.kinds.forEach((section) => {
-      if (aud.group === '고객' && section.kind === '이벤트·혜택') shownAutos.forEach((entry) => keys.push(`run-${entry.id}`));
-      section.items.forEach((item) => keys.push(`i-${item.id}`));
-    }));
+    displayGroups.forEach((group) => {
+      group.mineEntries.forEach((entry) => keys.push(`run-${entry.id}`));
+      group.items.forEach((item) => keys.push(`i-${item.id}`));
+    });
     return keys;
-  }, [isMineTab, flowRows, sections, shownAutos]);
-  const paged = paginateRows(rowKeys, pageNo);
+  }, [isMineTab, flowRows, displayGroups]);
+  const paged = paginateRows(rowKeys, pageNo, 20);
   const pageSet = new Set(paged.rows);
   const pickCond = (value) => { setCond(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const pickFilter = (id) => { setPicked(id); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
@@ -486,8 +524,6 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const changeQuery = (value) => { setQuery(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const hasActiveFilters = Boolean(query.trim() || cond || tab !== 'all');
   const resetFilters = () => { setQuery(''); setCond(''); setPicked('all'); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
-  const kindHasRow = (aud, section) => section.items.some((item) => pageSet.has(`i-${item.id}`))
-    || (aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.some((entry) => pageSet.has(`run-${entry.id}`)));
 
   // 현재 쪽에서 선택 가능한 항목 키 목록(표시 순서)
   const visibleCandidateKeys = useMemo(() => {
@@ -500,15 +536,12 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
       });
       return keys;
     }
-    sections.forEach((aud) => aud.kinds.forEach((section) => {
-      if (!kindHasRow(aud, section)) return;
-      if (aud.group === '고객' && section.kind === '이벤트·혜택') {
-        shownAutos.filter((entry) => pageSet.has(`run-${entry.id}`)).forEach((entry) => keys.push(`m-${entry.id}`));
-      }
-      section.items.filter((item) => pageSet.has(`i-${item.id}`)).forEach((item) => keys.push(`i-${item.id}`));
-    }));
+    displayGroups.forEach((group) => {
+      group.mineEntries.filter((entry) => pageSet.has(`run-${entry.id}`)).forEach((entry) => keys.push(`m-${entry.id}`));
+      group.items.filter((item) => pageSet.has(`i-${item.id}`)).forEach((item) => keys.push(`i-${item.id}`));
+    });
     return keys;
-  }, [isKakao, isMineTab, flowRows, sections, shownAutos, paged.page, paged.rows]);
+  }, [isKakao, isMineTab, flowRows, displayGroups, paged.page, paged.rows]);
 
   const selectedMine = useMemo(
     () => (selectedKey.startsWith('m-') ? allMine.find((entry) => `m-${entry.id}` === selectedKey) || null : null),
@@ -557,7 +590,7 @@ const formatKpiDate = (value) => {
 };
 
 // 상세 상단 3단 발송 조건·규칙·현황 보드
-function renderConditionBoard(summary, st, isMineAuto) {
+function renderConditionBoard(summary, st, isMineAuto, catalogStats = null) {
   const thirdLabel = isMineAuto || summary.manual ? '횟수 · 비용' : '종류 · 비용';
   const todayCount = Number(st?.today_targets) || 0;
   const recent7d = Number(st?.sent_7d) || 0;
@@ -617,13 +650,26 @@ function renderConditionBoard(summary, st, isMineAuto) {
               <strong className={`stl-kpi-val${uncertain > 0 ? ' is-warn' : ''}`}>{uncertain}건</strong>
             </div>
             <div className="stl-kpi">
-              <span className="stl-kpi-label">마지막 발송</span>
-              <strong className="stl-kpi-val" title={st.last_sent_date || '발송 기록 없음'}>{formatKpiDate(st.last_sent_date)}</strong>
+              <span className="stl-kpi-label">가장 최근 발송</span>
+              <strong className="stl-kpi-val" title={st.last_sent_date || '발송 기록 없음'}>{formatLastSentLabel(st.last_sent_date) || '기록 없음'}</strong>
             </div>
           </div>
         ) : (
           <p className="stl-cond-loading">발송 현황 불러오는 중…</p>
         )
+      ) : catalogStats ? (
+        <div className="stl-cond-kpis stl-cond-kpis--compact" aria-label="최근 발송 현황">
+          <div className="stl-kpi">
+            <span className="stl-kpi-label">최근 7일 발송</span>
+            <strong className={`stl-kpi-val${(catalogStats.count ?? 0) > 0 ? ' is-accent' : ''}`}>
+              {catalogStats.count === null ? '확인 못 함' : `${catalogStats.count}건`}
+            </strong>
+          </div>
+          <div className="stl-kpi">
+            <span className="stl-kpi-label">가장 최근 발송</span>
+            <strong className="stl-kpi-val">{formatLastSentLabel(catalogStats.lastSentAt) || '기록 없음'}</strong>
+          </div>
+        </div>
       ) : null}
     </section>
   );
@@ -642,6 +688,9 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const repeatCount = Number(entry.autoRepeat) || 1;
     const showRepeat = Boolean(entry.autoKind && repeatCount > 1);
     const paused = catchupPausedText(autoStatus[entry.id]);
+    const st = autoStatus[entry.id];
+    const lastLabel = formatLastSentLabel(st?.last_sent_date);
+    const sent7d = Number(st?.sent_7d) || 0;
     const metaParts = [
       showTime ? compactTime : '',
       cp?.who || '',
@@ -652,7 +701,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
         <button type="button" className="stl-item-btn" aria-current={isSelected ? 'true' : undefined} onClick={() => setSelectedKey(key)}>
           <div className="stl-item-top">
             <span className="stl-item-name">{entry.name}</span>
-            {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : null}
+            {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : <span className="stl-sender-chip">수동 문구</span>}
           </div>
           {summary ? (
             <div className="stl-item-cond">
@@ -673,11 +722,14 @@ function renderConditionBoard(summary, st, isMineAuto) {
               <span className="stl-preview-line">{entry.preview || '내용 없음'}</span>
             </div>
           )}
-          {paused ? (
-            <div className="stl-item-badges">
-              <span className="ktm-badge ktm-badge--danger" title={paused}>일괄 발송만 멈춤</span>
-            </div>
-          ) : null}
+          <div className="stl-item-badges">
+            {entry.autoKind ? (
+              <span className={`stl-last-sent ${lastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+                {lastLabel ? `최근 발송 ${lastLabel}${sent7d > 0 ? ` · 7일 ${sent7d}건` : ''}` : '발송 기록 없음'}
+              </span>
+            ) : null}
+            {paused ? <span className="ktm-badge ktm-badge--danger" title={paused}>일괄 발송만 멈춤</span> : null}
+          </div>
         </button>
       </li>
     );
@@ -690,6 +742,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const light = itemLight(item);
     const ch = channelCostOf(item);
     const summary = buildConditionSummary(item, { isMine: false, recipients });
+    const lastLabel = formatLastSentLabel(item.lastSentAt);
     const detailPart = item.audience?.id !== 'customer' && summary.whoMain
       ? summary.whoMain
       : (item.count !== null && item.count > 0 ? `7일 ${item.count}건` : plainKoreanText(summary.whenSub || ''));
@@ -731,11 +784,12 @@ function renderConditionBoard(summary, st, isMineAuto) {
               </React.Fragment>
             ))}
           </div>
-          {exceptionBadges.length > 0 ? (
-            <div className="stl-item-badges">
-              {exceptionBadges.map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
-            </div>
-          ) : null}
+          <div className="stl-item-badges">
+            <span className={`stl-last-sent ${lastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+              {lastLabel ? `최근 발송 ${lastLabel}` : '최근 7일 발송 없음'}
+            </span>
+            {exceptionBadges.map((badge) => <span key={badge.text} className={`ktm-badge ktm-badge--${badge.tone}`}>{badge.text}</span>)}
+          </div>
         </button>
       </li>
     );
@@ -872,6 +926,17 @@ function renderConditionBoard(summary, st, isMineAuto) {
                   <span>{part}</span>
                 </React.Fragment>
               ))}
+              {entry.autoKind ? (() => {
+                const lastLabel = formatLastSentLabel(st?.last_sent_date);
+                return (
+                  <>
+                    <span className="stl-meta-sep" aria-hidden="true">·</span>
+                    <span className={`stl-last-sent ${lastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+                      {lastLabel ? `최근 발송 ${lastLabel}` : '발송 기록 없음'}
+                    </span>
+                  </>
+                );
+              })() : null}
             </div>
             <div className="stl-detail-titlebar">
               <h3 className="stl-detail-title">{entry.name}</h3>
@@ -1031,6 +1096,17 @@ function renderConditionBoard(summary, st, isMineAuto) {
                 <span>{part}</span>
               </React.Fragment>
             ))}
+            {(() => {
+              const lastLabel = formatLastSentLabel(item.lastSentAt);
+              return (
+                <>
+                  <span className="stl-meta-sep" aria-hidden="true">·</span>
+                  <span className={`stl-last-sent ${lastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
+                    {lastLabel ? `최근 발송 ${lastLabel}` : '최근 7일 발송 없음'}
+                  </span>
+                </>
+              );
+            })()}
           </div>
           <h3 className="stl-detail-title">{item.name}</h3>
           {item.config?.status === 'incomplete' ? (
@@ -1042,7 +1118,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
         </div>
 
         <div className="stl-detail-split">
-          {renderConditionBoard(summary, null, false)}
+          {renderConditionBoard(summary, null, false, { count: item.count, lastSentAt: item.lastSentAt })}
           <div className={`stl-preview-stage${hasMedia ? ' has-media' : ''}`}>
             {msgCard}
             {mediaCard}
@@ -1102,14 +1178,20 @@ function renderConditionBoard(summary, st, isMineAuto) {
       </div>
     );
   } else {
-    const visibleGroupSections = sections.filter((aud) => aud.kinds.some((section) => kindHasRow(aud, section)));
+    const visibleDisplayGroups = displayGroups
+      .map((group) => ({
+        ...group,
+        pageMine: group.mineEntries.filter((entry) => pageSet.has(`run-${entry.id}`)),
+        pageItems: group.items.filter((item) => pageSet.has(`i-${item.id}`)),
+      }))
+      .filter((group) => group.pageMine.length > 0 || group.pageItems.length > 0);
     const visibleFlows = flowRows.filter((row) => pageSet.has(row.key));
     body = (
       <>
         <div className="stl-toolbar">
           <div className="ktm-search stl-search">
             <SmsIcon name="search" />
-            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·문구·발송 조건 검색" aria-label="문자 템플릿 검색" />
+            <input type="search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder="이름·문구·발송 조건 검색 (띄어쓰기 무관)" aria-label="문자 템플릿 검색" />
           </div>
           <div className="ktm-pills" role="group" aria-label="발송 상태 거르기">
             {pills.map((pill) => (
@@ -1139,36 +1221,22 @@ function renderConditionBoard(summary, st, isMineAuto) {
                     {visibleFlows.map((row) => (row.single ? renderMineListCard(row.entry) : renderFlow(row, true)))}
                   </ul>
                 )
-            ) : visibleGroupSections.length === 0 ? (
+            ) : visibleDisplayGroups.length === 0 ? (
               <div className="ktm-empty">조건에 맞는 문자 템플릿이 없습니다.</div>
-            ) : visibleGroupSections.map((aud) => (
-              aud.kinds.filter((section) => kindHasRow(aud, section)).map((section) => {
-                const isMyAutoGroup = aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.length > 0 && section.items.length === 0;
-                const pageAutoCount = aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.length : 0;
-                const totalCount = section.kind ? section.items.length + pageAutoCount : aud.count;
-                const hasExt = section.items.some((i) => i.external);
-                const hasProg = section.items.some((i) => !i.external);
-                const originTag = isMyAutoGroup
-                  ? '직접 관리'
-                  : (hasExt && hasProg ? '시스템·외부 연동' : (hasExt ? '외부 연동 · 읽기 전용' : '시스템 자동'));
-                const groupMod = isMyAutoGroup ? 'stl-group--mine' : (aud.group === '직원 전용' ? 'stl-group--staff' : 'stl-group--cust');
-                const headTitle = isMyAutoGroup ? '내 문구 › 자동 발송' : (section.kind ? `${aud.group} › ${section.kind}` : aud.group);
-                return (
-                  <section key={`${aud.group}/${section.kind || ''}`} className={`stl-group ${groupMod}`} aria-label={section.kind || aud.group}>
-                    <h3 className="stl-grouphead">
-                      <span className="stl-grouphead-left">
-                        <span>{headTitle}</span>
-                        <span className="stl-grouphead-tag">{originTag}</span>
-                      </span>
-                      <span className="ktm-kind-count">{totalCount}</span>
-                    </h3>
-                    <ul className="ktm-cards stl-cards">
-                      {aud.group === '고객' && section.kind === '이벤트·혜택' ? shownAutos.filter((entry) => pageSet.has(`run-${entry.id}`)).map((entry) => renderMineListCard(entry, 'run-')) : null}
-                      {section.items.filter((item) => pageSet.has(`i-${item.id}`)).map(renderItemListCard)}
-                    </ul>
-                  </section>
-                );
-              })
+            ) : visibleDisplayGroups.map((group) => (
+              <section key={group.groupKey} className={`stl-group ${group.groupMod}`} aria-label={group.groupLabel}>
+                <h3 className="stl-grouphead">
+                  <span className="stl-grouphead-left">
+                    <span>{group.groupLabel}</span>
+                    <span className="stl-grouphead-tag">{group.tag}</span>
+                  </span>
+                  <span className="ktm-kind-count">{group.mineEntries.length + group.items.length}</span>
+                </h3>
+                <ul className="ktm-cards stl-cards">
+                  {group.pageMine.map((entry) => renderMineListCard(entry, 'run-'))}
+                  {group.pageItems.map(renderItemListCard)}
+                </ul>
+              </section>
             ))}
           </div>
 
@@ -1229,6 +1297,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
         channel="sms"
         active={active}
         autoStats={smsAutoStats}
+        issues={smsIssues}
         onOpenLog={onOpenLog}
         onAttentionClick={() => pickFilter('attention')}
       />

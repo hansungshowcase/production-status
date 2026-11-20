@@ -19,7 +19,7 @@
 
 .scss-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr) minmax(0, 0.9fr);
 }
 
 .scss-cell {
@@ -330,20 +330,86 @@
   text-decoration: underline;
 }
 
-@media (max-width: 1180px) {
+.scss-issue-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.scss-issue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  border: 1px solid #d5dbe1;
+  background: #f8fafc;
+  color: #191f28;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.scss-issue-chip strong {
+  font-weight: 800;
+}
+
+.scss-issue-chip--danger {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+.scss-issue-chip--danger:hover { background: #fee2e2; }
+
+.scss-issue-chip--warn {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #b45309;
+}
+.scss-issue-chip--warn:hover { background: #fef3c7; }
+
+.scss-issue-chip--info {
+  background: #eef4ff;
+  border-color: #bfdbfe;
+  color: #1b64da;
+}
+.scss-issue-chip--info:hover { background: #dbeafe; }
+
+.scss-issue-ok {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: #ecfdf3;
+  border: 1px solid #86efac;
+  color: #15803d;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+@media (max-width: 1023px) {
   .scss-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .scss-cell + .scss-cell {
+  .scss-cell--issues {
+    grid-column: 1 / -1;
+  }
+
+  .scss-cell:nth-child(2) {
     border-left: 0;
+    border-top: 1px solid #eef0f3;
   }
 
-  .scss-cell:nth-child(2n) {
+  .scss-cell:nth-child(3) {
     border-left: 1px solid #eef0f3;
-  }
-
-  .scss-cell:nth-child(n + 3) {
     border-top: 1px solid #eef0f3;
   }
 }
@@ -353,7 +419,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .scss-cell:nth-child(2n) {
+  .scss-cell:nth-child(3) {
     border-left: 0;
   }
 

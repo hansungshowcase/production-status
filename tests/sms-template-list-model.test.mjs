@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildConditionSummary, buildSmsItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, isAttentionTone, isMigratedExternal, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, buildConditionSummary, buildSmsItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, formatLastSentLabel, groupFlows, isAtaEntry, isAttentionTone, isMigratedExternal, kakaoDisplayCategory, matchesSmsQuery, paginateRows, smsBadges, smsDisplayCategory, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -435,4 +435,58 @@ test('isMigratedExternal: 콘솔 내 문구(auto_kind)로 이전된 메이크 �
   // 스마트스토어 연동·제작현황 등 메이크 외 항목은 숨기지 않는다
   assert.equal(isMigratedExternal({ id: 'smartstore_thanks', external: true, sender: '스마트스토어 연동' }, dbRows), false);
   assert.equal(isMigratedExternal({ id: 'review_sns', external: false, sender: '제작현황' }, dbRows), false);
+});
+
+test('matchesSmsQuery: 띄어쓰기 없이 검색해도 소개 혜택 안내 등이 매칭된다', () => {
+  const entry = {
+    id: 4,
+    name: '소개 혜택 안내',
+    body: '지인 소개 시 혜택을 드립니다.',
+    preview: '지인 소개 시 혜택',
+    autoKind: 'ship_plus_days',
+    days: 20,
+    audience: '고객',
+  };
+  assert.equal(matchesSmsQuery(entry, '소개혜택'), true);
+  assert.equal(matchesSmsQuery(entry, '소개 혜택'), true);
+  assert.equal(matchesSmsQuery(entry, '지인소개시'), true);
+  assert.equal(matchesSmsQuery(entry, '전혀다른단어'), false);
+});
+
+test('buildSmsItems: recent.latest.occurred_at 을 lastSentAt 으로 전달한다', () => {
+  const items = buildSmsItems({
+    groups: [
+      {
+        id: 'customer',
+        items: [
+          mk('c_recent', 3, { recent: { state: 'available', counts: { total: 3 }, latest: { occurred_at: '2026-11-20T03:00:00.000Z' } } }),
+          mk('c_none', 0),
+        ],
+      },
+    ],
+  });
+  assert.equal(items[0].lastSentAt, '2026-11-20T03:00:00.000Z');
+  assert.equal(items[1].lastSentAt, '');
+});
+
+test('formatLastSentLabel: KST 기준 오늘/과거 날짜를 읽기 쉽게 포맷한다', () => {
+  const now = Date.parse('2026-11-20T06:00:00.000Z'); // KST 2026-11-20 15:00
+  assert.equal(formatLastSentLabel('2026-11-20', now), '오늘(11/20)');
+  assert.equal(formatLastSentLabel('2026-11-19', now), '11/19');
+  assert.equal(formatLastSentLabel('2026-11-20T03:05:00.000Z', now), '오늘 12:05');
+  assert.equal(formatLastSentLabel('2026-11-19T01:30:00.000Z', now), '11/19 10:30');
+  assert.equal(formatLastSentLabel('', now), '');
+});
+
+test('smsDisplayCategory / kakaoDisplayCategory: 리뷰·소개혜택·직원 알림을 일관되게 묶는다', () => {
+  assert.equal(smsDisplayCategory({ name: 'SNS 리뷰 이벤트', audience: { id: 'customer' } }).groupKey, 'cust-review');
+  assert.equal(smsDisplayCategory({ id: 'smartstore_thanks', name: '스마트스토어 감사', audience: { id: 'customer' } }).groupKey, 'cust-review');
+  assert.equal(smsDisplayCategory({ name: '소개 혜택 안내', audience: { id: 'customer' } }).groupKey, 'cust-benefit');
+  assert.equal(smsDisplayCategory({ name: '주의사항 안내 A', audience: { id: 'customer' } }).groupKey, 'cust-order');
+  assert.equal(smsDisplayCategory({ name: '납기 임박 알림', audience: { id: 'staff' } }).groupKey, 'staff-alerts');
+
+  assert.equal(kakaoDisplayCategory({ name: '블로그 리뷰 이벤트(출고+1일)', audience: '고객' }).groupKey, 'k-review');
+  assert.equal(kakaoDisplayCategory({ name: '카페24 가입 이벤트', audience: '고객' }).groupKey, 'k-benefit');
+  assert.equal(kakaoDisplayCategory({ name: '출고 완료 안내', audience: '고객' }).groupKey, 'k-order');
+  assert.equal(kakaoDisplayCategory({ name: '담당자 확인 알림', audience: '직원' }).groupKey, 'k-staff');
 });

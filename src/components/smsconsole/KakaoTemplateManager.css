@@ -403,7 +403,7 @@
 }
 @media (min-width: 1120px) {
   .ktm-root .stl-detail-split {
-    display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 12px; align-items: start;
+    display: grid; grid-template-columns: 212px minmax(0, 1fr); gap: 12px; align-items: start;
     padding-top: 8px;
   }
   .ktm-root .stl-detail-split .stl-cond-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -421,7 +421,7 @@
   }
   .ktm-root .stl-detail-split .stl-kpi,
   .ktm-root .stl-detail-split .stl-kpi + .stl-kpi { padding: 0; border-left: 0; }
-  .ktm-root .stl-detail-split .stl-cond-kpis > :last-child {
+  .ktm-root .stl-detail-split .stl-cond-kpis:not(.stl-cond-kpis--compact) > :last-child {
     grid-column: 1 / -1; padding-top: 6px; border-top: 1px solid #e5e8eb;
     flex-direction: row; align-items: baseline; justify-content: space-between;
   }
@@ -429,20 +429,29 @@
   .ktm-kakao .stl-detail-split .stl-cond-board { padding: 0; border-right: 0; border-bottom: 0; }
   .ktm-kakao .stl-detail-split .ktm-preview-stage { padding-top: 0; }
 }
+@media (min-width: 1540px) {
+  .ktm-root .stl-detail-split { grid-template-columns: 226px minmax(0, 1fr); gap: 14px; }
+}
 @media (min-width: 1120px) and (max-width: 1279px) {
-  .ktm-root .stl-detail-split { grid-template-columns: 220px minmax(0, 1fr); }
+  .ktm-root .stl-detail-split { grid-template-columns: 204px minmax(0, 1fr); }
 }
 @media (min-width: 1280px) {
   .ktm-kakao .stl-detail-split .stl-preview-stage.has-media,
   .ktm-kakao .ktm-preview-stage.has-media {
-    display: grid; grid-template-columns: minmax(0, 1fr) 204px; gap: 10px; align-items: start;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 46%); gap: 14px; align-items: start;
     padding-top: 0;
   }
-  .ktm-kakao .ktm-detail-split { grid-template-columns: minmax(220px, 255px) minmax(0, 1fr); }
+  .ktm-kakao .ktm-detail-split { grid-template-columns: minmax(210px, 236px) minmax(0, 1fr); }
+}
+@media (min-width: 1540px) {
+  .ktm-kakao .stl-detail-split .stl-preview-stage.has-media,
+  .ktm-kakao .ktm-preview-stage.has-media {
+    grid-template-columns: minmax(0, 1.05fr) minmax(290px, 0.95fr); gap: 16px;
+  }
 }
 .ktm-kakao .ktp-board { padding: 8px; border-radius: 8px; min-width: 0; }
 .ktm-kakao .ktp-bubble { max-width: 100%; }
-.ktm-kakao .ktp-body { max-height: 295px; overflow-y: auto; overscroll-behavior: contain; }
+.ktm-kakao .ktp-body { max-height: 440px; overflow-y: auto; overscroll-behavior: contain; }
 .ktm-kakao .ktm-info {
   padding: 9px 11px; border: 1px solid #eceff2; border-radius: 7px; background: #fafbfc;
   grid-template-columns: 80px minmax(0, 1fr); gap: 6px 10px; font-size: 12.5px; min-width: 0;

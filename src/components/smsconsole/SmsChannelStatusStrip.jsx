@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchSolapiMessages } from '../../api/solapiMessages.js';
 import { clearSmsConsoleClientCache, fetchSmsConsole } from '../../api/smsConsole.js';
 import { SOLAPI_HEALTH_REASONS } from '../../../shared/solapiHealthText.js';
-import { balanceState, summarizeChannelLog, templateCountsView } from './dashboardModel.js';
+import { balanceState, summarizeChannelLog } from './dashboardModel.js';
 import './SmsChannelStatusStrip.css';
 
 const REFRESH_MS = 120000;
@@ -12,25 +12,6 @@ const nowLabel = () => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 const isVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
-
-const KIND_LABELS = {
-  SMS: '단문문자',
-  LMS: '장문문자',
-  MMS: '사진문자',
-  ATA: '알림톡',
-  CTA: '친구톡',
-  BMS_FREE: '브랜드메시지',
-  BMS: '브랜드메시지',
-};
-
-function humanizeKindLabel(raw) {
-  const s = String(raw || '').trim();
-  if (!s) return '-';
-  return s
-    .split(/(\s*[·,/]\s*)/)
-    .map((part) => KIND_LABELS[part.toUpperCase()] || part)
-    .join('');
-}
 
 function healthBandText(health) {
   if (!health || typeof health !== 'object') return '';
@@ -52,6 +33,7 @@ export default function SmsChannelStatusStrip({
   channel = 'sms',
   active = true,
   autoStats = null,
+  issues = [],
   onOpenLog,
   onAttentionClick,
 }) {
@@ -116,20 +98,57 @@ export default function SmsChannelStatusStrip({
   const configured = overview.data ? overview.data.configured !== false : true;
   const logConfigured = log.data ? log.data.configured !== false : true;
   const balance = balanceState(overview.data?.balance);
-  const tplCounts = isKakao ? templateCountsView(overview.data?.template_counts) : null;
   const band = healthBandText(overview.data?.solapi_health);
   const firstLoading = !checkedAt && loading;
   const onCount = Number(autoStats?.on) || 0;
   const totalCount = Number(autoStats?.total) || 0;
-  const attentionCount = Number(autoStats?.attention) || 0;
   const ataOn = Number(autoStats?.ataOn) || 0;
   const bmsOn = Number(autoStats?.bmsOn) || 0;
+  const actionableIssues = [
+    ...(summary.failed > 0 && onOpenLog
+      ? [{ key: 'today-failed', tone: 'danger', label: '오늘 발송 실패', count: summary.failed, onClick: () => onOpenLog({ aud: 'all', ch: chKey }) }]
+      : []),
+    ...(Array.isArray(issues) ? issues.filter((item) => item && Number(item.count) > 0) : []),
+  ];
 
   return (
     <section className="scss-root" aria-label={isKakao ? '카카오톡 발송 현황판' : '문자 발송 현황판'}>
       {band ? <p className="scss-health" role="alert">{band}</p> : null}
 
       <div className="scss-grid">
+        <div className="scss-cell scss-cell--issues">
+          <div className="scss-label-row">
+            <span className="scss-label">지금 확인할 이슈</span>
+            {autoStats ? (
+              <span className="scss-sub-inline">
+                켜짐 {onCount}개 / 전체 {totalCount}개{isKakao ? ` (알림톡 ${ataOn} · 브랜드 ${bmsOn})` : ''}
+              </span>
+            ) : (
+              <span className="scss-sub-inline">점검 중…</span>
+            )}
+          </div>
+          {actionableIssues.length > 0 ? (
+            <div className="scss-issue-chips">
+              {actionableIssues.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`scss-issue-chip scss-issue-chip--${item.tone || 'warn'}`}
+                  onClick={() => (item.onClick ? item.onClick() : onAttentionClick?.())}
+                  title={item.hint || undefined}
+                >
+                  <span>{item.label}</span>
+                  <strong>{item.count}건 →</strong>
+                </button>
+              ))}
+            </div>
+          ) : autoStats ? (
+            <div className="scss-issue-ok">이상 없음 · 자동 발송 {onCount}개 정상 작동 중</div>
+          ) : (
+            <p className="scss-muted">이슈 확인 중…</p>
+          )}
+        </div>
+
         <div className="scss-cell scss-cell--link">
           <button
             type="button"
@@ -164,89 +183,6 @@ export default function SmsChannelStatusStrip({
           </button>
         </div>
 
-        <div className="scss-cell">
-          <div className="scss-label-row">
-            <span className="scss-label">{isKakao ? '카톡 자동 발송' : '문자 자동 발송'}</span>
-            {attentionCount > 0 && onAttentionClick ? (
-              <button type="button" className="scss-warn-btn" onClick={onAttentionClick}>
-                확인 필요 {attentionCount}건 →
-              </button>
-            ) : null}
-          </div>
-          {autoStats ? (
-            <>
-              <div className="scss-val-row">
-                <strong className="scss-val">켜짐 {onCount}개</strong>
-                <span className="scss-sub-inline">/ 전체 {totalCount}개</span>
-              </div>
-              <p className="scss-sub">
-                {isKakao ? (
-                  <>
-                    알림톡 {ataOn}개 · 브랜드메시지 {bmsOn}개
-                    {attentionCount > 0 ? <> · <span className="scss-warn-text">확인 필요 {attentionCount}건</span></> : null}
-                  </>
-                ) : attentionCount > 0 ? (
-                  <span className="scss-warn-text">꺼짐·확인 필요 {attentionCount}건 있습니다</span>
-                ) : (
-                  <span>적용된 자동 문자 정상 운영 중</span>
-                )}
-              </p>
-            </>
-          ) : (
-            <p className="scss-muted">집계 중…</p>
-          )}
-        </div>
-
-        <div className="scss-cell">
-          {isKakao ? (
-            <>
-              <div className="scss-label-row">
-                <span className="scss-label">알림톡 검수 상태</span>
-              </div>
-              {overview.error ? (
-                <p className="scss-err">{overview.error}</p>
-              ) : !configured ? (
-                <p className="scss-muted">쏠라피 키 미설정</p>
-              ) : !tplCounts?.known ? (
-                <p className="scss-muted">{firstLoading ? '불러오는 중…' : '상태 확인 중'}</p>
-              ) : (
-                <div className="scss-tpl-pills">
-                  {tplCounts.items.map((item) => (
-                    <span
-                      key={item.key}
-                      className={`scss-tpl-chip scss-tpl-chip--${item.tone}${item.key === 'REJECTED' && item.count > 0 ? ' is-alert' : ''}`}
-                    >
-                      {item.label} <strong>{item.count}</strong>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="scss-label-row">
-                <span className="scss-label">최근 문자 발송 요청</span>
-              </div>
-              {log.error ? (
-                <p className="scss-err">불러오지 못함</p>
-              ) : summary.recent.length === 0 ? (
-                <p className="scss-muted">{firstLoading ? '불러오는 중…' : '오늘 발송 요청이 없습니다.'}</p>
-              ) : (
-                <ul className="scss-mini-recent">
-                  {summary.recent.slice(0, 2).map((row) => (
-                    <li key={row.key}>
-                      <span className="scss-r-time">{row.time || '-'}</span>
-                      <span className="scss-r-kind">{humanizeKindLabel(row.kind)}</span>
-                      <span className="scss-r-count">{row.total}건</span>
-                      <span className={`scss-r-state scss-tone-${row.tone}`}>{row.stateLabel}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          )}
-        </div>
-
         <div className="scss-cell scss-cell--balance">
           <div className="scss-label-row">
             <span className="scss-label">쏠라피 잔액</span>
@@ -269,27 +205,6 @@ export default function SmsChannelStatusStrip({
           )}
         </div>
       </div>
-
-      {isKakao && summary.recent.length > 0 ? (
-        <div className="scss-footer-bar">
-          <span className="scss-footer-label">오늘 최근 카톡 발송</span>
-          <div className="scss-footer-items">
-            {summary.recent.map((row) => (
-              <span key={row.key} className="scss-footer-chip">
-                <span className="scss-r-time">{row.time || '-'}</span>
-                <span>{humanizeKindLabel(row.kind)}</span>
-                <strong>{row.total}건</strong>
-                <span className={`scss-tone-${row.tone}`}>({row.stateLabel})</span>
-              </span>
-            ))}
-          </div>
-          {onOpenLog ? (
-            <button type="button" className="scss-footer-link" onClick={() => onOpenLog({ aud: 'all', ch: 'kakao' })}>
-              전체 내역 →
-            </button>
-          ) : null}
-        </div>
-      ) : null}
     </section>
   );
 }

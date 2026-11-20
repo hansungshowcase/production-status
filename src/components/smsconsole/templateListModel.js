@@ -16,12 +16,15 @@ export function statusInfo(status) {
 export function filterTemplates(items, { query = '', status = 'all', usage = null, sent = null } = {}) {
   const list = Array.isArray(items) ? items : [];
   const q = String(query || '').trim().toLowerCase();
+  const qNoSpace = q.replace(/\s+/g, '');
   return list.filter((item) => {
     if (status === 'in_use') {
       if (!(usageSuccess(usage, item.id, sent) > 0)) return false;
     } else if (status && status !== 'all' && item.status !== status) return false;
     if (!q) return true;
-    return String(item.name || '').toLowerCase().includes(q) || String(item.id || '').toLowerCase().includes(q);
+    const name = String(item.name || '').toLowerCase();
+    const id = String(item.id || '').toLowerCase();
+    return name.includes(q) || id.includes(q) || (qNoSpace && name.replace(/\s+/g, '').includes(qNoSpace));
   });
 }
 
@@ -68,7 +71,11 @@ export function usageCount(usage, id) {
   return count;
 }
 
-// 최근 7일 실패 건수(보낸 묶음 sent[].fail7). 템플릿 ID 를 표에서 못 찾거나 묶음을 모르면 0
+// 최근 7일 내 가장 최근 발송 시각(ISO 문자열). 없으면 ''
+export function usageLastAt(usage, id) {
+  if (!usageKnown(usage)) return '';
+  return String(usage.by_template[id]?.last_at || '');
+}
 export function usageFail(templateId, sent = null) {
   const meta = templateMeta(templateId);
   if (!meta) return 0;
@@ -167,12 +174,12 @@ export function splitVariables(content) {
 // ---------- 종류·보내는 곳 표시(읽기 전용) ----------
 // sent = GET ?resource=sent 의 groups[] 또는 null
 
-// 기존 템플릿 카드에 더할 것: { sender, kind, replaced7, off } — 표에 없으면 null(아무것도 더하지 않는다)
+// 기존 템플릿 카드에 더할 것: { sender, kind, replaced7, off, lastSentAt } — 표에 없으면 null(아무것도 더하지 않는다)
 export function templateExtras(templateId, sent = null) {
   const meta = templateMeta(templateId);
   if (!meta) return null;
   const group = (Array.isArray(sent) ? sent : []).find((row) => row.key === meta.key);
-  return { sender: meta.sender, kind: meta.kind, replaced7: group?.replaced7 || 0, off: meta.active === false, trigger: meta.trigger || '', who: meta.who || '', scenario: meta.scenario || '' };
+  return { sender: meta.sender, kind: meta.kind, replaced7: group?.replaced7 || 0, off: meta.active === false, trigger: meta.trigger || '', who: meta.who || '', scenario: meta.scenario || '', lastSentAt: group?.last_sent || '' };
 }
 
 // 알림톡 템플릿의 대상·종류: ① 보낸 묶음·외부 문구 표·제작현황 표(템플릿 ID) ② KAKAO_TEMPLATE_AUDIENCE ③ 모르면 { audience: '', kind: '' } (분류 안 됨)
@@ -214,6 +221,7 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
       id: entry.key, name: entry.name, sender: entry.sender, kind: entry.kind, audience: entry.audience || '고객', channel: entry.channel, ad: Boolean(entry.ad || group?.ad),
       active: entry.active !== false, count: group ? group.count7 : (sentKnown ? 0 : null), trigger: entry.trigger || '', scenario: entry.scenario || '',
       body: entry.body || '', image: entry.image || '', who: entry.who || '', order: index,
+      lastSentAt: group?.last_sent || '',
       fail: group ? Number(group.fail7) || 0 : 0, external: true, make_on: entry.make_on, make_last_run: entry.make_last_run,
     });
   });
@@ -225,12 +233,18 @@ export function readOnlyKakaoItems(templates, sent = null, { status = 'all', que
     out.push({
       id: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key, sender: group.sender, kind: group.kind, audience: group.audience || '',
       channel: group.channel, ad: Boolean(group.ad), active: true, count: group.count7, trigger: '', scenario: '', body: '', order: 1000 + (extra += 1),
+      lastSentAt: group.last_sent || '',
       fail: Number(group.fail7) || 0, external: true,
     });
   }
   const q = String(query || '').trim().toLowerCase();
+  const qNoSpace = q.replace(/\s+/g, '');
   return out
     .filter((item) => (status === 'in_use' ? (item.count ?? 0) - (item.fail ?? 0) > 0 : true))
-    .filter((item) => !q || item.name.toLowerCase().includes(q))
+    .filter((item) => {
+      if (!q) return true;
+      const name = item.name.toLowerCase();
+      return name.includes(q) || (qNoSpace && name.replace(/\s+/g, '').includes(qNoSpace));
+    })
     .sort((a, b) => ((b.count ?? 0) - (a.count ?? 0)) || (a.order - b.order));
 }

@@ -35,6 +35,8 @@ export function buildSmsItems(overview) {
         trigger: item.trigger || '',
         target: typeof item.target === 'string' ? item.target : '',
         count: recentCount(item),
+        lastSentAt: item.recent?.latest?.occurred_at || '',
+        failedCount: Number(item.recent?.counts?.failed) || 0,
         policy: item.policy || null,
         config: item.configuration || null,
         example: typeof item.example_message?.text === 'string' ? item.example_message : null,
@@ -140,18 +142,24 @@ export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEM
   const out = [];
   for (const item of buildSmsItems(overview)) {
     seen.add(item.id);
+    const sentGroup = sentMap.get(item.id);
     out.push({
       ...item, key: item.id, kind: kindOfCatalogId(item.id), sender: SENDERS.program, ad: false, active: true, channel: '',
+      lastSentAt: item.lastSentAt || sentGroup?.last_sent || '',
+      failedCount: item.failedCount || Number(sentGroup?.fail7) || 0,
       body: item.example?.text || '', scenario: '', external: false, who: '', image: '',
     });
   }
   externals.forEach((entry, index) => {
     if (!SMS_CHANNELS.includes(entry.channel) || seen.has(entry.key)) return;
     seen.add(entry.key);
+    const sentGroup = sentMap.get(entry.key);
     out.push({
       id: entry.key, key: entry.key, name: entry.name, audience: { id: entry.audience === '직원' ? 'staff' : 'customer', label: entry.audience || '고객' },
-      trigger: entry.trigger || '', count: orNull(sentMap.get(entry.key), sentKnown), policy: null, config: null, example: null,
-      order: 1000 + index, make_on: entry.make_on, make_last_run: entry.make_last_run, kind: entry.kind, sender: entry.sender, ad: Boolean(entry.ad || sentMap.get(entry.key)?.ad), active: entry.active !== false,
+      trigger: entry.trigger || '', count: orNull(sentGroup, sentKnown),
+      lastSentAt: sentGroup?.last_sent || '', failedCount: Number(sentGroup?.fail7) || 0,
+      policy: null, config: null, example: null,
+      order: 1000 + index, make_on: entry.make_on, make_last_run: entry.make_last_run, kind: entry.kind, sender: entry.sender, ad: Boolean(entry.ad || sentGroup?.ad), active: entry.active !== false,
       channel: entry.channel, body: entry.body || '', scenario: entry.scenario || '', external: true, who: entry.who || '', image: entry.image || '',
     });
   });
@@ -161,7 +169,9 @@ export function buildKindedItems(overview, sent = null, externals = EXTERNAL_TEM
     seen.add(group.key);
     out.push({
       id: group.key, key: group.key, name: group.kind === UNCLASSIFIED ? unclassifiedName(group.key) : group.key,
-      audience: { id: 'customer', label: group.audience || '고객' }, trigger: '', count: group.count7, policy: null, config: null, example: null,
+      audience: { id: 'customer', label: group.audience || '고객' }, trigger: '', count: group.count7,
+      lastSentAt: group.last_sent || '', failedCount: Number(group.fail7) || 0,
+      policy: null, config: null, example: null,
       order: 2000 + (extra += 1), kind: group.kind, sender: group.sender, ad: Boolean(group.ad), active: true, channel: group.channel,
       body: '', scenario: '', external: true, who: '', image: '',
     });
@@ -304,11 +314,12 @@ export function groupFlows(entries, enabledOf = (entry) => Boolean(entry.autoEna
   return out;
 }
 
-// 검색어 포함 여부(이름·본문·조건·보내는 곳·대상). 빈 검색어면 true.
+// 검색어 포함 여부(이름·본문·조건·보내는 곳·대상, 띄어쓰기 무시 포함). 빈 검색어면 true.
 export function matchesSmsQuery(row, query, recipients = null) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return true;
   if (!row || typeof row !== 'object') return false;
+  const qNoSpace = q.replace(/\s+/g, '');
   const parts = [
     row.name,
     row.body,
@@ -321,7 +332,10 @@ export function matchesSmsQuery(row, query, recipients = null) {
     row.autoKind ? autoConditionLine(row) : '',
     row.autoKind ? autoTargetText(row) : conditionLine(row, recipients),
   ];
-  return parts.some((value) => String(value || '').toLowerCase().includes(q));
+  return parts.some((value) => {
+    const s = String(value || '').toLowerCase();
+    return s.includes(q) || (qNoSpace && s.replace(/\s+/g, '').includes(qNoSpace));
+  });
 }
 
 // 본문을 #{변수} 조각으로 나눈다(미리보기 변수 강조용). 빈 글이면 [].
@@ -657,4 +671,67 @@ export function buildConditionSummary(entryOrItem, { isMine = false, recipients 
   }
   const treatAsMine = Boolean(isMine || entryOrItem.autoKind || (entryOrItem.preview !== undefined && !entryOrItem.sender && !entryOrItem.external));
   return treatAsMine ? buildMineConditionSummary(entryOrItem) : buildCatalogConditionSummary(entryOrItem, recipients);
+}
+
+/**
+ * Format ISO timestamp or YYYY-MM-DD date string into readable KST last-sent label.
+ */
+export function formatLastSentLabel(value, nowMs = Date.now()) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const todayKst = new Date(nowMs + 9 * 3600000).toISOString().slice(0, 10);
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (dateOnly) {
+    const mmdd = `${dateOnly[2]}/${dateOnly[3]}`;
+    return raw === todayKst ? `오늘(${mmdd})` : mmdd;
+  }
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return '';
+  const d = new Date(ms + 9 * 3600000);
+  const ymd = d.toISOString().slice(0, 10);
+  const hhmm = d.toISOString().slice(11, 16);
+  const mmdd = `${ymd.slice(5, 7)}/${ymd.slice(8, 10)}`;
+  return ymd === todayKst ? `오늘 ${hhmm}` : `${mmdd} ${hhmm}`;
+}
+
+/**
+ * Group SMS templates into clear business categories (Reviews grouped together, Referrals/Benefits visible, Staff separated).
+ */
+export function smsDisplayCategory(row) {
+  const audId = row?.audience?.id;
+  const autoAud = row?.autoAudience;
+  if (audId === 'staff' || audId === 'admin' || autoAud === 'staff' || autoAud === 'sales') {
+    return { groupKey: 'staff-alerts', groupLabel: '직원 · 관리자 › 공정 · 납기 알림', tag: '내부 알림', groupMod: 'stl-group--staff', order: 4 };
+  }
+  const name = String(row?.name || '');
+  const body = String(row?.body || row?.preview || '');
+  if (/(리뷰|후기)/i.test(name) || row?.id === 'smartstore_thanks' || row?.id === 'smartstore_confirmed' || /(리뷰|후기)\s*(작성|이벤트|남겨)/.test(body)) {
+    return { groupKey: 'cust-review', groupLabel: '고객 › 리뷰 이벤트', tag: '리뷰 묶음', groupMod: 'stl-group--mine', order: 1 };
+  }
+  if (/(소개|혜택|무료\s*지원|이벤트|가입)/i.test(name) || row?.kind === '이벤트·혜택' || row?.autoKind === 'lead_plus_days' || row?.autoKind === 'member_joined') {
+    return { groupKey: 'cust-benefit', groupLabel: '고객 › 소개 · 혜택', tag: '이벤트·혜택', groupMod: 'stl-group--mine', order: 2 };
+  }
+  return { groupKey: 'cust-order', groupLabel: '고객 › 주문 · 출고 · 주의사항', tag: '주문·출고', groupMod: 'stl-group--cust', order: 3 };
+}
+
+/**
+ * Group Kakao templates (Brand Messages & Alimtalk) into matching business categories.
+ */
+export function kakaoDisplayCategory(row, kindFallback = '') {
+  const aud = String(row?.audience || '');
+  const kind = String(row?.kind || kindFallback || '');
+  if (aud === '직원' || kind === '직원 작업 알림' || kind === '관리자·시스템') {
+    return { groupKey: 'k-staff', groupLabel: '직원 · 관리자 › 업무 알림', groupMod: 'stl-group--staff', order: 5 };
+  }
+  const name = String(row?.name || '');
+  if (/(리뷰|후기)/i.test(name)) {
+    return { groupKey: 'k-review', groupLabel: '고객 › 리뷰 이벤트', groupMod: 'stl-group--mine', order: 1 };
+  }
+  if (/(소개|혜택|무료\s*지원|이벤트|가입|인터뷰)/i.test(name) || kind === '이벤트·혜택') {
+    return { groupKey: 'k-benefit', groupLabel: '고객 › 소개 · 혜택 · 이벤트', groupMod: 'stl-group--mine', order: 2 };
+  }
+  if (kind === '상담·문의' || /문의|상담/.test(name)) {
+    return { groupKey: 'k-inquiry', groupLabel: '고객 › 상담 · 문의', groupMod: 'stl-group--cust', order: 4 };
+  }
+  return { groupKey: 'k-order', groupLabel: '고객 › 주문 · 출고 안내', groupMod: 'stl-group--cust', order: 3 };
 }
