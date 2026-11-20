@@ -61,7 +61,9 @@ export default function SmsAutoControls({ id, enabled, photos = 0, ata = false, 
   };
 
   const toggleBtnLabel = enabled ? (offConfirm ? '끄기 확인' : '끄기') : (confirm ? '켜기 확인' : '켜기');
-  const toggleBtnClass = enabled && offConfirm ? 'ktm-btn ktm-btn--danger-outline' : 'ktm-btn';
+  const toggleBtnClass = !enabled
+    ? 'ktm-btn ktm-btn--on'
+    : (offConfirm ? 'ktm-btn ktm-btn--danger' : 'ktm-btn ktm-btn--off-outline');
 
   return (
     <div className="sac">

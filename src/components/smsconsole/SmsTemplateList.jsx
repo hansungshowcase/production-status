@@ -41,6 +41,8 @@ const renderBodyContent = (text, filled) => {
     : <React.Fragment key={index}>{part.text}</React.Fragment>));
 };
 
+const plainKoreanText = (text) => String(text || '').replace(/멱등 발송/g, '중복 없이 1번 발송');
+
 // 문자 템플릿: 왼쪽 목록 + 오른쪽 미리보기·관리(channel='sms').
 // channel 'kakao': 알림톡 템플릿 화면 위에 끼워 넣는 모드(알림톡이 붙은 자동 발송 흐름만 그린다)
 export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew, onNewHandled, channel = 'sms', ataPreset = '', editPreset = '' }) {
@@ -563,11 +565,12 @@ function renderConditionBoard(summary, st, isMineAuto) {
   const uncertain = Number(st?.uncertain_total) || 0;
   return (
     <section className="stl-cond-board" aria-label="발송 조건 및 현황">
+      <div className="stl-section-eyebrow">발송 조건 · 현황</div>
       <div className="stl-cond-grid">
         <div className="stl-cond-tile stl-cond-tile--when">
           <span className="stl-cond-label">언제 보낼까</span>
-          <strong className="stl-cond-val">{summary.whenMain}</strong>
-          {summary.whenSub ? <span className="stl-cond-sub">{summary.whenSub}</span> : null}
+          <strong className="stl-cond-val">{plainKoreanText(summary.whenMain)}</strong>
+          {summary.whenSub ? <span className="stl-cond-sub">{plainKoreanText(summary.whenSub)}</span> : null}
         </div>
         <div className="stl-cond-tile">
           <span className="stl-cond-label">누구에게</span>
@@ -689,7 +692,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const summary = buildConditionSummary(item, { isMine: false, recipients });
     const detailPart = item.audience?.id !== 'customer' && summary.whoMain
       ? summary.whoMain
-      : (item.count !== null && item.count > 0 ? `7일 ${item.count}건` : (summary.whenSub || ''));
+      : (item.count !== null && item.count > 0 ? `7일 ${item.count}건` : plainKoreanText(summary.whenSub || ''));
     const metaParts = [
       item.audience.label,
       item.external ? '' : item.sender,
@@ -718,7 +721,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
             {summary.whenMain ? (
               <>
                 <span className="stl-meta-sep" aria-hidden="true">·</span>
-                <span className="stl-when">{summary.whenMain}</span>
+                <span className="stl-when">{plainKoreanText(summary.whenMain)}</span>
               </>
             ) : null}
             {metaParts.map((part, idx) => (
@@ -768,13 +771,13 @@ function renderConditionBoard(summary, st, isMineAuto) {
         <section key="msg" className="stl-msg-card" aria-label="발송 문구">
           <div className="stl-card-subhead">
             <div className="stl-card-subhead-left">
-              <span className="stl-card-subhead-title">발송 문구</span>
+              <span className="stl-card-subhead-title">실제 발송 내용</span>
               {hasBody ? <span className="stl-char-count">{[...rawBody].length}자</span> : null}
             </div>
             <div className="stl-card-subhead-right">
               {hasBody && hasVars ? (
                 <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} aria-pressed={previewFilled} onClick={() => setPreviewFilled((v) => !v)}>
-                  {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
+                  {previewFilled ? '원래 양식 보기' : '실제 예시로 보기'}
                 </button>
               ) : null}
               {hasBody ? (
@@ -795,7 +798,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
         <section key="media" className="stl-media-card" aria-label="첨부 이미지">
           <div className="stl-card-subhead">
             <div className="stl-card-subhead-left">
-              <span className="stl-card-subhead-title">첨부 이미지</span>
+              <span className="stl-card-subhead-title">첨부 사진</span>
               <span className="stl-char-count">{photos.length ? `${photos.length}장` : photoBadgeText(entry)}</span>
             </div>
             {photos.length ? (
@@ -934,13 +937,13 @@ function renderConditionBoard(summary, st, isMineAuto) {
       <section key="msg" className="stl-msg-card" aria-label="발송 문구">
         <div className="stl-card-subhead">
           <div className="stl-card-subhead-left">
-            <span className="stl-card-subhead-title">발송 문구</span>
+            <span className="stl-card-subhead-title">실제 발송 내용</span>
             {hasBody ? <span className="stl-char-count">{[...rawBody].length}자</span> : null}
           </div>
           <div className="stl-card-subhead-right">
             {hasBody && hasVars ? (
               <button type="button" className={`ktm-btn stl-mini-btn${previewFilled ? ' is-active' : ''}`} aria-pressed={previewFilled} onClick={() => setPreviewFilled((v) => !v)}>
-                {previewFilled ? '변수 원문 보기' : '예시 채워보기'}
+                {previewFilled ? '원래 양식 보기' : '실제 예시로 보기'}
               </button>
             ) : null}
             {hasBody ? (
@@ -961,7 +964,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
       <section key="media" className="stl-media-card" aria-label="첨부 이미지">
         <div className="stl-card-subhead">
           <div className="stl-card-subhead-left">
-            <span className="stl-card-subhead-title">첨부 이미지</span>
+            <span className="stl-card-subhead-title">첨부 사진</span>
             <span className="stl-char-count">1장</span>
           </div>
           {!imgBroken ? (
@@ -1218,7 +1221,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
       <div className="ktm-header">
         <div>
           <h2 className="ktm-title">문자 템플릿</h2>
-          <p className="ktm-sub">문자 발송 현황을 위에서 확인하고, 적용된 조건과 문구를 한눈에 보고 수정·시험 발송합니다.</p>
+          <p className="ktm-sub">왼쪽에서 문자를 고르면, 오른쪽에 발송 조건과 실제 내용이 바로 보입니다.</p>
         </div>
         <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => setAdding(true)}>+ 템플릿 등록</button>
       </div>

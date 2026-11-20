@@ -3,12 +3,12 @@ import { splitVariables } from './templateListModel.js';
 import './KakaoTemplatePreview.css';
 
 // 알림톡·브랜드메시지 미리보기 말풍선. 카카오 로고·상표는 쓰지 않고 글자만 쓴다.
-export default function KakaoTemplatePreview({ template, banner = '알림톡 도착', onImageClick }) {
+export default function KakaoTemplatePreview({ template, banner = '알림톡 도착', onImageClick, hideImage = false }) {
   const t = template || {};
   const emphasized = t.emphasizeType === 'TEXT';
   const buttons = Array.isArray(t.buttons) ? t.buttons.filter((b) => b && b.name) : [];
   const parts = splitVariables(t.content);
-  const showImage = Boolean(t.imageUrl && (t.emphasizeType === 'IMAGE' || t.allowImage));
+  const showImage = Boolean(!hideImage && t.imageUrl && (t.emphasizeType === 'IMAGE' || t.allowImage));
   return (
     <div className="ktp-board">
       <div className="ktp-bubble">

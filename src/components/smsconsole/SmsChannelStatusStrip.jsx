@@ -13,6 +13,25 @@ const nowLabel = () => {
 };
 const isVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
 
+const KIND_LABELS = {
+  SMS: '단문문자',
+  LMS: '장문문자',
+  MMS: '사진문자',
+  ATA: '알림톡',
+  CTA: '친구톡',
+  BMS_FREE: '브랜드메시지',
+  BMS: '브랜드메시지',
+};
+
+function humanizeKindLabel(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '-';
+  return s
+    .split(/(\s*[·,/]\s*)/)
+    .map((part) => KIND_LABELS[part.toUpperCase()] || part)
+    .join('');
+}
+
 function healthBandText(health) {
   if (!health || typeof health !== 'object') return '';
   const bad = health.state && health.state !== 'ok' && health.state !== 'unknown';
@@ -162,7 +181,10 @@ export default function SmsChannelStatusStrip({
               </div>
               <p className="scss-sub">
                 {isKakao ? (
-                  <>알림톡 {ataOn}개 · 브랜드메시지 {bmsOn}개</>
+                  <>
+                    알림톡 {ataOn}개 · 브랜드메시지 {bmsOn}개
+                    {attentionCount > 0 ? <> · <span className="scss-warn-text">확인 필요 {attentionCount}건</span></> : null}
+                  </>
                 ) : attentionCount > 0 ? (
                   <span className="scss-warn-text">꺼짐·확인 필요 {attentionCount}건 있습니다</span>
                 ) : (
@@ -214,7 +236,7 @@ export default function SmsChannelStatusStrip({
                   {summary.recent.slice(0, 2).map((row) => (
                     <li key={row.key}>
                       <span className="scss-r-time">{row.time || '-'}</span>
-                      <span className="scss-r-kind">{row.kind}</span>
+                      <span className="scss-r-kind">{humanizeKindLabel(row.kind)}</span>
                       <span className="scss-r-count">{row.total}건</span>
                       <span className={`scss-r-state scss-tone-${row.tone}`}>{row.stateLabel}</span>
                     </li>
@@ -255,7 +277,7 @@ export default function SmsChannelStatusStrip({
             {summary.recent.map((row) => (
               <span key={row.key} className="scss-footer-chip">
                 <span className="scss-r-time">{row.time || '-'}</span>
-                <span>{row.kind}</span>
+                <span>{humanizeKindLabel(row.kind)}</span>
                 <strong>{row.total}건</strong>
                 <span className={`scss-tone-${row.tone}`}>({row.stateLabel})</span>
               </span>
