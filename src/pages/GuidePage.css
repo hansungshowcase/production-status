@@ -75,7 +75,8 @@
 }
 
 .guide-masthead-inner {
-  max-width: 1120px;
+  max-width: 1760px;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -193,9 +194,58 @@
   color: #ffffff;
 }
 
+/* ── 상단 화면 전환 바 (사용설명서 ↔ 리뷰 혜택 전용) ── */
+.guide-mode-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #ffffff;
+  border-bottom: 2px solid var(--gp-navy);
+  box-shadow: 0 2px 8px rgba(15, 41, 74, 0.08);
+  padding: 8px 12px;
+}
+
+.guide-mode-inner {
+  max-width: 1760px;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.guide-mode-tab {
+  min-height: 50px;
+  padding: 9px 10px;
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  background: var(--gp-surface-sub);
+  color: var(--gp-ink);
+  font-family: inherit;
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.guide-mode-tab.is-active {
+  background: var(--gp-navy);
+  border-color: var(--gp-navy);
+  color: #ffffff;
+}
+
+.guide-mode-tab--review.is-active {
+  background: #14532d;
+  border-color: #14532d;
+  color: #ffffff;
+}
+
 /* ── 본문 레이아웃 셸 ── */
 .guide-shell {
-  max-width: 1120px;
+  max-width: 1760px;
+  width: 100%;
   margin: 0 auto;
   padding: 16px 12px 0;
 }
@@ -216,7 +266,7 @@
   border: 1.5px solid var(--gp-border);
   border-radius: 6px;
   padding: 16px;
-  scroll-margin-top: 16px;
+  scroll-margin-top: 76px;
 }
 
 .guide-skel {
@@ -367,6 +417,15 @@
   font-weight: 900;
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+.guide-quick-btn--event {
+  background: var(--gp-green-soft);
+  border-color: var(--gp-green);
+}
+
+.guide-quick-btn--event .guide-quick-num {
+  background: #14532d;
 }
 
 .guide-quick-text {
@@ -1011,77 +1070,345 @@
   padding-left: 22px;
 }
 
-/* ── 07. 리뷰 이벤트 통합 허브 ── */
-.guide-review-hub {
+/* ── 07. 사용설명서 하단 리뷰 전용 화면 진입 배너 ── */
+.guide-manual-review-promo {
   border: 2px solid var(--gp-green);
-}
-
-.guide-review-hero-box {
-  padding: 14px;
-  margin-bottom: 14px;
   background: var(--gp-green-soft);
+}
+
+.guide-manual-review-desc {
+  margin: 0 0 14px;
+  font-size: calc(16px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink);
+  line-height: 1.48;
+}
+
+/* ── 전용 리뷰 이벤트 뷰 ── */
+.guide-review-view {
   border: 2px solid var(--gp-green);
-  border-radius: 6px;
+  padding: 16px;
+  scroll-margin-top: 76px;
 }
 
-.guide-review-total {
+.guide-rv-header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid var(--gp-border);
 }
 
-.guide-review-total span {
-  font-size: calc(15px * var(--gs));
+.guide-rv-kicker {
+  font-size: calc(14.5px * var(--gs));
   font-weight: 800;
-  color: var(--gp-green);
+  color: #14532d;
+  margin-bottom: 4px;
 }
 
-.guide-review-total strong {
+.guide-rv-heading {
+  margin: 0;
   font-size: calc(20px * var(--gs));
   font-weight: 900;
   color: var(--gp-ink);
   line-height: 1.3;
+  letter-spacing: -0.02em;
 }
 
-.guide-review-jump-row {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-
-.guide-review-jump-btn {
-  display: flex;
+.guide-rv-back-btn {
+  display: none;
   align-items: center;
   justify-content: center;
-  min-height: 48px;
-  padding: 8px 10px;
-  border: 2px solid var(--gp-green);
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 2px solid var(--gp-navy);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--gp-navy);
+  font-family: inherit;
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.guide-rv-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.guide-rv-tab {
+  min-height: 56px;
+  padding: 8px 8px;
+  border: 2px solid var(--gp-border);
   border-radius: 6px;
   background: #ffffff;
   color: var(--gp-ink);
+  font-family: inherit;
   font-size: calc(15px * var(--gs));
-  font-weight: 900;
-  line-height: 1.25;
-  text-decoration: none;
-  text-align: center;
-  overflow-wrap: break-word;
-}
-
-.guide-review-cards {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
-}
-
-.guide-review-card {
-  border: 2px solid var(--gp-border);
-  border-radius: 6px;
-  padding: 16px;
-  background: var(--gp-surface);
-  scroll-margin-top: 16px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.guide-rv-tab-name {
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-ink-soft);
+  line-height: 1.25;
+}
+
+.guide-rv-tab-reward {
+  font-size: calc(16px * var(--gs));
+  font-weight: 900;
+  color: #14532d;
+  line-height: 1.2;
+}
+
+.guide-rv-tab.is-active {
+  background: #14532d;
+  border-color: #14532d;
+  color: #ffffff;
+}
+
+.guide-rv-tab.is-active .guide-rv-tab-name,
+.guide-rv-tab.is-active .guide-rv-tab-reward {
+  color: #ffffff;
+}
+
+.guide-rv-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 2px solid var(--gp-border-light);
+}
+
+.guide-rv-poster-col {
+  min-width: 0;
+  width: 100%;
+}
+
+.guide-rv-poster-btn {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 2px solid var(--gp-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+  font-family: inherit;
+  font-size: calc(15px * var(--gs));
+  cursor: zoom-in;
+  text-align: center;
+}
+
+.guide-rv-poster-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.guide-rv-poster-zoom-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--gp-surface-sub);
+  border-top: 1.5px solid var(--gp-border-light);
+  color: var(--gp-navy);
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 900;
+}
+
+.guide-rv-detail-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.guide-rv-wide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-rv-action-col {
+  min-width: 0;
+}
+
+.guide-rv-action-card {
+  padding: 16px;
+  border: 2px solid var(--gp-green);
+  border-radius: 8px;
+  background: var(--gp-green-soft);
+}
+
+.guide-rv-action-kicker {
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+  color: #14532d;
+  margin-bottom: 10px;
+}
+
+.guide-rv-tip-details {
+  margin-top: 14px;
+}
+
+.guide-rv-tip-details .guide-illus-box {
+  margin-bottom: 0;
+}
+
+.guide-rv-others {
+  margin-top: 18px;
+}
+
+.guide-rv-others-title {
+  font-size: calc(16px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+  margin-bottom: 10px;
+}
+
+.guide-rv-others-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.guide-rv-other-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 74px;
+  padding: 12px 14px;
+  border: 2px solid var(--gp-border);
+  border-radius: 6px;
+  background: var(--gp-surface-sub);
+  font-family: inherit;
+  font-size: calc(15px * var(--gs));
+  text-align: left;
+  cursor: pointer;
+  color: var(--gp-ink);
+}
+
+.guide-rv-other-ch {
+  font-size: calc(14px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-navy);
+}
+
+.guide-rv-other-name {
+  font-size: calc(16.5px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+}
+
+.guide-rv-other-go {
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 800;
+  color: #14532d;
+  margin-top: 2px;
+}
+
+.guide-rv-footer-bar {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1.5px solid var(--gp-border-light);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+/* ── 포스터 확대 모달 ── */
+.guide-zoom-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.86);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-zoom-dialog {
+  width: 100%;
+  max-width: 960px;
+  max-height: 92vh;
+  background: #ffffff;
+  border: 2px solid var(--gp-ink);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.guide-zoom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--gp-surface-sub);
+  border-bottom: 2px solid var(--gp-border);
+}
+
+.guide-zoom-title {
+  font-size: calc(16px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-ink);
+}
+
+.guide-zoom-close {
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 2px solid var(--gp-ink);
+  border-radius: 6px;
+  background: var(--gp-navy);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.guide-zoom-img-wrap {
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: #0f172a;
+}
+
+.guide-zoom-img {
+  display: block;
+  max-width: 100%;
+  max-height: 78vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 4px;
 }
 
 .guide-review-card-head {
@@ -1294,7 +1621,8 @@
 
 /* ── 푸터 ── */
 .guide-foot {
-  max-width: 1120px;
+  max-width: 1760px;
+  width: 100%;
   margin: 18px auto 0;
   padding: 14px 16px 8px;
   text-align: center;
@@ -1351,6 +1679,12 @@
   justify-content: center;
 }
 
+.guide-dock-call-btn--kakao {
+  background: var(--gp-kakao-bg);
+  border-color: var(--gp-ink);
+  color: var(--gp-ink);
+}
+
 /* ── 초소형 모바일 (<= 360px) ── */
 @media (max-width: 360px) {
   .guide-quick-grid {
@@ -1374,11 +1708,20 @@
     padding: 8px 8px;
   }
   .guide-dock-call-btn {
-    font-size: 14.5px;
+    font-size: 14px;
+    white-space: normal;
+    line-height: 1.2;
   }
   .guide-kv-v--nowrap {
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+  .guide-mode-tab {
+    padding: 8px 6px;
+    font-size: calc(14px * var(--gs));
+  }
+  .guide-rv-tab {
+    padding: 8px 6px;
   }
 }
 
@@ -1451,15 +1794,14 @@
   .guide-preset-cards {
     display: none;
   }
-  .guide-review-jump-row {
+  .guide-review-view {
+    padding: 24px;
+  }
+  .guide-rv-others-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .guide-review-cards {
+  .guide-rv-footer-bar {
     grid-template-columns: 1fr 1fr;
-  }
-  .guide-review-card:first-child,
-  .guide-review-card--compact {
-    grid-column: 1 / -1;
   }
 }
 
@@ -1476,11 +1818,135 @@ body:has(.guide-page),
   .guide-page {
     padding-bottom: 40px;
   }
+  .guide-masthead {
+    padding: 14px 24px;
+  }
+  .guide-mode-bar {
+    position: static;
+    box-shadow: none;
+    padding: 10px 24px;
+  }
+  .guide-sheet,
+  .guide-review-view {
+    scroll-margin-top: 16px;
+  }
   .guide-shell {
+    max-width: 1760px;
+    padding: 18px 24px 0;
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 290px minmax(0, 1fr);
     gap: 22px;
     align-items: start;
+  }
+  .guide-shell.guide-shell--review {
+    display: block;
+    max-width: 1760px;
+    width: 100%;
+    padding: 18px 24px 44px;
+  }
+  .guide-foot {
+    max-width: 1760px;
+    padding: 14px 24px 8px;
+  }
+  .guide-radiator-visuals {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: stretch;
+    margin-bottom: 16px;
+  }
+  .guide-radiator-visuals .guide-illus-box {
+    margin-bottom: 0;
+  }
+  .guide-radiator-visuals .guide-diagram-box {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .guide-radiator-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  .guide-as-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+    align-items: stretch;
+  }
+  .guide-as-actions .guide-inquiry-hint {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+  .guide-zoom-dialog {
+    max-width: 1280px;
+  }
+  .guide-side-as-desc {
+    margin: 6px 0 10px;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--gp-ink-soft);
+    line-height: 1.4;
+  }
+  .guide-sidebar .guide-btn {
+    font-size: 15.5px;
+    padding: 11px 10px;
+  }
+  .guide-rv-back-btn {
+    display: inline-flex;
+  }
+  .guide-rv-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .guide-rv-tab {
+    min-height: 68px;
+  }
+  .guide-rv-stage--side-landscape {
+    display: grid;
+    grid-template-columns: minmax(420px, 46%) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .guide-rv-stage--side-portrait {
+    display: grid;
+    grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .guide-rv-stage--side-landscape .guide-rv-poster-col,
+  .guide-rv-stage--side-portrait .guide-rv-poster-col {
+    position: sticky;
+    top: 18px;
+  }
+  .guide-rv-stage--wide-banner .guide-rv-poster-col {
+    max-width: 100%;
+    margin: 0;
+  }
+  .guide-rv-stage--wide-banner .guide-rv-wide-body,
+  .guide-rv-stage--text-only .guide-rv-wide-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .guide-side-review-box {
+    border: 2px solid var(--gp-green);
+    background: var(--gp-green-soft);
+  }
+  .guide-side-review-kicker {
+    font-size: 14px;
+    font-weight: 900;
+    color: #14532d;
+  }
+  .guide-side-review-title {
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--gp-ink);
+    margin: 4px 0 10px;
+    line-height: 1.35;
   }
   .guide-sidebar {
     display: flex;
@@ -1599,6 +2065,47 @@ body:has(.guide-page),
   }
 }
 
+/* ── 와이드 PC 전체 폭 최적화 (>= 1200px) ── */
+@media (min-width: 1200px) {
+  .guide-safety-split {
+    display: grid;
+    grid-template-columns: minmax(420px, 45%) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .guide-safety-split .guide-illus-box {
+    margin-bottom: 0;
+    position: sticky;
+    top: 18px;
+  }
+  .guide-level-split {
+    display: grid;
+    grid-template-columns: minmax(420px, 48%) minmax(0, 1fr);
+    gap: 20px;
+    align-items: center;
+  }
+  .guide-level-split .guide-illus-box {
+    margin-bottom: 0;
+  }
+  .guide-rv-stage--wide-banner {
+    display: grid;
+    grid-template-columns: minmax(560px, 56%) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+  .guide-rv-stage--wide-banner .guide-rv-poster-col {
+    position: sticky;
+    top: 18px;
+    max-width: none;
+    margin: 0;
+  }
+  .guide-rv-stage--wide-banner .guide-rv-wide-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
 @media print {
   .guide-page,
   .guide-page * {
@@ -1606,9 +2113,14 @@ body:has(.guide-page),
     print-color-adjust: exact;
   }
   .guide-font-bar,
+  .guide-mode-bar,
   .guide-sidebar,
   .guide-quick-sheet,
-  .guide-mobile-dock {
+  .guide-mobile-dock,
+  .guide-zoom-backdrop,
+  .guide-rv-poster-zoom-hint,
+  .guide-rv-back-btn,
+  .guide-manual-review-promo {
     display: none !important;
   }
   .guide-page {

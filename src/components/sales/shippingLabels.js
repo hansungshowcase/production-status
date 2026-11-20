@@ -160,7 +160,7 @@ function buildCompactThermalMarkup(data, isLast) {
       <div class="label-fit">
         <header class="label-head">
           <div class="label-brand"><strong>${escapeHtml(data.brand.en)}</strong> <span>${escapeHtml(data.brand.name)}</span></div>
-          <div class="label-as">A/S ${escapeHtml(data.brand.asPhone)}</div>
+          <div class="label-as">카카오톡 A/S (QR)</div>
         </header>
 
         <table class="label-meta">
@@ -537,7 +537,7 @@ function buildPremiumPlateMarkup(data, idx, isLast) {
             </div>
             <div class="plate-head-right">
               <span class="plate-seal-badge">절대 제거·훼손 금지</span>
-              <span class="plate-as">A/S ${escapeHtml(data.brand.asPhone)}</span>
+              <span class="plate-as">카카오톡 A/S 접수 (QR)</span>
             </div>
           </header>
 
@@ -609,7 +609,7 @@ function buildPremiumPlateMarkup(data, idx, isLast) {
               <ul class="plate-qr-list">
                 <li>10종 품목별 온도·제상 기준표</li>
                 <li>상세 설명서 · 수평조절 · 청소법</li>
-                <li>무상 A/S 조회 · 카톡/전화 문의</li>
+                <li>무상 A/S 조회 · 카카오톡 A/S 문의</li>
               </ul>
               <div class="plate-event-badge">
                 <div class="plate-event-main">리뷰 남기고 최대 14만원 받자!</div>

@@ -402,7 +402,7 @@ export default function ShippingLabelModal({ active = true, order, onClose }) {
                           </div>
                           <div className="slm-plate-head-right">
                             <span className="slm-plate-seal-badge">절대 제거·훼손 금지</span>
-                            <span className="slm-plate-as">A/S {labelData.brand.asPhone}</span>
+                            <span className="slm-plate-as">카카오톡 A/S 접수 (QR)</span>
                           </div>
                         </div>
 
@@ -480,7 +480,7 @@ export default function ShippingLabelModal({ active = true, order, onClose }) {
                             <ul className="slm-plate-qr-list">
                               <li>10종 품목별 온도·제상 기준표</li>
                               <li>상세 설명서 · 수평조절 · 청소법</li>
-                              <li>무상 A/S 조회 · 카톡/전화 문의</li>
+                              <li>무상 A/S 조회 · 카카오톡 A/S 문의</li>
                             </ul>
                             <div className="slm-plate-event-badge">
                               <div className="slm-plate-event-main">리뷰 남기고 최대 14만원 받자!</div>
@@ -507,7 +507,7 @@ export default function ShippingLabelModal({ active = true, order, onClose }) {
                       <div className="slm-sheet-brand">
                         <strong>{labelData.brand.en}</strong> <span>{labelData.brand.name}</span>
                       </div>
-                      <div className="slm-sheet-as">A/S {labelData.brand.asPhone}</div>
+                      <div className="slm-sheet-as">카카오톡 A/S (QR)</div>
                     </div>
 
                     <table className="slm-sheet-table">

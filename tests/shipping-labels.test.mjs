@@ -124,10 +124,11 @@ test('buildShippingLabelData와 buildShippingLabelPrintHtml은 명함 4장 기�
     '장갑',
     '위·아래',
     '유상 처리',
-    '031-986-2458',
+    '카카오톡 A/S',
   ]) {
     assert.ok(plateHtml.includes(requiredText), `180x100 인쇄 HTML에 '${requiredText}'가 빠졌습니다.`);
   }
+  assert.doesNotMatch(plateHtml, /031-986-2458/);
   for (const reviewHint of ['최대 14만원', '블로그', '인스타', '구글']) {
     assert.ok(plateHtml.includes(reviewHint), `180x100 인쇄 HTML에 리뷰 키워드 '${reviewHint}'가 빠졌습니다.`);
   }
@@ -170,7 +171,8 @@ test('buildShippingLabelData와 buildShippingLabelPrintHtml은 명함 4장 기�
     assert.match(html, /통풍구 15~20cm 확보/);
     assert.match(html, /라지에이터 월 1회 청소/);
     assert.match(html, /(?:&#39;|')def(?:&#39;|') 표시는 정상 제상 중/);
-    assert.match(html, /031-986-2458/);
+    assert.match(html, /카카오톡 A\/S/);
+    assert.doesNotMatch(html, /031-986-2458/);
     assert.match(html, /12개월 \(~2027\.11\.21\)/);
     assert.match(html, /<svg[^>]*shape-rendering="crispEdges"/);
     assert.doesNotMatch(html, /알앤에프냉동덧방/);
@@ -296,13 +298,28 @@ test('SalesOrderCard와 App에 라벨 출력 버튼과 /guide/:token 공개 라�
   assert.match(guideSource, /ControllerDiagramSvg/);
   assert.match(guideSource, /RadiatorDiagramSvg/);
   assert.match(guideSource, /id="sec-reviews"/);
+  assert.match(guideSource, /tab=review|searchParams\.get\('tab'\)/);
+  assert.match(guideSource, /guide-zoom-backdrop/);
+  assert.doesNotMatch(guideSource, /031-986-2458|asPhone/);
+  assert.equal(SHOWCASE_GUIDE_BRAND.asKakaoChatUrl, 'http://pf.kakao.com/_LxgyRxj/chat');
+  assert.equal(SHOWCASE_GUIDE_BRAND.asKakaoLabel, '카카오톡 A/S 문의 바로가기');
+  assert.match(guideSource, /asKakaoChatUrl/);
+  assert.match(guideSource, /asKakaoLabel/);
   assert.match(guideSource, /\/images\/guide\/installation-safety\.webp/);
   assert.match(guideSource, /\/images\/guide\/radiator-cleaning-steps\.webp/);
   assert.match(guideSource, /\/images\/guide\/leveling-guide\.webp/);
   assert.match(guideSource, /\/images\/guide\/review-photo-tip\.webp/);
-  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'blog'));
-  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'sns'));
-  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'google'));
-  assert.ok(SHOWCASE_REVIEW_EVENTS.some((e) => e.id === 'smartstore'));
+  const blogEv = SHOWCASE_REVIEW_EVENTS.find((e) => e.id === 'blog');
+  const snsEv = SHOWCASE_REVIEW_EVENTS.find((e) => e.id === 'sns');
+  const googleEv = SHOWCASE_REVIEW_EVENTS.find((e) => e.id === 'google');
+  const storeEv = SHOWCASE_REVIEW_EVENTS.find((e) => e.id === 'smartstore');
+  assert.equal(blogEv?.posterImage, '/sms-templates/review_blog.jpg');
+  assert.equal(snsEv?.posterImage, '/sms-templates/review_sns.jpg');
+  assert.equal(googleEv?.posterImage, '/sms-templates/review_google.jpg');
+  assert.equal(storeEv?.posterImage, null);
+  for (const poster of ['review_blog.jpg', 'review_sns.jpg', 'review_google.jpg']) {
+    const absPath = new URL(`../public/sms-templates/${poster}`, import.meta.url);
+    assert.ok(readFileSync(absPath).byteLength > 10000, `${poster} file missing`);
+  }
   assert.equal(SHOWCASE_GUIDE_BRAND.blogReviewFormUrl, 'https://forms.gle/LnxodxFTxWjcVwx37');
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { getTrackInfo, TrackApiError } from '../api/track';
 import { safeGet, safeSet } from '../utils/safeStorage';
 import { resolveInquiryRoute } from './inquiryRouting';
@@ -41,8 +41,16 @@ const TOC_ITEMS = [
   { href: '#sec-radiator', num: '05', label: '라지에이터 청소 방법' },
   { href: '#sec-leveling', num: '06', label: '쇼케이스 수평 조절' },
   { href: '#sec-reviews', num: '07', label: '리뷰 최대 14만원 참여' },
-  { href: '#sec-support', num: '08', label: '무상 A/S · 담당자 문의' },
+  { href: '#sec-support', num: '08', label: '무상 A/S · 카카오톡 문의' },
 ];
+
+const REVIEW_HASH_CHANNEL_MAP = {
+  '#sec-reviews': 'blog',
+  '#review-blog': 'blog',
+  '#review-sns': 'sns',
+  '#review-google': 'google',
+  '#review-store': 'smartstore',
+};
 
 function initialFontScale() {
   const saved = safeGet(FONT_SCALE_STORAGE_KEY);
@@ -172,11 +180,292 @@ function RadiatorDiagramSvg() {
   );
 }
 
+function ReviewPosterBox({ event, onZoom }) {
+  if (!event?.posterImage) return null;
+  return (
+    <div className="guide-rv-poster-col">
+      <button
+        type="button"
+        className="guide-rv-poster-btn"
+        onClick={() => onZoom({ src: event.posterImage, alt: event.posterAlt, title: event.title })}
+      >
+        <img
+          className="guide-rv-poster-img"
+          src={event.posterImage}
+          alt={event.posterAlt}
+          width={event.posterWidth}
+          height={event.posterHeight}
+          loading="eager"
+          decoding="sync"
+        />
+        <span className="guide-rv-poster-zoom-hint">눌러서 이미지 크게 보기 +</span>
+      </button>
+    </div>
+  );
+}
+
+function ReviewActionButtons({ event }) {
+  return (
+    <div className="guide-review-actions">
+      <a
+        className="guide-btn guide-btn--event"
+        href={event.primaryCtaUrl}
+        target={event.primaryCtaUrl.startsWith('http') ? '_blank' : undefined}
+        rel={event.primaryCtaUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+      >
+        {event.primaryCtaLabel} {event.primaryCtaUrl.startsWith('http') ? '↗' : ''}
+      </a>
+
+      {event.secondaryCtaUrl && (
+        <a
+          className="guide-btn guide-btn--secondary"
+          href={event.secondaryCtaUrl}
+          target={event.secondaryCtaUrl.startsWith('http') ? '_blank' : undefined}
+          rel={event.secondaryCtaUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+        >
+          {event.secondaryCtaLabel} {event.secondaryCtaUrl.startsWith('http') ? '↗' : ''}
+        </a>
+      )}
+
+      {event.guideCtaUrl && (
+        <a
+          className="guide-text-link"
+          href={event.guideCtaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {event.guideCtaLabel} ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
+function ReviewDetailBody({
+  event,
+  copiedMap,
+  onCopyText,
+  includeActions = true,
+}) {
+  return (
+    <div className="guide-rv-detail-col">
+      <div className="guide-review-card-head">
+        <div>
+          <span className="guide-review-channel">{event.channelBadge}</span>
+          <h3 className="guide-review-title">{event.title}</h3>
+        </div>
+        <div className="guide-review-reward-pill mono">{event.maxReward}</div>
+      </div>
+
+      <div className="guide-review-timing">{event.payoutTiming}</div>
+
+      <div className="guide-review-tier-list">
+        {event.rewards.map((tier) => (
+          <div key={tier.label} className="guide-review-tier-row">
+            <span>{tier.label}</span>
+            <strong className="mono">{tier.amount}</strong>
+          </div>
+        ))}
+      </div>
+
+      {event.titleTemplate && (
+        <div className="guide-copy-box">
+          <div className="guide-copy-k">필수 제목 양식 (그대로 복사해 바꾸세요)</div>
+          <div className="guide-copy-v">{event.titleTemplate}</div>
+          <div className="guide-copy-ex">{event.titleExample}</div>
+          <button
+            type="button"
+            className="guide-btn guide-btn--copy"
+            onClick={() => onCopyText('blog_title', event.titleTemplate)}
+          >
+            {copiedMap.blog_title ? '제목 양식이 복사되었습니다 ✓' : '제목 양식 복사하기'}
+          </button>
+        </div>
+      )}
+
+      {event.tagHandle && (
+        <div className="guide-copy-box">
+          <div className="guide-copy-k">게시물 필수 태그 아이디</div>
+          <div className="guide-copy-v mono">{event.tagHandle}</div>
+          <button
+            type="button"
+            className="guide-btn guide-btn--copy"
+            onClick={() => onCopyText('sns_tag', event.tagHandle)}
+          >
+            {copiedMap.sns_tag ? '@hansungtech 복사 완료 ✓' : '@hansungtech 태그 복사하기'}
+          </button>
+        </div>
+      )}
+
+      <ul className="guide-ul guide-review-reqs">
+        {event.requirements.map((req) => (
+          <li key={req}>{req}</li>
+        ))}
+      </ul>
+
+      {includeActions && <ReviewActionButtons event={event} />}
+
+      {event.showPhotoTip && (
+        <details className="guide-details guide-rv-tip-details">
+          <summary className="guide-details-summary">리뷰 사진 잘 찍는 예시 보기</summary>
+          <div className="guide-details-content">
+            <figure className="guide-illus-box">
+              <img
+                className="guide-illus-img"
+                src="/images/guide/review-photo-tip.webp"
+                alt="리뷰 사진 잘 찍는 법 그림: 왼쪽은 매장 분위기와 쇼케이스 전체, 상단 HANSUNG 로고가 또렷하게 나온 좋은 예(O), 오른쪽은 어둡거나 일부만 찍은 나쁜 예(✕)"
+                width="1200"
+                height="670"
+                loading="eager"
+                decoding="sync"
+              />
+              <figcaption className="guide-illus-steps guide-illus-steps--2col">
+                <span><strong>O 잘 찍은 사진:</strong> 매장 전체 분위기 + 쇼케이스 + 상단 HANSUNG 로고 보이게</span>
+                <span><strong>✕ 피할 사진:</strong> 너무 어둡거나 유리 일부만 가까이 찍기</span>
+              </figcaption>
+            </figure>
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function ReviewShowcaseView({
+  activeReview,
+  copiedMap,
+  onCopyText,
+  onSelectChannel,
+  onOpenManual,
+  onZoomPoster,
+  onKakaoInquiry,
+}) {
+  const otherReviews = SHOWCASE_REVIEW_EVENTS.filter((ev) => ev.id !== activeReview.id);
+  const isWideLayout = activeReview.posterLayout === 'wide-banner' || activeReview.posterLayout === 'text-only';
+
+  return (
+    <section id="sec-reviews" className="guide-sheet guide-review-view" aria-labelledby="heading-reviews">
+      <div className="guide-rv-header">
+        <div>
+          <div className="guide-rv-kicker">중복 참여 가능 · 블로그 7만 + 인스타·쓰레드 4만 + 구글 3만</div>
+          <h2 id="heading-reviews" className="guide-rv-heading">
+            리뷰 남기고 현금 최대 140,000원 (+스토어 3만원)
+          </h2>
+        </div>
+        <button type="button" className="guide-rv-back-btn" onClick={() => onOpenManual()}>
+          ← 사용설명서 · 청소법
+        </button>
+      </div>
+
+      <div className="guide-rv-tabs" role="tablist" aria-label="리뷰 채널 선택">
+        {SHOWCASE_REVIEW_EVENTS.map((ev) => {
+          const selected = ev.id === activeReview.id;
+          return (
+            <button
+              key={ev.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className={`guide-rv-tab${selected ? ' is-active' : ''}`}
+              onClick={() => onSelectChannel(ev.id)}
+            >
+              <span className="guide-rv-tab-name">{ev.shortLabel}</span>
+              <strong className="guide-rv-tab-reward mono">{ev.shortReward}</strong>
+            </button>
+          );
+        })}
+      </div>
+
+      <article
+        id={activeReview.anchorId}
+        className={`guide-rv-stage guide-rv-stage--${activeReview.posterLayout}`}
+        role="tabpanel"
+      >
+        {isWideLayout ? (
+          <>
+            <ReviewPosterBox event={activeReview} onZoom={onZoomPoster} />
+            <div className="guide-rv-wide-body">
+              <ReviewDetailBody
+                event={activeReview}
+                copiedMap={copiedMap}
+                onCopyText={onCopyText}
+                includeActions={false}
+              />
+              <div className="guide-rv-action-col">
+                <div className="guide-rv-action-card">
+                  <div className="guide-rv-action-kicker">바로 작성 및 접수</div>
+                  <ReviewActionButtons event={activeReview} />
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <ReviewPosterBox event={activeReview} onZoom={onZoomPoster} />
+            <ReviewDetailBody
+              event={activeReview}
+              copiedMap={copiedMap}
+              onCopyText={onCopyText}
+              includeActions
+            />
+          </>
+        )}
+      </article>
+
+      <div className="guide-rv-others">
+        <div className="guide-rv-others-title">다른 리뷰도 함께 참여하면 현금 혜택이 커집니다</div>
+        <div className="guide-rv-others-grid">
+          {otherReviews.map((ev) => (
+            <button
+              key={ev.id}
+              type="button"
+              className="guide-rv-other-card"
+              onClick={() => onSelectChannel(ev.id)}
+            >
+              <span className="guide-rv-other-ch">{ev.channelBadge}</span>
+              <strong className="guide-rv-other-name">{ev.shortLabel} · {ev.shortReward}</strong>
+              <span className="guide-rv-other-go">자세히 보기 →</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="guide-rv-footer-bar">
+        <button type="button" className="guide-btn guide-btn--secondary" onClick={() => onOpenManual()}>
+          ← 제품 사용설명서 · 라지에이터 청소법 보기
+        </button>
+        <a
+          className="guide-btn guide-btn--kakao"
+          href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onKakaoInquiry}
+        >
+          {SHOWCASE_GUIDE_BRAND.asKakaoLabel} ↗
+        </a>
+      </div>
+    </section>
+  );
+}
+
 export default function GuidePage() {
   const { token } = useParams();
   const hasToken = Boolean(String(token || '').trim());
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const queryPresetKey = searchParams.get('p');
+
+  const validReviewIds = useMemo(
+    () => SHOWCASE_REVIEW_EVENTS.map((ev) => ev.id),
+    [],
+  );
+  const viewMode = searchParams.get('tab') === 'review' ? 'review' : 'manual';
+  const rawChannel = searchParams.get('ch');
+  const activeReviewId = validReviewIds.includes(rawChannel) ? rawChannel : 'blog';
+  const activeReview = useMemo(
+    () => SHOWCASE_REVIEW_EVENTS.find((ev) => ev.id === activeReviewId) || SHOWCASE_REVIEW_EVENTS[0],
+    [activeReviewId],
+  );
 
   const [fontScale, setFontScale] = useState(initialFontScale);
   const [data, setData] = useState(null);
@@ -185,10 +474,88 @@ export default function GuidePage() {
   const [error, setError] = useState('');
   const [inquiryCopied, setInquiryCopied] = useState(false);
   const [copiedMap, setCopiedMap] = useState({});
+  const [zoomedPoster, setZoomedPoster] = useState(null);
   const mountedRef = useRef(true);
   const copyTimersRef = useRef({});
   const inquiryTimerRef = useRef(null);
   const loadRequestIdRef = useRef(0);
+  const lastHashRef = useRef('');
+
+  useEffect(() => {
+    if (!location.hash || location.hash === lastHashRef.current) return;
+    lastHashRef.current = location.hash;
+    const mappedChannel = REVIEW_HASH_CHANNEL_MAP[location.hash];
+    if (!mappedChannel) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'review');
+      next.set('ch', mappedChannel);
+      return next;
+    }, { replace: true });
+  }, [location.hash, setSearchParams]);
+
+  useEffect(() => {
+    if (viewMode !== 'review') {
+      setZoomedPoster(null);
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (!zoomedPoster) return undefined;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setZoomedPoster(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [zoomedPoster]);
+
+  const openReviewView = useCallback((channelId = 'blog') => {
+    const safeChannel = validReviewIds.includes(channelId) ? channelId : 'blog';
+    const alreadyInReview = viewMode === 'review';
+    setZoomedPoster(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'review');
+      next.set('ch', safeChannel);
+      return next;
+    }, { replace: alreadyInReview });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [setSearchParams, validReviewIds, viewMode]);
+
+  const openManualView = useCallback((sectionId = null) => {
+    setZoomedPoster(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('tab');
+      next.delete('ch');
+      return next;
+    }, { replace: false });
+    if (sectionId) {
+      requestAnimationFrame(() => {
+        const target = document.getElementById(sectionId);
+        if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
+      });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [setSearchParams]);
+
+  const selectReviewChannel = useCallback((channelId) => {
+    const safeChannel = validReviewIds.includes(channelId) ? channelId : 'blog';
+    setZoomedPoster(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'review');
+      next.set('ch', safeChannel);
+      return next;
+    }, { replace: true });
+    requestAnimationFrame(() => {
+      const sec = document.getElementById('sec-reviews');
+      if (sec) sec.scrollIntoView({ behavior: 'auto', block: 'start' });
+    });
+  }, [setSearchParams, validReviewIds]);
 
   const handleFontScaleChange = (nextKey) => {
     setFontScale(nextKey);
@@ -373,60 +740,138 @@ export default function GuidePage() {
         </div>
       </header>
 
-      <div className="guide-shell">
-        {/* PC 좌측 고정 목차 & A/S 사이드바 (>= 1024px) */}
-        <aside className="guide-sidebar" aria-label="설명서 목차 및 빠른 A/S 안내">
-          <div className="guide-side-box guide-side-box--as">
-            <div className="guide-side-kicker">무상 A/S 출고일로부터 {SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월</div>
-            <div className="guide-side-phone mono">{SHOWCASE_GUIDE_BRAND.asPhone}</div>
-            <a className="guide-btn guide-btn--primary" href={SHOWCASE_GUIDE_BRAND.asPhoneHref}>
-              <span>A/S 전화</span>
-              <span className="mono guide-nowrap">({SHOWCASE_GUIDE_BRAND.asPhone})</span>
-            </a>
-            {data && token && (
-              <Link className="guide-side-track-link" to={`/track/${encodeURIComponent(token)}`}>
-                주문 진행현황 보기 →
-              </Link>
-            )}
-          </div>
+      {/* 전역 상단 화면 전환 바: 제품 사용설명서 ↔ 리뷰 혜택 전용 화면 */}
+      <nav className="guide-mode-bar" aria-label="안내 화면 전환">
+        <div className="guide-mode-inner" role="tablist" aria-label="설명서 및 리뷰 혜택 전환">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'manual'}
+            className={`guide-mode-tab${viewMode === 'manual' ? ' is-active' : ''}`}
+            onClick={() => openManualView()}
+          >
+            제품 사용설명서 · 청소법
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'review'}
+            className={`guide-mode-tab guide-mode-tab--review${viewMode === 'review' ? ' is-active' : ''}`}
+            onClick={() => openReviewView(activeReviewId)}
+          >
+            리뷰 혜택 · 최대 14만원
+          </button>
+        </div>
+      </nav>
 
-          <nav className="guide-side-box" aria-label="설명서 항목 목차">
-            <div className="guide-side-toc-title">설명서 · 리뷰 목차</div>
-            <ul className="guide-toc-list">
-              {TOC_ITEMS.map((item) => (
-                <li key={item.href}>
-                  <a className="guide-toc-link" href={item.href}>
-                    <span className="guide-toc-num mono">{item.num}</span>
-                    <span>{item.label}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <div className="guide-side-box guide-side-seal">
-            <strong>정품 보증 라벨 임의 제거 금지</strong>
-            <p>스티커 훼손 시 출고일 확인·A/S에 불이익이 있을 수 있습니다.</p>
-          </div>
-        </aside>
-
-        {/* 본문 매뉴얼 영역 */}
-        <main id="guide-main" className="guide-main">
-          {/* 모바일·태블릿 전용: 상황별 큰 바로가기 버튼 */}
-          <section className="guide-sheet guide-quick-sheet" aria-labelledby="guide-quick-heading">
-            <h2 id="guide-quick-heading" className="guide-sheet-h2">무엇을 찾고 계신가요? (누르면 이동)</h2>
-            <div className="guide-quick-grid">
-              {QUICK_PROBLEMS.map((item) => (
-                <a key={item.href} href={item.href} className="guide-quick-btn">
-                  <span className="guide-quick-num mono">{item.num}</span>
-                  <span className="guide-quick-text">
-                    <strong>{item.label}</strong>
-                    <span>{item.sub}</span>
-                  </span>
+      <div className={`guide-shell${viewMode === 'review' ? ' guide-shell--review' : ''}`}>
+        {viewMode === 'review' ? (
+          <main id="guide-main" className="guide-main">
+            <ReviewShowcaseView
+              activeReview={activeReview}
+              copiedMap={copiedMap}
+              onCopyText={handleCopyText}
+              onSelectChannel={selectReviewChannel}
+              onOpenManual={openManualView}
+              onZoomPoster={setZoomedPoster}
+              onKakaoInquiry={handleKakaoInquiry}
+            />
+          </main>
+        ) : (
+          <>
+            {/* PC 좌측 고정 목차 & A/S 사이드바 (>= 1024px) */}
+            <aside className="guide-sidebar" aria-label="설명서 목차 및 빠른 A/S 안내">
+              <div className="guide-side-box guide-side-box--as">
+                <div className="guide-side-kicker">무상 A/S 출고일로부터 {SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월</div>
+                <p className="guide-side-as-desc">사진·증상을 보내주시면 빠르게 접수됩니다.</p>
+                <a
+                  className="guide-btn guide-btn--kakao"
+                  href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleKakaoInquiry}
+                >
+                  {SHOWCASE_GUIDE_BRAND.asKakaoLabel} ↗
                 </a>
-              ))}
-            </div>
-          </section>
+                {data && token && (
+                  <Link className="guide-side-track-link" to={`/track/${encodeURIComponent(token)}`}>
+                    주문 진행현황 보기 →
+                  </Link>
+                )}
+              </div>
+
+              <div className="guide-side-box guide-side-review-box">
+                <div className="guide-side-review-kicker">중복 참여 현금 혜택</div>
+                <div className="guide-side-review-title">블로그 7만 · SNS 4만 · 구글 3만</div>
+                <button
+                  type="button"
+                  className="guide-btn guide-btn--event"
+                  onClick={() => openReviewView('blog')}
+                >
+                  리뷰 혜택 크게 보기 (14만원) →
+                </button>
+              </div>
+
+              <nav className="guide-side-box" aria-label="설명서 항목 목차">
+                <div className="guide-side-toc-title">설명서 · 리뷰 목차</div>
+                <ul className="guide-toc-list">
+                  {TOC_ITEMS.map((item) => (
+                    <li key={item.href}>
+                      <a
+                        className="guide-toc-link"
+                        href={item.href}
+                        onClick={
+                          item.href === '#sec-reviews'
+                            ? (e) => {
+                                e.preventDefault();
+                                openReviewView('blog');
+                              }
+                            : undefined
+                        }
+                      >
+                        <span className="guide-toc-num mono">{item.num}</span>
+                        <span>{item.label}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+
+              <div className="guide-side-box guide-side-seal">
+                <strong>정품 보증 라벨 임의 제거 금지</strong>
+                <p>스티커 훼손 시 출고일 확인·A/S에 불이익이 있을 수 있습니다.</p>
+              </div>
+            </aside>
+
+            {/* 본문 매뉴얼 영역 */}
+            <main id="guide-main" className="guide-main">
+              {/* 모바일·태블릿 전용: 상황별 큰 바로가기 버튼 */}
+              <section className="guide-sheet guide-quick-sheet" aria-labelledby="guide-quick-heading">
+                <h2 id="guide-quick-heading" className="guide-sheet-h2">무엇을 찾고 계신가요? (누르면 이동)</h2>
+                <div className="guide-quick-grid">
+                  {QUICK_PROBLEMS.map((item) => (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      className={`guide-quick-btn${item.href === '#sec-reviews' ? ' guide-quick-btn--event' : ''}`}
+                      onClick={
+                        item.href === '#sec-reviews'
+                          ? (e) => {
+                              e.preventDefault();
+                              openReviewView('blog');
+                            }
+                          : undefined
+                      }
+                    >
+                      <span className="guide-quick-num mono">{item.num}</span>
+                      <span className="guide-quick-text">
+                        <strong>{item.label}</strong>
+                        <span>{item.sub}</span>
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </section>
 
           {loading && <GuideSkeleton />}
 
@@ -435,7 +880,7 @@ export default function GuidePage() {
               <div className="guide-callout-title">주문별 상세 정보를 찾을 수 없습니다</div>
               <p>
                 링크가 만료되었거나 올바르지 않을 수 있습니다. 아래 공통 사용설명서·청소 방법·리뷰 참여와
-                A/S 연락처({SHOWCASE_GUIDE_BRAND.asPhone})는 그대로 이용하실 수 있습니다.
+                카카오톡 A/S 문의는 그대로 이용하실 수 있습니다.
               </p>
             </div>
           )}
@@ -573,36 +1018,38 @@ export default function GuidePage() {
               <h2 id="heading-safety" className="guide-sec-heading">필수 안전 · 설치 수칙 (설치 직후 꼭 확인)</h2>
             </div>
 
-            <figure className="guide-illus-box">
-              <img
-                className="guide-illus-img"
-                src="/images/guide/installation-safety.webp"
-                alt="설치 필수 안전 그림 안내: 1. 벽면 단독 콘센트 연결(멀티탭 금지), 2. 뒷벽면 15~20cm 통풍 거리 확보, 3. 설치 2~3시간 대기 후 전원 연결"
-                width="1200"
-                height="670"
-                loading="eager"
-                decoding="async"
-              />
-              <figcaption className="guide-illus-steps">
-                <span><strong>① 단독 콘센트</strong> (멀티탭 금지 ✕)</span>
-                <span><strong>② 뒷벽 15~20cm</strong> 통풍 거리 확보</span>
-                <span><strong>③ 2~3시간 대기</strong> 후 전원 연결</span>
-              </figcaption>
-            </figure>
+            <div className="guide-safety-split">
+              <figure className="guide-illus-box">
+                <img
+                  className="guide-illus-img"
+                  src="/images/guide/installation-safety.webp"
+                  alt="설치 필수 안전 그림 안내: 1. 벽면 단독 콘센트 연결(멀티탭 금지), 2. 뒷벽면 15~20cm 통풍 거리 확보, 3. 설치 2~3시간 대기 후 전원 연결"
+                  width="1200"
+                  height="670"
+                  loading="eager"
+                  decoding="async"
+                />
+                <figcaption className="guide-illus-steps">
+                  <span><strong>① 단독 콘센트</strong> (멀티탭 금지 ✕)</span>
+                  <span><strong>② 뒷벽 15~20cm</strong> 통풍 거리 확보</span>
+                  <span><strong>③ 2~3시간 대기</strong> 후 전원 연결</span>
+                </figcaption>
+              </figure>
 
-            <div className="guide-rule-grid">
-              {GUIDE_SECTIONS.safetyRules.map((rule, index) => (
-                <article
-                  key={rule.title}
-                  className={`guide-rule-card${rule.emphasis ? ' guide-rule-card--danger' : ''}`}
-                >
-                  <h3 className="guide-rule-title">
-                    <span className="guide-rule-badge mono">{index + 1}</span>
-                    <span>{rule.title}</span>
-                  </h3>
-                  <p className="guide-rule-body">{rule.body}</p>
-                </article>
-              ))}
+              <div className="guide-rule-grid">
+                {GUIDE_SECTIONS.safetyRules.map((rule, index) => (
+                  <article
+                    key={rule.title}
+                    className={`guide-rule-card${rule.emphasis ? ' guide-rule-card--danger' : ''}`}
+                  >
+                    <h3 className="guide-rule-title">
+                      <span className="guide-rule-badge mono">{index + 1}</span>
+                      <span>{rule.title}</span>
+                    </h3>
+                    <p className="guide-rule-body">{rule.body}</p>
+                  </article>
+                ))}
+              </div>
             </div>
           </section>
 
@@ -745,27 +1192,28 @@ export default function GuidePage() {
               <h2 id="heading-radiator" className="guide-sec-heading">라지에이터 청소 (월 1회 이상 · 그림대로 3단계)</h2>
             </div>
 
-            <figure className="guide-illus-box">
-              <img
-                className="guide-illus-img"
-                src="/images/guide/radiator-cleaning-steps.webp"
-                alt="라지에이터 청소 3단계 그림: 1. 전원 플러그 뽑기(OFF), 2. 보호 장갑 착용, 3. 부드러운 솔로 방열판 위아래(↕) 방향 먼지 제거(좌우 금지 ✕)"
-                width="1200"
-                height="670"
-                loading="eager"
-                decoding="async"
-              />
-              <figcaption className="guide-illus-steps">
-                <span><strong>① 전원 끄기</strong> (플러그 뽑기)</span>
-                <span><strong>② 보호 장갑</strong> 착용하기</span>
-                <span><strong>③ 솔로 위·아래</strong> 먼지 털기</span>
-              </figcaption>
-            </figure>
+            <div className="guide-radiator-visuals">
+              <figure className="guide-illus-box">
+                <img
+                  className="guide-illus-img"
+                  src="/images/guide/radiator-cleaning-steps.webp"
+                  alt="라지에이터 청소 3단계 그림: 1. 전원 플러그 뽑기(OFF), 2. 보호 장갑 착용, 3. 부드러운 솔로 방열판 위아래(↕) 방향 먼지 제거(좌우 금지 ✕)"
+                  width="1200"
+                  height="670"
+                  loading="eager"
+                  decoding="async"
+                />
+                <figcaption className="guide-illus-steps">
+                  <span><strong>① 전원 끄기</strong> (플러그 뽑기)</span>
+                  <span><strong>② 보호 장갑</strong> 착용하기</span>
+                  <span><strong>③ 솔로 위·아래</strong> 먼지 털기</span>
+                </figcaption>
+              </figure>
 
-            <div className="guide-two-col">
-              <div className="guide-col">
-                <RadiatorDiagramSvg />
-              </div>
+              <RadiatorDiagramSvg />
+            </div>
+
+            <div className="guide-radiator-bottom">
               <div className="guide-col">
                 <h3 className="guide-sub-h3">실제 청소 순서 3단계</h3>
                 <ol className="guide-ol guide-ol--emphasis">
@@ -774,15 +1222,15 @@ export default function GuidePage() {
                   ))}
                 </ol>
               </div>
-            </div>
 
-            <div className="guide-callout guide-callout--danger">
-              <div className="guide-callout-title">중요 · 청소하지 않아 발생한 고장은 무상 보증기간(12개월) 내에도 유상 처리됩니다</div>
-              <ul className="guide-ul">
-                {GUIDE_SECTIONS.radiatorCleaning.warnings.map((warn) => (
-                  <li key={warn}>{warn}</li>
-                ))}
-              </ul>
+              <div className="guide-callout guide-callout--danger">
+                <div className="guide-callout-title">중요 · 청소하지 않아 발생한 고장은 무상 보증기간(12개월) 내에도 유상 처리됩니다</div>
+                <ul className="guide-ul">
+                  {GUIDE_SECTIONS.radiatorCleaning.warnings.map((warn) => (
+                    <li key={warn}>{warn}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </section>
 
@@ -798,198 +1246,83 @@ export default function GuidePage() {
                 설치 시 수평 조절 · 물빠짐 확인 3단계 보기
               </summary>
               <div className="guide-details-content">
-                <figure className="guide-illus-box">
-                  <img
-                    className="guide-illus-img"
-                    src="/images/guide/leveling-guide.webp"
-                    alt="수평 조절 및 물빠짐 3단계 그림: 1. 바퀴 옆 조절좌 볼트 4개 내려 바닥 고정, 2. 선반 위 휴대폰 수평계로 좌우 전후 확인, 3. 그릴에 물을 부어 물받이통 배수 확인"
-                    width="1200"
-                    height="670"
-                    loading="eager"
-                    decoding="async"
-                  />
-                  <figcaption className="guide-illus-steps">
-                    <span><strong>① 조절볼트 4개</strong> 내려 고정</span>
-                    <span><strong>② 휴대폰 수평계</strong> 좌우·전후 맞춤</span>
-                    <span><strong>③ 물 부어 확인</strong> 물받이통 배수</span>
-                  </figcaption>
-                </figure>
-                <ol className="guide-ol guide-details-body">
-                  {GUIDE_SECTIONS.levelingSteps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
+                <div className="guide-level-split">
+                  <figure className="guide-illus-box">
+                    <img
+                      className="guide-illus-img"
+                      src="/images/guide/leveling-guide.webp"
+                      alt="수평 조절 및 물빠짐 3단계 그림: 1. 바퀴 옆 조절좌 볼트 4개 내려 바닥 고정, 2. 선반 위 휴대폰 수평계로 좌우 전후 확인, 3. 그릴에 물을 부어 물받이통 배수 확인"
+                      width="1200"
+                      height="670"
+                      loading="eager"
+                      decoding="async"
+                    />
+                    <figcaption className="guide-illus-steps">
+                      <span><strong>① 조절볼트 4개</strong> 내려 고정</span>
+                      <span><strong>② 휴대폰 수평계</strong> 좌우·전후 맞춤</span>
+                      <span><strong>③ 물 부어 확인</strong> 물받이통 배수</span>
+                    </figcaption>
+                  </figure>
+                  <ol className="guide-ol guide-details-body">
+                    {GUIDE_SECTIONS.levelingSteps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
               </div>
             </details>
           </section>
 
-          {/* 07. 리뷰 이벤트 통합 허브 (블로그 7만 · 인스타/쓰레드 4만 · 구글 3만 · 스토어 3만) */}
-          <section id="sec-reviews" className="guide-sheet guide-review-hub" aria-labelledby="heading-reviews">
+          {/* 07. 리뷰 이벤트 전용 화면 바로가기 */}
+          <section className="guide-sheet guide-manual-review-promo" aria-labelledby="heading-manual-review">
             <div className="guide-sec-header">
               <span className="guide-sec-num guide-sec-num--green mono">07</span>
-              <h2 id="heading-reviews" className="guide-sec-heading">리뷰 남기고 최대 14만원 현금 받기 (통합 안내)</h2>
+              <h2 id="heading-manual-review" className="guide-sec-heading">리뷰 남기고 현금 최대 14만원 받기</h2>
             </div>
-
-            <div className="guide-review-hero-box">
-              <div className="guide-review-total">
-                <span>블로그(7만) + 인스타·쓰레드(4만) + 구글(3만) 중복 참여 가능</span>
-                <strong>현금 총 140,000원 혜택 (+스토어 구매 시 3만원 별도)</strong>
-              </div>
-              <div className="guide-review-jump-row">
-                <a className="guide-review-jump-btn" href="#review-blog">1. 블로그 7만원 ↓</a>
-                <a className="guide-review-jump-btn" href="#review-sns">2. 인스타·쓰레드 4만원 ↓</a>
-                <a className="guide-review-jump-btn" href="#review-google">3. 구글 리뷰 3만원 ↓</a>
-              </div>
-            </div>
-
-            <figure className="guide-illus-box">
-              <img
-                className="guide-illus-img"
-                src="/images/guide/review-photo-tip.webp"
-                alt="리뷰 사진 잘 찍는 법 그림: 왼쪽은 매장 분위기와 쇼케이스 전체, 상단 HANSUNG 로고가 또렷하게 나온 좋은 예(O), 오른쪽은 어둡거나 일부만 찍은 나쁜 예(✕)"
-                width="1200"
-                height="670"
-                loading="eager"
-                decoding="async"
-              />
-              <figcaption className="guide-illus-steps guide-illus-steps--2col">
-                <span><strong>O 잘 찍은 사진:</strong> 매장 전체 분위기 + 쇼케이스 + 상단 HANSUNG 로고 보이게</span>
-                <span><strong>✕ 피할 사진:</strong> 너무 어둡거나 유리 일부만 가까이 찍기</span>
-              </figcaption>
-            </figure>
-
-            <div className="guide-review-cards">
-              {SHOWCASE_REVIEW_EVENTS.map((ev) => (
-                <article
-                  key={ev.id}
-                  id={ev.anchorId}
-                  className={`guide-review-card${ev.id === 'smartstore' ? ' guide-review-card--compact' : ''}`}
-                >
-                  <div className="guide-review-card-head">
-                    <div>
-                      <span className="guide-review-channel">{ev.channelBadge}</span>
-                      <h3 className="guide-review-title">{ev.title}</h3>
-                    </div>
-                    <div className="guide-review-reward-pill mono">{ev.maxReward}</div>
-                  </div>
-
-                  <div className="guide-review-timing">{ev.payoutTiming}</div>
-
-                  <div className="guide-review-tier-list">
-                    {ev.rewards.map((tier) => (
-                      <div key={tier.label} className="guide-review-tier-row">
-                        <span>{tier.label}</span>
-                        <strong className="mono">{tier.amount}</strong>
-                      </div>
-                    ))}
-                  </div>
-
-                  {ev.titleTemplate && (
-                    <div className="guide-copy-box">
-                      <div className="guide-copy-k">필수 제목 양식 (그대로 복사해 바꾸세요)</div>
-                      <div className="guide-copy-v">{ev.titleTemplate}</div>
-                      <div className="guide-copy-ex">{ev.titleExample}</div>
-                      <button
-                        type="button"
-                        className="guide-btn guide-btn--copy"
-                        onClick={() => handleCopyText('blog_title', ev.titleTemplate)}
-                      >
-                        {copiedMap.blog_title ? '제목 양식이 복사되었습니다 ✓' : '제목 양식 복사하기'}
-                      </button>
-                    </div>
-                  )}
-
-                  {ev.tagHandle && (
-                    <div className="guide-copy-box">
-                      <div className="guide-copy-k">게시물 필수 태그 아이디</div>
-                      <div className="guide-copy-v mono">{ev.tagHandle}</div>
-                      <button
-                        type="button"
-                        className="guide-btn guide-btn--copy"
-                        onClick={() => handleCopyText('sns_tag', ev.tagHandle)}
-                      >
-                        {copiedMap.sns_tag ? '@hansungtech 복사 완료 ✓' : '@hansungtech 태그 복사하기'}
-                      </button>
-                    </div>
-                  )}
-
-                  <ul className="guide-ul guide-review-reqs">
-                    {ev.requirements.map((req) => (
-                      <li key={req}>{req}</li>
-                    ))}
-                  </ul>
-
-                  <div className="guide-review-actions">
-                    <a
-                      className="guide-btn guide-btn--event"
-                      href={ev.primaryCtaUrl}
-                      target={ev.primaryCtaUrl.startsWith('http') ? '_blank' : undefined}
-                      rel={ev.primaryCtaUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
-                    >
-                      {ev.primaryCtaLabel} {ev.primaryCtaUrl.startsWith('http') ? '↗' : ''}
-                    </a>
-
-                    {ev.secondaryCtaUrl && (
-                      <a
-                        className="guide-btn guide-btn--secondary"
-                        href={ev.secondaryCtaUrl}
-                        target={ev.secondaryCtaUrl.startsWith('http') ? '_blank' : undefined}
-                        rel={ev.secondaryCtaUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
-                      >
-                        {ev.secondaryCtaLabel} {ev.secondaryCtaUrl.startsWith('http') ? '↗' : ''}
-                      </a>
-                    )}
-
-                    {ev.guideCtaUrl && (
-                      <a
-                        className="guide-text-link"
-                        href={ev.guideCtaUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {ev.guideCtaLabel} ↗
-                      </a>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
+            <p className="guide-manual-review-desc">
+              블로그(7만) · 인스타·쓰레드(4만) · 구글 리뷰(3만) 중복 참여 가능 (+스마트스토어 3만원 별도)
+            </p>
+            <button
+              type="button"
+              className="guide-btn guide-btn--event"
+              onClick={() => openReviewView('blog')}
+            >
+              리뷰 이벤트 크게 보고 참여하기 →
+            </button>
           </section>
 
-          {/* 08. A/S 전화 & 담당자 문의 */}
+          {/* 08. 카카오톡 A/S & 담당자 문의 */}
           <section id="sec-support" className="guide-sheet guide-as-sheet" aria-labelledby="heading-as">
             <div className="guide-sec-header">
               <span className="guide-sec-num mono">08</span>
-              <h2 id="heading-as" className="guide-sec-heading">무상 A/S 전화 · 담당자 바로 문의</h2>
+              <h2 id="heading-as" className="guide-sec-heading">무상 A/S · 카카오톡 바로 문의</h2>
             </div>
             <p className="guide-as-desc">
               무상 A/S 기간은 출고일로부터 <strong>{SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월</strong>입니다.
-              제품 이상 시 아래 버튼을 누르시면 바로 연결됩니다.
+              제품 이상이나 증상 사진이 있을 때 아래 카카오톡 채널로 바로 접수해 주세요.
             </p>
 
             <div className="guide-as-actions">
-              <a className="guide-btn guide-btn--primary" href={SHOWCASE_GUIDE_BRAND.asPhoneHref}>
-                <span>A/S 전화 걸기</span>
-                <span className="mono guide-nowrap">({SHOWCASE_GUIDE_BRAND.asPhone})</span>
+              <a
+                className="guide-btn guide-btn--kakao"
+                href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleKakaoInquiry}
+              >
+                {SHOWCASE_GUIDE_BRAND.asKakaoLabel} ↗
               </a>
 
               {inquiryRoute.kind === 'kakao' && (
-                <>
-                  <a
-                    className="guide-btn guide-btn--kakao"
-                    href={inquiryRoute.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={handleKakaoInquiry}
-                  >
-                    카카오톡 문의하기 ({inquiryRoute.manager})
-                  </a>
-                  <div className="guide-inquiry-hint" role="status">
-                    {inquiryCopied
-                      ? '주문번호가 복사되었습니다. 채팅창에 붙여넣어 주세요.'
-                      : '버튼을 누르면 주문번호가 자동 복사됩니다.'}
-                  </div>
-                </>
+                <a
+                  className="guide-btn guide-btn--secondary"
+                  href={inquiryRoute.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleKakaoInquiry}
+                >
+                  담당자 카카오톡 문의 ({inquiryRoute.manager}) ↗
+                </a>
               )}
 
               {inquiryRoute.kind === 'sms' && (
@@ -998,15 +1331,12 @@ export default function GuidePage() {
                 </a>
               )}
 
-              {!hasToken && (
-                <a
-                  className="guide-btn guide-btn--kakao"
-                  href={SHOWCASE_GUIDE_BRAND.kakaoChatUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  카카오톡 채널 문의하기
-                </a>
+              {orderNo && (
+                <div className="guide-inquiry-hint" role="status">
+                  {inquiryCopied
+                    ? '주문번호가 복사되었습니다. 채팅창에 붙여넣어 주세요.'
+                    : '버튼을 누르면 주문번호가 자동 복사됩니다.'}
+                </div>
               )}
             </div>
 
@@ -1026,22 +1356,70 @@ export default function GuidePage() {
               </a>
             </div>
           </section>
-        </main>
+            </main>
+          </>
+        )}
       </div>
 
       <footer className="guide-foot">
         <strong>(주){SHOWCASE_GUIDE_BRAND.name} ({SHOWCASE_GUIDE_BRAND.en})</strong>
-        <span> · 무상 A/S {SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월 · 고객센터 </span>
-        <strong className="mono guide-nowrap">{SHOWCASE_GUIDE_BRAND.asPhone}</strong>
+        <span> · 무상 A/S {SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월 · {SHOWCASE_GUIDE_BRAND.asChannelShort}</span>
       </footer>
 
-      {/* 모바일·태블릿 하단 고정 A/S & 맨 위로 바 (< 1024px) */}
-      <div className="guide-mobile-dock" role="region" aria-label="빠른 도움 및 맨 위로">
-        <button type="button" className="guide-dock-top-btn" onClick={scrollToTop}>
-          맨 위로 ↑
-        </button>
-        <a className="guide-dock-call-btn" href={SHOWCASE_GUIDE_BRAND.asPhoneHref}>
-          A/S 전화 · {SHOWCASE_GUIDE_BRAND.asPhone}
+      {/* 이미지 크게 보기 확대 모달 */}
+      {zoomedPoster && (
+        <div
+          className="guide-zoom-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${zoomedPoster.title} 이미지 크게 보기`}
+          onClick={() => setZoomedPoster(null)}
+        >
+          <div className="guide-zoom-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="guide-zoom-bar">
+              <strong className="guide-zoom-title">{zoomedPoster.title}</strong>
+              <button
+                type="button"
+                className="guide-zoom-close"
+                onClick={() => setZoomedPoster(null)}
+              >
+                닫기 ✕
+              </button>
+            </div>
+            <div className="guide-zoom-img-wrap">
+              <img
+                className="guide-zoom-img"
+                src={zoomedPoster.src}
+                alt={zoomedPoster.alt}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 모바일·태블릿 하단 고정 A/S & 화면 복귀 바 (< 1024px) */}
+      <div className="guide-mobile-dock" role="region" aria-label="빠른 도움 및 화면 이동">
+        {viewMode === 'review' ? (
+          <button
+            type="button"
+            className="guide-dock-top-btn"
+            onClick={() => openManualView()}
+          >
+            ← 설명서
+          </button>
+        ) : (
+          <button type="button" className="guide-dock-top-btn" onClick={scrollToTop}>
+            맨 위로 ↑
+          </button>
+        )}
+        <a
+          className="guide-dock-call-btn guide-dock-call-btn--kakao"
+          href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleKakaoInquiry}
+        >
+          {SHOWCASE_GUIDE_BRAND.asKakaoLabel}
         </a>
       </div>
     </div>
