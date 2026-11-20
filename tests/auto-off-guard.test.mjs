@@ -92,3 +92,18 @@ test('6. 경고 집계 쿼리가 실패해도 기존 콘솔 항목은 그대로 
   assert.equal(customer[5].id, 'console_auto_23');
   assert.equal(customer.length, 6);
 });
+
+test('7. 콘솔 자동 발송 항목도 하루 상한은 정상(ready), 실제 막힘·백오프는 확인 필요(conditional)로 반영된다', async () => {
+  const autoRows = [
+    { id: 19, name: '구글 리뷰', body: '리뷰', auto_kind: 'ship_plus_days', auto_days: 2, auto_ata_template: '', auto_audience: 'customer', auto_skip_reason: '하루 상한 50건 도달, 남은 278건 다음 날', has_image: false },
+    { id: 24, name: '유튜브', body: '안내', auto_kind: 'order_plus_days', auto_days: 0, auto_ata_template: 'KA01', auto_audience: 'customer', auto_skip_reason: '잔액 부족: 필요 300원', has_image: false },
+  ];
+  const result = await loadNotificationOverview(overviewDb({ disabledRows: [], autoRows }), env, NOW);
+  const customer = result.groups.find(group => group.id === 'customer').items;
+  const google = customer.find(item => item.console_template_id === 19);
+  const youtube = customer.find(item => item.console_template_id === 24);
+  assert.equal(google.configuration.status, 'ready');
+  assert.match(google.timing, /하루 상한 50건 도달, 남은 278건 다음 날/);
+  assert.equal(youtube.configuration.status, 'conditional');
+  assert.match(youtube.timing, /막힘\(잔액 부족: 필요 300원\)/);
+});

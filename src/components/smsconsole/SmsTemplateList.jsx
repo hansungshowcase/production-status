@@ -5,7 +5,7 @@ import { clearSmsConsoleClientCache, fetchSmsConsole, postSmsConsole } from '../
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, isMigratedExternal, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
 import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
@@ -50,6 +50,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState(''); // 'm-<id>' | 'i-<id>'
   const startedRef = useRef(false);
+  const loadReqRef = useRef(0);
   const [mine, setMine] = useState([]); // 내 문구(저장된 문자 문구). 목록에는 사진 본문 없이 has_image 만 온다
   const [mineLoaded, setMineLoaded] = useState(false);
   const [mineOpen, setMineOpen] = useState(''); // channel='kakao' 단계 펼침
@@ -73,13 +74,24 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const lbBackRef = useRef(null);
 
   const load = () => {
+    const reqId = ++loadReqRef.current;
     setState((prev) => ({ ...prev, error: '' }));
-    // 보낸 묶음(sent)은 못 불러와도 카탈로그 카드는 그대로 보인다
+    // 보낸 묶음(sent)은 7일 쏠라피 조회라 느릴 수 있어, 먼저 현황판을 그려 화면 대기를 없애고 뒤이어 건수를 합친다
     fetchInternalNotifications({ view: 'day', date: getKstToday() }).then((res) => setRecipients(Array.isArray(res?.recipients) ? res.recipients : null)).catch(() => setRecipients(null));
-    Promise.all([fetchNotificationOverview(), fetchSmsConsole('sent').catch(() => null)])
-      // '미분류'(등록된 문구와 안 맞는 발송 기록 묶음)는 템플릿이 아니라서 이 목록에서 뺀다 — 기록은 발송 내역에 있다(2026-11-16 사장님 "미분류는 뭐야")
-      .then(([data, sent]) => setState({ loaded: true, error: '', items: sortSmsItems(buildKindedItems(data, sent && Array.isArray(sent.groups) ? sent.groups : null)).filter((item) => item.kind !== '미분류') }))
-      .catch((err) => setState({ loaded: true, error: err.message || '불러오지 못했습니다.', items: [] }));
+    const sentPromise = fetchSmsConsole('sent').catch(() => null);
+    fetchNotificationOverview()
+      .then((data) => {
+        if (loadReqRef.current !== reqId) return;
+        setState({ loaded: true, error: '', items: sortSmsItems(buildKindedItems(data, null)).filter((item) => item.kind !== '미분류') });
+        sentPromise.then((sent) => {
+          if (loadReqRef.current !== reqId || !sent || !Array.isArray(sent.groups)) return;
+          setState({ loaded: true, error: '', items: sortSmsItems(buildKindedItems(data, sent.groups)).filter((item) => item.kind !== '미분류') });
+        });
+      })
+      .catch((err) => {
+        if (loadReqRef.current !== reqId) return;
+        setState({ loaded: true, error: err.message || '불러오지 못했습니다.', items: [] });
+      });
   };
   useEffect(() => {
     if (!active || startedRef.current || isKakao) return;
@@ -394,7 +406,10 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     );
   };
 
-  const { items } = state;
+  const items = useMemo(
+    () => state.items.filter((item) => !isMigratedExternal(item, mine)),
+    [state.items, mine],
+  );
   const allMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
   const sortedMine = useMemo(
     () => allMine.filter((row) => (!cond || conditionGroup(row) === cond) && matchesSmsQuery({ ...row, body: mineById.get(row.id)?.body || '' }, query, recipients)),

@@ -229,20 +229,34 @@ async function handleGet(req, res, ctx) {
       if (!configured) return res.status(200).json({ configured: false, items: [] });
       return res.status(200).json({ configured: true, items: await kakao.listCategories(opts) });
     }
-    const write = await guard.writeStatus({ db: deps.db, nowMs });
     if (resource === 'overview') {
+      const lite = String(queryValue(req.query?.lite) || '') === '1';
       // 쏠라피 연동 점검 결과(DB 에 저장된 마지막 상태만. 없거나 못 읽으면 키 자체를 빼서 화면에 띠가 안 뜬다)
-      let solapiHealth = null;
-      try { solapiHealth = await readSolapiHealth(deps.db || getDb(), { nowMs }); } catch { solapiHealth = null; }
+      const healthPromise = Promise.resolve().then(() => readSolapiHealth(deps.db || getDb(), { nowMs })).catch(() => null);
+      if (!configured) {
+        const [write, solapiHealth] = await Promise.all([guard.writeStatus({ db: deps.db, nowMs }), healthPromise]);
+        const healthPart = solapiHealth ? { solapi_health: solapiHealth } : {};
+        return res.status(200).json({ configured: false, balance: null, template_counts: null, write, checked_at, ...healthPart });
+      }
+      const [write, solapiHealth, balance, listed] = await Promise.all([
+        guard.writeStatus({ db: deps.db, nowMs }),
+        healthPromise,
+        kakao.getBalance(opts),
+        lite ? Promise.resolve(null) : kakao.listTemplates(opts),
+      ]);
       const healthPart = solapiHealth ? { solapi_health: solapiHealth } : {};
-      if (!configured) return res.status(200).json({ configured: false, balance: null, template_counts: null, write, checked_at, ...healthPart });
-      const [balance, listed] = await Promise.all([kakao.getBalance(opts), kakao.listTemplates(opts)]);
       return res.status(200).json({ configured: true, balance: Number.isFinite(balance) ? balance : null,
-        template_counts: listed.counts || emptyCounts(), write, checked_at, ...healthPart });
+        template_counts: lite ? null : (listed?.counts || emptyCounts()), write, checked_at, ...healthPart });
     }
     if (resource === 'templates') {
-      if (!configured) return res.status(200).json({ configured: false, write, targets: [], items: [], counts: emptyCounts(), unresolved_groups: 0, checked_at });
-      const listed = await kakao.listTemplates({ ...opts, fresh: String(queryValue(req.query?.fresh) || '') === '1' });
+      if (!configured) {
+        const write = await guard.writeStatus({ db: deps.db, nowMs });
+        return res.status(200).json({ configured: false, write, targets: [], items: [], counts: emptyCounts(), unresolved_groups: 0, checked_at });
+      }
+      const [write, listed] = await Promise.all([
+        guard.writeStatus({ db: deps.db, nowMs }),
+        kakao.listTemplates({ ...opts, fresh: String(queryValue(req.query?.fresh) || '') === '1' }),
+      ]);
       let ataUnit = null;
       try { ataUnit = getSendProvider()?.estimateKakao?.({ count: 1 }, deps.env || process.env)?.unit ?? null; } catch { ataUnit = null; }
       return res.status(200).json({ configured: true, write, ata_unit: ataUnit, targets: listed.targets || [], items: markProgramUse(listed.items, programTemplateIds()),

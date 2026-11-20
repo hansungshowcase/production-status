@@ -13,10 +13,11 @@ const CACHE_MAX_DATES = 8;
 const PENDING_REPLACEMENT_GRACE_MS = 600000;
 const ASSEMBLY_WORKER_NAMES = ['카우사르', '나타왓', '마카라', '백승정', '까지'];
 const CACHE = new Map();
+const IN_FLIGHT = new Map();
 
 const digitsOf = value => String(value || '').replace(/\D/g, '');
 
-export function clearSolapiMessageCache() { CACHE.clear(); }
+export function clearSolapiMessageCache() { CACHE.clear(); IN_FLIGHT.clear(); }
 
 // ---------- 직원 번호 목록 (번호는 기존 모듈에서만 가져온다) ----------
 let staffDirectory = null;
@@ -175,7 +176,7 @@ export function findDbRow(index, message) {
 }
 
 // ---------- 구분·종류 ----------
-export function classifyAudience(entry, dbRow, source = null) {
+export function classifyAudience(entry, dbRow, source = null, { originLabel = '' } = {}) {
   const { staff, sales } = directory();
   const phone = digitsOf(entry.final.to);
   const staffName = staff.get(phone) || null;
@@ -193,7 +194,7 @@ export function classifyAudience(entry, dbRow, source = null) {
   }
   if (reviewCategory) return { audience: staffName ? 'staff' : 'customer', category: reviewCategory, name: staffName, matched: false };
   if (staffName) return { audience: 'staff', category: '직원 문자(기록 없음)', name: staffName, matched: false };
-  return { audience: 'customer', category: externalCategory(entry, source), name: null, matched: false, external: true };
+  return { audience: 'customer', category: externalCategory(entry, source, { originLabel }), name: null, matched: false, external: true };
 }
 
 // 우리 기록에 없는 고객 문자: 본문 첫머리로 종류, 쏠라피 연동 표시(customFields 키)로 발송처를 붙인다.
@@ -202,6 +203,7 @@ const EXTERNAL_TOPICS = [
   [/출고일|출고 안내|출고되었|출고 예정/, '출고 안내'],
   [/무료 지원 이벤트/, '무료 지원 이벤트'],
   [/유튜브 인터뷰/, '유튜브 인터뷰'],
+  [/주의사항 안내/, '주의사항 안내'],
   [/리뷰|후기/, '리뷰 안내'],
 ];
 export const SOURCE_NAMES = { AUTO: '쏠라피 자동화', COMM: '스마트스토어 연동', API: '다른 API 프로그램', APP: '쏠라피 앱' };
@@ -217,12 +219,12 @@ function externalSender(entry, source = null) {
   // 제작현황 문구 판정은 여기서 쓰지 않는다(우리 기록과 맞은 것만 제작현황). 외부 문구 표에서 찾은 것만 이름으로 쓴다.
   return String(found.key || '').startsWith(`${UNCLASSIFIED}/`) || found.sender === SENDERS.program ? null : (found.sender || null);
 }
-export function externalCategory(entry, source = null) {
+export function externalCategory(entry, source = null, { originLabel = '' } = {}) {
   const text = [entry.orig.subject, entry.orig.text, entry.final.subject, entry.final.text].filter(Boolean).join(' ').slice(0, 300);
   const found = EXTERNAL_TOPICS.find(([pattern]) => pattern.test(text));
   const topic = found ? found[1] : /\(광고\)/.test(text) ? '광고 문자' : '기타 고객 문자';
   const fields = entry.orig.customFields || {};
-  const sourceName = externalSender(entry, source) || SOURCE_NAMES[source] || ((fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
+  const sourceName = originLabel || externalSender(entry, source) || SOURCE_NAMES[source] || ((fields.storeId || fields.store_id || fields.productOrderId) ? '스마트스토어 연동'
     : (fields.hookId || fields.hook_id) ? '쏠라피 자동발송' : '외부 발송');
   return `${topic}(${sourceName})`;
 }
@@ -262,12 +264,15 @@ export function buildItems(messages, dbRows = [], { nowMs = Date.now(), groupSou
     const { orig, final, replaced } = entry;
     const dbRow = findDbRow(index, final) || (replaced ? findDbRow(index, orig) : null);
     const source = sourceOf(groupSources, final.groupId || orig.groupId);
-    const kind = classifyAudience(entry, dbRow, source);
     const replacementPossible = !replaced && isKakaoType(orig.type) && orig.kakaoOptions?.disableSms !== true;
     const groupId = final.groupId || orig.groupId;
+    const isManual = Boolean(groupId && manualGroupIds?.has(groupId));
+    const isProgram = Boolean(dbRow || (groupId && programGroupIds?.has(groupId)));
+    const originLabel = isManual ? '보내기 화면' : (isProgram ? SENDERS.program : '');
+    const kind = classifyAudience(entry, dbRow, source, { originLabel });
     const state = classifyStatus(final, { nowMs, replacementPossible, groupFailed: Boolean(groupId && failedGroupIds?.has(groupId)) });
-    const senderLabel = (groupId && manualGroupIds?.has(groupId)) ? '보내기 화면'
-      : (dbRow || (groupId && programGroupIds?.has(groupId))) ? SENDERS.program : (externalSender(entry, source) || SOURCE_NAMES[source] || SENDERS.unknown);
+    const senderLabel = isManual ? '보내기 화면'
+      : isProgram ? SENDERS.program : (externalSender(entry, source) || SOURCE_NAMES[source] || SENDERS.unknown);
     const replacedReason = replaced ? (safeText(orig.reason || null) || (codeOf(orig) ? classifyStatus(orig).status_label : null)) : null;
     let subject = safeText(final.subject ?? dbRow?.message_subject ?? null);
     let text = safeText(final.text);
@@ -379,31 +384,40 @@ export function hasSolapiCredentials() {
 export async function fetchSolapiDay(date, { fetchImpl = fetch, nowMs = Date.now() } = {}) {
   const hit = CACHE.get(date);
   if (hit && nowMs - hit.at >= 0 && nowMs - hit.at < CACHE_TTL_MS) return hit.value;
-  const start = Date.parse(`${date}T00:00:00+09:00`);
-  const messages = [];
-  let startKey = null;
-  let partial = false;
-  for (let page = 0; page < 3; page += 1) {
-    const url = new URL(SOLAPI_URL);
-    url.searchParams.set('startDate', new Date(start).toISOString());
-    url.searchParams.set('endDate', new Date(start + DAY_MS).toISOString());
-    url.searchParams.set('limit', '500');
-    if (startKey) url.searchParams.set('startKey', startKey);
-    const response = await fetchImpl(url, { headers: { Authorization: authHeader() }, signal: AbortSignal.timeout(8000) });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.messageList || typeof payload.messageList !== 'object') {
-      throw new Error(`Solapi message lookup failed: HTTP ${response.status}`);
+  if (fetchImpl === fetch && IN_FLIGHT.has(date)) return IN_FLIGHT.get(date);
+  const work = (async () => {
+    const start = Date.parse(`${date}T00:00:00+09:00`);
+    const messages = [];
+    let startKey = null;
+    let partial = false;
+    for (let page = 0; page < 3; page += 1) {
+      const url = new URL(SOLAPI_URL);
+      url.searchParams.set('startDate', new Date(start).toISOString());
+      url.searchParams.set('endDate', new Date(start + DAY_MS).toISOString());
+      url.searchParams.set('limit', '500');
+      if (startKey) url.searchParams.set('startKey', startKey);
+      const response = await fetchImpl(url, { headers: { Authorization: authHeader() }, signal: AbortSignal.timeout(8000) });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.messageList || typeof payload.messageList !== 'object') {
+        throw new Error(`Solapi message lookup failed: HTTP ${response.status}`);
+      }
+      for (const message of Object.values(payload.messageList)) {
+        const at = Date.parse(message.dateCreated || '');
+        if (at >= start && at < start + DAY_MS) messages.push(slimMessage(message));
+      }
+      startKey = payload.nextKey || null;
+      if (!startKey) break;
+      if (page === 2) partial = true;
     }
-    for (const message of Object.values(payload.messageList)) {
-      const at = Date.parse(message.dateCreated || '');
-      if (at >= start && at < start + DAY_MS) messages.push(slimMessage(message));
-    }
-    startKey = payload.nextKey || null;
-    if (!startKey) break;
-    if (page === 2) partial = true;
+    const value = { messages, partial };
+    CACHE.set(date, { at: nowMs, value });
+    while (CACHE.size > CACHE_MAX_DATES) CACHE.delete(CACHE.keys().next().value);
+    return value;
+  })();
+  if (fetchImpl === fetch) IN_FLIGHT.set(date, work);
+  try {
+    return await work;
+  } finally {
+    if (IN_FLIGHT.get(date) === work) IN_FLIGHT.delete(date);
   }
-  const value = { messages, partial };
-  CACHE.set(date, { at: nowMs, value });
-  while (CACHE.size > CACHE_MAX_DATES) CACHE.delete(CACHE.keys().next().value);
-  return value;
 }

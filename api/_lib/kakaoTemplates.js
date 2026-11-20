@@ -16,7 +16,14 @@ const GENERIC_ERROR = '쏠라피에서 불러오지 못했습니다';
 
 const CACHE = new Map();
 let templatesInFlight = null;
-export function _resetKakaoCachesForTest() { CACHE.clear(); templatesInFlight = null; }
+let directoryInFlight = null;
+let balanceInFlight = null;
+export function _resetKakaoCachesForTest() {
+  CACHE.clear();
+  templatesInFlight = null;
+  directoryInFlight = null;
+  balanceInFlight = null;
+}
 export function clearTemplateCache() { CACHE.delete('templates'); templatesInFlight = null; }
 
 export class SolapiKakaoError extends Error {
@@ -106,25 +113,32 @@ async function pagedList(path, listKey, opts) {
 export async function listDirectory({ fetchImpl = fetch, nowMs = Date.now() } = {}) {
   const hit = cached('directory', DIR_TTL, nowMs);
   if (hit) return hit.value;
-  const opts = { fetchImpl };
-  const channelResult = await pagedList('kakao/v2/channels', 'channelList', opts);
-  const channels = channelResult.items
-    .filter(item => item?.channelId)
-    .map(item => ({ id: String(item.channelId), name: String(item.searchId || item.name || '').replace(/^@/, '') }));
-  let groups = [];
-  let groupsResolved = false;
+  if (fetchImpl === fetch && directoryInFlight) return directoryInFlight;
+  const work = (async () => {
+    const opts = { fetchImpl };
+    const [channelResult, groupResult] = await Promise.all([
+      pagedList('kakao/v2/channels', 'channelList', opts),
+      pagedList('kakao/v2/channel-groups', 'channelGroupList', opts).catch(() => null),
+    ]);
+    const channels = channelResult.items
+      .filter(item => item?.channelId)
+      .map(item => ({ id: String(item.channelId), name: String(item.searchId || item.name || '').replace(/^@/, '') }));
+    const groupsResolved = Boolean(groupResult);
+    const groups = groupResult
+      ? groupResult.items
+        .filter(item => item?.channelGroupId || item?.groupId)
+        .map(item => ({ id: String(item.channelGroupId || item.groupId), name: String(item.name || '') }))
+      : [];
+    const value = { channels, groups, groupsResolved };
+    CACHE.set('directory', { at: nowMs, value });
+    return value;
+  })();
+  if (fetchImpl === fetch) directoryInFlight = work;
   try {
-    const groupResult = await pagedList('kakao/v2/channel-groups', 'channelGroupList', opts);
-    groups = groupResult.items
-      .filter(item => item?.channelGroupId || item?.groupId)
-      .map(item => ({ id: String(item.channelGroupId || item.groupId), name: String(item.name || '') }));
-    groupsResolved = true;
-  } catch {
-    groups = [];
+    return await work;
+  } finally {
+    if (directoryInFlight === work) directoryInFlight = null;
   }
-  const value = { channels, groups, groupsResolved };
-  CACHE.set('directory', { at: nowMs, value });
-  return value;
 }
 
 export function scopeOf(raw, directory, envIds) {
@@ -302,9 +316,18 @@ export async function getBalance({ fetchImpl = fetch, nowMs = Date.now() } = {})
   if (!hasSolapiCredentials()) return null;
   const hit = cached('balance', BALANCE_TTL, nowMs);
   if (hit) return hit.value;
-  const payload = await call('cash/v1/balance', {}, { fetchImpl });
-  const number = Number(payload?.balance);
-  const value = Number.isFinite(number) ? number : null;
-  CACHE.set('balance', { at: nowMs, value });
-  return value;
+  if (fetchImpl === fetch && balanceInFlight) return balanceInFlight;
+  const work = (async () => {
+    const payload = await call('cash/v1/balance', {}, { fetchImpl });
+    const number = Number(payload?.balance);
+    const value = Number.isFinite(number) ? number : null;
+    CACHE.set('balance', { at: nowMs, value });
+    return value;
+  })();
+  if (fetchImpl === fetch) balanceInFlight = work;
+  try {
+    return await work;
+  } finally {
+    if (balanceInFlight === work) balanceInFlight = null;
+  }
 }

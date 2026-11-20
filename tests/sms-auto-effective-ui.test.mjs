@@ -23,9 +23,11 @@ test('autoEffective: 막힘 사유별 한 건씩과 우선순위', () => {
   assert.equal(autoEffective({ ...on, ata_backoff: true }).blocked, true);
 });
 
-test('autoEffective: 일괄 발송 멈춤은 part, 색 이름', () => {
+test('autoEffective: 일괄 발송 멈춤·하루 상한 도달은 part(정상 운영), 색 이름', () => {
   const part = autoEffective({ enabled: true, catchup_paused: true, catchup_error: '템플릿 오류' });
   assert.deepEqual(part, { tone: 'part', text: '켜짐 · 일괄 발송 멈춤(템플릿 오류)', blocked: false });
+  const capped = autoEffective({ enabled: true, auto_skip_reason: '하루 상한 50건 도달, 남은 278건 다음 날' });
+  assert.deepEqual(capped, { tone: 'part', text: '켜짐 · 하루 상한 50건 도달, 남은 278건 다음 날', blocked: false });
   assert.deepEqual(['on', 'part', 'blocked', 'off', 'unknown'].map((tone) => autoLightClass({ tone })), ['on', 'part', 'part', 'off', 'unknown']);
 });
 

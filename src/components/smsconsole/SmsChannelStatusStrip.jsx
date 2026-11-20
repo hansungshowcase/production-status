@@ -59,7 +59,7 @@ export default function SmsChannelStatusStrip({
     setLoading(true);
     const [logRes, ovRes] = await Promise.allSettled([
       fetchSolapiMessages({ channel: chKey, view: 'groups', page_size: 20 }),
-      fetchSmsConsole('overview', {}, { bypassCache: force }),
+      fetchSmsConsole('overview', isKakao ? {} : { lite: 1 }, { bypassCache: force }),
     ]);
     busyRef.current = false;
     if (!aliveRef.current) return;

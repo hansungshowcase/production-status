@@ -9,7 +9,7 @@ import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsChannelStatusStrip from './SmsChannelStatusStrip.jsx';
 import {
   buildConditionSummary, channelCostOf, compactLightLabel, flowStepText, groupFlows,
-  isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, sortByNameNumeric,
+  isAttentionTone, isKakaoEntry, isMigratedExternal, itemLight, matchesSmsQuery, sortByNameNumeric,
 } from './smsTemplateListModel.js';
 import {
   BMS_TEMPLATE_ID, KIND_KAKAO, autoConditionLine, autoTargetText, catchupPausedText,
@@ -291,7 +291,10 @@ export default function KakaoTemplateManager({
     return map;
   }, [kakaoMineEntries]);
 
-  const allReadOnly = useMemo(() => readOnlyKakaoItems(items, sent, { status: 'all', query: '' }), [items, sent]);
+  const allReadOnly = useMemo(
+    () => readOnlyKakaoItems(items, sent, { status: 'all', query: '' }).filter((entry) => !isMigratedExternal(entry, textItems)),
+    [items, sent, textItems],
+  );
 
   // 현황판 카톡 자동 발송 집계
   const kakaoAutoStats = useMemo(() => {
@@ -377,11 +380,11 @@ export default function KakaoTemplateManager({
   }, [statusFilter, query, items, usage, sent, hasLinkedOn, textItems]);
 
   const readOnly = useMemo(() => {
-    if (statusFilter === 'bms') {
-      return readOnlyKakaoItems(items, sent, { status: 'all', query }).filter((entry) => entry.channel === 'BMS');
-    }
-    return readOnlyKakaoItems(items, sent, { status: statusFilter, query });
-  }, [items, sent, statusFilter, query]);
+    const list = statusFilter === 'bms'
+      ? readOnlyKakaoItems(items, sent, { status: 'all', query }).filter((entry) => entry.channel === 'BMS')
+      : readOnlyKakaoItems(items, sent, { status: statusFilter, query });
+    return list.filter((entry) => !isMigratedExternal(entry, textItems));
+  }, [items, sent, statusFilter, query, textItems]);
 
   const listSections = useMemo(() => templateAudienceSections(visible, sent), [visible, sent]);
   const readOnlySections = useMemo(() => readOnlyAudienceSections(readOnly), [readOnly]);
@@ -859,6 +862,7 @@ export default function KakaoTemplateManager({
     const info = statusInfo(selected.status);
     const selectedExt = templateExtras(selected.id, sent);
     const linkedEntries = linkedTextEntries(textItems, selected.id);
+    const showSelectedExt = Boolean(selectedExt && !(linkedEntries.length > 0 && selectedExt.sender === '메이크'));
     const comments = (Array.isArray(selected.comments) ? selected.comments : [])
       .slice().sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0)).slice(0, 3);
     const variables = Array.isArray(selected.variables) ? selected.variables : [];
@@ -900,7 +904,7 @@ export default function KakaoTemplateManager({
               </span>
             ) : null}
           </div>
-          {selectedExt ? (
+          {showSelectedExt ? (
             <dl className="ktm-info">
               <dt>보내는 곳</dt><dd>{selectedExt.sender}</dd>
               {selectedExt.who ? <><dt>대상</dt><dd>{selectedExt.who}</dd></> : null}
@@ -909,7 +913,7 @@ export default function KakaoTemplateManager({
             </dl>
           ) : null}
           {linkedEntries.length === 0 ? (
-            selectedExt ? null : <p className="ktm-linked-empty">적용된 자동 발송 조건이 없습니다. 위 버튼으로 바로 설정할 수 있습니다.</p>
+            showSelectedExt ? null : <p className="ktm-linked-empty">적용된 자동 발송 조건이 없습니다. 위 버튼으로 바로 설정할 수 있습니다.</p>
           ) : (
             <ul className="ktm-linked-list">
               {linkedEntries.map((entry) => {
@@ -1054,17 +1058,18 @@ export default function KakaoTemplateManager({
     const extras = templateExtras(item.id, sent);
     const linkedEntries = linkedTextEntries(textItems, item.id);
     const linkedOn = linkedEntries.filter((entry) => ['on', 'part'].includes(effOf(entry).tone)).length;
+    const cardExtras = extras && !(linkedEntries.length > 0 && extras.sender === '메이크') ? extras : null;
     const used = usageSuccess(usage, item.id, sent);
-    const linked = Boolean(item.program_use || extras || linkedOn > 0);
-    const lightOff = Boolean(extras && extras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
+    const linked = Boolean(item.program_use || cardExtras || linkedOn > 0);
+    const lightOff = Boolean(cardExtras && cardExtras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
     const allFailed = usageCount(usage, item.id) > 0 && used === 0 && linkedOn === 0;
     const light = lightOff ? 'off' : (allFailed ? 'part' : (linked || (used ?? 0) > 0 ? 'on' : ''));
     const targetEntry = linkedEntries.find((entry) => entry.autoKind) || null;
     const picked = item.id === selectedId;
-    const extraBadges = item.program_use || (extras && extras.replaced7 > 0) ? (
+    const extraBadges = item.program_use || (cardExtras && cardExtras.replaced7 > 0) ? (
       <>
         {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림에 사용</span> : null}
-        {extras && extras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {extras.replaced7}건</span> : null}
+        {cardExtras && cardExtras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {cardExtras.replaced7}건</span> : null}
       </>
     ) : null;
 
@@ -1076,8 +1081,8 @@ export default function KakaoTemplateManager({
       cardCondText = `조건: ${[s.whenMain, t, stateWord].filter(Boolean).join(' · ')}`;
     } else if (linkedEntries.length > 1) {
       cardCondText = `조건: 자동 발송 ${linkedEntries.length}단계 (켜짐 ${linkedOn}/${linkedEntries.length})`;
-    } else if (extras?.trigger) {
-      cardCondText = `조건: ${extras.trigger}`;
+    } else if (cardExtras?.trigger) {
+      cardCondText = `조건: ${cardExtras.trigger}`;
     }
 
     return (
@@ -1094,8 +1099,8 @@ export default function KakaoTemplateManager({
             <span className="ktm-card-meta">
               <span className="ktm-chip">{item.target?.name || '채널'}{item.target?.kind === 'group' ? ' · 그룹' : ''}</span>
               <span className="ktm-date">{formatDate(item.dateCreated)}</span>
-              {extras ? <span className="ktm-chip ktm-chip--sender">{extras.sender}</span> : null}
-              {extras ? <span className="ktm-chip">{extras.kind}</span> : null}
+              {cardExtras ? <span className="ktm-chip ktm-chip--sender">{cardExtras.sender}</span> : null}
+              {cardExtras ? <span className="ktm-chip">{cardExtras.kind}</span> : null}
               {extraBadges}
             </span>
           ) : extraBadges ? <span className="ktm-card-meta">{extraBadges}</span> : null}

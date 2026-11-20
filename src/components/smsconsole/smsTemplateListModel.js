@@ -85,6 +85,31 @@ export function filterSmsItems(items, status) {
   return status === 'in_use' ? list.filter(isInUse) : list;
 }
 
+// 이미 이 콘솔(내 문구 DB 자동 발송)으로 옮겨 온 메이크 항목은 중복 목록에서 숨긴다.
+export function isMigratedExternal(item, textTemplates = []) {
+  if (!item?.external || item.sender !== SENDERS.make) return false;
+  const rows = (Array.isArray(textTemplates) ? textTemplates : []).filter((row) => row && (row.auto_kind || row.autoKind));
+  if (!rows.length) return false;
+  const key = String(item.id || item.key || '');
+  const ataOf = (row) => String(row.auto_ata_template ?? row.autoAtaTemplate ?? '');
+  const leadOf = (row) => String(row.auto_lead_source ?? row.autoLeadSource ?? '');
+  const nameOf = (row) => String(row.name || '');
+  const bodyOf = (row) => String(row.body ?? row.preview ?? '');
+  if (key === 'review_sns') {
+    return rows.some((row) => !ataOf(row) && (/sns\s*리뷰/i.test(nameOf(row)) || /\/1757\b/.test(bodyOf(row))));
+  }
+  if (key === 'caution_notice') {
+    return rows.some((row) => !ataOf(row) && /주의사항\s*안내/.test(nameOf(row)));
+  }
+  if (key === 'review_blog') {
+    return rows.some((row) => ataOf(row) === 'BMS_FREE' && /블로그\s*리뷰/.test(nameOf(row)));
+  }
+  if (key === 'event_free_support' || key === 'cafe24_welcome') {
+    return rows.some((row) => ataOf(row) === 'BMS_FREE' && (leadOf(row) === 'cafe24' || /무료\s*지원\s*이벤트|카페24\s*가입\s*이벤트/.test(nameOf(row))));
+  }
+  return false;
+}
+
 // 처음 열리는 탭은 가장 왼쪽의 전체
 export function defaultSmsFilter() {
   return 'all';

@@ -5,13 +5,14 @@ const DAY_MS = 86400000;
 const CACHE_TTL_MS = 60000;
 const CACHE_MAX_DATES = 8;
 const CACHE = new Map();
+const IN_FLIGHT = new Map();
 const APP_COMM = 'dJLDX22NaHBQ';
 const APP_AUTO = 'JfpLPhLYJqGV';
 const STATUS_LABELS = {
   COMPLETE: '처리완료', SENDING: '발송요청완료', PENDING: '접수대기', SCHEDULED: '예약대기', FAILED: '실패',
 };
 
-export function clearSolapiGroupCache() { CACHE.clear(); }
+export function clearSolapiGroupCache() { CACHE.clear(); IN_FLIGHT.clear(); }
 
 export function groupSource(appId) {
   if (!appId) return 'API';
@@ -51,33 +52,42 @@ export function slimGroup(g = {}) {
 export async function fetchSolapiGroupsDay(date, { fetchImpl = fetch, nowMs = Date.now() } = {}) {
   const hit = CACHE.get(date);
   if (hit && nowMs - hit.at >= 0 && nowMs - hit.at < CACHE_TTL_MS) return hit.value;
-  const start = Date.parse(`${date}T00:00:00+09:00`);
-  const groups = [];
-  let startKey = null;
-  let partial = false;
-  for (let page = 0; page < 3; page += 1) {
-    const url = new URL(SOLAPI_GROUP_URL);
-    url.searchParams.set('startDate', new Date(start).toISOString());
-    url.searchParams.set('endDate', new Date(start + DAY_MS).toISOString());
-    url.searchParams.set('limit', '500');
-    if (startKey) url.searchParams.set('startKey', startKey);
-    const response = await fetchImpl(url, { headers: { Authorization: authHeader() }, signal: AbortSignal.timeout(8000) });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.groupList || typeof payload.groupList !== 'object') {
-      throw new Error(`Solapi group lookup failed: HTTP ${response.status}`);
+  if (fetchImpl === fetch && IN_FLIGHT.has(date)) return IN_FLIGHT.get(date);
+  const work = (async () => {
+    const start = Date.parse(`${date}T00:00:00+09:00`);
+    const groups = [];
+    let startKey = null;
+    let partial = false;
+    for (let page = 0; page < 3; page += 1) {
+      const url = new URL(SOLAPI_GROUP_URL);
+      url.searchParams.set('startDate', new Date(start).toISOString());
+      url.searchParams.set('endDate', new Date(start + DAY_MS).toISOString());
+      url.searchParams.set('limit', '500');
+      if (startKey) url.searchParams.set('startKey', startKey);
+      const response = await fetchImpl(url, { headers: { Authorization: authHeader() }, signal: AbortSignal.timeout(8000) });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.groupList || typeof payload.groupList !== 'object') {
+        throw new Error(`Solapi group lookup failed: HTTP ${response.status}`);
+      }
+      for (const group of Object.values(payload.groupList)) {
+        const at = Date.parse(group.dateCreated || '');
+        if (at >= start && at < start + DAY_MS) groups.push(slimGroup(group));
+      }
+      startKey = payload.nextKey || null;
+      if (!startKey) break;
+      if (page === 2) partial = true;
     }
-    for (const group of Object.values(payload.groupList)) {
-      const at = Date.parse(group.dateCreated || '');
-      if (at >= start && at < start + DAY_MS) groups.push(slimGroup(group));
-    }
-    startKey = payload.nextKey || null;
-    if (!startKey) break;
-    if (page === 2) partial = true;
+    const value = { groups, partial };
+    CACHE.set(date, { at: nowMs, value });
+    while (CACHE.size > CACHE_MAX_DATES) CACHE.delete(CACHE.keys().next().value);
+    return value;
+  })();
+  if (fetchImpl === fetch) IN_FLIGHT.set(date, work);
+  try {
+    return await work;
+  } finally {
+    if (IN_FLIGHT.get(date) === work) IN_FLIGHT.delete(date);
   }
-  const value = { groups, partial };
-  CACHE.set(date, { at: nowMs, value });
-  while (CACHE.size > CACHE_MAX_DATES) CACHE.delete(CACHE.keys().next().value);
-  return value;
 }
 
 const typeKey = type => {

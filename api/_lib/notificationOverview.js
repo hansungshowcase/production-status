@@ -409,6 +409,7 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
       sql: `SELECT id, name, body, auto_kind, auto_days, auto_ata_template, auto_audience, auto_offset, auto_daily,
                    auto_weekdays, auto_unless_mode, auto_unless_step, auto_step, auto_send_time, auto_lead_source,
                    auto_repeat, auto_interval, auto_send_from, auto_copy_to, auto_chain,
+                   auto_skip_reason, auto_ata_fail_at, auto_catchup_paused_at, auto_catchup_error,
                    (COALESCE(image, '') <> '') AS has_image
               FROM sms_text_templates
              WHERE auto_enabled = true AND COALESCE(auto_kind, '') <> ''
@@ -431,6 +432,7 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
       })).rows || [];
       for (const row of rows) counts.set(Number(row.template_id), { d7: Number(row.d7) || 0, today: Number(row.today) || 0 });
     } catch { /* 발송 수를 못 읽어도 문구 목록은 보여 준다 */ }
+    const nowMs = new Date(now).getTime();
     return templates.map((row) => {
       const entry = {
         autoKind: row.auto_kind,
@@ -455,6 +457,29 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
       const sent = counts.get(Number(row.id)) || { d7: 0, today: 0 };
       const channel = consoleChannel(row);
       const timeText = sendTimeLabel(entry.autoSendTime);
+      const skipReason = String(row.auto_skip_reason || '').trim();
+      const isDailyCap = /^하루 상한/.test(skipReason);
+      const ataFailMs = Date.parse(row.auto_ata_fail_at || '');
+      const ataBackoff = Boolean(row.auto_ata_fail_at) && (!Number.isFinite(ataFailMs) || ataFailMs > nowMs);
+      const catchupPaused = Boolean(row.auto_catchup_paused_at);
+      const catchupError = String(row.auto_catchup_error || '').trim();
+      let config;
+      let statusNote = '';
+      if (ataBackoff) {
+        config = configuration('conditional', '알림톡 연속 실패로 잠시 쉬고 있습니다. 설정을 확인하세요.', channel);
+        statusNote = ' · 알림톡 연속 실패로 잠시 쉼';
+      } else if (skipReason && !isDailyCap) {
+        config = configuration('conditional', '자동 발송 중 오류가 기록되어 확인이 필요합니다.', channel);
+        statusNote = ` · 막힘(${skipReason})`;
+      } else if (isDailyCap) {
+        config = configuration('ready', '콘솔에서 켜져 있어 조건에 맞으면 자동으로 발송됩니다.', channel);
+        statusNote = ` · ${skipReason}`;
+      } else if (catchupPaused) {
+        config = configuration('ready', '콘솔에서 켜져 있어 조건에 맞으면 자동으로 발송됩니다.', channel);
+        statusNote = ` · 정기 발송 정상(일괄 발송만 멈춤: ${catchupError || '사유 확인 필요'})`;
+      } else {
+        config = configuration('ready', '콘솔에서 켜져 있어 조건에 맞으면 자동으로 발송됩니다.', channel);
+      }
       return {
         id: `console_auto_${row.id}`,
         name: String(row.name || `콘솔 문구 ${row.id}`),
@@ -462,9 +487,9 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
         console_template_id: Number(row.id),
         trigger: autoConditionLine(entry) || '콘솔에서 정한 조건',
         target: autoTargetText(entry) || '고객',
-        timing: `${timeText ? `${timeText} · ` : ''}콘솔 자동 발송 · 오늘 ${sent.today}건 발송`,
+        timing: `${timeText ? `${timeText} · ` : ''}콘솔 자동 발송 · 오늘 ${sent.today}건 발송${statusNote}`,
         policy: policy('active'),
-        configuration: configuration('ready', '콘솔에서 켜져 있어 조건에 맞으면 자동으로 발송됩니다.', channel),
+        configuration: config,
         checked_at: checkedAt,
         example_message: String(row.body || '').trim() ? { subject: '', text: String(row.body).trim(), label: '콘솔 등록 문구', source: 'console' } : null,
         recent: {
@@ -530,7 +555,7 @@ export async function loadNotificationOverview(db, env = process.env, now = new 
   const recentPlaceholders = recentExactMilestones.map(() => '?').join(', ');
   const discoveryPlaceholders = knownMilestones.map(() => '?').join(', ');
 
-  const [recentResult, discoveryResult] = await Promise.allSettled([
+  const [recentResult, discoveryResult, consoleAutoResult, consoleWarnResult] = await Promise.allSettled([
     db.execute({
       sql: `SELECT milestone, channel, created_at, status, delivery_status_code, message_subject, message_text
               FROM notification_log
@@ -557,6 +582,8 @@ export async function loadNotificationOverview(db, env = process.env, now = new 
              LIMIT 201`,
       args: knownMilestones,
     }),
+    loadConsoleAutoItems(db, now, checkedAt),
+    loadConsoleDisabledRecent(db, now, checkedAt),
   ]);
 
   const recentAvailable = recentResult.status === 'fulfilled';
@@ -587,6 +614,13 @@ export async function loadNotificationOverview(db, env = process.env, now = new 
       : { state: 'available' };
   }
 
+  const extra = consoleAutoResult.status === 'fulfilled' ? consoleAutoResult.value : [];
+  const warn = consoleWarnResult.status === 'fulfilled' ? consoleWarnResult.value : [];
+  let finalGroups = attachRecentResults(groups, recentRows, { available: recentAvailable });
+  if (extra.length || warn.length) {
+    finalGroups = finalGroups.map(group => (group.id === 'customer' ? { ...group, items: [...warn, ...group.items, ...extra] } : group));
+  }
+
   return {
     checked_at: checkedAt,
     recent_period: { days: NOTIFICATION_OVERVIEW_DAYS, from: periodStart, to: checkedAt },
@@ -594,13 +628,6 @@ export async function loadNotificationOverview(db, env = process.env, now = new 
       ? { state: 'available', message: '최근 처리 기록을 조회했습니다.' }
       : { state: 'unavailable', message: '정책과 설정은 확인했지만 최근 처리 기록은 조회할 수 없습니다.' },
     catalog_status: catalogStatus,
-    groups: await appendConsoleItems(attachRecentResults(groups, recentRows, { available: recentAvailable }), db, now, checkedAt),
+    groups: finalGroups,
   };
-}
-
-async function appendConsoleItems(groups, db, now, checkedAt) {
-  const extra = await loadConsoleAutoItems(db, now, checkedAt);
-  const warn = await loadConsoleDisabledRecent(db, now, checkedAt);
-  if (!extra.length && !warn.length) return groups;
-  return groups.map(group => (group.id === 'customer' ? { ...group, items: [...warn, ...group.items, ...extra] } : group));
 }

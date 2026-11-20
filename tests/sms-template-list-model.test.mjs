@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildConditionSummary, buildSmsItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, isAttentionTone, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, buildConditionSummary, buildSmsItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, isAttentionTone, isMigratedExternal, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -416,4 +416,23 @@ test('channelCostOf: 문자·알림톡·브랜드메시지 종류와 건당 단�
   const extCafeAta = channelCostOf({ sender: '카페24', channel: 'ATA', external: true });
   assert.equal(extCafeAta.fullLabel, '알림톡 · 카페24 과금');
   assert.equal(extCafeAta.tone, 'ata');
+});
+
+test('isMigratedExternal: 콘솔 내 문구(auto_kind)로 이전된 메이크 항목만 중복 목록에서 숨긴다', () => {
+  const dbRows = [
+    { id: 21, name: 'SNS 리뷰 이벤트(출고+3일)', auto_kind: 'ship_plus_days', auto_ata_template: '' },
+    { id: 25, name: '주의사항 안내 A(주문 당일 18:00)', auto_kind: 'order_plus_days', auto_ata_template: '' },
+    { id: 20, name: '블로그 리뷰 이벤트(출고+1일)', auto_kind: 'ship_plus_days', auto_ata_template: 'BMS_FREE' },
+    { id: 27, name: '카페24 가입 이벤트(가입 5일)', auto_kind: 'lead_plus_days', auto_lead_source: 'cafe24', auto_ata_template: 'BMS_FREE' },
+  ];
+  assert.equal(isMigratedExternal({ id: 'review_sns', external: true, sender: '메이크' }, dbRows), true);
+  assert.equal(isMigratedExternal({ id: 'caution_notice', external: true, sender: '메이크' }, dbRows), true);
+  assert.equal(isMigratedExternal({ id: 'review_blog', external: true, sender: '메이크' }, dbRows), true);
+  assert.equal(isMigratedExternal({ id: 'event_free_support', external: true, sender: '메이크' }, dbRows), true);
+  assert.equal(isMigratedExternal({ id: 'cafe24_welcome', external: true, sender: '메이크' }, dbRows), true);
+  // 내 문구에 해당 자동 문구가 없으면 메이크 항목을 그대로 둔다
+  assert.equal(isMigratedExternal({ id: 'review_sns', external: true, sender: '메이크' }, []), false);
+  // 스마트스토어 연동·제작현황 등 메이크 외 항목은 숨기지 않는다
+  assert.equal(isMigratedExternal({ id: 'smartstore_thanks', external: true, sender: '스마트스토어 연동' }, dbRows), false);
+  assert.equal(isMigratedExternal({ id: 'review_sns', external: false, sender: '제작현황' }, dbRows), false);
 });

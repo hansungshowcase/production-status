@@ -379,3 +379,16 @@ test('GET auto_status_batch: 여러 ID 현황을 한 번에 돌려준다', async
   assert.ok(res.body.statuses && typeof res.body.statuses === 'object');
   assert.equal(res.body.statuses[1].days, 2);
 });
+
+test('GET overview&lite=1: 잔액만 읽고 카카오 템플릿 목록은 건너뛴다', async () => {
+  reset();
+  let listedCount = 0;
+  const res = await run(request('GET', { query: { resource: 'overview', lite: '1' } }), deps({
+    kakao: fakeKakao({ listTemplates: async () => { listedCount += 1; return { targets: [], items: [], counts: { total: 0 } }; } }),
+  }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(listedCount, 0);
+  assert.equal(res.body.balance, 9679);
+  assert.equal(res.body.template_counts, null);
+  assert.equal(res.body.write.enabled, true);
+});

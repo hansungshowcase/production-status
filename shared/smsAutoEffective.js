@@ -35,14 +35,17 @@ export function autoEffective(status, nowMs = Date.now()) {
   if (!status.enabled) return { tone: 'off', text: '꺼짐', blocked: false };
   const sent7 = Number(status.sent_7d) || 0;
   const failed7 = Number(status.failed_7d) || 0;
+  const skipReason = reasonText(status.auto_skip_reason);
+  const isDailyCap = /^하루 상한/.test(skipReason);
   const no080 = reasonText(status.enable_blocked_reason) === 'no_optout_080'; // 080 줄이 없어도 발송은 멈추지 않는다 → 막힘이 아니라 '켜짐(주의)'
   const why = status.no_provider ? '발송 업체 설정 없음'
     : blockedText(no080 ? '' : status.enable_blocked_reason)
-    || reasonText(status.auto_skip_reason)
+    || (isDailyCap ? '' : skipReason)
     || (status.ata_backoff ? '알림톡 연속 실패로 잠시 쉼' : '')
     || staleCronText(status, nowMs)
     || (failed7 > sent7 ? '최근 7일 실패가 성공보다 많음' : '');
   if (why) return { tone: 'blocked', text: `켜짐(막힘: ${why})`, blocked: true };
+  if (isDailyCap) return { tone: 'part', text: `켜짐 · ${skipReason}`, blocked: false };
   if (no080) return { tone: 'part', text: '켜짐 · 080 수신거부 줄 필요(발송은 계속)', blocked: false };
   if (status.catchup_paused) {
     const detail = reasonText(status.catchup_error) || '사유를 알 수 없습니다';

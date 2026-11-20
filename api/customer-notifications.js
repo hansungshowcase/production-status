@@ -61,7 +61,14 @@ export async function handleCustomerNotifications(req, res, dependencies = {}) {
   const reviewFetchPromise = wantReviews && date
     ? (dependencies.fetchReviewMessages || fetchReviewMessages)(date).then(source => ({ ok: true, source }), () => ({ ok: false }))
     : Promise.resolve(null);
-  const [countsResult, reviewFetch] = await Promise.all([countsPromise, reviewFetchPromise]);
+  const rowsSql = `SELECT n.id, n.order_id, n.milestone, n.channel, n.to_phone, n.status,
+    n.recipient_name, o.client_name, n.message_subject, n.message_text, n.created_at,
+    n.delivery_status_code, n.delivery_reported_at, n.delivery_received_at, n.delivery_checked_at
+    ${base} ORDER BY n.created_at DESC, n.id DESC LIMIT ? OFFSET ?`;
+  const page1RowsPromise = page === 1
+    ? db.execute({ sql: rowsSql, args: [...filter.args, PAGE_SIZE, 0] })
+    : Promise.resolve(null);
+  const [countsResult, reviewFetch, page1RowsResult] = await Promise.all([countsPromise, reviewFetchPromise, page1RowsPromise]);
   const countRow = countsResult.rows?.[0] || {};
   const localTotal = countValue(countRow.total);
   const counts = { total: localTotal, success: countValue(countRow.success), failed: countValue(countRow.failed), queued: countValue(countRow.queued), sending: countValue(countRow.sending), uncertain: countValue(countRow.uncertain), skipped: countValue(countRow.skipped), dry_run: countValue(countRow.dry_run), delivery: { received: countValue(countRow.delivery_received), failed: countValue(countRow.delivery_failed), pending: countValue(countRow.delivery_pending), unknown: countValue(countRow.delivery_unknown), not_sent: countValue(countRow.delivery_not_sent), uncertain: countValue(countRow.delivery_uncertain) } };
@@ -92,10 +99,9 @@ export async function handleCustomerNotifications(req, res, dependencies = {}) {
   const effectivePage = totalPages ? Math.min(page, totalPages) : 1;
   const offset = (effectivePage - 1) * PAGE_SIZE;
   const mergeReviews = reviews.length > 0;
-  const rowsResult = await db.execute({ sql: `SELECT n.id, n.order_id, n.milestone, n.channel, n.to_phone, n.status,
-    n.recipient_name, o.client_name, n.message_subject, n.message_text, n.created_at,
-    n.delivery_status_code, n.delivery_reported_at, n.delivery_received_at, n.delivery_checked_at
-    ${base} ORDER BY n.created_at DESC, n.id DESC LIMIT ? OFFSET ?`, args: [...filter.args, mergeReviews ? effectivePage * PAGE_SIZE : PAGE_SIZE, mergeReviews ? 0 : offset] });
+  const rowsResult = page === 1 && page1RowsResult
+    ? page1RowsResult
+    : await db.execute({ sql: rowsSql, args: [...filter.args, mergeReviews ? effectivePage * PAGE_SIZE : PAGE_SIZE, mergeReviews ? 0 : offset] });
   let items = (rowsResult.rows || []).map(serializeCustomerNotification).filter(Boolean);
   if (mergeReviews) items = [...items, ...reviews].sort((a, b) => Date.parse(b.sent_at || '') - Date.parse(a.sent_at || '') || String(b.id).localeCompare(String(a.id))).slice(offset, offset + PAGE_SIZE);
   return res.status(200).json({

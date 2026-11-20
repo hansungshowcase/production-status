@@ -463,3 +463,23 @@ test('유튜브 인터뷰 본문은 "유튜브 인터뷰(…)", 블로그 리뷰
   assert.match(byId[youtube.messageId].category, /^유튜브 인터뷰\(/);
   assert.match(byId[blog.messageId].category, /^리뷰 안내\(/);
 });
+
+test('category: sms_auto_sends·보내기 화면 groupId 가 있으면 (메이크)/(다른 API 프로그램) 대신 (제작현황)/(보내기 화면)으로 표시한다', async () => {
+  const cautionAuto = msg({ to: OTHER_PHONE, type: 'MMS', subject: '한성쇼케이스 주의사항 안내', text: '한성쇼케이스 주의사항 안내', groupId: 'GAUTOCAUTION' });
+  const ytAuto = msg({ to: OTHER_PHONE, type: 'ATA', text: '문의주신 유튜브 인터뷰 촬영 혜택 안내드립니다.', kakaoOptions: { templateId: 'KA01TP260427071128256TBi5mAg9hvT' }, groupId: 'GAUTOYOUTUBE' });
+  const manualAd = msg({ to: OTHER_PHONE, type: 'MMS', subject: '(광고) 특별 안내', text: '(광고) 본문', groupId: 'GMANUALSEND' });
+  const { response } = await call({ view: 'messages' }, {
+    messages: [cautionAuto, ytAuto, manualAd],
+    rows: [
+      { group_ids: '["GAUTOCAUTION","GAUTOYOUTUBE"]' },
+      { group_id: 'GMANUALSEND' },
+    ],
+  });
+  const byId = Object.fromEntries(response.body.items.map(item => [item.message_id, item]));
+  assert.equal(byId[cautionAuto.messageId].sender_label, '제작현황');
+  assert.equal(byId[cautionAuto.messageId].category, '주의사항 안내(제작현황)');
+  assert.equal(byId[ytAuto.messageId].sender_label, '제작현황');
+  assert.equal(byId[ytAuto.messageId].category, '유튜브 인터뷰(제작현황)');
+  assert.equal(byId[manualAd.messageId].sender_label, '보내기 화면');
+  assert.equal(byId[manualAd.messageId].category, '광고 문자(보내기 화면)');
+});

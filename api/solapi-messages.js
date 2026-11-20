@@ -136,8 +136,10 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
   let solapi;
   let rows;
   let groupResult = null;
+  let manualRes = null;
+  let autoRes = null;
   try {
-    [solapi, { rows }, groupResult] = await Promise.all([
+    [solapi, { rows }, groupResult, manualRes, autoRes] = await Promise.all([
       fetchSolapiDay(date, { fetchImpl, nowMs: now }).catch(error => { throw Object.assign(new Error('Solapi lookup failed'), { cause: error }); }),
       database.execute({
         sql: `SELECT milestone, recipient_name, order_id, message_subject, provider_msgid, to_phone
@@ -147,6 +149,17 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
       }),
       // 그룹 조회가 실패해도 메시지만으로 계속한다.
       fetchSolapiGroupsDay(date, { fetchImpl, nowMs: now }).catch(() => null),
+      // '보내기' 화면 발송·제작현황 자동 발송 그룹 ID 도 함께 병렬 조회(표가 없거나 실패해도 내역은 그대로 나온다)
+      database.execute({
+        sql: `SELECT group_id FROM sms_manual_sends
+               WHERE group_id IS NOT NULL AND (sent_at AT TIME ZONE 'Asia/Seoul')::date = ?::date`,
+        args: [date],
+      }).catch(() => null),
+      database.execute({
+        sql: `SELECT group_ids FROM sms_auto_sends WHERE kst_date = ? AND group_ids IS NOT NULL
+              UNION ALL SELECT group_ids FROM sms_event_sends WHERE kst_date = ? AND group_ids IS NOT NULL`,
+        args: [date, date],
+      }).catch(() => null),
     ]);
   } catch (error) {
     if (/Solapi/i.test(String(error?.message))) {
@@ -157,29 +170,14 @@ export async function handleSolapiMessages(req, res, { db, fetchImpl, rateLimitC
 
   const slimGroups = groupResult?.groups || null;
   const groupSources = new Map((slimGroups || []).filter(g => g.groupId).map(g => [g.groupId, groupSource(g.appId)]));
-  // '보내기' 화면 발송은 sms_manual_sends.group_id 로 구분한다(기록 조회가 실패해도 내역은 그대로 나온다)
-  let manualGroupIds = null;
-  try {
-    const manual = await database.execute({
-      sql: `SELECT group_id FROM sms_manual_sends
-             WHERE group_id IS NOT NULL AND (sent_at AT TIME ZONE 'Asia/Seoul')::date = ?::date`,
-      args: [date],
-    });
-    manualGroupIds = new Set((manual.rows || []).map(row => String(row.group_id)));
-  } catch { /* 표가 없거나 조회 실패: 구분 표식 없이 계속 */ }
-  // 제작현황 자동·일괄 발송(sms_auto_sends·sms_event_sends)의 그룹 id 도 제작현황 발송으로 표시한다(조회 실패 시 표식 없이 계속)
+  const manualGroupIds = manualRes ? new Set((manualRes.rows || []).map(row => String(row.group_id))) : null;
   let programGroupIds = null;
-  try {
-    const auto = await database.execute({
-      sql: `SELECT group_ids FROM sms_auto_sends WHERE kst_date = ? AND group_ids IS NOT NULL
-            UNION ALL SELECT group_ids FROM sms_event_sends WHERE kst_date = ? AND group_ids IS NOT NULL`,
-      args: [date, date],
-    });
+  if (autoRes) {
     programGroupIds = new Set();
-    for (const row of auto.rows || []) {
+    for (const row of autoRes.rows || []) {
       try { const ids = JSON.parse(row.group_ids || '[]'); if (Array.isArray(ids)) ids.forEach(id => id && programGroupIds.add(String(id))); } catch { /* 깨진 값은 건너뜀 */ }
     }
-  } catch { /* 표가 없거나 조회 실패 */ }
+  }
   const failedGroupIds = new Set((slimGroups || []).filter(g => g.groupId && String(g.status).toUpperCase() === 'FAILED' && g.count?.sentTotal === 0).map(g => g.groupId)); // 그룹이 FAILED 이고 나간 건수가 0이면 그 그룹 메시지는 실패로 센다
   const everything = buildItems(solapi.messages, rows || [], { nowMs: now, groupSources, manualGroupIds, programGroupIds, failedGroupIds });
   const matrix = buildMatrix(everything);

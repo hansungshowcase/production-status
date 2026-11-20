@@ -3,6 +3,7 @@ import { redactCustomerSnapshot, maskCustomerPhone, validKstDate } from './custo
 import { matchReviewCampaign } from './customerReviewCampaigns.js';
 
 const CACHE = new Map();
+const IN_FLIGHT = new Map();
 const SOLAPI_URL = 'https://api.solapi.com/messages/v4/list';
 const normalizePhone = value => String(value || '').replace(/\D/g, '');
 const validPhone = value => /^01[016789][0-9]{7,8}$/.test(value);
@@ -83,6 +84,26 @@ export async function fetchReviewMessages(date, { fetchImpl = fetch, nowMs = Dat
   if (!validKstDate(date)) throw new Error('Invalid review lookup date');
   const hit = CACHE.get(date);
   if (cache && hit && nowMs - hit.at >= 0 && nowMs - hit.at < 60000) return hit.value;
+  if (cache && fetchImpl === fetch) {
+    if (IN_FLIGHT.has(date)) return IN_FLIGHT.get(date);
+    const work = (async () => {
+      const { fetchSolapiDay } = await import('./solapiMessageLog.js');
+      const day = await fetchSolapiDay(date, { fetchImpl, nowMs });
+      const value = {
+        messages: (day?.messages || []).filter(message => matchReviewCampaign(message)),
+        complete: !day?.partial,
+      };
+      CACHE.set(date, { at: nowMs, value });
+      while (CACHE.size > 32) CACHE.delete(CACHE.keys().next().value);
+      return value;
+    })();
+    IN_FLIGHT.set(date, work);
+    try {
+      return await work;
+    } finally {
+      if (IN_FLIGHT.get(date) === work) IN_FLIGHT.delete(date);
+    }
+  }
   const start = Date.parse(`${date}T00:00:00+09:00`);
   let startKey;
   const messages = [];
@@ -111,4 +132,4 @@ export async function fetchReviewMessages(date, { fetchImpl = fetch, nowMs = Dat
   }
   return value;
 }
-export function clearReviewMessageCache() { CACHE.clear(); }
+export function clearReviewMessageCache() { CACHE.clear(); IN_FLIGHT.clear(); }
