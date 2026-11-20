@@ -17,8 +17,8 @@ export const CONSOLE_MENUS = Object.freeze([
       { id: 'staff-kakao', label: '직원 · 카톡(알림톡·브랜드)', aud: 'staff', ch: 'kakao' },
     ],
   },
-  { id: 'customer', label: '고객 문자 관리' },
-  { id: 'staff', label: '직원 문자 관리' },
+  { id: 'customer', label: '고객 발송 관리' },
+  { id: 'staff', label: '직원 발송 관리' },
 ]);
 
 export const MENU_IDS = Object.freeze(CONSOLE_MENUS.map(menu => menu.id));

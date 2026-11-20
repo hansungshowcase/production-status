@@ -3,7 +3,9 @@ import { fetchCustomerNotifications, fetchCustomerReviews } from '../api/custome
 import { notificationPageNumbers } from '../pages/smsHistoryFilters';
 import {
   canSelectReviewCustomer,
+  customerChannelBadge,
   customerDeliveryTone,
+  customerHistoryCategory,
   customerRequestLabel,
   customerRequestTone,
   EMPTY_CUSTOMER_COUNTS,
@@ -100,19 +102,33 @@ export default function CustomerSmsPanel() {
   const reviewCampaign = useMemo(() => reviews.campaigns.find(item => item.id === campaign) || reviews.campaigns[0], [campaign, reviews.campaigns]);
   const sendDisabledReason = reviews.connection.notice || '발송 연결과 수신 동의가 확인되기 전에는 발송할 수 없습니다.';
 
+  const groupedHistory = useMemo(() => {
+    const byCat = new Map();
+    for (const item of history.items) {
+      const cat = customerHistoryCategory(item);
+      let bucket = byCat.get(cat.key);
+      if (!bucket) {
+        bucket = { ...cat, items: [] };
+        byCat.set(cat.key, bucket);
+      }
+      bucket.items.push(item);
+    }
+    return [...byCat.values()].sort((a, b) => a.order - b.order);
+  }, [history.items]);
+
   const today = todayInKst();
 
   return (
     <section className="customer-sms-panel" aria-labelledby="customer-sms-title">
       <div className="customer-sms-intro">
         <div className="customer-sms-intro__copy">
-          <h2 id="customer-sms-title">고객 문자 관리</h2>
+          <h2 id="customer-sms-title">고객 발송 관리</h2>
           <p>
             고객 안내 발송 결과 및 스마트스토어를 제외한 리뷰 이벤트 대상 확인
             <span className="customer-sms-intro__notice"> · 실제 수신 결과는 전달 상태를 기준으로 확인합니다.</span>
           </p>
         </div>
-        <div className="customer-sms-tabs" role="tablist" aria-label="고객 문자 관리 보기">
+        <div className="customer-sms-tabs" role="tablist" aria-label="고객 발송 관리 보기">
           <button type="button" role="tab" aria-selected={tab === 'history'} aria-controls="customer-sms-history" onClick={() => setTab('history')}>발송이력</button>
           <button type="button" role="tab" aria-selected={tab === 'reviews'} aria-controls="customer-sms-reviews" onClick={() => setTab('reviews')}>리뷰이벤트</button>
         </div>
@@ -143,7 +159,7 @@ export default function CustomerSmsPanel() {
           <button type="button" disabled={date === todayInKst() && !kind} onClick={() => { setDate(todayInKst()); setKind(''); setHistoryPage(1); setExpandedId(null); }}>조건 초기화</button>
         </div>
         {history.status === 'ready' && history.reviewSync.notice && <p className={`customer-sms-sync-notice is-${history.reviewSync.state}`} role="status"><span>{history.reviewSync.notice}</span>{history.reviewSync.checked_at && <time dateTime={history.reviewSync.checked_at}>확인 {formatCustomerSmsTime(history.reviewSync.checked_at)}</time>}</p>}
-        <div className="customer-sms-summary" aria-label="고객 문자 발송 요약">
+        <div className="customer-sms-summary" aria-label="고객 발송 요약">
           <div><span>전체</span><strong>{history.counts.total}</strong></div><div className="is-success"><span>수신 완료</span><strong>{history.counts.delivery.received}</strong></div><div className="is-failed"><span>전달 실패</span><strong>{history.counts.delivery.failed}</strong></div><div><span>미발송·확인 중</span><strong>{history.counts.delivery.pending + history.counts.delivery.unknown + history.counts.delivery.not_sent + history.counts.delivery.uncertain}</strong></div>
         </div>
         <LoadState
@@ -153,14 +169,83 @@ export default function CustomerSmsPanel() {
           onRetry={loadHistory}
           onPrevDay={date === today && !kind ? () => { setDate(shiftYmd(today, -1)); setHistoryPage(1); setExpandedId(null); } : null}
         />
-        {history.status === 'ready' && history.items.length > 0 && <div className="customer-sms-list">{history.items.map(item => { const expanded = expandedId === item.id; return <article className="customer-sms-item" key={item.id}>
-          <div className="customer-sms-item__heading"><div><strong>{item.customer_name || '고객명 미확인'}</strong><span>{item.phone || '번호 미확인'}</span></div><div><span className={`customer-sms-badge is-${customerDeliveryTone(item.delivery?.state)}`}>{item.delivery?.label || '전달 상태 미확인'}</span><span className={`customer-sms-badge is-${customerRequestTone(item.status)}`}>{customerRequestLabel(item.status)}</span></div></div>
-          <p className="customer-sms-meta"><span>{item.kind_label || '안내 유형 미확인'}</span><span>{item.channel || '채널 미확인'}</span><time dateTime={item.sent_at || undefined}>{formatCustomerSmsTime(item.sent_at)}</time>{Number(item.attempt_count) > 0 && <span>발송 시도 {item.attempt_count}회</span>}{item.delivery?.code && <span>결과 코드 {item.delivery.code}</span>}{item.delivery?.received_at && <span>수신 {formatCustomerSmsTime(item.delivery.received_at)}</span>}{item.delivery?.reported_at && <span>결과 확정 {formatCustomerSmsTime(item.delivery.reported_at)}</span>}{item.delivery?.checked_at && <span>확인 {formatCustomerSmsTime(item.delivery.checked_at)}</span>}</p>
-          <h3>{item.subject || '제목 미보관'}</h3>
-          <button type="button" className="customer-sms-disclosure" aria-expanded={expanded} aria-controls={`customer-sms-body-${item.id}`} onClick={() => setExpandedId(expanded ? null : item.id)}>{expanded ? '본문 접기' : '발송 본문 보기'}<span aria-hidden="true">⌄</span></button>
-          {expanded && <div className="customer-sms-body" id={`customer-sms-body-${item.id}`}><p>{item.text ?? '발송 당시 본문 미보관'}</p>{Array.isArray(item.attempts) && item.attempts.length > 0 && <section className="customer-sms-attempts" aria-label="실제 발송 시도"><h4>실제 발송 시도 {item.attempt_count || item.attempts.length}회</h4><ul>{item.attempts.map((attempt, index) => <li key={`${attempt.channel}-${attempt.code}-${index}`}><strong>{attempt.channel || '채널 미확인'}</strong><span className={`customer-sms-badge is-${customerDeliveryTone(attempt.state)}`}>{attempt.label || '결과 미확인'}</span><span>결과 코드 {attempt.code || '없음'}</span></li>)}</ul></section>}</div>}
-        </article>; })}</div>}
-        {history.status === 'ready' && <Pagination pagination={history.pagination} onPage={value => { setHistoryPage(value); setExpandedId(null); }} label="고객 문자 발송이력 페이지" />}
+        {history.status === 'ready' && history.items.length > 0 && (
+          <div className="customer-sms-groups">
+            {groupedHistory.map(cat => (
+              <section key={cat.key} className="customer-sms-catgroup" aria-label={cat.label}>
+                <h3 className={`customer-sms-cathead customer-sms-cathead--${cat.tone}`}>
+                  <span>{cat.label}</span>
+                  <span className="customer-sms-catcount">{cat.items.length}</span>
+                </h3>
+                <div className="customer-sms-list">
+                  {cat.items.map(item => {
+                    const expanded = expandedId === item.id;
+                    const chBadge = customerChannelBadge(item.channel);
+                    const toggleItem = () => setExpandedId(expanded ? null : item.id);
+                    return (
+                      <article className={`customer-sms-item customer-sms-item--${cat.tone}${expanded ? ' is-open' : ''}`} key={item.id}>
+                        <div className="customer-sms-item__trigger" onClick={toggleItem}>
+                          <div className="customer-sms-item__heading">
+                            <div>
+                              <strong>{item.customer_name || '고객명 미확인'}</strong>
+                              <span>{item.phone || '번호 미확인'}</span>
+                            </div>
+                            <div>
+                              <span className={`customer-sms-ch is-${chBadge.tone}`}>{chBadge.label}</span>
+                              <span className={`customer-sms-badge is-${customerDeliveryTone(item.delivery?.state)}`}>{item.delivery?.label || '전달 상태 미확인'}</span>
+                              <span className={`customer-sms-badge is-${customerRequestTone(item.status)}`}>{customerRequestLabel(item.status)}</span>
+                            </div>
+                          </div>
+                          <p className="customer-sms-meta">
+                            <span>{item.kind_label || '안내 유형 미확인'}</span>
+                            <span>{item.channel || '채널 미확인'}</span>
+                            <time dateTime={item.sent_at || undefined}>{formatCustomerSmsTime(item.sent_at)}</time>
+                            {Number(item.attempt_count) > 0 && <span>발송 시도 {item.attempt_count}회</span>}
+                            {item.delivery?.code && <span>결과 코드 {item.delivery.code}</span>}
+                            {item.delivery?.received_at && <span>수신 {formatCustomerSmsTime(item.delivery.received_at)}</span>}
+                            {item.delivery?.reported_at && <span>결과 확정 {formatCustomerSmsTime(item.delivery.reported_at)}</span>}
+                            {item.delivery?.checked_at && <span>확인 {formatCustomerSmsTime(item.delivery.checked_at)}</span>}
+                          </p>
+                          <h3>{item.subject || '제목 미보관'}</h3>
+                          <button
+                            type="button"
+                            className="customer-sms-disclosure"
+                            aria-expanded={expanded}
+                            aria-controls={`customer-sms-body-${item.id}`}
+                            onClick={event => { event.stopPropagation(); toggleItem(); }}
+                          >
+                            <span>{expanded ? '접기' : '보기'}</span>
+                            <span className={`customer-sms-chevron${expanded ? ' is-open' : ''}`} aria-hidden="true">⌄</span>
+                          </button>
+                        </div>
+                        {expanded && (
+                          <div className="customer-sms-body" id={`customer-sms-body-${item.id}`}>
+                            <p>{item.text ?? '발송 당시 본문 미보관'}</p>
+                            {Array.isArray(item.attempts) && item.attempts.length > 0 && (
+                              <section className="customer-sms-attempts" aria-label="실제 발송 시도">
+                                <h4>실제 발송 시도 {item.attempt_count || item.attempts.length}회</h4>
+                                <ul>
+                                  {item.attempts.map((attempt, index) => (
+                                    <li key={`${attempt.channel}-${attempt.code}-${index}`}>
+                                      <strong>{attempt.channel || '채널 미확인'}</strong>
+                                      <span className={`customer-sms-badge is-${customerDeliveryTone(attempt.state)}`}>{attempt.label || '결과 미확인'}</span>
+                                      <span>결과 코드 {attempt.code || '없음'}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </section>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+        {history.status === 'ready' && <Pagination pagination={history.pagination} onPage={value => { setHistoryPage(value); setExpandedId(null); }} label="고객 발송이력 페이지" />}
       </div>
 
       <div id="customer-sms-reviews" role="tabpanel" hidden={tab !== 'reviews'}>

@@ -280,33 +280,129 @@
 
 .notification-overview-groups,
 .notification-overview-group,
+.notification-overview-catgroups,
 .notification-overview-list { display: grid; }
 
 .notification-overview-group[hidden] { display: none; }
 .notification-overview-list { gap: 0; }
 
-/* 플러시 헤어라인 행 */
+/* 수단 필터 바 (고객 발송 관리) */
+.notification-overview-chbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #eef0f3;
+  background: #fafbfc;
+}
+
+.notification-overview-chpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-overview-chpill strong { font-weight: 800; font-variant-numeric: tabular-nums; }
+.notification-overview-chpill:hover { background: #f1f5f9; color: #0f172a; }
+.notification-overview-chpill[aria-pressed='true'] { border-color: #191f28; background: #191f28; color: #ffffff; }
+.notification-overview-chpill--bms[aria-pressed='true'] { border-color: #6d28d9; background: #6d28d9; }
+.notification-overview-chpill--ata[aria-pressed='true'] { border-color: #b45309; background: #b45309; }
+.notification-overview-chpill--sms[aria-pressed='true'] { border-color: #1d4ed8; background: #1d4ed8; }
+
+/* 카테고리 그룹 헤더 */
+.notification-overview-cathead {
+  margin: 0;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #f1f5f9;
+  border-top: 1px solid #dce3ec;
+  border-bottom: 1px solid #dce3ec;
+  border-left: 4px solid #1b64da;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.notification-overview-cat:first-child .notification-overview-cathead { border-top: 0; }
+.notification-overview-cathead--danger { background: #fef2f2; border-left-color: #d92d20; color: #991b1b; }
+.notification-overview-cathead--purple { background: #f5f3ff; border-left-color: #7c3aed; color: #4c1d95; }
+.notification-overview-cathead--teal { background: #f0fdfa; border-left-color: #0d9488; color: #115e59; }
+.notification-overview-cathead--blue { background: #eff6ff; border-left-color: #1b64da; color: #1e3a8a; }
+.notification-overview-cathead--amber { background: #fffbeb; border-left-color: #d97706; color: #92400e; }
+.notification-overview-cathead--rose { background: #fff1f2; border-left-color: #be123c; color: #881337; }
+.notification-overview-cathead--slate { background: #f1f5f9; border-left-color: #475569; color: #1e293b; }
+
+.notification-overview-catcount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #191f28;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 플러시 헤어라인 행 (행 아무 곳이나 클릭 시 열림·닫힘) */
 .notification-overview-item {
   min-width: 0;
-  padding: 8px 14px;
+  padding: 0;
   border: 0;
   border-bottom: 1px solid #f0f2f5;
   border-radius: 0;
-  border-left: 2.5px solid transparent;
+  border-left: 3px solid transparent;
   background: var(--sms-white, #ffffff);
   transition: background 120ms ease;
 }
 
 .notification-overview-item:last-child { border-bottom: 0; }
-.notification-overview-item:hover { background: #fafbfc; }
+.notification-overview-item:hover { background: #f8fafc; }
+.notification-overview-item.is-open { background: #f8fbff; }
 
 .notification-overview-item__row {
   min-width: 0;
+  padding: 9px 14px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 3px 8px;
+  cursor: pointer;
 }
+
+.notification-overview-ch {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.notification-overview-ch--bms { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.notification-overview-ch--ata { background: #fef9e7; color: #8a5a00; border: 1px solid #fde68a; }
+.notification-overview-ch--mms { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.notification-overview-ch--sms { background: #f2f4f6; color: #333d4b; border: 1px solid #e2e8f0; }
+.notification-overview-ch--off { background: #f2f4f6; color: #6b7684; border: 1px solid #e5e8eb; }
 
 .notification-overview-item__heading {
   min-width: 0;
@@ -468,14 +564,14 @@
 .notification-overview-disclosure {
   min-width: auto;
   min-height: 26px;
-  padding: 0 8px;
+  padding: 0 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  border: 1px solid #e5e8eb;
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: var(--surface, #ffffff);
+  background: transparent;
   color: #4e5968;
   cursor: pointer;
   font: inherit;
@@ -486,8 +582,8 @@
 }
 
 .notification-overview-disclosure:hover {
-  background: #f2f4f6;
-  border-color: #d5dbe1;
+  background: #edf2f7;
+  border-color: transparent;
   color: #191f28;
 }
 

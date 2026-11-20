@@ -410,7 +410,7 @@ export async function loadConsoleAutoItems(db, now, checkedAt) {
                    auto_weekdays, auto_unless_mode, auto_unless_step, auto_step, auto_send_time, auto_lead_source,
                    auto_repeat, auto_interval, auto_send_from, auto_copy_to, auto_chain,
                    auto_skip_reason, auto_ata_fail_at, auto_catchup_paused_at, auto_catchup_error,
-                   (COALESCE(image, '') <> '') AS has_image
+                   (COALESCE(image, '') <> '' OR COALESCE(images, '') NOT IN ('', '[]')) AS has_image
               FROM sms_text_templates
              WHERE auto_enabled = true AND COALESCE(auto_kind, '') <> ''
                AND COALESCE(auto_audience, 'customer') NOT IN ('staff', 'sales')

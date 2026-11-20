@@ -116,3 +116,75 @@ export function notificationLogMessagePresentation(value) {
   }
   return '최근 처리 결과를 불러올 수 없습니다.';
 }
+
+/**
+ * Normalize channel string from notificationOverview API into styled badge + filter bucket.
+ */
+export function notificationChannelBadge(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw === '확인 불가') return { key: 'unknown', label: '', filterKey: 'other' };
+  if (raw === '발송 안 함' || raw === '보내지 않음') return { key: 'off', label: '보내지 않음', filterKey: 'other' };
+  if (/브랜드|^bms/i.test(raw)) return { key: 'bms', label: '브랜드메시지', filterKey: 'bms' };
+  if (raw.includes('알림톡 우선')) return { key: 'ata', label: '알림톡 · 문자 대체', filterKey: 'ata' };
+  if (/알림톡|^alimtalk$|^ata$/i.test(raw)) return { key: 'ata', label: '알림톡', filterKey: 'ata' };
+  if (/mms|사진\s*문자/i.test(raw)) return { key: 'mms', label: '사진 문자', filterKey: 'sms' };
+  if (/lms|장문/i.test(raw)) return { key: 'sms', label: '장문 문자', filterKey: 'sms' };
+  if (/^sms$|단문/i.test(raw)) return { key: 'sms', label: '단문 문자', filterKey: 'sms' };
+  if (raw === '문자') return { key: 'sms', label: '문자', filterKey: 'sms' };
+  return { key: 'unknown', label: '', filterKey: 'other' };
+}
+
+/**
+ * Group overview items by clear business category for customer vs internal/staff panels.
+ */
+export function notificationOverviewCategory(item, groupId = 'customer') {
+  const name = String(item?.name || '');
+  const id = String(item?.id || '');
+  if (groupId === 'internal') {
+    if (id === 'sms_delivery_block_admin_alert' || /(감시|차단|관리자)/.test(name)) {
+      return { key: 'staff-admin', label: '관리자 · 전달 감시', tone: 'rose', order: 4 };
+    }
+    if (/(지연|미완료|오늘\s*출고|당일\s*출고|포장\s*완료\s*요청)/.test(name) || id === 'internal_ship_day' || /(overdue|packing_request)/i.test(id)) {
+      return { key: 'staff-overdue', label: '납기 지연 · 당일 출고', tone: 'amber', order: 3 };
+    }
+    if (/(완료|입고\s*요청|즉시)/.test(name) || id === 'internal_vcut_completed') {
+      return { key: 'staff-process', label: '공정 완료 · 즉시 알림', tone: 'teal', order: 1 };
+    }
+    if (/(납기|미착수|도면|레이저|용접|조립|분체|영업)/.test(name)) {
+      return { key: 'staff-due', label: '공정별 납기 알림', tone: 'blue', order: 2 };
+    }
+    return { key: 'staff-other', label: '기타 사내 알림', tone: 'slate', order: 5 };
+  }
+
+  if (id === 'console_disabled_recent' || item?.configuration?.status === 'disabled_recent') {
+    return { key: 'cust-warn', label: '확인 필요 · 최근 꺼짐', tone: 'danger', order: 0 };
+  }
+  if (/(리뷰|후기)/i.test(name)) {
+    return { key: 'cust-review', label: '리뷰 이벤트', tone: 'purple', order: 1 };
+  }
+  if (/(소개|혜택|무료\s*지원|이벤트|가입|인터뷰)/i.test(name)) {
+    return { key: 'cust-benefit', label: '소개 · 혜택 · 가입', tone: 'teal', order: 2 };
+  }
+  if (['customer_ordered', 'customer_started', 'customer_packed', 'customer_rescheduled', 'customer_shipped'].includes(id) || /(주문|제작|포장|출고|주의사항|일정)/.test(name)) {
+    return { key: 'cust-order', label: '주문 · 제작 · 출고 안내', tone: 'blue', order: 3 };
+  }
+  return { key: 'cust-other', label: '기타 고객 알림', tone: 'slate', order: 4 };
+}
+
+/**
+ * Concise category metadata for daily staff SMS history items.
+ */
+export function staffHistoryCategory(item) {
+  const cat = notificationOverviewCategory({
+    id: item?.milestone || '',
+    name: `${item?.subject || ''} ${item?.milestone || ''}`,
+  }, 'internal');
+  const shortLabelMap = {
+    'staff-admin': '전달 감시',
+    'staff-overdue': '지연 · 당일 출고',
+    'staff-process': '공정 완료',
+    'staff-due': '납기 알림',
+    'staff-other': '기타 알림',
+  };
+  return { ...cat, label: shortLabelMap[cat.key] || cat.label };
+}

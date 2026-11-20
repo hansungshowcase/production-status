@@ -4,7 +4,9 @@ import test from 'node:test';
 
 import {
   canSelectReviewCustomer,
+  customerChannelBadge,
   customerDeliveryTone,
+  customerHistoryCategory,
   customerRequestLabel,
   formatCustomerSmsTime,
   todayInKst,
@@ -20,7 +22,7 @@ test('사이드바 메뉴(템플릿 기본·보내기·발송 내역·고객/직
   // 메뉴 이름은 shared/smsConsole.js 한 곳에서 관리. 현황판은 각 템플릿 상단에 채널별로 내장.
   assert.match(pageSource, /parseConsoleQuery\(/);
   assert.match(pageSource, /<SmsConsoleSidebar /);
-  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['템플릿', '보내기', '발송 내역', '고객 문자 관리', '직원 문자 관리']);
+  assert.deepEqual(CONSOLE_MENUS.map(menu => menu.label), ['템플릿', '보내기', '발송 내역', '고객 발송 관리', '직원 발송 관리']);
   assert.equal(parseConsoleQuery(new URLSearchParams('')).menu, 'templates');
   assert.match(pageSource, /<SolapiMessageLog[\s>]/);
   assert.match(pageSource, /<CustomerSmsPanel \/>/);
@@ -84,4 +86,14 @@ test('알 수 없는 상태는 성공으로 꾸미지 않고 접근 가능한 44
   assert.match(panelCss, /:focus-visible/);
   assert.match(panelCss, /@media \(max-width: 480px\)/);
   assert.match(panelCss, /overflow-wrap:\s*anywhere/);
+});
+
+test('고객 발송 이력 수단 배지·카테고리 분류가 브랜드메시지/알림톡/사진문자/리뷰/주문을 구분한다', () => {
+  assert.deepEqual(customerChannelBadge('BMS_FREE'), { tone: 'bms', label: '브랜드메시지' });
+  assert.deepEqual(customerChannelBadge('alimtalk'), { tone: 'ata', label: '알림톡' });
+  assert.deepEqual(customerChannelBadge('MMS'), { tone: 'mms', label: '사진 문자' });
+  assert.deepEqual(customerChannelBadge('LMS'), { tone: 'sms', label: '장문 문자' });
+  assert.equal(customerHistoryCategory({ kind: 'review_blog', kind_label: '블로그 후기', subject: '후기 안내' }).key, 'review');
+  assert.equal(customerHistoryCategory({ kind: '', kind_label: '', subject: '소개 혜택 안내' }).key, 'benefit');
+  assert.equal(customerHistoryCategory({ kind: 'ordered', kind_label: '주문 접수', subject: '주문 접수 안내' }).key, 'progress');
 });

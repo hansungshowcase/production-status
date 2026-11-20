@@ -167,7 +167,7 @@ export default function SmsHistoryPage() {
             id="sms-history-audience-panel-customer"
             hidden={state.menu !== 'customer'}
           >
-            <div className="sms-history-view-tabs" role="tablist" aria-label="고객 문자 보기">
+            <div className="sms-history-view-tabs" role="tablist" aria-label="고객 발송 보기">
               <button
                 type="button"
                 role="tab"
@@ -216,7 +216,7 @@ export default function SmsHistoryPage() {
           id="sms-history-audience-panel-employee"
           hidden={state.menu !== 'staff'}
         >
-        <div className="sms-history-view-tabs" role="tablist" aria-label="문자 현황 보기">
+        <div className="sms-history-view-tabs" role="tablist" aria-label="직원 발송 보기">
           <button
             type="button"
             role="tab"

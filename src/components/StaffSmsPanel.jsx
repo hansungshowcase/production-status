@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchInternalNotifications } from '../api/internalNotifications';
 import { formatProcessCompletionTime, getKstToday } from '../utils/dateUtils';
 import { phoneTail, recipientWithPhoneTail } from '../utils/phoneTail';
+import { staffHistoryCategory } from './notificationOverviewPresentation';
+import { customerChannelBadge } from './customerSmsPresentation';
 import './StaffSmsPanel.css';
 
 // 직원 문자 관리 발송내역(2026-11-11 사장님 결정): 안내 문구·요약 칸·쪽 넘김 없이 미니멀하게.
@@ -43,6 +45,7 @@ export default function StaffSmsPanel({ active = true }) {
   const today = getKstToday();
   const [date, setDate] = useState(today);
   const [selected, setSelected] = useState('');
+  const [selectedCat, setSelectedCat] = useState('');
   const [items, setItems] = useState([]);
   const [recipients, setRecipients] = useState([]);
   const [truncated, setTruncated] = useState(false);
@@ -89,19 +92,35 @@ export default function StaffSmsPanel({ active = true }) {
     return list;
   }, [items, recipients]);
 
-  const shown = useMemo(
+  const byPerson = useMemo(
     () => (selected ? items.filter(item => item.recipient_name === selected) : items),
     [items, selected],
+  );
+  const categories = useMemo(() => {
+    const map = new Map();
+    for (const item of byPerson) {
+      const cat = staffHistoryCategory(item);
+      const cur = map.get(cat.key);
+      if (cur) cur.count += 1;
+      else map.set(cat.key, { ...cat, count: 1 });
+    }
+    return [...map.values()].sort((a, b) => a.order - b.order);
+  }, [byPerson]);
+  const shown = useMemo(
+    () => (selectedCat ? byPerson.filter(item => staffHistoryCategory(item).key === selectedCat) : byPerson),
+    [byPerson, selectedCat],
   );
   const selectedPerson = people.find(person => person.name === selected);
 
   const choose = name => {
     setSelected(name);
+    setSelectedCat('');
     setExpandedId(null);
   };
   const changeDate = value => {
     if (!value) return;
     setDate(value);
+    setSelectedCat('');
     setExpandedId(null);
     // 등록된 직원을 골라 둔 채면 다른 날도 그 사람으로, 명단 밖 이름이면 전체보기로 돌아간다
     if (selected && !recipients.some(person => person.name === selected)) setSelected('');
@@ -110,7 +129,7 @@ export default function StaffSmsPanel({ active = true }) {
   return (
     <div className="staff-sms" data-staff-sms>
       <div className="staff-sms__head">
-        <h2 id="sms-history-title">직원 문자 발송내역</h2>
+        <h2 id="sms-history-title">직원 발송 내역</h2>
         <div className="staff-sms__date">
           <button
             type="button"
@@ -164,6 +183,30 @@ export default function StaffSmsPanel({ active = true }) {
         ))}
       </div>
 
+      {status === 'ready' && categories.length >= 2 && (
+        <div className="staff-sms__cats" role="group" aria-label="알림 종류별 보기">
+          <button
+            type="button"
+            className="staff-sms__catpill"
+            aria-pressed={selectedCat === ''}
+            onClick={() => { setSelectedCat(''); setExpandedId(null); }}
+          >
+            전체 {byPerson.length}
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.key}
+              type="button"
+              className={`staff-sms__catpill staff-sms__catpill--${cat.tone}`}
+              aria-pressed={selectedCat === cat.key}
+              onClick={() => { setSelectedCat(selectedCat === cat.key ? '' : cat.key); setExpandedId(null); }}
+            >
+              {cat.label} {cat.count}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="sms-history-list-scroll staff-sms__scroll" data-history-scroll aria-label="문자 발송 기록" tabIndex={0}>
         {status === 'loading' && (
           <div className="sms-history-state" role="status" aria-live="polite">
@@ -199,31 +242,38 @@ export default function StaffSmsPanel({ active = true }) {
               const problem = problemOf(item);
               const isExpanded = expandedId === item.id;
               const bodyId = `staff-sms-body-${item.id}`;
+              const cat = staffHistoryCategory(item);
+              const chBadge = item.channel ? customerChannelBadge(item.channel) : null;
+              const toggleRow = () => setExpandedId(isExpanded ? null : item.id);
               return (
-                <li className="staff-sms__item" key={item.id}>
-                  <div className="staff-sms__line">
-                    <time dateTime={item.sent_at || undefined}>{formatSentAt(item.sent_at)}</time>
-                    {!selected && <strong>{recipientWithPhoneTail(item.recipient_name, item.phone)}</strong>}
-                    {problem && (
-                      <span className={`staff-sms__flag staff-sms__flag--${problem.tone}`} title={problem.label}>
-                        <span className={`staff-sms__dot staff-sms__dot--${problem.tone}`} aria-hidden="true" />
-                        {problem.short}
-                      </span>
-                    )}
+                <li className={`staff-sms__item staff-sms__item--${cat.tone}${isExpanded ? ' is-open' : ''}`} key={item.id}>
+                  <div className="staff-sms__row-trigger" onClick={toggleRow}>
+                    <div className="staff-sms__line">
+                      <time dateTime={item.sent_at || undefined}>{formatSentAt(item.sent_at)}</time>
+                      <span className={`staff-sms__cat staff-sms__cat--${cat.tone}`}>{cat.label}</span>
+                      {chBadge && <span className={`staff-sms__ch is-${chBadge.tone}`}>{chBadge.label}</span>}
+                      {!selected && <strong>{recipientWithPhoneTail(item.recipient_name, item.phone)}</strong>}
+                      {problem && (
+                        <span className={`staff-sms__flag staff-sms__flag--${problem.tone}`} title={problem.label}>
+                          <span className={`staff-sms__dot staff-sms__dot--${problem.tone}`} aria-hidden="true" />
+                          {problem.short}
+                        </span>
+                      )}
+                    </div>
+                    <h3>{item.subject || '제목 저장 전 기록'}</h3>
+                    <button
+                      type="button"
+                      className="sms-history-disclosure"
+                      aria-expanded={isExpanded}
+                      aria-controls={bodyId}
+                      onClick={(event) => { event.stopPropagation(); toggleRow(); }}
+                    >
+                      <span>{isExpanded ? '접기' : '내용'}</span>
+                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
                   </div>
-                  <h3>{item.subject || '제목 저장 전 기록'}</h3>
-                  <button
-                    type="button"
-                    className="sms-history-disclosure"
-                    aria-expanded={isExpanded}
-                    aria-controls={bodyId}
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                  >
-                    <span>{isExpanded ? '내용 접기' : '발송 내용 보기'}</span>
-                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                      <path d="m6 9 6 6 6-6" />
-                    </svg>
-                  </button>
                   {isExpanded && (
                     <div className="sms-history-body" id={bodyId}>
                       {item.text || '내용 저장 전 기록'}

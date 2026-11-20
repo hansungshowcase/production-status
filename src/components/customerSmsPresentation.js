@@ -73,3 +73,36 @@ export function customerDeliveryTone(state) {
 export function canSelectReviewCustomer(item, connection) {
   return item?.eligibility === 'ready' && connection?.canSend === true;
 }
+
+/**
+ * Format delivery/send channel string into color-coded customer badge info.
+ */
+export function customerChannelBadge(channel) {
+  const raw = String(channel || '').trim();
+  if (!raw) return { tone: 'muted', label: '채널 미확인' };
+  const upper = raw.toUpperCase();
+  if (upper.startsWith('BMS') || raw.includes('브랜드')) return { tone: 'bms', label: '브랜드메시지' };
+  if (upper === 'ATA' || upper === 'CTI' || upper === 'CTA' || upper.includes('ALIMTALK') || raw.includes('알림톡')) {
+    return { tone: 'ata', label: '알림톡' };
+  }
+  if (upper === 'MMS' || /사진/.test(raw)) return { tone: 'mms', label: '사진 문자' };
+  if (upper === 'LMS' || /장문/.test(raw)) return { tone: 'sms', label: '장문 문자' };
+  if (upper === 'SMS' || /단문/.test(raw)) return { tone: 'sms', label: '단문 문자' };
+  if (raw.includes('문자')) return { tone: 'sms', label: '문자' };
+  return { tone: 'muted', label: raw };
+}
+
+/**
+ * Classify a customer notification history item into business category.
+ */
+export function customerHistoryCategory(item) {
+  const kind = String(item?.kind || '');
+  const label = `${item?.kind_label || ''} ${item?.subject || ''}`;
+  if (kind.startsWith('review') || /(리뷰|후기)/.test(label)) {
+    return { key: 'review', label: '리뷰 이벤트', tone: 'purple', order: 1 };
+  }
+  if (/(소개|혜택|무료\s*지원|이벤트|가입)/.test(label)) {
+    return { key: 'benefit', label: '소개 · 혜택', tone: 'teal', order: 2 };
+  }
+  return { key: 'progress', label: '주문 · 제작 · 출고', tone: 'blue', order: 3 };
+}
