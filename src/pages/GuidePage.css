@@ -1838,12 +1838,6 @@ body:has(.guide-page),
     gap: 22px;
     align-items: start;
   }
-  .guide-shell.guide-shell--review {
-    display: block;
-    max-width: 1760px;
-    width: 100%;
-    padding: 18px 24px 44px;
-  }
   .guide-foot {
     max-width: 1760px;
     padding: 14px 24px 8px;
@@ -1899,42 +1893,22 @@ body:has(.guide-page),
   }
   .guide-rv-tabs {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
   .guide-rv-tab {
     min-height: 68px;
   }
-  .guide-rv-stage--side-landscape {
-    display: grid;
-    grid-template-columns: minmax(420px, 46%) minmax(0, 1fr);
-    gap: 28px;
-    align-items: start;
-  }
-  .guide-rv-stage--side-portrait {
-    display: grid;
-    grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
-    gap: 28px;
-    align-items: start;
-  }
-  .guide-rv-stage--side-landscape .guide-rv-poster-col,
-  .guide-rv-stage--side-portrait .guide-rv-poster-col {
-    position: sticky;
-    top: 18px;
-  }
-  .guide-rv-stage--wide-banner .guide-rv-poster-col {
-    max-width: 100%;
-    margin: 0;
-  }
-  .guide-rv-stage--wide-banner .guide-rv-wide-body,
-  .guide-rv-stage--text-only .guide-rv-wide-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-    gap: 24px;
-    align-items: start;
-  }
   .guide-side-review-box {
     border: 2px solid var(--gp-green);
     background: var(--gp-green-soft);
+  }
+  .guide-side-review-box.is-active {
+    background: #dcfce7;
+    border-color: #14532d;
+  }
+  .guide-btn--event.is-active {
+    background: #14532d;
+    border-color: #14532d;
   }
   .guide-side-review-kicker {
     font-size: 14px;
@@ -2027,6 +2001,16 @@ body:has(.guide-page),
     background: var(--gp-navy-soft);
     color: var(--gp-navy);
   }
+  .guide-toc-link.is-active {
+    background: #dcfce7;
+    color: #14532d;
+    font-weight: 900;
+  }
+  .guide-toc-link.is-active .guide-toc-num {
+    background: #14532d;
+    border-color: #14532d;
+    color: #ffffff;
+  }
   .guide-toc-num {
     display: inline-flex;
     align-items: center;
@@ -2065,11 +2049,42 @@ body:has(.guide-page),
   }
 }
 
-/* ── 와이드 PC 전체 폭 최적화 (>= 1200px) ── */
-@media (min-width: 1200px) {
+/* ── PC 사이드바 유지 상태에서 우측 리뷰 스테이지 2단 분할 (>= 1180px) ── */
+@media (min-width: 1180px) {
+  .guide-rv-stage--side-landscape {
+    display: grid;
+    grid-template-columns: minmax(320px, 44%) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .guide-rv-stage--side-portrait {
+    display: grid;
+    grid-template-columns: minmax(290px, 39%) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .guide-rv-stage--side-portrait .guide-rv-poster-col {
+    max-width: 440px;
+  }
+  .guide-rv-stage--side-landscape .guide-rv-poster-col,
+  .guide-rv-stage--side-portrait .guide-rv-poster-col {
+    position: sticky;
+    top: 18px;
+  }
+  .guide-rv-stage--wide-banner .guide-rv-wide-body,
+  .guide-rv-stage--text-only .guide-rv-wide-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 22px;
+    align-items: start;
+  }
+}
+
+/* ── PC 본문 2단 최적화 (>= 1280px) ── */
+@media (min-width: 1280px) {
   .guide-safety-split {
     display: grid;
-    grid-template-columns: minmax(420px, 45%) minmax(0, 1fr);
+    grid-template-columns: minmax(350px, 44%) minmax(0, 1fr);
     gap: 20px;
     align-items: start;
   }
@@ -2080,17 +2095,21 @@ body:has(.guide-page),
   }
   .guide-level-split {
     display: grid;
-    grid-template-columns: minmax(420px, 48%) minmax(0, 1fr);
+    grid-template-columns: minmax(350px, 46%) minmax(0, 1fr);
     gap: 20px;
     align-items: center;
   }
   .guide-level-split .guide-illus-box {
     margin-bottom: 0;
   }
+}
+
+/* ── 와이드 PC 구글 리뷰 2단 분할 (>= 1400px) ── */
+@media (min-width: 1400px) {
   .guide-rv-stage--wide-banner {
     display: grid;
-    grid-template-columns: minmax(560px, 56%) minmax(0, 1fr);
-    gap: 28px;
+    grid-template-columns: minmax(480px, 54%) minmax(0, 1fr);
+    gap: 26px;
     align-items: start;
   }
   .guide-rv-stage--wide-banner .guide-rv-poster-col {

@@ -305,6 +305,8 @@ test('SalesOrderCard와 App에 라벨 출력 버튼과 /guide/:token 공개 라�
   assert.equal(SHOWCASE_GUIDE_BRAND.asKakaoLabel, '카카오톡 A/S 문의 바로가기');
   assert.match(guideSource, /asKakaoChatUrl/);
   assert.match(guideSource, /asKakaoLabel/);
+  assert.doesNotMatch(guideSource, /guide-shell--review/);
+  assert.match(guideSource, /className="guide-shell"[\s\S]*className="guide-sidebar"[\s\S]*viewMode === 'review'/);
   assert.match(guideSource, /\/images\/guide\/installation-safety\.webp/);
   assert.match(guideSource, /\/images\/guide\/radiator-cleaning-steps\.webp/);
   assert.match(guideSource, /\/images\/guide\/leveling-guide\.webp/);

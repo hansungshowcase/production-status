@@ -534,8 +534,10 @@ export default function GuidePage() {
     }, { replace: false });
     if (sectionId) {
       requestAnimationFrame(() => {
-        const target = document.getElementById(sectionId);
-        if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
+        requestAnimationFrame(() => {
+          const target = document.getElementById(sectionId);
+          if (target) target.scrollIntoView({ behavior: 'auto', block: 'start' });
+        });
       });
     } else {
       window.scrollTo({ top: 0, behavior: 'auto' });
@@ -764,9 +766,81 @@ export default function GuidePage() {
         </div>
       </nav>
 
-      <div className={`guide-shell${viewMode === 'review' ? ' guide-shell--review' : ''}`}>
-        {viewMode === 'review' ? (
-          <main id="guide-main" className="guide-main">
+      <div className="guide-shell">
+        {/* PC 좌측 고정 목차 & A/S 사이드바 (>= 1024px, 설명서·리뷰 공통 유지) */}
+        <aside className="guide-sidebar" aria-label="설명서 목차 및 빠른 A/S 안내">
+          <div className="guide-side-box guide-side-box--as">
+            <div className="guide-side-kicker">무상 A/S 출고일로부터 {SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월</div>
+            <p className="guide-side-as-desc">사진·증상을 보내주시면 빠르게 접수됩니다.</p>
+            <a
+              className="guide-btn guide-btn--kakao"
+              href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleKakaoInquiry}
+            >
+              {SHOWCASE_GUIDE_BRAND.asKakaoLabel} ↗
+            </a>
+            {data && token && (
+              <Link className="guide-side-track-link" to={`/track/${encodeURIComponent(token)}`}>
+                주문 진행현황 보기 →
+              </Link>
+            )}
+          </div>
+
+          <div className={`guide-side-box guide-side-review-box${viewMode === 'review' ? ' is-active' : ''}`}>
+            <div className="guide-side-review-kicker">중복 참여 현금 혜택</div>
+            <div className="guide-side-review-title">블로그 7만 · SNS 4만 · 구글 3만</div>
+            <button
+              type="button"
+              aria-current={viewMode === 'review' ? 'page' : undefined}
+              className={`guide-btn guide-btn--event${viewMode === 'review' ? ' is-active' : ''}`}
+              onClick={() => openReviewView(activeReviewId)}
+            >
+              {viewMode === 'review' ? '리뷰 혜택 보는 중 (최대 14만원)' : '리뷰 혜택 크게 보기 (14만원) →'}
+            </button>
+          </div>
+
+          <nav className="guide-side-box" aria-label="설명서 항목 목차">
+            <div className="guide-side-toc-title">설명서 · 리뷰 목차</div>
+            <ul className="guide-toc-list">
+              {TOC_ITEMS.map((item) => {
+                const isReviewToc = item.href === '#sec-reviews';
+                const isActiveToc = isReviewToc && viewMode === 'review';
+                return (
+                  <li key={item.href}>
+                    <a
+                      className={`guide-toc-link${isActiveToc ? ' is-active' : ''}`}
+                      href={item.href}
+                      aria-current={isActiveToc ? 'page' : undefined}
+                      onClick={(e) => {
+                        if (isReviewToc) {
+                          e.preventDefault();
+                          openReviewView(activeReviewId);
+                        } else if (viewMode === 'review') {
+                          e.preventDefault();
+                          openManualView(item.href.slice(1));
+                        }
+                      }}
+                    >
+                      <span className="guide-toc-num mono">{item.num}</span>
+                      <span>{item.label}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          <div className="guide-side-box guide-side-seal">
+            <strong>정품 보증 라벨 임의 제거 금지</strong>
+            <p>스티커 훼손 시 출고일 확인·A/S에 불이익이 있을 수 있습니다.</p>
+          </div>
+        </aside>
+
+        {/* 우측 본문 영역: 리뷰 전용 뷰 ↔ 제품 사용설명서 뷰 */}
+        <main id="guide-main" className="guide-main">
+          {viewMode === 'review' ? (
             <ReviewShowcaseView
               activeReview={activeReview}
               copiedMap={copiedMap}
@@ -776,75 +850,8 @@ export default function GuidePage() {
               onZoomPoster={setZoomedPoster}
               onKakaoInquiry={handleKakaoInquiry}
             />
-          </main>
-        ) : (
-          <>
-            {/* PC 좌측 고정 목차 & A/S 사이드바 (>= 1024px) */}
-            <aside className="guide-sidebar" aria-label="설명서 목차 및 빠른 A/S 안내">
-              <div className="guide-side-box guide-side-box--as">
-                <div className="guide-side-kicker">무상 A/S 출고일로부터 {SHOWCASE_GUIDE_BRAND.freeWarrantyMonths}개월</div>
-                <p className="guide-side-as-desc">사진·증상을 보내주시면 빠르게 접수됩니다.</p>
-                <a
-                  className="guide-btn guide-btn--kakao"
-                  href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={handleKakaoInquiry}
-                >
-                  {SHOWCASE_GUIDE_BRAND.asKakaoLabel} ↗
-                </a>
-                {data && token && (
-                  <Link className="guide-side-track-link" to={`/track/${encodeURIComponent(token)}`}>
-                    주문 진행현황 보기 →
-                  </Link>
-                )}
-              </div>
-
-              <div className="guide-side-box guide-side-review-box">
-                <div className="guide-side-review-kicker">중복 참여 현금 혜택</div>
-                <div className="guide-side-review-title">블로그 7만 · SNS 4만 · 구글 3만</div>
-                <button
-                  type="button"
-                  className="guide-btn guide-btn--event"
-                  onClick={() => openReviewView('blog')}
-                >
-                  리뷰 혜택 크게 보기 (14만원) →
-                </button>
-              </div>
-
-              <nav className="guide-side-box" aria-label="설명서 항목 목차">
-                <div className="guide-side-toc-title">설명서 · 리뷰 목차</div>
-                <ul className="guide-toc-list">
-                  {TOC_ITEMS.map((item) => (
-                    <li key={item.href}>
-                      <a
-                        className="guide-toc-link"
-                        href={item.href}
-                        onClick={
-                          item.href === '#sec-reviews'
-                            ? (e) => {
-                                e.preventDefault();
-                                openReviewView('blog');
-                              }
-                            : undefined
-                        }
-                      >
-                        <span className="guide-toc-num mono">{item.num}</span>
-                        <span>{item.label}</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-
-              <div className="guide-side-box guide-side-seal">
-                <strong>정품 보증 라벨 임의 제거 금지</strong>
-                <p>스티커 훼손 시 출고일 확인·A/S에 불이익이 있을 수 있습니다.</p>
-              </div>
-            </aside>
-
-            {/* 본문 매뉴얼 영역 */}
-            <main id="guide-main" className="guide-main">
+          ) : (
+            <>
               {/* 모바일·태블릿 전용: 상황별 큰 바로가기 버튼 */}
               <section className="guide-sheet guide-quick-sheet" aria-labelledby="guide-quick-heading">
                 <h2 id="guide-quick-heading" className="guide-sheet-h2">무엇을 찾고 계신가요? (누르면 이동)</h2>
@@ -1356,9 +1363,9 @@ export default function GuidePage() {
               </a>
             </div>
           </section>
-            </main>
-          </>
-        )}
+            </>
+          )}
+        </main>
       </div>
 
       <footer className="guide-foot">
