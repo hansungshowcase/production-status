@@ -126,3 +126,18 @@ test('알림톡 카드: 이름과 상태 사이에 공백이 있고 연결된 �
   assert.match(src, /대상: \{autoTargetText\(targetEntry\)\}/);
   assert.match(src, /linkedTextEntries\(textItems, item\.id\)/);
 });
+
+test('콘솔 UI·리뷰 캠페인에 사용자 노출 메이크/Make 문구가 남지 않는다', async () => {
+  const { readFileSync } = await import('node:fs');
+  const files = [
+    '../src/components/smsconsole/KakaoTemplateManager.jsx',
+    '../src/components/smsconsole/SmsTemplateList.jsx',
+    '../src/components/CustomerSmsPanel.jsx',
+    '../api/customer-reviews.js',
+    '../api/_lib/customerReviewCampaigns.js',
+  ];
+  for (const rel of files) {
+    const content = readFileSync(new URL(rel, import.meta.url), 'utf8');
+    assert.doesNotMatch(content, /메이크·카페24|메이크 시나리오|Make · SOLAPI|기존 Make/, rel);
+  }
+});

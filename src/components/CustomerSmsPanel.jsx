@@ -98,7 +98,7 @@ export default function CustomerSmsPanel() {
   useEffect(() => { if (tab === 'reviews') loadReviews(); }, [loadReviews, tab]);
 
   const reviewCampaign = useMemo(() => reviews.campaigns.find(item => item.id === campaign) || reviews.campaigns[0], [campaign, reviews.campaigns]);
-  const sendDisabledReason = reviews.connection.notice || '기존 Make 발송 연결이 확인되기 전에는 발송할 수 없습니다.';
+  const sendDisabledReason = reviews.connection.notice || '발송 연결과 수신 동의가 확인되기 전에는 발송할 수 없습니다.';
 
   const today = todayInKst();
 

@@ -45,8 +45,8 @@ export async function handleCustomerReviews(req, res, dependencies = {}) {
     campaigns, items: (result.rows || []).map(row => serializeReviewTarget(row, campaignId)),
     counts: { total, ready: 0, blocked: total },
     pagination: { page, page_size: PAGE_SIZE, total_items: total, total_pages: pages },
-    connection: { state: 'pending', label: '기존 리뷰 발송 연결 확인 필요', canSend: false,
-      notice: '발송이력은 고객 발송이력에서 확인할 수 있습니다. 신규 발송은 기존 Make 연결과 대상 구매 경로·수신 동의 확인 후 사용할 수 있습니다.' },
+    connection: { state: 'pending', label: '리뷰 발송은 템플릿 화면에서 관리', canSend: false,
+      notice: '발송이력은 고객 발송이력에서 확인할 수 있습니다. 리뷰 이벤트 자동 발송은 템플릿 화면(쏠라피)에서 관리하며, 이 목록의 수동 일괄 발송은 구매 경로·수신 동의 확인 후 이용할 수 있습니다.' },
   });
 }
 

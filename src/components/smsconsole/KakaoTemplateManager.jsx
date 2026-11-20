@@ -9,8 +9,9 @@ import SmsTextTemplateForm from './SmsTextTemplateForm.jsx';
 import SmsChannelStatusStrip from './SmsChannelStatusStrip.jsx';
 import {
   buildConditionSummary, channelCostOf, compactLightLabel, flowStepText, groupFlows,
-  isAttentionTone, isKakaoEntry, isMigratedExternal, itemLight, matchesSmsQuery, sortByNameNumeric,
+  isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, sortByNameNumeric,
 } from './smsTemplateListModel.js';
+import { SENDERS } from '../../../shared/smsTemplateKinds.js';
 import {
   BMS_TEMPLATE_ID, KIND_KAKAO, autoConditionLine, autoTargetText, catchupPausedText,
   formInitialFromItem, imageUrlsFromItem, linkedTextEntries, myTextSection, photoBadgeText, previewFill,
@@ -22,6 +23,11 @@ import {
   readOnlyKakaoItems, statusInfo, statusPills, templateAudienceSections, templateExtras,
   usageBadge, usageCount, usageFail, usageSuccess,
 } from './templateListModel.js';
+
+const nonMakeExtras = (templateId, sent) => {
+  const extra = templateExtras(templateId, sent);
+  return extra && extra.sender !== SENDERS.make ? extra : null;
+};
 import './SmsAutoControls.css';
 import './KakaoTemplateManager.css';
 
@@ -292,8 +298,8 @@ export default function KakaoTemplateManager({
   }, [kakaoMineEntries]);
 
   const allReadOnly = useMemo(
-    () => readOnlyKakaoItems(items, sent, { status: 'all', query: '' }).filter((entry) => !isMigratedExternal(entry, textItems)),
-    [items, sent, textItems],
+    () => readOnlyKakaoItems(items, sent, { status: 'all', query: '' }).filter((entry) => entry.sender !== SENDERS.make),
+    [items, sent],
   );
 
   // 현황판 카톡 자동 발송 집계
@@ -306,9 +312,9 @@ export default function KakaoTemplateManager({
     const roBms = allReadOnly.filter((entry) => entry.channel === 'BMS');
     const roAtaOn = roAta.filter((entry) => itemLight(entry).tone === 'on').length;
     const roBmsOn = roBms.filter((entry) => itemLight(entry).tone === 'on').length;
-    const extProgramAta = items.filter((item) => Boolean(item.program_use || templateExtras(item.id, sent)));
+    const extProgramAta = items.filter((item) => Boolean(item.program_use || nonMakeExtras(item.id, sent)));
     const extProgramAtaOn = extProgramAta.filter((item) => {
-      const ex = templateExtras(item.id, sent);
+      const ex = nonMakeExtras(item.id, sent);
       return item.status === 'APPROVED' && !(ex && ex.off);
     }).length;
     const dbAttention = kakaoMineEntries.filter((entry) => isAttentionTone(effOf(entry).tone) || Boolean(autoStatusMap[entry.id]?.catchup_paused)).length;
@@ -372,7 +378,7 @@ export default function KakaoTemplateManager({
       }
       if (!q) return true;
       if (String(item.name || '').toLowerCase().includes(q) || String(item.id || '').toLowerCase().includes(q)) return true;
-      const extras = templateExtras(item.id, sent);
+      const extras = nonMakeExtras(item.id, sent);
       if (extras && [extras.trigger, extras.who, extras.sender].some((v) => String(v || '').toLowerCase().includes(q))) return true;
       const linkedEntries = linkedTextEntries(textItems, item.id);
       return linkedEntries.some((entry) => matchesSmsQuery(entry, q));
@@ -383,8 +389,8 @@ export default function KakaoTemplateManager({
     const list = statusFilter === 'bms'
       ? readOnlyKakaoItems(items, sent, { status: 'all', query }).filter((entry) => entry.channel === 'BMS')
       : readOnlyKakaoItems(items, sent, { status: statusFilter, query });
-    return list.filter((entry) => !isMigratedExternal(entry, textItems));
-  }, [items, sent, statusFilter, query, textItems]);
+    return list.filter((entry) => entry.sender !== SENDERS.make);
+  }, [items, sent, statusFilter, query]);
 
   const listSections = useMemo(() => templateAudienceSections(visible, sent), [visible, sent]);
   const readOnlySections = useMemo(() => readOnlyAudienceSections(readOnly), [readOnly]);
@@ -844,14 +850,14 @@ export default function KakaoTemplateManager({
             <dt>업무 분류</dt><dd>{entry.kind}</dd>
             {entry.who ? <><dt>대상</dt><dd>{entry.who}</dd></> : null}
             {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
-            {entry.scenario ? <><dt>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{entry.scenario}</dd></> : null}
+            {entry.scenario ? <><dt>자동화 이름</dt><dd>{entry.scenario}</dd></> : null}
           </dl>
         </div>
       </div>
     );
   };
 
-  // ----- 오른쪽 상세: 선택 분기 -----
+  // ----- 왼쪽 카드: 선택 분기 -----
   const renderDetail = () => {
     if (selectedBms) return renderBmsDetail(selectedBms);
     const roEntry = !selectedId && openRoId ? readOnly.find((entry) => entry.id === openRoId) : null;
@@ -860,9 +866,9 @@ export default function KakaoTemplateManager({
     if (!selected) return <div className="ktm-empty">선택한 템플릿을 찾을 수 없습니다. 삭제되었거나 이 화면에서 볼 수 없는 템플릿입니다.</div>;
 
     const info = statusInfo(selected.status);
-    const selectedExt = templateExtras(selected.id, sent);
+    const selectedExt = nonMakeExtras(selected.id, sent);
     const linkedEntries = linkedTextEntries(textItems, selected.id);
-    const showSelectedExt = Boolean(selectedExt && !(linkedEntries.length > 0 && selectedExt.sender === '메이크'));
+    const showSelectedExt = Boolean(selectedExt);
     const comments = (Array.isArray(selected.comments) ? selected.comments : [])
       .slice().sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0)).slice(0, 3);
     const variables = Array.isArray(selected.variables) ? selected.variables : [];
@@ -909,7 +915,7 @@ export default function KakaoTemplateManager({
               <dt>보내는 곳</dt><dd>{selectedExt.sender}</dd>
               {selectedExt.who ? <><dt>대상</dt><dd>{selectedExt.who}</dd></> : null}
               {selectedExt.trigger ? <><dt>언제 나가나</dt><dd>{selectedExt.trigger}</dd></> : null}
-              {selectedExt.scenario ? <><dt>{selectedExt.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{selectedExt.scenario}</dd></> : null}
+              {selectedExt.scenario ? <><dt>자동화 이름</dt><dd>{selectedExt.scenario}</dd></> : null}
             </dl>
           ) : null}
           {linkedEntries.length === 0 ? (
@@ -1055,10 +1061,9 @@ export default function KakaoTemplateManager({
     const badge = usageBadge(usage, item.id);
     const actions = [...(item.status === 'APPROVED' && onSend ? ['send'] : []), ...availableActions(item)];
     const isOpen = menuId === item.id;
-    const extras = templateExtras(item.id, sent);
     const linkedEntries = linkedTextEntries(textItems, item.id);
     const linkedOn = linkedEntries.filter((entry) => ['on', 'part'].includes(effOf(entry).tone)).length;
-    const cardExtras = extras && !(linkedEntries.length > 0 && extras.sender === '메이크') ? extras : null;
+    const cardExtras = nonMakeExtras(item.id, sent);
     const used = usageSuccess(usage, item.id, sent);
     const linked = Boolean(item.program_use || cardExtras || linkedOn > 0);
     const lightOff = Boolean(cardExtras && cardExtras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
@@ -1136,7 +1141,7 @@ export default function KakaoTemplateManager({
   // ----- 왼쪽 카드: 외부 연동 카카오톡(읽기 전용) -----
   const renderReadOnly = () => (
     <section className="ktm-kind" aria-label="외부 연동 카카오톡">
-      <h3 className="ktm-kind-head">외부 연동 카카오톡 (메이크·카페24) <span className="ktm-kind-count">{readOnly.length}</span></h3>
+      <h3 className="ktm-kind-head">외부 연동 카카오톡 (카페24) <span className="ktm-kind-count">{readOnly.length}</span></h3>
       {readOnlySections.map((group) => (
         <div key={group.group} className="ktm-aud-sub">
           <h4 className="ktm-kind-head ktm-kind-head--sub">{group.group} <span className="ktm-kind-count">{group.items.length}</span></h4>

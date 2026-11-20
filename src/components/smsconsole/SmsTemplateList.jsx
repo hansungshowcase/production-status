@@ -5,8 +5,9 @@ import { clearSmsConsoleClientCache, fetchSmsConsole, postSmsConsole } from '../
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, isMigratedExternal, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
+import { SENDERS } from '../../../shared/smsTemplateKinds.js';
 import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import SmsModal from './SmsModal.jsx';
@@ -407,8 +408,8 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   };
 
   const items = useMemo(
-    () => state.items.filter((item) => !isMigratedExternal(item, mine)),
-    [state.items, mine],
+    () => state.items.filter((item) => item.sender !== SENDERS.make),
+    [state.items],
   );
   const allMine = useMemo(() => sortByNameNumeric(mySection ? mySection.items : []), [mySection]);
   const sortedMine = useMemo(
@@ -1028,9 +1029,6 @@ function renderConditionBoard(summary, st, isMineAuto) {
             ))}
           </div>
           <h3 className="stl-detail-title">{item.name}</h3>
-          {item.external && item.sender === '메이크' ? (
-            <p className="stl-ext-note">외부 {item.sender} 자동화로 발송되는 문구입니다(읽기 전용). 내 문구에도 같은 이벤트가 켜져 있으면 중복 발송될 수 있습니다.</p>
-          ) : null}
           {item.config?.status === 'incomplete' ? (
             <p className="ktm-alert stl-detail-banner" role="status">{item.config.label || '설정 미완료'}: 현재 자동 발송이 비활성화되어 있습니다.</p>
           ) : null}
