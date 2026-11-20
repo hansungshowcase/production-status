@@ -886,6 +886,182 @@
   color: var(--gp-red-dark);
 }
 
+.guide-callout--info {
+  background: var(--gp-navy-soft);
+  border: 2px solid var(--gp-navy-border);
+}
+
+.guide-callout--info .guide-callout-title {
+  color: var(--gp-navy);
+}
+
+.guide-callout--warn {
+  margin-top: 14px;
+}
+
+.guide-error-section {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide-error-section .guide-sub-h3 {
+  margin-bottom: 2px;
+}
+
+.guide-error-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.guide-error-card {
+  padding: 12px 14px;
+  border: 2px solid var(--gp-red);
+  border-radius: 6px;
+  background: var(--gp-red-soft);
+}
+
+.guide-error-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.guide-error-code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 9px;
+  border-radius: 4px;
+  background: var(--gp-red);
+  color: #ffffff;
+  font-size: calc(15px * var(--gs));
+  font-weight: 900;
+}
+
+.guide-error-title {
+  font-size: calc(17px * var(--gs));
+  font-weight: 900;
+  color: var(--gp-red-dark);
+}
+
+.guide-error-detail {
+  margin: 0 0 4px;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink);
+}
+
+.guide-error-action {
+  margin: 0;
+  font-size: calc(15px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-red-dark);
+}
+
+.guide-alarm-note {
+  padding: 10px 12px;
+  border: 1.5px solid var(--gp-warn-border);
+  border-radius: 5px;
+  background: var(--gp-warn-bg);
+  font-size: calc(15px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink);
+}
+
+.guide-admin-details {
+  margin-top: 14px;
+}
+
+.guide-admin-details .guide-sub-h3 {
+  margin-top: 18px;
+}
+
+.guide-admin-details .guide-sub-h3:first-child {
+  margin-top: 0;
+}
+
+.guide-sec-subdesc {
+  margin: -4px 0 10px;
+  font-size: calc(15px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink-soft);
+}
+
+.guide-table-scroll-hint {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-radius: 5px;
+  background: var(--gp-navy-soft);
+  border: 1px solid #bfdbfe;
+  font-size: calc(14.5px * var(--gs));
+  font-weight: 800;
+  color: var(--gp-navy);
+}
+
+.guide-manual-table-wrap {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.guide-manual-table-wrap .guide-table {
+  min-width: 600px;
+  font-size: calc(14.5px * var(--gs));
+}
+
+.guide-diff-box {
+  padding: 12px 14px;
+  border: 1.5px solid var(--gp-border);
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: calc(15.5px * var(--gs));
+  font-weight: 600;
+  color: var(--gp-ink);
+}
+
+.guide-diff-box p {
+  margin: 6px 0 0;
+}
+
+.guide-wiring-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.guide-wiring-split .guide-illus-box {
+  margin-bottom: 0;
+}
+
+.guide-wiring-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.guide-wiring-item {
+  padding: 8px 10px;
+  border: 1.5px solid var(--gp-border-light);
+  border-radius: 5px;
+  background: #ffffff;
+  font-size: calc(15px * var(--gs));
+  font-weight: 700;
+  color: var(--gp-ink);
+}
+
+.guide-admin-pdf-row {
+  margin-top: 16px;
+}
+
 /* ── 10종 기준표 (PC 테이블 vs 모바일 카드) ── */
 .guide-table-wrap {
   display: none;
@@ -1791,8 +1967,18 @@
     display: block;
     overflow-x: auto;
   }
+  .guide-table-scroll-hint {
+    display: none;
+  }
+  .guide-manual-table-wrap .guide-table {
+    min-width: 100%;
+  }
   .guide-preset-cards {
     display: none;
+  }
+  .guide-error-grid,
+  .guide-wiring-grid {
+    grid-template-columns: 1fr 1fr;
   }
   .guide-review-view {
     padding: 24px;
@@ -1863,6 +2049,9 @@ body:has(.guide-page),
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 18px;
     align-items: start;
+  }
+  .guide-wiring-split {
+    grid-template-columns: minmax(320px, 46%) minmax(0, 1fr);
   }
   .guide-as-actions {
     display: grid;

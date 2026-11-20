@@ -452,11 +452,11 @@ export default function ShippingLabelModal({ active = true, order, onClose }) {
 
                             <div className="slm-plate-subgrid">
                               <div className="slm-plate-card">
-                                <div className="slm-plate-card-title">온도조절기 조작 · def 안내</div>
+                                <div className="slm-plate-card-title">신형 일체형 온도조절기 · def 안내</div>
                                 <div className="slm-plate-mini-list">
-                                  <div><strong>버튼</strong> 전원(OFF 시 냉각정지, 조명·결로팬 별도) · 조명(LED) · 결로팬(평소 OFF, 비·습한 날 ON)</div>
-                                  <div><strong>온도</strong> 잠금 3초 해제 → □온도표시 → ▼▲ 맞춤 → 손 떼면 자동 잠금</div>
-                                  <div><strong>제상</strong> 해제 후 설정 1회(제상주기)·2회(제상시간) → ▼▲ 조절</div>
+                                  <div><strong>버튼</strong> 전원(OFF 시 모든 출력 OFF) · 조명(LED) · 휀(결로팬, 평소 OFF·습한 날 ON) · 제상(수동)</div>
+                                  <div><strong>잠금·온도</strong> 잠금 3초 해제 → ∧∨ 조절 (약 1분 후 자동잠금 · 잠금+조명+휀 3초 시 잠금 중 조명·휀 조작)</div>
+                                  <div><strong>제상·에러</strong> 해제 후 설정 1회(제상주기)·2회(제상시간) → ∧∨ 조절 · E-1/E-2 에러 시 카톡 A/S</div>
                                   <div className="slm-plate-def-line"><strong>def 표시</strong> 정상 제상 중이므로 그대로 두면 자동 복구됩니다.</div>
                                 </div>
                               </div>

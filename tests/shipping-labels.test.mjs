@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   DEFAULT_SHOWCASE_SETTING,
+  GUIDE_SECTIONS,
   SHOWCASE_GUIDE_BRAND,
   SHOWCASE_GUIDE_PRESETS,
   SHOWCASE_REVIEW_EVENTS,
@@ -125,6 +126,9 @@ test('buildShippingLabelData와 buildShippingLabelPrintHtml은 명함 4장 기�
     '위·아래',
     '유상 처리',
     '카카오톡 A/S',
+    '모든 출력',
+    'E-1',
+    'E-2',
   ]) {
     assert.ok(plateHtml.includes(requiredText), `180x100 인쇄 HTML에 '${requiredText}'가 빠졌습니다.`);
   }
@@ -322,6 +326,29 @@ test('SalesOrderCard와 App에 라벨 출력 버튼과 /guide/:token 공개 라�
   for (const poster of ['review_blog.jpg', 'review_sns.jpg', 'review_google.jpg']) {
     const absPath = new URL(`../public/sms-templates/${poster}`, import.meta.url);
     assert.ok(readFileSync(absPath).byteLength > 10000, `${poster} file missing`);
+  }
+  const wiringImgPath = new URL('../public/images/guide/controller-wiring-dims.webp', import.meta.url);
+  assert.ok(readFileSync(wiringImgPath).byteLength > 10000, 'controller-wiring-dims.webp missing');
+  const pdfManualPath = new URL('../public/manuals/showcase-new-controller-manual.pdf', import.meta.url);
+  assert.ok(readFileSync(pdfManualPath).byteLength > 50000, 'showcase-new-controller-manual.pdf missing');
+
+  assert.equal(GUIDE_SECTIONS.buttons.length, 7);
+  assert.ok(GUIDE_SECTIONS.errorCodes.some((e) => e.code === 'E-1'));
+  assert.ok(GUIDE_SECTIONS.errorCodes.some((e) => e.code === 'E-2'));
+  assert.equal(GUIDE_SECTIONS.advancedSettings.items.length, 10);
+  assert.ok(GUIDE_SECTIONS.adminModes.items.some((m) => m.code === 'OHd'));
+  assert.equal(GUIDE_SECTIONS.tempDiffSetting.defaultVal, 'P-1');
+  assert.equal(GUIDE_SECTIONS.wiringTerminals.length, 11);
+  assert.ok(GUIDE_SECTIONS.controllerSpecs.length >= 8);
+
+  for (const staleSrc of [
+    readFileSync(new URL('../shared/showcaseGuide.js', import.meta.url), 'utf8'),
+    guideSource,
+    modalSource,
+    readFileSync(new URL('../src/components/sales/shippingLabels.js', import.meta.url), 'utf8'),
+  ]) {
+    assert.doesNotMatch(staleSrc, /OFF 모드 시 냉각 출력은 정지되며, 조명과 결로팬은 별도로/);
+    assert.doesNotMatch(staleSrc, /5초 후 자동 잠금/);
   }
   assert.equal(SHOWCASE_GUIDE_BRAND.blogReviewFormUrl, 'https://forms.gle/LnxodxFTxWjcVwx37');
 });

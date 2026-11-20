@@ -27,7 +27,7 @@ const FONT_SCALE_OPTIONS = [
 const QUICK_PROBLEMS = [
   { href: '#sec-def', num: '01', label: '"def" 화면 떴어요', sub: '정상 제상 중 안내' },
   { href: '#sec-safety', num: '02', label: '전원 · 단독 코드', sub: '설치·보관 필수 수칙' },
-  { href: '#sec-controller', num: '03', label: '온도 · 제상 버튼법', sub: '잠금 3초 해제' },
+  { href: '#sec-controller', num: '03', label: '온도 · 제상 · 에러', sub: '잠금 3초 · E-1/E-2' },
   { href: '#sec-table', num: '04', label: '10종 품목 온도표', sub: '권장 기준 비교' },
   { href: '#sec-radiator', num: '05', label: '라지에이터 청소', sub: '그림으로 쉬운 청소' },
   { href: '#sec-reviews', num: '06', label: '리뷰 14만원 받기', sub: '블로그 / 인스타 / 구글' },
@@ -36,7 +36,7 @@ const QUICK_PROBLEMS = [
 const TOC_ITEMS = [
   { href: '#sec-def', num: '01', label: '"def" 표시 안내' },
   { href: '#sec-safety', num: '02', label: '필수 안전 · 설치 수칙' },
-  { href: '#sec-controller', num: '03', label: '온도조절기 조작 · 설정' },
+  { href: '#sec-controller', num: '03', label: '신형 조절기 · 에러(E-1/E-2)' },
   { href: '#sec-table', num: '04', label: '품목별 온도·제상 기준표' },
   { href: '#sec-radiator', num: '05', label: '라지에이터 청소 방법' },
   { href: '#sec-leveling', num: '06', label: '쇼케이스 수평 조절' },
@@ -72,62 +72,77 @@ function ControllerDiagramSvg() {
     <figure className="guide-diagram-box">
       <svg
         className="guide-diagram-svg"
-        viewBox="0 0 420 220"
+        viewBox="0 0 560 232"
         role="img"
-        aria-label="한성쇼케이스 온도조절기 버튼 배치 도면: 좌측 잠금(3초)과 전원, 중앙 -05c 표시창과 우측 3개 표시등(온도표시, 제상주기, 제상시간), 하단 내림 올림 설정 제상, 우측 조명과 결로팬"
+        aria-label="한성쇼케이스 신형 일체형 온도조절기(uriel) 버튼 배치 및 전면 온도표시창 도면: 상단 잠금·휀·조명 표시등, 중앙 온도표시창, 하단 운전·제상주기·제상시간 표시등, 우측 4줄 8버튼(잠금·올림, 휀·내림, 조명·제상, 설정·전원), 오른쪽 별도 -05c 전면 온도창"
       >
-        <rect x="4" y="4" width="412" height="212" rx="8" fill="#F8FAFC" stroke="#0F294A" strokeWidth="3" />
-        <rect x="14" y="14" width="392" height="192" rx="5" fill="#1E293B" stroke="#0F172A" strokeWidth="2" />
+        <rect x="4" y="4" width="424" height="224" rx="8" fill="#F8FAFC" stroke="#0F294A" strokeWidth="3" />
+        <rect x="12" y="12" width="408" height="208" rx="6" fill="#1E293B" stroke="#0F172A" strokeWidth="2" />
 
-        {/* 좌측 버튼: 잠금 / 전원 */}
-        <rect x="24" y="26" width="72" height="74" rx="5" fill="#FEF9C3" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="60" y="59" textAnchor="middle" fill="#111111" fontSize="19" fontWeight="900">잠금</text>
-        <text x="60" y="84" textAnchor="middle" fill="#991B1B" fontSize="14.5" fontWeight="900">3초</text>
+        {/* 좌측 모델명 */}
+        <text x="50" y="122" textAnchor="middle" fill="#CBD5E1" fontSize="22" fontWeight="900">uriel</text>
 
-        <rect x="24" y="116" width="72" height="74" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="60" y="149" textAnchor="middle" fill="#111111" fontSize="19" fontWeight="900">전원</text>
-        <text x="60" y="174" textAnchor="middle" fill="#1E293B" fontSize="13.5" fontWeight="800">켜기/끔</text>
+        {/* 상단 3개 상태등: 잠금 · 휀 · 조명 */}
+        <rect x="92" y="22" width="46" height="32" rx="4" fill="#0F172A" stroke="#64748B" strokeWidth="1.5" />
+        <text x="115" y="43" textAnchor="middle" fill="#FFFFFF" fontSize="13.5" fontWeight="900">잠금</text>
 
-        {/* 중앙 LED 창 */}
-        <rect x="108" y="26" width="204" height="90" rx="5" fill="#090D16" stroke="#94A3B8" strokeWidth="2" />
-        <text x="163" y="84" textAnchor="middle" fill="#FF3B30" fontSize="42" fontWeight="900" fontFamily="monospace">-05c</text>
+        <rect x="145" y="22" width="46" height="32" rx="4" fill="#0F172A" stroke="#64748B" strokeWidth="1.5" />
+        <text x="168" y="43" textAnchor="middle" fill="#FFFFFF" fontSize="13.5" fontWeight="900">휀</text>
 
-        {/* 우측 3개 표시 LED */}
-        <rect x="224" y="34" width="12" height="12" fill="#EF4444" stroke="#FFFFFF" strokeWidth="1.5" />
-        <text x="242" y="45" fill="#FFFFFF" fontSize="14" fontWeight="900">온도표시</text>
+        <rect x="198" y="22" width="46" height="32" rx="4" fill="#0F172A" stroke="#64748B" strokeWidth="1.5" />
+        <text x="221" y="43" textAnchor="middle" fill="#FFFFFF" fontSize="13.5" fontWeight="900">조명</text>
 
-        <rect x="224" y="64" width="12" height="12" fill="#334155" stroke="#E2E8F0" strokeWidth="1.5" />
-        <text x="242" y="75" fill="#F8FAFC" fontSize="14" fontWeight="800">제상주기</text>
+        {/* 중앙 대형 온도 표시창 */}
+        <rect x="92" y="64" width="152" height="92" rx="5" fill="#090D16" stroke="#94A3B8" strokeWidth="2" />
+        <text x="168" y="125" textAnchor="middle" fill="#FFFFFF" fontSize="40" fontWeight="900" fontFamily="monospace">-18.0</text>
 
-        <rect x="224" y="94" width="12" height="12" fill="#334155" stroke="#E2E8F0" strokeWidth="1.5" />
-        <text x="242" y="105" fill="#F8FAFC" fontSize="14" fontWeight="800">제상시간</text>
+        {/* 하단 3개 상태등: 운전 · 제상주기 · 제상시간 */}
+        <rect x="92" y="166" width="46" height="42" rx="4" fill="#0F172A" stroke="#64748B" strokeWidth="1.5" />
+        <text x="115" y="192" textAnchor="middle" fill="#FFFFFF" fontSize="13.5" fontWeight="900">운전</text>
 
-        {/* 하단 4개 조작 버튼 */}
-        <rect x="108" y="128" width="46" height="62" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="131" y="156" textAnchor="middle" fill="#111111" fontSize="20" fontWeight="900">▼</text>
-        <text x="131" y="178" textAnchor="middle" fill="#111111" fontSize="13" fontWeight="900">내림</text>
+        <rect x="145" y="166" width="46" height="42" rx="4" fill="#0F172A" stroke="#64748B" strokeWidth="1.5" />
+        <text x="168" y="185" textAnchor="middle" fill="#FFFFFF" fontSize="12.5" fontWeight="900">제상</text>
+        <text x="168" y="201" textAnchor="middle" fill="#FFFFFF" fontSize="12.5" fontWeight="900">주기</text>
 
-        <rect x="160" y="128" width="46" height="62" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="183" y="156" textAnchor="middle" fill="#111111" fontSize="20" fontWeight="900">▲</text>
-        <text x="183" y="178" textAnchor="middle" fill="#111111" fontSize="13" fontWeight="900">올림</text>
+        <rect x="198" y="166" width="46" height="42" rx="4" fill="#0F172A" stroke="#64748B" strokeWidth="1.5" />
+        <text x="221" y="185" textAnchor="middle" fill="#FFFFFF" fontSize="12.5" fontWeight="900">제상</text>
+        <text x="221" y="201" textAnchor="middle" fill="#FFFFFF" fontSize="12.5" fontWeight="900">시간</text>
 
-        <rect x="212" y="128" width="48" height="62" rx="5" fill="#FEF08A" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="236" y="165" textAnchor="middle" fill="#111111" fontSize="17" fontWeight="900">설정</text>
+        {/* 우측 4×2 조작 버튼부 */}
+        <rect x="260" y="22" width="70" height="40" rx="5" fill="#FEF9C3" stroke="#0F172A" strokeWidth="2" />
+        <text x="295" y="47" textAnchor="middle" fill="#111111" fontSize="15.5" fontWeight="900">잠금 3초</text>
 
-        <rect x="266" y="128" width="46" height="62" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="289" y="165" textAnchor="middle" fill="#111111" fontSize="17" fontWeight="900">제상</text>
+        <rect x="338" y="22" width="70" height="40" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2" />
+        <text x="373" y="47" textAnchor="middle" fill="#111111" fontSize="15.5" fontWeight="900">▲ 올림</text>
 
-        {/* 우측 버튼: 조명 / 결로팬 */}
-        <rect x="324" y="26" width="72" height="74" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="360" y="59" textAnchor="middle" fill="#111111" fontSize="19" fontWeight="900">조명</text>
-        <text x="360" y="84" textAnchor="middle" fill="#1E293B" fontSize="14" fontWeight="800">LED</text>
+        <rect x="260" y="70" width="70" height="40" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2" />
+        <text x="295" y="88" textAnchor="middle" fill="#111111" fontSize="15" fontWeight="900">휀</text>
+        <text x="295" y="104" textAnchor="middle" fill="#1E293B" fontSize="11.5" fontWeight="800">(결로팬)</text>
 
-        <rect x="324" y="116" width="72" height="74" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2.5" />
-        <text x="360" y="149" textAnchor="middle" fill="#111111" fontSize="18" fontWeight="900">결로팬</text>
-        <text x="360" y="174" textAnchor="middle" fill="#1E293B" fontSize="13" fontWeight="800">습한날</text>
+        <rect x="338" y="70" width="70" height="40" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2" />
+        <text x="373" y="95" textAnchor="middle" fill="#111111" fontSize="15.5" fontWeight="900">▼ 내림</text>
+
+        <rect x="260" y="118" width="70" height="40" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2" />
+        <text x="295" y="143" textAnchor="middle" fill="#111111" fontSize="16" fontWeight="900">조명</text>
+
+        <rect x="338" y="118" width="70" height="40" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2" />
+        <text x="373" y="143" textAnchor="middle" fill="#111111" fontSize="16" fontWeight="900">제상</text>
+
+        <rect x="260" y="166" width="70" height="42" rx="5" fill="#FEF08A" stroke="#0F172A" strokeWidth="2" />
+        <text x="295" y="193" textAnchor="middle" fill="#111111" fontSize="16" fontWeight="900">설정</text>
+
+        <rect x="338" y="166" width="70" height="42" rx="5" fill="#FFFFFF" stroke="#0F172A" strokeWidth="2" />
+        <text x="373" y="193" textAnchor="middle" fill="#111111" fontSize="16" fontWeight="900">전원</text>
+
+        {/* 우측 별도 전면 디스플레이 */}
+        <rect x="440" y="54" width="114" height="124" rx="7" fill="#F8FAFC" stroke="#0F294A" strokeWidth="2.5" />
+        <rect x="449" y="68" width="96" height="62" rx="4" fill="#090D16" stroke="#1E293B" strokeWidth="2" />
+        <text x="497" y="111" textAnchor="middle" fill="#FF453A" fontSize="29" fontWeight="900" fontFamily="monospace">-05c</text>
+        <text x="497" y="153" textAnchor="middle" fill="#0F294A" fontSize="13.5" fontWeight="900">전면 온도창</text>
+        <text x="497" y="170" textAnchor="middle" fill="#475569" fontSize="12" fontWeight="800">별도 표시</text>
       </svg>
       <figcaption className="guide-diagram-caption">
-        도면 1. 조절기 실물 배치 (잠금 3초 누름 → ▼▲ 조절 → 손 떼면 자동잠금)
+        도면 1. 신형 일체형 조절기(uriel) 및 전면 온도창 (잠금 약 3초 해제 → ∧∨ 조절 → 약 1분 후 자동잠금)
       </figcaption>
     </figure>
   );
@@ -1060,23 +1075,24 @@ export default function GuidePage() {
             </div>
           </section>
 
-          {/* 03. 온도조절기 도면 & 조작법 */}
+          {/* 03. 신형 일체형 온도조절기 도면 & 조작법 */}
           <section id="sec-controller" className="guide-sheet" aria-labelledby="heading-controller">
             <div className="guide-sec-header">
               <span className="guide-sec-num mono">03</span>
-              <h2 id="heading-controller" className="guide-sec-heading">온도조절기 조작 · 온도 · 제상 설정</h2>
+              <h2 id="heading-controller" className="guide-sec-heading">신형 일체형 조절기 · 온도 · 제상 · 에러 안내</h2>
             </div>
+            <p className="guide-sec-lead">{GUIDE_SECTIONS.controllerOverview}</p>
 
             <div className="guide-two-col">
               <div className="guide-col">
                 <ControllerDiagramSvg />
                 <div className="guide-diagram-tip">
-                  <strong>버튼이 안 눌릴 때:</strong> 왼쪽 위 <b>「잠금」</b> 버튼을 <b>3~5초간 꾹</b> 누르시면 ‘삐’ 소리와 함께 풀립니다. 조절 뒤 손을 떼면 5초 후 자동 잠금됩니다.
+                  <strong>조작 전 잠금 해제:</strong> 조작부 상단 <b>「잠금」</b> 버튼을 <b>약 3초간 꾹</b> 누르면 잠금등이 꺼집니다. 키 동작이 없으면 <b>약 1분 후 자동 잠금</b>됩니다.
                 </div>
               </div>
 
               <div className="guide-col">
-                <h3 className="guide-sub-h3">1) 각 버튼 역할</h3>
+                <h3 className="guide-sub-h3">1) 각 버튼 역할 (7종)</h3>
                 <dl className="guide-dl">
                   {GUIDE_SECTIONS.buttons.map((btn) => (
                     <div key={btn.name} className="guide-dl-row">
@@ -1108,10 +1124,165 @@ export default function GuidePage() {
               </div>
             </div>
 
+            <div className="guide-callout guide-callout--info">
+              <div className="guide-callout-title">4) {GUIDE_SECTIONS.lockBypassTip.title}</div>
+              <p>
+                <strong>설정 방법:</strong> {GUIDE_SECTIONS.lockBypassTip.steps}{' '}
+                {GUIDE_SECTIONS.lockBypassTip.result}
+              </p>
+            </div>
+
+            <div className="guide-error-section">
+              <h3 className="guide-sub-h3">5) 에러 메시지 (E-1 · E-2) 및 경보음 대처</h3>
+              <div className="guide-error-grid">
+                {GUIDE_SECTIONS.errorCodes.map((err) => (
+                  <div key={err.code} className="guide-error-card">
+                    <div className="guide-error-head">
+                      <span className="guide-error-code mono">{err.code}</span>
+                      <strong className="guide-error-title">{err.title}</strong>
+                    </div>
+                    <p className="guide-error-detail">{err.detail}</p>
+                    <p className="guide-error-action">{err.action}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="guide-alarm-note">{GUIDE_SECTIONS.tempAlarmNotice}</div>
+              <a
+                className="guide-btn guide-btn--kakao"
+                href={SHOWCASE_GUIDE_BRAND.asKakaoChatUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={handleKakaoInquiry}
+              >
+                에러(E-1 · E-2) 발생 시 {SHOWCASE_GUIDE_BRAND.asKakaoLabel} ↗
+              </a>
+            </div>
+
             <div className="guide-callout guide-callout--warn">
               <div className="guide-callout-title">주의 · 과도한 저온 설정 금지</div>
               <p>{GUIDE_SECTIONS.controllerNote}</p>
             </div>
+
+            <details className="guide-details guide-admin-details">
+              <summary className="guide-details-summary">
+                관리자 · 설치기사 전용 (세부설정 · 동작모드 · 온도편차 · 단자결선도 · 제품사양)
+              </summary>
+              <div className="guide-details-content">
+                <p className="guide-table-scroll-hint">※ 모바일 화면에서는 표를 좌우로 밀어 전체 항목을 확인하세요 ↔</p>
+                <h3 className="guide-sub-h3">가) 세부 설정 10종 (「설정」 + 「제상」 3초 동시 누름)</h3>
+                <p className="guide-sec-subdesc">{GUIDE_SECTIONS.advancedSettings.entryGuide}</p>
+                <div className="guide-manual-table-wrap">
+                  <table className="guide-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">표시</th>
+                        <th scope="col">항목</th>
+                        <th scope="col">기본값</th>
+                        <th scope="col">설정범위</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {GUIDE_SECTIONS.advancedSettings.items.map((item) => (
+                        <tr key={item.code}>
+                          <th scope="row" className="mono guide-td-nowrap">{item.code}</th>
+                          <td>{item.label}</td>
+                          <td className="mono guide-td-nowrap"><strong>{item.defaultVal}</strong></td>
+                          <td>{item.range}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <h3 className="guide-sub-h3">나) 동작모드 설정 (「∨ 내림」 + 「설정」 동시 누름)</h3>
+                <p className="guide-sec-subdesc">{GUIDE_SECTIONS.adminModes.entryGuide}</p>
+                <div className="guide-manual-table-wrap">
+                  <table className="guide-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">표시</th>
+                        <th scope="col">모드</th>
+                        <th scope="col">기본값 및 설정범위</th>
+                        <th scope="col">동작설명</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {GUIDE_SECTIONS.adminModes.items.map((row) => (
+                        <tr key={row.code}>
+                          <th scope="row" className="mono guide-td-nowrap">{row.code}</th>
+                          <td className="guide-td-nowrap"><strong>{row.mode}</strong></td>
+                          <td>{row.settings}</td>
+                          <td>{row.action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <h3 className="guide-sub-h3">다) 온도편차 설정 (「∧ 올림」 + 「설정」 동시 누름)</h3>
+                <div className="guide-diff-box">
+                  <div>
+                    <strong>기본값:</strong> <span className="mono">{GUIDE_SECTIONS.tempDiffSetting.defaultVal}</span>
+                    {' · '}
+                    <strong>설정범위:</strong> <span className="mono">{GUIDE_SECTIONS.tempDiffSetting.range}</span>
+                  </div>
+                  <p>{GUIDE_SECTIONS.tempDiffSetting.entryGuide}</p>
+                </div>
+
+                <h3 className="guide-sub-h3">라) 단자결선도 (1~11번) 및 판넬 가공치수</h3>
+                <div className="guide-wiring-split">
+                  <figure className="guide-illus-box">
+                    <img
+                      className="guide-illus-img"
+                      src="/images/guide/controller-wiring-dims.webp"
+                      alt="신형 일체형 조절기 1번~11번 단자결선도 및 조작 TC(173×74mm, 타공 137×64mm)·디스플레이(52×32mm, 타공 50×24mm) 치수 도면"
+                      width="1200"
+                      height="1034"
+                      loading="eager"
+                      decoding="sync"
+                    />
+                  </figure>
+                  <ul className="guide-wiring-grid">
+                    {GUIDE_SECTIONS.wiringTerminals.map((term) => (
+                      <li key={term} className="guide-wiring-item">{term}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <h3 className="guide-sub-h3">마) 제품 사양표</h3>
+                <div className="guide-manual-table-wrap">
+                  <table className="guide-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">구분</th>
+                        <th scope="col">항목</th>
+                        <th scope="col">사양 (SPECIFICATIONS)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {GUIDE_SECTIONS.controllerSpecs.map((row) => (
+                        <tr key={row.item}>
+                          <th scope="row" className="guide-td-nowrap">{row.group}</th>
+                          <td className="guide-td-nowrap"><strong>{row.item}</strong></td>
+                          <td>{row.spec}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="guide-admin-pdf-row">
+                  <a
+                    className="guide-btn guide-btn--secondary"
+                    href={SHOWCASE_GUIDE_BRAND.newControllerManualPdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    최신 신형 조절기 설명서 원본(PDF) 열기 / 인쇄 ↗
+                  </a>
+                </div>
+              </div>
+            </details>
           </section>
 
           {/* 04. 품목별 평균 제상 주기 · 시간 · 온도 기준표 */}
@@ -1262,7 +1433,7 @@ export default function GuidePage() {
                       width="1200"
                       height="670"
                       loading="eager"
-                      decoding="async"
+                      decoding="sync"
                     />
                     <figcaption className="guide-illus-steps">
                       <span><strong>① 조절볼트 4개</strong> 내려 고정</span>
