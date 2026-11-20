@@ -3,7 +3,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import KakaoTemplatePreview from './KakaoTemplatePreview.jsx';
 import KakaoTemplateForm from './KakaoTemplateForm.jsx';
 import SmsModal from './SmsModal.jsx';
-import { itemLight } from './smsTemplateListModel.js';
+import { channelCostOf, itemLight } from './smsTemplateListModel.js';
 import { KIND_KAKAO, ataLinkLine, autoTargetText, linkedTextEntries } from './smsTextTemplateFormModel.js';
 import {
   ACTION_LABELS, availableActions, defaultStatusFilter, deleteConfirmed, deleteDecision, filterTemplates, formatDate,
@@ -286,13 +286,19 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
         name: entry.name, content: entry.body || '', emphasizeType: entry.image ? 'IMAGE' : undefined, imageUrl: entry.image || '',
         buttons: [], targetName: entry.sender || '',
       }} />
-      <dl className="ktm-info">
-        <dt>보내는 곳</dt><dd>{entry.sender}</dd>
-        <dt>종류</dt><dd>{entry.kind} · {entry.channel === 'BMS' ? '브랜드메시지·친구톡' : '알림톡'}</dd>
-        {entry.who ? <><dt>대상</dt><dd>{entry.who}</dd></> : null}
-        {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
-        {entry.scenario ? <><dt>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{entry.scenario}</dd></> : null}
-      </dl>
+      {(() => {
+        const ch = channelCostOf(entry, { ataUnit: data?.ata_unit ?? 13 });
+        return (
+          <dl className="ktm-info">
+            <dt>종류 · 비용</dt><dd>{[ch.kindLabel, ch.costDetail].filter(Boolean).join(' · ')}</dd>
+            <dt>보내는 곳</dt><dd>{entry.sender}</dd>
+            <dt>업무 분류</dt><dd>{entry.kind}</dd>
+            {entry.who ? <><dt>대상</dt><dd>{entry.who}</dd></> : null}
+            {entry.trigger ? <><dt>언제 나가나</dt><dd>{entry.trigger}</dd></> : null}
+            {entry.scenario ? <><dt>{entry.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{entry.scenario}</dd></> : null}
+          </dl>
+        );
+      })()}
     </div>
   );
 
@@ -350,6 +356,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
           targetName: selected.target?.name || '',
         }} />
         <dl className="ktm-info">
+          <dt>종류 · 비용</dt><dd>알림톡{Number.isFinite(Number(data?.ata_unit)) && data.ata_unit !== null ? ` · 건당 ${Number(data.ata_unit).toLocaleString('ko-KR')}원` : ''}</dd>
           <dt>템플릿 ID</dt>
           <dd className="ktm-id">
             <code>{selected.id}</code>
@@ -468,6 +475,7 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
                     ) : null}
                     <span className="ktm-card-badges">
                       <span className={`ktm-light ktm-light--${itemLight(entry).tone}`}>{itemLight(entry).text}</span>
+                      {(() => { const ch = channelCostOf(entry, { ataUnit: data?.ata_unit ?? 13 }); return ch.fullLabel ? <span className="ktm-badge ktm-badge--muted">{ch.fullLabel}</span> : null; })()}
                       {entry.count === null ? <span className="ktm-badge ktm-badge--muted">사용 여부 확인 못 함</span>
                         : <span className={`ktm-badge ktm-badge--${entry.count > 0 ? 'warn' : 'muted'}`}>최근 7일 {entry.count}건</span>}
                       {failBadge(entry.fail) ? <span className="ktm-badge ktm-badge--danger">{failBadge(entry.fail).text}</span> : null}

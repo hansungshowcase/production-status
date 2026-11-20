@@ -5,9 +5,9 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, audienceSections, buildConditionSummary, buildKindedItems, channelCostOf, compactLightLabel, conditionGroup, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, matchesSmsQuery, paginateRows, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
-import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill, sendCostText } from './smsTextTemplateFormModel.js';
+import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import SmsModal from './SmsModal.jsx';
 // 바로 나가는 조건(주문 등록 시·공정 시작/완료 시·회원가입 시)은 단계를 더하면 같은 조건 문구가 둘이 되어 둘 다 발송된다 → 단계 추가를 두지 않는다
@@ -247,13 +247,16 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
               </span>
             );
           })() : <span className="ktm-card-meta"><span>{entry.preview}</span></span>}
-          {entry.autoKind || entry.hasImage || entry.sendCost ? (
-            <span className="ktm-card-badges">
-              {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : null}
-              {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
-              {entry.sendCost ? <span className="ktm-badge ktm-badge--muted">{sendCostText(entry.sendCost)}</span> : null}
-            </span>
-          ) : null}
+          {entry.autoKind || entry.hasImage || entry.sendCost ? (() => {
+            const ch = channelCostOf(entry);
+            return (
+              <span className="ktm-card-badges">
+                {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : null}
+                {entry.hasImage ? <span className="ktm-badge ktm-badge--muted">{photoBadgeText(entry)}</span> : null}
+                {ch.fullLabel ? <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span> : null}
+              </span>
+            );
+          })() : null}
         </button>
         {entry.autoKind ? <SmsAutoControls id={entry.id} enabled={Boolean(autoStatus[entry.id]?.enabled ?? entry.autoEnabled)} photos={entry.imageCount} ata={Boolean(entry.autoAtaTemplate)} bms={entry.autoAtaTemplate === BMS_TEMPLATE_ID} onChanged={() => { loadMine(); }}><button type="button" className="ktm-btn" onClick={() => editMine(entry, flowById.get(entry.id))}>수정</button></SmsAutoControls> : null}
         {open ? (
@@ -462,7 +465,7 @@ const formatKpiDate = (value) => {
 
 // 상세 상단 3단 발송 조건·규칙·현황 보드
 function renderConditionBoard(summary, st, isMineAuto) {
-  const thirdLabel = isMineAuto || summary.manual ? '횟수 · 방식' : '최근 발송 · 경로';
+  const thirdLabel = isMineAuto || summary.manual ? '횟수 · 비용' : '종류 · 비용';
   const todayCount = Number(st?.today_targets) || 0;
   const recent7d = Number(st?.sent_7d) || 0;
   const sentTotal = Number(st?.sent_total) || 0;
@@ -537,6 +540,7 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const key = `m-${entry.id}`;
     const isSelected = selectedKey === key;
     const eff = effOf(entry);
+    const ch = channelCostOf(entry);
     const cp = entry.autoKind ? autoConditionParts(entry) : null;
     const summary = entry.autoKind ? buildConditionSummary(entry, { isMine: true }) : null;
     const compactTime = summary ? summary.whenSub.replace(/ 발송.*$/, '').trim() : '';
@@ -547,8 +551,6 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const metaParts = [
       showTime ? compactTime : '',
       cp?.who || '',
-      cp?.via || '',
-      entry.hasImage ? photoBadgeText(entry) : '',
       showRepeat ? `최대 ${repeatCount}회` : '',
     ].filter(Boolean);
     return (
@@ -560,6 +562,8 @@ function renderConditionBoard(summary, st, isMineAuto) {
           </div>
           {summary ? (
             <div className="stl-item-cond">
+              <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
+              <span className="stl-meta-sep" aria-hidden="true">·</span>
               <span className="stl-when">{summary.whenMain}</span>
               {metaParts.map((part, idx) => (
                 <React.Fragment key={`${idx}-${part}`}>
@@ -570,6 +574,8 @@ function renderConditionBoard(summary, st, isMineAuto) {
             </div>
           ) : (
             <div className="stl-item-cond">
+              <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
+              <span className="stl-meta-sep" aria-hidden="true">·</span>
               <span className="stl-preview-line">{entry.preview || '내용 없음'}</span>
             </div>
           )}
@@ -588,13 +594,14 @@ function renderConditionBoard(summary, st, isMineAuto) {
     const key = `i-${item.id}`;
     const isSelected = selectedKey === key;
     const light = itemLight(item);
+    const ch = channelCostOf(item);
     const summary = buildConditionSummary(item, { isMine: false, recipients });
     const detailPart = item.audience?.id !== 'customer' && summary.whoMain
       ? summary.whoMain
       : (item.count !== null && item.count > 0 ? `7일 ${item.count}건` : (summary.whenSub || ''));
     const metaParts = [
       item.audience.label,
-      [item.sender, item.channel].filter(Boolean).join(' '),
+      item.sender,
       detailPart,
     ].filter(Boolean);
     const exceptionBadges = [];
@@ -610,10 +617,16 @@ function renderConditionBoard(summary, st, isMineAuto) {
             <span className={`stl-light stl-light--${light.tone}`} title={light.text}>{light.text}</span>
           </div>
           <div className="stl-item-cond">
-            {summary.whenMain ? <span className="stl-when">{summary.whenMain}</span> : null}
+            <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
+            {summary.whenMain ? (
+              <>
+                <span className="stl-meta-sep" aria-hidden="true">·</span>
+                <span className="stl-when">{summary.whenMain}</span>
+              </>
+            ) : null}
             {metaParts.map((part, idx) => (
               <React.Fragment key={`${idx}-${part}`}>
-                {(summary.whenMain || idx > 0) ? <span className="stl-meta-sep" aria-hidden="true">·</span> : null}
+                <span className="stl-meta-sep" aria-hidden="true">·</span>
                 <span>{part}</span>
               </React.Fragment>
             ))}
@@ -745,7 +758,16 @@ function renderConditionBoard(summary, st, isMineAuto) {
             </button>
             <div className="stl-detail-meta">
               {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`}>{eff.text}</span> : <span className="stl-detail-kind">수동 발송</span>}
-              {['내 문구', cp?.who, entry.hasImage ? photoBadgeText(entry) : '', entry.sendCost ? sendCostText(entry.sendCost) : ''].filter(Boolean).map((part, idx) => (
+              {(() => {
+                const ch = channelCostOf(entry);
+                return (
+                  <>
+                    <span className="stl-meta-sep" aria-hidden="true">·</span>
+                    <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
+                  </>
+                );
+              })()}
+              {['내 문구', cp?.who, entry.hasImage && entry.imageCount > 1 ? photoBadgeText(entry) : ''].filter(Boolean).map((part, idx) => (
                 <React.Fragment key={`${idx}-${part}`}>
                   <span className="stl-meta-sep" aria-hidden="true">·</span>
                   <span>{part}</span>
@@ -886,7 +908,16 @@ function renderConditionBoard(summary, st, isMineAuto) {
           </button>
           <div className="stl-detail-meta">
             <span className={`stl-light stl-light--${light.tone}`}>{light.text}</span>
-            {[item.audience.label, item.sender, item.channel, item.ad ? '광고' : ''].filter(Boolean).map((part, idx) => (
+            {(() => {
+              const ch = channelCostOf(item);
+              return (
+                <>
+                  <span className="stl-meta-sep" aria-hidden="true">·</span>
+                  <span className={`stl-ch stl-ch--${ch.tone}`}>{ch.fullLabel}</span>
+                </>
+              );
+            })()}
+            {[item.audience.label, item.sender, item.ad ? '광고' : ''].filter(Boolean).map((part, idx) => (
               <React.Fragment key={`${idx}-${part}`}>
                 <span className="stl-meta-sep" aria-hidden="true">·</span>
                 <span>{part}</span>

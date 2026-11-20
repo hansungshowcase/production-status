@@ -1,7 +1,7 @@
 import {
   EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
-import { autoConditionLine, autoConditionParts, autoTargetText, LEAD_SOURCE_FLOW_LABEL, photoBadgeText, sendCostText, sendTimeLabel, viaLabel } from './smsTextTemplateFormModel.js';
+import { autoConditionLine, autoConditionParts, autoTargetText, LEAD_SOURCE_FLOW_LABEL, photoBadgeText, sendCostText, sendKindLabel, sendTimeLabel, viaLabel } from './smsTextTemplateFormModel.js';
 import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
@@ -335,12 +335,91 @@ const IMMEDIATE_TRIGGER_KINDS = new Set(['order_created', 'process_started', 'pr
 
 const uniqTags = (list) => [...new Set(list.filter(Boolean))];
 const phoneTailDigits = (value) => String(value || '').replace(/\D/g, '').slice(-4);
+const wonKRW = (value) => `${Number(value).toLocaleString('ko-KR')}원`;
+
+function formatKoreanPhone(raw) {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return d.startsWith('02') ? `${d.slice(0, 2)}-${d.slice(2, 6)}-${d.slice(6)}` : `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 9 && d.startsWith('02')) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`;
+  return String(raw || '').trim();
+}
+
+// 템플릿 종류(문자·알림톡·브랜드메시지) 및 건당 예상 비용(VAT 미포함 쏠라피 기준 또는 서버 sendCost)
+export function channelCostOf(row, { ataUnit = 13 } = {}) {
+  const ataPrice = Number.isFinite(Number(ataUnit)) && ataUnit !== null ? Number(ataUnit) : 13;
+  const finish = (kindLabel, costShort, costDetail, tone) => ({
+    kindLabel,
+    costShort,
+    costDetail,
+    fullLabel: costShort ? `${kindLabel} · ${costShort}` : kindLabel,
+    tone,
+  });
+
+  if (!row || typeof row !== 'object') return finish('문자', '', '', 'sms');
+
+  // 1. 서버가 계산한 sendCost (내 문구)
+  const sc = row.sendCost;
+  if (sc && sendKindLabel(sc.type)) {
+    const parts = Array.isArray(sc.parts) ? sc.parts : [];
+    const kindLabel = parts.length > 1 || (parts[0] && parts[0].count > 1)
+      ? parts.map((p) => `${sendKindLabel(p.type)} ${p.count}통`).join(' + ')
+      : sendKindLabel(sc.type);
+    const unit = sc.unit !== null && sc.unit !== undefined && Number.isFinite(Number(sc.unit)) ? Number(sc.unit) : null;
+    const costShort = unit !== null ? wonKRW(unit) : '';
+    const fb = sc.fallback_unit != null && Number.isFinite(Number(sc.fallback_unit)) ? Number(sc.fallback_unit) : null;
+    const costDetail = unit !== null
+      ? (sc.type === 'BMS' && fb !== null ? `건당 ${wonKRW(unit)} (미친구 시 장문 ${wonKRW(fb)})` : `건당 ${wonKRW(unit)}`)
+      : '';
+    const tone = sc.type === 'BMS' ? 'bms' : (sc.type === 'ATA' ? 'ata' : 'sms');
+    return finish(kindLabel, costShort, costDetail, tone);
+  }
+
+  // 2. 내 문구 fallback (sendCost 미포함 상태)
+  if (row.autoKind || (row.preview !== undefined && !row.sender && !row.external)) {
+    if (row.autoAtaTemplate === 'BMS_FREE') {
+      return finish('브랜드메시지', '100원', '건당 100원 (미친구 시 장문 45원)', 'bms');
+    }
+    if (row.autoAtaTemplate) {
+      return finish('알림톡', wonKRW(ataPrice), `건당 ${wonKRW(ataPrice)}`, 'ata');
+    }
+    if (row.hasImage) {
+      return finish('사진 문자', '110원', '건당 110원', 'sms');
+    }
+    return finish('문자', '18~45원', '단문 18원 · 장문 45원', 'sms');
+  }
+
+  // 3. 카페24 외부 발송 (별도 정산)
+  if (row.sender === SENDERS.cafe24) {
+    if (row.channel === 'ATA') return finish('알림톡', '카페24 과금', '카페24 별도 과금', 'ata');
+    if (row.channel === 'BMS') return finish('브랜드메시지', '카페24 과금', '카페24 별도 과금', 'bms');
+    return finish('문자', '카페24 과금', '카페24 별도 과금', 'sms');
+  }
+
+  // 4. 외부 채널 (메이크·쏠라피 자동화 등)
+  const ch = String(row.channel || '').toUpperCase();
+  if (ch === 'BMS') return finish('브랜드메시지', '100원', '건당 100원 (미친구 시 장문 45원)', 'bms');
+  if (ch === 'ATA') return finish('알림톡', wonKRW(ataPrice), `건당 ${wonKRW(ataPrice)}`, 'ata');
+  if (ch === 'MMS') return finish('사진 문자', '110원', '건당 110원', 'sms');
+  if (ch === 'LMS') return finish('장문 문자', '45원', '건당 45원', 'sms');
+  if (ch === 'SMS') return finish('단문 문자', '18원', '건당 18원', 'sms');
+
+  // 5. 제작현황 카탈로그
+  const cfgChan = String(row.config?.channel || '');
+  if (cfgChan.includes('알림톡')) return finish('알림톡', wonKRW(ataPrice), `건당 ${wonKRW(ataPrice)} (실패 시 장문 45원)`, 'ata');
+  if (cfgChan === 'LMS') return finish('장문 문자', '45원', '건당 45원', 'sms');
+  if (cfgChan === 'SMS') return finish('단문 문자', '18원', '건당 18원', 'sms');
+  if (cfgChan === 'MMS') return finish('사진 문자', '110원', '건당 110원', 'sms');
+  if (row.policy?.status === 'paused') return finish('알림톡', '미발송', '정책 중단(미발송)', 'ata');
+  return finish('알림톡·문자', '미설정', '설정 완료 후 단가 적용', 'sms');
+}
 
 function buildMineConditionSummary(entry) {
+  const ch = channelCostOf(entry);
+  const howSub = [ch.kindLabel, ch.costDetail].filter(Boolean).join(' · ') || sendCostText(entry.sendCost) || '일반 문자';
+
   if (!entry.autoKind) {
-    const costStr = sendCostText(entry.sendCost);
-    const photoStr = entry.hasImage ? photoBadgeText(entry) : '';
-    const sub = [photoStr, costStr].filter(Boolean).join(' · ') || '일반 문자';
+    const photoStr = entry.hasImage && Number(entry.imageCount) > 1 ? photoBadgeText(entry) : '';
     return {
       manual: true,
       whenMain: '수동 발송',
@@ -348,9 +427,9 @@ function buildMineConditionSummary(entry) {
       whoMain: '직접 고른 받는 사람',
       whoSub: '자동 대상 조건 없음',
       howMain: '원할 때마다 1번씩',
-      howSub: sub,
+      howSub,
       catchup: '',
-      tags: uniqTags([photoStr, costStr]),
+      tags: uniqTags([photoStr]),
     };
   }
 
@@ -368,16 +447,12 @@ function buildMineConditionSummary(entry) {
   if (kind === 'ship_plus_days') {
     whenMain = days === 0 ? '출고 완료 당일' : `출고 완료 ${days}일 뒤`;
     whenSub = `${timeText || '오전 10:00'} 발송`;
-    tags.push('출고완료 주문 대상', '발송 놓친 건 3일 내 보충');
   } else if (kind === 'order_plus_days') {
     whenMain = days === 0 ? '주문 등록 당일' : `주문 등록 ${days}일 뒤`;
     whenSub = `${timeText || '오전 10:00'} 발송`;
-    tags.push('취소 주문 제외');
-    if (days > 0) tags.push('발송 놓친 건 3일 내 보충');
   } else if (kind === 'process_started_plus_days') {
     whenMain = `${step ? `${step} 공정 ` : '공정 '}시작 ${days === 0 ? '당일' : `${days}일 뒤`}`;
     whenSub = `${timeText || '오전 10:00'} 발송`;
-    tags.push('취소 주문 제외', '발송 놓친 건 3일 내 보충');
   } else if (DATE_TRIGGER_KINDS.has(kind)) {
     const dateLabel = kind === 'ship_or_due' ? '출고·납기일' : (kind === 'ship_scheduled' ? '출고예정일' : '납기일');
     const t = timeText || '오전 10:00';
@@ -394,12 +469,7 @@ function buildMineConditionSummary(entry) {
       whenMain = offset === 0 ? `${dateLabel} 당일` : (offset < 0 ? `${dateLabel} ${-offset}일 전` : `${dateLabel} ${offset}일 지남`);
       whenSub = `${t} 발송`;
     }
-    tags.push('제작 진행 중 주문만');
     if (entry.autoWeekdays) tags.push('평일만 발송 (토·일 제외)');
-    if (entry.autoDaily === 'once' && Array.isArray(entry.autoDaysOff) && entry.autoDaysOff.length > 0) {
-      const offNames = entry.autoDaysOff.map((d) => DAY_OFF_LABELS[d]).filter(Boolean).join('·');
-      if (offNames) tags.push(`휴무 요일 제외: ${offNames}`);
-    }
     if (entry.autoUnlessStep) {
       tags.push(`${entry.autoUnlessStep} 공정 ${entry.autoUnlessMode === 'started' ? '미착수' : '미완료'} 주문만`);
     }
@@ -412,19 +482,16 @@ function buildMineConditionSummary(entry) {
       whenMain = `${leadLabel} 즉시 (당일)`;
       whenSub = '접수 확인 후 바로 발송';
     }
-    tags.push('연락처 있는 접수만');
   } else if (kind === 'member_joined') {
     whenMain = '자사몰 회원가입 즉시';
     whenSub = '가입 감지 시 실시간 발송 (켠 뒤 24시간 내)';
   } else if (kind === 'order_created') {
     whenMain = '주문 등록 즉시';
     whenSub = '등록 감지 시 실시간 발송 (켠 뒤 24시간 내)';
-    tags.push('취소 주문 제외');
   } else if (kind === 'process_started' || kind === 'process_completed') {
     const verb = kind === 'process_started' ? '시작' : '완료';
     whenMain = `${step ? `${step} 공정 ` : '공정 '}${verb} 즉시`;
     whenSub = `${verb} 시각 기록 시 실시간 발송`;
-    tags.push('취소 주문 제외');
   } else {
     whenMain = autoConditionParts(entry).when || '자동 발송';
     whenSub = timeText ? `${timeText} 발송` : '';
@@ -462,13 +529,16 @@ function buildMineConditionSummary(entry) {
     whoSub = '취소 주문 제외';
   }
 
-  if (aud === 'customer' && ['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind) && !whoSub.includes('수신거부')) {
-    tags.push('수신거부 제외', '같은 번호 중복 제외');
+  if (Array.isArray(entry.autoDaysOff) && entry.autoDaysOff.length > 0) {
+    const offNames = entry.autoDaysOff.map((d) => DAY_OFF_LABELS[d]).filter(Boolean).join('·');
+    if (offNames) tags.push(`휴무 요일 제외: ${offNames}`);
   }
+  if (entry.autoSales && aud !== 'sales') tags.push(`${entry.autoSales} 담당 주문만`);
   if (entry.autoSendFrom) tags.push(`${entry.autoSendFrom} 이후부터 적용`);
 
   const copyTail = phoneTailDigits(entry.autoCopyTo);
   if (copyTail) tags.push(`사본 동시 발송: ${copyTail}`);
+  if (entry.autoFrom) tags.push(`별도 발신번호: ${formatKoreanPhone(entry.autoFrom)}`);
 
   let howMain = '';
   if (['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind)) {
@@ -482,11 +552,6 @@ function buildMineConditionSummary(entry) {
   } else {
     howMain = '번호당 1번만';
   }
-
-  const via = viaLabel(entry);
-  const medium = via || (entry.hasImage ? '사진 문자' : '일반 문자');
-  const costStr = sendCostText(entry.sendCost);
-  const howSub = costStr || [medium, entry.hasImage ? photoBadgeText(entry) : ''].filter(Boolean).join(' · ');
 
   let catchup = '';
   if (kind === 'ship_plus_days' && entry.autoCatchupAt) {
@@ -543,8 +608,11 @@ function buildCatalogConditionSummary(item, recipients) {
     whoSub = item.target ? (item.audience?.label || '직원') : '수신자 정보 불러오는 중';
   }
 
-  const howMain = item.count === null ? '발송 확인 안 됨' : `최근 7일 ${item.count}건`;
-  const howSub = [item.sender, item.channel].filter(Boolean).join(' · ');
+  const ch = channelCostOf(item);
+  const extraCostNote = ch.costDetail.includes('(') ? ch.costDetail.slice(ch.costDetail.indexOf('(')) : '';
+  const countText = item.count === null ? '발송 확인 안 됨' : `최근 7일 ${item.count}건`;
+  const howMain = ch.fullLabel;
+  const howSub = [item.sender, countText, extraCostNote].filter(Boolean).join(' · ');
 
   const tags = [];
   if (item.scenario) tags.push(item.sender === '메이크' ? `메이크 시나리오: ${item.scenario}` : `자동화: ${item.scenario}`);

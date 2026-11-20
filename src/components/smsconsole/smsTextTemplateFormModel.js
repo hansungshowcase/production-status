@@ -627,6 +627,7 @@ export function myTextSection(items) {
       autoDaily: item.auto_daily === 'until' || item.auto_daily === 'ongoing' || item.auto_daily === 'once' ? item.auto_daily : '',
       autoSales: String(item.auto_chain?.sales || ''),
       autoDaysOff: Array.isArray(item.auto_chain?.days_off) ? item.auto_chain.days_off : [],
+      autoFrom: String(item.auto_chain?.from || ''),
       autoWeekdays: Boolean(item.auto_weekdays),
       autoUnlessMode: item.auto_unless_mode === 'started' ? 'started' : 'completed',
       autoUnlessStep: String(item.auto_unless_step || ''),
