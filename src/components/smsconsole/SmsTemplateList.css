@@ -218,26 +218,38 @@
   .stl-preview-stage.has-media .stl-media-card { padding-top: 0; margin-top: 0; border-top: 0; }
 }
 @media (min-width: 1120px) {
+  .ktm-root .stl-detail-split,
   .stl-detail-split {
-    display: grid; grid-template-columns: 214px minmax(0, 1fr); gap: 12px; align-items: start;
+    display: grid; grid-template-columns: 228px minmax(0, 1fr); gap: 12px; align-items: start;
     padding-top: 8px;
   }
+  .ktm-root .stl-detail-split .stl-cond-board,
   .stl-detail-split .stl-cond-board {
     padding: 0 12px 0 0; border-bottom: 0; border-right: 1px solid #eef0f3;
   }
+  .ktm-root .stl-detail-split .stl-cond-grid,
   .stl-detail-split .stl-cond-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .ktm-root .stl-detail-split .stl-cond-tile,
   .stl-detail-split .stl-cond-tile { padding: 0 0 7px 0; }
+  .ktm-root .stl-detail-split .stl-cond-tile + .stl-cond-tile,
   .stl-detail-split .stl-cond-tile + .stl-cond-tile {
-    padding: 7px 0 7px 0; border-left: 0; border-top: 1px solid #f0f2f5;
+    padding: 7px 0; border-left: 0; border-top: 1px solid #f0f2f5;
   }
+  .ktm-root .stl-detail-split .stl-cond-tile:last-child,
   .stl-detail-split .stl-cond-tile:last-child { padding-bottom: 0; }
+  .ktm-root .stl-detail-split .stl-cond-val { font-size: 13.5px; line-height: 1.3; }
+  .ktm-root .stl-detail-split .stl-cond-sub { font-size: 12px; line-height: 1.38; }
+  .ktm-root .stl-detail-split .stl-cond-kpis,
   .stl-detail-split .stl-cond-kpis {
-    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px;
-    margin-top: 8px; padding: 7px 8px; border-top: 0; border-radius: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px;
+    margin-top: 8px; padding: 7px 9px; border-top: 0; border-radius: 7px;
     background: #fafbfc; border: 1px solid #eef0f3;
   }
+  .ktm-root .stl-detail-split .stl-kpi,
+  .ktm-root .stl-detail-split .stl-kpi + .stl-kpi,
   .stl-detail-split .stl-kpi,
   .stl-detail-split .stl-kpi + .stl-kpi { padding: 0; border-left: 0; }
+  .ktm-root .stl-detail-split .stl-cond-kpis > :last-child,
   .stl-detail-split .stl-cond-kpis > :last-child {
     grid-column: 1 / -1; padding-top: 5px; border-top: 1px solid #eceff2;
     flex-direction: row; align-items: baseline; justify-content: space-between;
