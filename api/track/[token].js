@@ -10,6 +10,7 @@ import {
   customerDeliveryStatus,
   customerExpectedShipDate,
 } from '../../src/utils/customerShippingDate.js';
+import { resolveGuidePresetKey } from '../../shared/showcaseGuide.js';
 
 // 거래처명은 가리지 않는다. 이 링크는 그 거래처 본인에게 문자로 나가는 것이라
 // 자기 상호를 '솔*********' 로 보게 되면 잘못된 화면으로 읽힌다(2026-08-12 요청).
@@ -95,6 +96,7 @@ export async function handleTrack(req, res, dependencies = {}) {
     // 고객에게 노출하기 부적절하다(2026-08-10). 화면에서 빼는 것만으로는 응답에 그대로 남아
     // 조회 링크로 값이 보이므로 응답 자체에서 제외한다.
     door_type: order.door_type || null,
+    guide_preset_key: resolveGuidePresetKey(order.product_type, order.door_type),
     size: { width: order.width, depth: order.depth, height: order.height },
     quantity: order.quantity,
     color: order.color || null,

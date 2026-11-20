@@ -55,6 +55,18 @@
       ]
     },
     {
+      "source": "/guide",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/guide/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
       "source": "/materials",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }

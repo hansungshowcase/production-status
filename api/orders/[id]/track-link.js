@@ -32,7 +32,11 @@ export async function handleTrackLink(req, res, dependencies = {}) {
   }
 
   const base = (process.env.BASE_URL || 'https://production-status.vercel.app').replace(/\/+$/, '');
-  return res.json({ token, url: `${base}/track/${token}` });
+  return res.json({
+    token,
+    url: `${base}/track/${token}`,
+    guide_url: `${base}/guide/${token}`,
+  });
 }
 
 export default cors(handleTrackLink);

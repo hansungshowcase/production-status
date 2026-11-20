@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PROCESS_STEPS } from '../../constants';
 import { extractDueDateFromOrder, formatDueStatus, formatProcessCompletionTime } from '../../utils/dateUtils';
 import { getVisibleOrderMemo } from '../../utils/orderText';
 import { getOrder } from '../../api/orders';
 import { buildShippingDocumentData, buildShippingDocumentPrintHtml } from './shippingDocuments';
+import ShippingLabelModal from './ShippingLabelModal';
 import { getWorkInstructionHandoverState } from '../../../shared/workInstructionReceipt.js';
 import './SalesOrderCard.css';
 
@@ -135,15 +136,21 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
   const [shipping, setShipping] = useState(false);
   const [packingPhotoOpen, setPackingPhotoOpen] = useState(false);
   const [documentPreview, setDocumentPreview] = useState(null);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
   const [addressCopied, setAddressCopied] = useState(false);
 
+  const handleCloseLabelModal = useCallback(() => {
+    setLabelModalOpen(false);
+  }, []);
+
   useEffect(() => {
     setDetailOrder(null);
     setDetailLoading(false);
     setDetailError('');
+    setLabelModalOpen(false);
   }, [order.id]);
 
   useEffect(() => {
@@ -690,6 +697,15 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
             >
               납품내역서 출력
             </button>
+            <button
+              className="sales-order-card__document-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLabelModalOpen(true);
+              }}
+            >
+              라벨 스티커 출력
+            </button>
           </div>
 
           {onDelete && (
@@ -871,6 +887,12 @@ export default function SalesOrderCard({ order, onDelete, onShip, onEdit }) {
           </div>
         </div>
       ), document.body)}
+
+      <ShippingLabelModal
+        active={labelModalOpen}
+        order={displayOrder}
+        onClose={handleCloseLabelModal}
+      />
     </div>
   );
 }
