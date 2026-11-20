@@ -658,15 +658,10 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
             )}
           </div>
 
-          <div className="stl-preview-stage">
-            {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
-          </div>
-
-          <dl className="stl-info">
+          <dl className="stl-info" aria-label="발송 조건 및 현황">
             {entry.autoKind ? (
               <>
                 <dt>발송 시점</dt><dd>{autoConditionLine(entry)}</dd>
-                <dt>받는 사람</dt><dd>{cp?.who || '고객'}</dd>
                 {autoTargetText(entry) ? <><dt>발송 대상</dt><dd>{autoTargetText(entry)}</dd></> : null}
                 <dt>발송 현황</dt>
                 <dd>
@@ -683,16 +678,14 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
               </>
             ) : (
               <>
-                <dt>구분</dt><dd>저장된 문자 문구 (보내기 화면에서 수동 발송)</dd>
+                <dt>발송 조건</dt><dd>조건 없음 (보내기 화면에서 수동 발송)</dd>
               </>
             )}
-            {entry.sendCost || entry.hasImage ? (
-              <>
-                <dt>유형 · 비용</dt>
-                <dd>{[sendCostText(entry.sendCost), entry.hasImage ? photoBadgeText(entry) : ''].filter(Boolean).join(' · ') || '-'}</dd>
-              </>
-            ) : null}
           </dl>
+
+          <div className="stl-preview-stage">
+            {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
+          </div>
         </article>
       );
     }
@@ -807,17 +800,16 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
           ) : null}
         </div>
 
+        <dl className="stl-info" aria-label="발송 조건">
+          <dt>발송 조건</dt><dd>{line || item.trigger || '-'}</dd>
+          {item.external && item.trigger && item.trigger !== line ? <><dt>언제 나가나</dt><dd>{item.trigger}</dd></> : null}
+          {item.scenario ? <><dt>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{item.scenario}</dd></> : null}
+          <dt>보내는 곳</dt><dd>{[item.sender, item.channel, item.count === null ? '발송 확인 못 함' : `최근 7일 ${item.count}건`].filter(Boolean).join(' · ')}</dd>
+        </dl>
+
         <div className="stl-preview-stage">
           {hasMedia && isLongBody ? [mediaCard, msgCard] : [msgCard, mediaCard]}
         </div>
-
-        <dl className="stl-info">
-          <dt>보내는 곳</dt><dd>{[item.sender, item.channel].filter(Boolean).join(' · ')}</dd>
-          {line ? <><dt>발송 조건</dt><dd>{line}</dd></> : null}
-          {item.external && item.trigger && item.trigger !== line ? <><dt>언제 나가나</dt><dd>{item.trigger}</dd></> : null}
-          {item.scenario ? <><dt>{item.sender === '메이크' ? '메이크 시나리오' : '자동화 이름'}</dt><dd>{item.scenario}</dd></> : null}
-          <dt>최근 7일 발송</dt><dd>{item.count === null ? '확인 못 함' : `${item.count}건`}</dd>
-        </dl>
       </article>
     );
   };
