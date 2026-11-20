@@ -5,7 +5,7 @@ import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { fetchInternalNotifications } from '../../api/internalNotifications.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
-  CONDITION_GROUPS, audienceSections, buildKindedItems, compactLightLabel, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isKakaoEntry, itemLight, kindBadges, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, audienceSections, buildKindedItems, compactLightLabel, conditionGroup, conditionLine, defaultSmsFilter, flowLightTone, flowStepText, groupFlows, isAttentionTone, isKakaoEntry, itemLight, kindBadges, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from './smsTemplateListModel.js';
 import { BMS_TEMPLATE_ID, catchupPausedText, autoConditionLine, autoConditionParts, autoTargetText, ensureAutoSection, formInitialFromItem, imageUrlsFromItem, myTextSection, photoBadgeText, previewFill, sendCostText } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
@@ -346,18 +346,31 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   // '발송 중' 숫자에는 켜진 내 자동 문구도 센다(표의 총 건수와 같게)
   // '전체'에는 내 자동 문구를 켜짐·꺼짐 상관없이 모두 보인다(2026-11-16 사장님: 한눈에 신호등처럼)
   const autoAll = useMemo(() => allMine.filter((entry) => entry.autoKind).length, [allMine]);
-  const pills = useMemo(() => [...smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll })), ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : [])], [items, mySection, runningAll, autoAll]);
+  const attentionAutosAll = useMemo(() => allMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [allMine, autoStatus]);
+  const attentionItemsAll = useMemo(() => items.filter((item) => isAttentionTone(itemLight(item).tone)), [items]);
+  const attentionTotal = attentionAutosAll.length + attentionItemsAll.length;
+  const pills = useMemo(() => {
+    const base = smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll }));
+    return [
+      ...base,
+      { id: 'attention', label: '꺼짐·확인 필요', count: attentionTotal },
+      ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : []),
+    ];
+  }, [items, mySection, runningAll, autoAll, attentionTotal]);
   const rawTab = picked ?? defaultSmsFilter(items);
   const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
   const isMineTab = tab === 'mine';
-  const filter = isMineTab ? 'all' : tab;
+  const isAttentionTab = tab === 'attention';
+  const filter = isMineTab || isAttentionTab ? 'all' : tab;
   const allAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind), [sortedMine]);
-  const shownAutos = filter === 'in_use' ? runningAutos : (isMineTab ? [] : allAutos);
+  const attentionAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [sortedMine, autoStatus]);
+  const shownAutos = isMineTab ? [] : (isAttentionTab ? attentionAutos : (tab === 'in_use' ? runningAutos : allAutos));
+  const sectionItems = useMemo(() => (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems), [condItems, isAttentionTab]);
   // 내 자동 문구가 들어가는 '고객' 묶음을 맨 앞에 둔다(사장님이 켜고 끄는 문구가 먼저 보이게)
   const sections = useMemo(() => {
-    const list = ensureAutoSection(audienceSections(condItems, filter), shownAutos.length);
+    const list = ensureAutoSection(audienceSections(sectionItems, filter), shownAutos.length);
     return shownAutos.length ? [...list].sort((a, b) => Number(b.group === '고객') - Number(a.group === '고객')) : list;
-  }, [condItems, filter, shownAutos.length]);
+  }, [sectionItems, filter, shownAutos.length]);
 
   // 쪽 나누기는 선택한 탭의 행에만 적용한다
   const rowKeys = useMemo(() => {
@@ -375,6 +388,8 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
   const pickFilter = (id) => { setPicked(id); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const goPage = (next) => { setPageNo(next); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const changeQuery = (value) => { setQuery(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
+  const hasActiveFilters = Boolean(query.trim() || cond || tab !== 'all');
+  const resetFilters = () => { setQuery(''); setCond(''); setPicked('all'); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const kindHasRow = (aud, section) => section.items.some((item) => pageSet.has(`i-${item.id}`))
     || (aud.group === '고객' && section.kind === '이벤트·혜택' && shownAutos.some((entry) => pageSet.has(`run-${entry.id}`)));
 
@@ -597,7 +612,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                         alt={`${entry.name} 첨부 이미지 ${index + 1}`}
                         onLoad={(event) => {
                           const img = event.currentTarget;
-                          if (img.naturalHeight > 460 && img.naturalHeight > img.naturalWidth * 1.1) {
+                          if (img.naturalHeight > 360 && img.naturalHeight > img.naturalWidth * 1.1) {
                             setTallImgMap((prev) => (prev[`m-${entry.id}`] ? prev : { ...prev, [`m-${entry.id}`]: true }));
                           }
                         }}
@@ -764,7 +779,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                   alt={`${item.name} 첨부 이미지`}
                   onLoad={(event) => {
                     const img = event.currentTarget;
-                    if (img.naturalHeight > 460 && img.naturalHeight > img.naturalWidth * 1.1) {
+                    if (img.naturalHeight > 360 && img.naturalHeight > img.naturalWidth * 1.1) {
                       setTallImgMap((prev) => (prev[`i-${item.id}`] ? prev : { ...prev, [`i-${item.id}`]: true }));
                     }
                   }}
@@ -886,6 +901,7 @@ export default function SmsTemplateList({ active, onSendText, openNew, onNewHand
                 <option value="">조건 전체</option>
                 {CONDITION_GROUPS.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
+              {hasActiveFilters ? <button type="button" className="ktm-btn stl-reset-btn" onClick={resetFilters}>초기화</button> : null}
               <span className="stl-total">{paged.pages > 1 ? `총 ${rowKeys.length}건 · ${paged.page}/${paged.pages}쪽` : `총 ${rowKeys.length}건`}</span>
             </span>
           </div>

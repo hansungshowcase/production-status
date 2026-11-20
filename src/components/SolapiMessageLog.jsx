@@ -95,6 +95,11 @@ function dayBeforeKst(offset) {
   return new Date(Date.UTC(y, m - 1, d - offset)).toISOString().slice(0, 10);
 }
 
+function shiftDateKst(ymd, deltaDays) {
+  const [y, m, d] = String(ymd || todayKst()).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + deltaDays)).toISOString().slice(0, 10);
+}
+
 function clock(value) {
   if (!value) return '';
   const d = new Date(value);
@@ -447,9 +452,11 @@ export default function SolapiMessageLog({
             />
           );
         })}
+        <button type="button" className="solapi-log-day" aria-label="이전 날" onClick={() => changeDate(shiftDateKst(date, -1))}>‹ 이전 날</button>
         {[['오늘', 0], ['어제', 1]].map(([label, back]) => (
           <button key={label} type="button" className={`solapi-log-day${date === dayBeforeKst(back) ? ' is-active' : ''}`} onClick={() => changeDate(dayBeforeKst(back))}>{label}</button>
         ))}
+        <button type="button" className="solapi-log-day" aria-label="다음 날" disabled={date >= todayKst()} onClick={() => changeDate(shiftDateKst(date, 1))}>다음 날 ›</button>
       </div>
 
       {view === 'messages' ? (

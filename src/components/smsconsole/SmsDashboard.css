@@ -75,6 +75,7 @@
   font-weight: 600;
   color: var(--smsd-muted);
 }
+.smsd-card-more { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--smsd-accent); white-space: nowrap; }
 .smsd-icon { width: 18px; height: 18px; flex: none; color: var(--smsd-accent); }
 
 .smsd-big { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
@@ -107,8 +108,8 @@
 
 .smsd-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .smsd-table th, .smsd-table td { padding: 4px; text-align: center; font-size: 13px; font-weight: 500; }
-.smsd-table thead th { color: var(--smsd-muted); }
-.smsd-table tbody th { text-align: left; color: var(--smsd-muted); width: 28%; }
+.smsd-table thead th { color: var(--smsd-muted); word-break: keep-all; white-space: nowrap; }
+.smsd-table tbody th { text-align: left; color: var(--smsd-muted); width: 20%; }
 .smsd-cell {
   display: flex;
   flex-direction: column;
@@ -198,6 +199,7 @@
   .smsd-hourly, .smsd-recent { grid-column: auto; }
   .smsd-refresh { min-height: 44px; padding: 0 18px; }
   .smsd-card-hit { min-height: 44px; }
+  .smsd-table thead th { white-space: normal; }
   .smsd-cell { min-height: 56px; }
   .smsd-bars { gap: 2px; }
   .smsd-recent-list li {

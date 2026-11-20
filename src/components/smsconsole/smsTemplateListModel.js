@@ -325,3 +325,6 @@ export function compactLightLabel(effective) {
   if (effective.tone === 'blocked') return '발송 막힘';
   return effective.text || '확인 안 됨';
 }
+
+// 꺼짐·주의·막힘·확인 안 됨 등 확인이 필요한 신호등인지 판별
+export const isAttentionTone = (tone) => tone === 'off' || tone === 'part' || tone === 'blocked' || tone === 'unknown';

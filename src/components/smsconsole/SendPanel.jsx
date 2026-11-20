@@ -95,6 +95,12 @@ export default function SendPanel({ active = true, template = '', text: textPara
   const previewOk = preview && preview.sig === sig;
   const contentReady = template ? Boolean(tplItem) && allVariablesFilled(varNames, values) : Boolean(info.type) && !info.tooLong;
   const canPreview = !locked && !busy && recipients.length > 0 && invalid === 0 && contentReady && (!scheduleOn || Boolean(template) || schedule.ok);
+  const disabledHint = (locked || busy || canPreview || previewOk) ? ''
+    : invalid > 0 ? '휴대폰 번호 형식을 확인해 주세요.'
+    : recipients.length === 0 ? '받는 번호를 입력하거나 직원을 선택해 주세요.'
+    : !contentReady ? (template ? '알림톡 변수를 모두 입력해 주세요.' : (info.tooLong ? '내용이 2,000바이트를 넘습니다.' : '보낼 내용을 입력해 주세요.'))
+    : (scheduleOn && !template && !schedule.ok) ? (schedule.error || '예약 시각을 지금부터 5분 뒤 이후로 정해 주세요.')
+    : '';
 
   const selectedText = texts.find(item => String(item.id) === String(textId)) || null;
   const pickText = value => {
@@ -175,10 +181,15 @@ export default function SendPanel({ active = true, template = '', text: textPara
   if (!options) return <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
   return (
+    <div className="smsc-send-layout">
     <form className="smsc-send" onSubmit={event => event.preventDefault()} noValidate>
       <div className="smsc-send__field">
-        <label htmlFor="smsc-send-phones">받는 번호</label>
+        <div className="smsc-send__labelrow">
+          <label htmlFor="smsc-send-phones">받는 번호</label>
+          <span className={`smsc-send__badge${recipients.length > 0 ? ' is-active' : ''}`}>받는 사람 {recipients.length}명</span>
+        </div>
         <textarea id="smsc-send-phones" rows={4} value={phoneText} inputMode="tel" autoComplete="off"
+          placeholder="010-1234-5678 (줄바꿈 또는 쉼표로 여러 명 입력)"
           onChange={event => { setPhoneText(event.target.value); setResult(null); }} aria-invalid={invalid > 0} />
         {invalid > 0 ? <p className="smsc-send__error">휴대폰 번호 형식이 아닌 번호가 {invalid}개 있습니다.</p> : null}
       </div>
@@ -221,7 +232,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
         <div className="smsc-send__field">
           <label htmlFor="smsc-send-mytext">내 문구</label>
           <select id="smsc-send-mytext" className="smsc-send__select" value={textId} onChange={event => pickText(event.target.value)}>
-            <option value="" />
+            <option value="">저장된 문구 불러오기 (선택)</option>
             {groupTexts(texts).map(group => (
               <optgroup key={group.label} label={group.label}>
                 {group.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -232,7 +243,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
       ) : null}
       <div className="smsc-send__field" hidden={Boolean(template)}>
         <label htmlFor="smsc-send-text">내용</label>
-        <textarea id="smsc-send-text" rows={6} value={text} onChange={event => { setText(event.target.value); setResult(null); }} />
+        <textarea id="smsc-send-text" rows={6} value={text} placeholder="보낼 문자 내용을 입력하세요" onChange={event => { setText(event.target.value); setResult(null); }} />
         <p className="smsc-send__count">{info.bytes} 바이트{info.type ? ` · ${info.type}` : ''}{info.tooLong ? ' · 너무 깁니다' : ''}</p>
         {!template ? (
           <div className="smsc-send__row">
@@ -248,7 +259,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
         <div className="smsc-send__field">
           {saveOpen ? (
             <div className="smsc-send__row">
-              <input className="smsc-send__input" aria-label="문구 이름" maxLength={40} value={saveName} onChange={event => setSaveName(event.target.value)} />
+              <input className="smsc-send__input" aria-label="문구 이름" placeholder="저장할 문구 이름 (최대 40자)" maxLength={40} value={saveName} onChange={event => setSaveName(event.target.value)} />
               <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={saving || !saveName.trim() || !info.type} onClick={saveText}>저장</button>
             </div>
           ) : (
@@ -273,6 +284,7 @@ export default function SendPanel({ active = true, template = '', text: textPara
       {locked ? <p className="smsc-send__locked">{locked}</p> : (
         <div className="smsc-send__actions">
           {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}{preview.at ? ` · 예약 ${shortKst(Date.parse(`${preview.at}:00+09:00`))}` : ''}</p> : null}
+          {!previewOk && disabledHint ? <p className="smsc-send__hint">{disabledHint}</p> : null}
           <button type="button" className="smsc-send__btn smsc-send__btn--primary" disabled={!canPreview} onClick={() => request(!previewOk)}>{sendButtonLabel(busy, previewOk ? preview : null)}</button>
         </div>
       )}
@@ -288,5 +300,28 @@ export default function SendPanel({ active = true, template = '', text: textPara
       ) : null}
       {cancelError ? <p className="smsc-send__error" role="alert">{cancelError}</p> : null}
     </form>
+    <aside className="smsc-send__aside" aria-label="실시간 수신 미리보기">
+      <div className="smsc-send__labelrow">
+        <strong className="smsc-send__asidetitle">수신 미리보기</strong>
+        <span className="smsc-send__badge">
+          {recipients.length > 0 ? `${recipients.length}명` : '수신자 미선택'} · {template ? '알림톡' : (photo ? '사진 문자(MMS)' : (info.type || '문자'))}
+        </span>
+      </div>
+      <div className="smsc-send__phone">
+        {template && tplItem ? (
+          <div className="smsc-send__bubble">
+            <span className="smsc-send__ptext">{fillTemplateContent(tplItem.content, values)}</span>
+          </div>
+        ) : photo || text.trim() ? (
+          <div className="smsc-send__bubble">
+            {photo ? <img className="smsc-send__pimg" src={photo.url} alt="첨부 사진 미리보기" /> : null}
+            {text.trim() ? <span className="smsc-send__ptext">{text}</span> : null}
+          </div>
+        ) : (
+          <p className="smsc-send__pempty">문구 입력 또는 사진 첨부 시 실제 수신 화면처럼 미리 볼 수 있습니다.</p>
+        )}
+      </div>
+    </aside>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildSmsItems, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
+  CONDITION_GROUPS, buildSmsItems, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, isAttentionTone, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -210,4 +210,13 @@ test('compactLightLabel: 목록 신호등 짧은 라벨 반환', () => {
   assert.equal(compactLightLabel({ tone: 'blocked', text: '켜짐(막힘: 발송 업체 설정 없음)' }), '발송 막힘');
   assert.equal(compactLightLabel({ tone: 'unknown', text: '확인 중' }), '확인 중');
   assert.equal(compactLightLabel(null), '확인 안 됨');
+});
+
+test('isAttentionTone: 꺼짐·주의·발송 막힘·확인 안 됨만 true', () => {
+  assert.equal(isAttentionTone('on'), false);
+  assert.equal(isAttentionTone('off'), true);
+  assert.equal(isAttentionTone('part'), true);
+  assert.equal(isAttentionTone('blocked'), true);
+  assert.equal(isAttentionTone('unknown'), true);
+  assert.equal(isAttentionTone(''), false);
 });

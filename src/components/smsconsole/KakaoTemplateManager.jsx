@@ -82,9 +82,11 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copiedBody, setCopiedBody] = useState(false);
   const [linked, setLinked] = useState({ id: '', loading: false, error: '', rows: [] }); // 이 알림톡을 수단으로 쓰는 자동 발송 설정(문자 템플릿 중 auto_ata_template 이 같은 것)
   const [textItems, setTextItems] = useState([]); // 자동 발송 문구 목록(카드의 '대상' 줄용, 실패하면 빈 목록)
   const startedRef = useRef(false);
+  const userClearedRef = useRef(false);
   useEffect(() => {
     if (!active || !selectedId) return undefined;
     let alive = true;
@@ -154,6 +156,17 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const readOnlySections = useMemo(() => readOnlyAudienceSections(readOnly), [readOnly]);
   const selected = selectedId ? items.find((item) => item.id === selectedId) || null : null;
   const formOpen = mode === 'new' || (mode === 'edit' && selected);
+
+  useEffect(() => { setCopiedBody(false); }, [selectedId, openRoId]);
+  useEffect(() => {
+    if (!active || !tplState.loaded || !data || selectedId || openRoId || mode === 'new' || mode === 'edit' || userClearedRef.current) return;
+    const isDesktop = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(min-width: 769px)').matches : false;
+    if (!isDesktop) return;
+    const firstItem = listSections[0]?.kinds?.[0]?.items?.[0];
+    if (firstItem) { onRoute({ tpl: firstItem.id, mode: '' }); return; }
+    const firstRo = readOnlySections[0]?.items?.[0];
+    if (firstRo) setOpenRoId(firstRo.id);
+  }, [active, tplState.loaded, data, selectedId, openRoId, mode, listSections, readOnlySections, onRoute]);
 
   // ----- 쓰기 -----
   // 관리자 비밀번호 잠금 없음(2026-11-11 사장님 결정). 서버 스위치(SMS_CONSOLE_WRITE=off)로 꺼져 있을 때만 막는다.
@@ -229,6 +242,28 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     try { await navigator.clipboard.writeText(id); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); }
   };
 
+  const copyBody = async (text) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedBody(true);
+      setTimeout(() => setCopiedBody(false), 1600);
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setCopiedBody(true);
+        setTimeout(() => setCopiedBody(false), 1600);
+      } catch { setCopiedBody(false); }
+    }
+  };
+
   // ----- 그리기 조각 -----
   // 서버에서 등록·삭제를 꺼 둔 경우에만 띠를 보인다(평소에는 비밀번호 없이 바로 쓴다)
   const lockBar = data && writeOff
@@ -238,10 +273,15 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
   const renderReadOnlyDetail = (entry) => (
     <div className="ktm-detail">
       <div className="ktm-detail-head">
-        <button type="button" className="ktm-btn ktm-back" onClick={() => setOpenRoId('')}><Icon name="back" /> 목록</button>
+        <button type="button" className="ktm-btn ktm-back" onClick={() => { userClearedRef.current = true; setOpenRoId(''); }}><Icon name="back" /> 목록</button>
         <h3 className="ktm-detail-name">{entry.name}</h3>
         <span className={`ktm-light ktm-light--${itemLight(entry).tone}`}>{itemLight(entry).text}</span>
       </div>
+      {entry.body ? (
+        <div className="ktm-detail-actions">
+          <button type="button" className="ktm-btn" onClick={() => copyBody(entry.body)}><Icon name="copy" /> {copiedBody ? '복사됨 ✓' : '문구 복사'}</button>
+        </div>
+      ) : null}
       <KakaoTemplatePreview template={{
         name: entry.name, content: entry.body || '', emphasizeType: entry.image ? 'IMAGE' : undefined, imageUrl: entry.image || '',
         buttons: [], targetName: entry.sender || '',
@@ -269,12 +309,13 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
     return (
       <div className="ktm-detail">
         <div className="ktm-detail-head">
-          <button type="button" className="ktm-btn ktm-back" onClick={() => onRoute({ tpl: '' })}><Icon name="back" /> 목록</button>
+          <button type="button" className="ktm-btn ktm-back" onClick={() => { userClearedRef.current = true; onRoute({ tpl: '' }); }}><Icon name="back" /> 목록</button>
           <h3 className="ktm-detail-name">{selected.name}</h3>
           <span className={`ktm-badge ktm-badge--${info.tone}`}>{info.label}</span>
         </div>
         <div className="ktm-detail-actions">
           <button type="button" className="ktm-btn ktm-btn--primary" onClick={() => openAutoSetting(selected.id)}>이 알림톡으로 자동 발송 설정</button>
+          {selected.content ? <button type="button" className="ktm-btn" onClick={() => copyBody(selected.content)}><Icon name="copy" /> {copiedBody ? '복사됨 ✓' : '문구 복사'}</button> : null}
         </div>
         <section className="ktm-linked" aria-label="자동 발송 조건">
           <h4 className="ktm-linked-head">자동 발송 조건</h4>
@@ -483,11 +524,11 @@ export default function KakaoTemplateManager({ active, selectedId, mode, onRoute
         <section className="ktm-list-pane" aria-label="템플릿 목록">
           <div className="ktm-search">
             <Icon name="search" />
-            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름 또는 템플릿 ID 검색" aria-label="템플릿 검색" />
+            <input type="search" value={query} onChange={(event) => { userClearedRef.current = false; setQuery(event.target.value); }} placeholder="이름 또는 템플릿 ID 검색" aria-label="템플릿 검색" />
           </div>
           <div className="ktm-pills" role="group" aria-label="상태 거르기">
             {pills.map((pill) => (
-              <button type="button" key={pill.id} className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`} aria-pressed={statusFilter === pill.id} onClick={() => setPickedFilter(pill.id)}>
+              <button type="button" key={pill.id} className={`ktm-pill${statusFilter === pill.id ? ' is-active' : ''}`} aria-pressed={statusFilter === pill.id} onClick={() => { userClearedRef.current = false; setPickedFilter(pill.id); }}>
                 {pill.label} {pill.count}
               </button>
             ))}

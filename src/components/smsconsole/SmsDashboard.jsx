@@ -26,6 +26,7 @@ function Card({ className = '', title, icon, onClick, onClickLabel, children }) 
       <h3 className="smsd-card-title">
         <svg className="smsd-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{icon}</svg>
         <span>{title}</span>
+        {onClick ? <span className="smsd-card-more" aria-hidden="true">보기 →</span> : null}
       </h3>
       {children}
     </>

@@ -1,4 +1,19 @@
-.smsc-send { display: flex; flex-direction: column; gap: 16px; max-width: 560px; min-width: 0; color: var(--smsc-text, #1c2330); }
+.smsc-send-layout { display: grid; grid-template-columns: minmax(0, 560px) minmax(260px, 340px); gap: 24px; align-items: start; }
+.smsc-send { display: flex; flex-direction: column; gap: 16px; min-width: 0; color: var(--smsc-text, #1c2330); }
+.smsc-send__aside { position: sticky; top: 8px; min-width: 0; padding: 14px; border: 1px solid var(--smsc-line, #dfe3ea); border-radius: 12px; background: var(--smsc-surface, #fff); display: flex; flex-direction: column; gap: 10px; }
+.smsc-send__asidetitle { font-size: 14px; font-weight: 700; color: var(--smsc-text, #1c2330); }
+.smsc-send__phone { box-sizing: border-box; padding: 18px 12px; border: 6px solid #1c2330; border-radius: 24px; background: var(--smsc-bg, #f5f6f8); min-height: 220px; max-height: min(520px, calc(100dvh - 240px)); overflow-y: auto; }
+.smsc-send__bubble { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 4px 14px 14px 14px; background: #fff; border: 1px solid var(--smsc-line, #dfe3ea); font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+.smsc-send__pimg { display: block; width: 100%; height: auto; border-radius: 8px; }
+.smsc-send__pempty { margin: 24px 8px; text-align: center; font-size: 13px; line-height: 1.5; color: var(--smsc-muted, #667085); }
+.smsc-send__labelrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.smsc-send__badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--smsc-bg, #f5f6f8); color: var(--smsc-muted, #667085); white-space: nowrap; }
+.smsc-send__badge.is-active { background: var(--smsc-accent-weak, #eaf0ff); color: var(--smsc-accent, #2457d6); }
+.smsc-send__hint { flex: 1 1 auto; margin: 0; font-size: 13px; color: var(--smsc-muted, #667085); overflow-wrap: anywhere; }
+@media (max-width: 979px) {
+  .smsc-send-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .smsc-send__aside { position: static; }
+}
 .smsc-send__field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .smsc-send__field label, .smsc-send__group legend { font-size: 14px; font-weight: 600; }
 .smsc-send textarea {
