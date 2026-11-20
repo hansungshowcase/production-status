@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_GROUPS, buildSmsItems, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems,
+  CONDITION_GROUPS, buildSmsItems, compactLightLabel, conditionGroup, defaultSmsFilter, filterSmsItems, flowStepText, groupFlows, isAtaEntry, matchesSmsQuery, paginateRows, smsBadges, smsPills, sortByNameNumeric, sortSmsItems, splitMessageVars,
 } from '../src/components/smsconsole/smsTemplateListModel.js';
 
 const mk = (id, total, extra = {}) => ({
@@ -161,4 +161,53 @@ test('흐름 묶기: 가입·문의 10 + 출고 2 + 조건 없음 1 → 흐름 2
   assert.equal(isAtaEntry({ autoKind: 'member_joined', autoAtaTemplate: '' }), false);
   assert.equal(isAtaEntry({ autoKind: '', autoAtaTemplate: '' }), false);
   assert.equal(isAtaEntry({ autoKind: 'ship_plus_days', autoAtaTemplate: 'BMS_FREE' }), false); // 브랜드메시지는 문자 목록에 보인다
+});
+
+test('matchesSmsQuery: 이름·본문·조건·보내는 곳 대소문자 무시 검색', () => {
+  const autoRow = {
+    name: '소개 혜택 안내',
+    body: '안녕하세요 #{고객명} 대표님\n계약금액의 10% 지급',
+    autoKind: 'ship_plus_days',
+    autoDays: 20,
+    autoAudience: 'customer',
+  };
+  const extRow = {
+    name: '주의사항 안내(이미지 문자)',
+    sender: '메이크',
+    trigger: '매일 18:00 · 구글시트에 새 행이 올라오면',
+    who: '고객',
+    audience: { id: 'customer', label: '고객' },
+    external: true,
+    body: '[사진 첨부] 한성쇼케이스 주의사항 안내',
+    scenario: '한성쇼케이스 주의사항 안내문자',
+  };
+  assert.equal(matchesSmsQuery(autoRow, ''), true);
+  assert.equal(matchesSmsQuery(autoRow, '  소개  '), true);
+  assert.equal(matchesSmsQuery(autoRow, '10% 지급'), true);
+  assert.equal(matchesSmsQuery(autoRow, '출고 완료 후'), true);
+  assert.equal(matchesSmsQuery(autoRow, '없는단어'), false);
+  assert.equal(matchesSmsQuery(extRow, '메이크'), true);
+  assert.equal(matchesSmsQuery(extRow, '구글시트'), true);
+  assert.equal(matchesSmsQuery(extRow, '없는단어'), false);
+});
+
+test('splitMessageVars: #{변수} 조각 분리 및 빈 문자열 처리', () => {
+  assert.deepEqual(splitMessageVars(''), []);
+  assert.deepEqual(splitMessageVars('안녕 #{고객명}님, 주문 #{주문번호} 확인'), [
+    { text: '안녕 ', isVar: false },
+    { text: '#{고객명}', isVar: true },
+    { text: '님, 주문 ', isVar: false },
+    { text: '#{주문번호}', isVar: true },
+    { text: ' 확인', isVar: false },
+  ]);
+  assert.deepEqual(splitMessageVars('변수 없음'), [{ text: '변수 없음', isVar: false }]);
+});
+
+test('compactLightLabel: 목록 신호등 짧은 라벨 반환', () => {
+  assert.equal(compactLightLabel({ tone: 'on', text: '켜짐' }), '켜짐');
+  assert.equal(compactLightLabel({ tone: 'off', text: '꺼짐' }), '꺼짐');
+  assert.equal(compactLightLabel({ tone: 'part', text: '켜짐 · 080 수신거부 줄 필요(발송은 계속)' }), '켜짐(주의)');
+  assert.equal(compactLightLabel({ tone: 'blocked', text: '켜짐(막힘: 발송 업체 설정 없음)' }), '발송 막힘');
+  assert.equal(compactLightLabel({ tone: 'unknown', text: '확인 중' }), '확인 중');
+  assert.equal(compactLightLabel(null), '확인 안 됨');
 });

@@ -1,7 +1,7 @@
 import {
   EXTERNAL_TEMPLATES, KINDS, SENDERS, SMS_CHANNELS, UNCLASSIFIED, groupByAudience, kindOfCatalogId, unclassifiedName,
 } from '../../../shared/smsTemplateKinds.js';
-import { autoConditionParts, LEAD_SOURCE_FLOW_LABEL, viaLabel } from './smsTextTemplateFormModel.js';
+import { autoConditionLine, autoConditionParts, autoTargetText, LEAD_SOURCE_FLOW_LABEL, viaLabel } from './smsTextTemplateFormModel.js';
 import { recipientWithPhoneTail, shortenPhonesInText } from '../../utils/phoneTail.js';
 
 // 문자 템플릿 목록 계산(순수 함수). /api/notification-overview 카탈로그를 카드 목록으로 바꾼다.
@@ -277,4 +277,51 @@ export function groupFlows(entries, enabledOf = (entry) => Boolean(entry.autoEna
     flow.on = flow.steps.filter((step) => enabledOf(step)).length;
   });
   return out;
+}
+
+// 검색어 포함 여부(이름·본문·조건·보내는 곳·대상). 빈 검색어면 true.
+export function matchesSmsQuery(row, query, recipients = null) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  if (!row || typeof row !== 'object') return false;
+  const parts = [
+    row.name,
+    row.body,
+    row.preview,
+    row.trigger,
+    row.sender,
+    row.who,
+    row.scenario,
+    row.audience?.label,
+    row.autoKind ? autoConditionLine(row) : '',
+    row.autoKind ? autoTargetText(row) : conditionLine(row, recipients),
+  ];
+  return parts.some((value) => String(value || '').toLowerCase().includes(q));
+}
+
+// 본문을 #{변수} 조각으로 나눈다(미리보기 변수 강조용). 빈 글이면 [].
+export function splitMessageVars(text) {
+  const raw = String(text ?? '');
+  if (!raw) return [];
+  const out = [];
+  const re = /#\{[^{}\n]{1,40}\}/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(raw)) !== null) {
+    if (m.index > last) out.push({ text: raw.slice(last, m.index), isVar: false });
+    out.push({ text: m[0], isVar: true });
+    last = m.index + m[0].length;
+  }
+  if (last < raw.length) out.push({ text: raw.slice(last), isVar: false });
+  return out;
+}
+
+// 목록 카드 신호등 짧은 라벨(자세한 사유는 상세 화면 배너·title 로 본다)
+export function compactLightLabel(effective) {
+  if (!effective) return '확인 안 됨';
+  if (effective.tone === 'on') return '켜짐';
+  if (effective.tone === 'off') return '꺼짐';
+  if (effective.tone === 'part') return '켜짐(주의)';
+  if (effective.tone === 'blocked') return '발송 막힘';
+  return effective.text || '확인 안 됨';
 }
