@@ -5,6 +5,86 @@ import { BMS_TEMPLATE_ID, bmsButtonsCheck, bmsTextError } from '../../../shared/
 
 export { BMS_TEMPLATE_ID };
 export const isBmsAta = (ataTemplate) => ataTemplate === BMS_TEMPLATE_ID; // 수단이 브랜드메시지(자유형)인지
+export const DAY_OFF_IDS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+export const DAY_OFF_OPTIONS = [
+  { id: 'sun', label: '일' },
+  { id: 'mon', label: '월' },
+  { id: 'tue', label: '화' },
+  { id: 'wed', label: '수' },
+  { id: 'thu', label: '목' },
+  { id: 'fri', label: '금' },
+  { id: 'sat', label: '토' },
+];
+const normalizeBmsButton = (button, { trimLinkPc = false } = {}) => {
+  const linkPc = trimLinkPc ? String(button?.linkPc || '').trim() : String(button?.linkPc || '');
+  return {
+    name: String(button?.name || ''),
+    link: String(button?.link || ''),
+    ...(linkPc ? { linkPc } : {}),
+  };
+};
+
+// 작성 화면 실시간 건당 예상 비용 계산(api/_lib/sendProvider.js 요율 기준)
+export function estimateFormSendCost({ body = '', imageCount = 0, merge = true, ataTemplate = '', ataUnit = 13 } = {}) {
+  if (ataTemplate === BMS_TEMPLATE_ID) {
+    return {
+      channel: 'bms',
+      type: 'BMS',
+      kindLabel: '카카오 브랜드메시지',
+      unit: 100,
+      fallbackUnit: 45,
+      badgeText: '브랜드메시지 · 건당 100원',
+      note: '채널 친구가 아니면 장문 문자 45원으로 대체 발송',
+    };
+  }
+  if (ataTemplate) {
+    const unit = Number.isFinite(Number(ataUnit)) && Number(ataUnit) > 0 ? Number(ataUnit) : 13;
+    return {
+      channel: 'ata',
+      type: 'ATA',
+      kindLabel: '카카오 알림톡',
+      unit,
+      fallbackUnit: null,
+      badgeText: `알림톡 · 건당 ${unit.toLocaleString('ko-KR')}원`,
+      note: '카카오 승인 알림톡 템플릿으로 발송',
+    };
+  }
+  const count = Math.max(0, Number(imageCount) || 0);
+  const photos = merge && count >= 2 ? 1 : count;
+  if (photos >= 1) {
+    const unit = 110 * photos;
+    return {
+      channel: 'sms',
+      type: 'MMS',
+      kindLabel: photos > 1 ? `사진 문자 ${photos}통` : '사진 문자',
+      unit,
+      fallbackUnit: null,
+      badgeText: photos > 1 ? `사진 문자 ${photos}통 · 건당 ${unit.toLocaleString('ko-KR')}원` : '사진 문자 · 건당 110원',
+      note: photos > 1 ? '사진을 한 장으로 합치면 건당 110원으로 줄어듭니다' : '사진이 첨부되어 사진 문자로 발송됩니다',
+    };
+  }
+  const info = textInfo(body);
+  if (info.type === 'LMS') {
+    return {
+      channel: 'sms',
+      type: 'LMS',
+      kindLabel: '장문 문자',
+      unit: 45,
+      fallbackUnit: null,
+      badgeText: '장문 문자 · 건당 45원',
+      note: '한글 약 45자(90바이트)를 넘어 장문 문자로 발송됩니다',
+    };
+  }
+  return {
+    channel: 'sms',
+    type: 'SMS',
+    kindLabel: '단문 문자',
+    unit: 18,
+    fallbackUnit: null,
+    badgeText: '단문 문자 · 건당 18원',
+    note: '한글 약 45자(90바이트) 이내는 단문 문자로 발송됩니다',
+  };
+}
 // 발송 조건 줄의 수단 이름
 // 일괄 발송 안내의 시간 문구(대상 미리보기 응답 info). 하루 상한 때문에 하루를 넘으면 첫날 분량과 일수를 같이 쓴다.
 export const catchupSpanText = (info) => (Number(info?.days_needed) > 1
@@ -21,7 +101,7 @@ export const KIND_KAKAO = 'kakao';
 export const normalizeKind = value => (value === KIND_KAKAO ? KIND_KAKAO : KIND_SMS);
 
 // 양식 값 → { ok, reason, info }. 글자 수·SMS/LMS 판정은 보내기 화면과 같은 textInfo.
-export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', catchupDaily = '', copyTo = '', imageCount = 0, bmsButtons = [] }) {
+export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat, interval, offsetDir, offsetDays, daily, audience: audienceIn, staff, step, ataTemplate = '', catchupOn = false, catchupFrom = '', catchupAt = '', catchupDaily = '', copyTo = '', imageCount = 0, bmsButtons = [], chainSubject = '', chainFrom = '', chainSales = '' }) {
   const audience = ataTemplate ? 'customer' : audienceIn; // 알림톡은 고객에게만 간다
   const trimmed = String(name || '').trim();
   const info = textInfo(body);
@@ -29,6 +109,9 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
   if ([...trimmed].length > TEXT_NAME_MAX) return { ok: false, reason: 'name', info };
   if (!info.type) return { ok: false, reason: 'body', info };
   if (info.tooLong) return { ok: false, reason: 'long', info };
+  if ([...String(chainSubject || '').trim()].length > 40) return { ok: false, reason: 'chain_subject', info };
+  if (String(chainFrom || '').trim() && !/^\d{8,12}$/.test(String(chainFrom).replace(/\D/g, ''))) return { ok: false, reason: 'chain_from', info };
+  if ([...String(chainSales || '').trim()].length > 20) return { ok: false, reason: 'chain_sales', info };
   if (isBmsAta(ataTemplate)) { // 브랜드메시지(자유형): 이미지와 함께면 400자·줄바꿈 29, 글만이면 1300자·줄바꿈 99, 사진 1장, 버튼 이름 14자·링크 https·최대 5개
     if (Number(imageCount) > 1) return { ok: false, reason: 'bms_images', info };
     if (bmsTextError(body, Number(imageCount) === 1)) return { ok: false, reason: 'bms_too_long', info, detail: bmsTextError(body, Number(imageCount) === 1) };
@@ -245,15 +328,26 @@ export function textFormStopText(reason) {
   if (reason === 'info_has_ad_words') return '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다';
   if (reason === 'info_needs_order_var') return '안내 문구에는 주문 변수가 하나 이상 있어야 합니다';
   if (reason === 'info_unknown_var') return '이 문구에서 쓸 수 없는 변수가 들어 있습니다';
+  if (reason === 'chain_subject') return '문자 제목은 40자까지 입력할 수 있습니다';
+  if (reason === 'chain_from') return '별도 발신번호는 숫자 8~12자리로 넣어 주세요';
+  if (reason === 'chain_sales') return '영업담당 이름은 20자까지 입력할 수 있습니다';
   return '';
 }
 
 // 저장 요청 본문. 사진이 없으면 image·images 칸을 아예 넣지 않는다. 새 양식은 images(최대 3장)로 보낸다.
-export function buildSaveBody({ id, name, body, image, images, auto }) {
+export function buildSaveBody({ id, name, body, image, images, auto, chain }) {
   const list = (Array.isArray(images) ? images : []).filter((item) => item?.data).slice(0, IMAGE_MAX);
   const autoBody = (a) => {
     if (!AUTO_KINDS.includes(a.kind)) return { kind: '' };
-    const bmsOut = a.ataTemplate === BMS_TEMPLATE_ID ? { bms: { buttons: (Array.isArray(a.bmsButtons) ? a.bmsButtons : []).filter((b) => b && (b.name || b.link)).map((b) => ({ name: String(b.name || ''), link: String(b.link || '') })) } } : {}; // 브랜드메시지(자유형)의 버튼
+    const bmsOut = a.ataTemplate === BMS_TEMPLATE_ID
+      ? {
+          bms: {
+            buttons: (Array.isArray(a.bmsButtons) ? a.bmsButtons : [])
+              .filter((b) => b && (b.name || b.link))
+              .map((b) => normalizeBmsButton(b, { trimLinkPc: true })),
+          },
+        }
+      : {}; // 브랜드메시지(자유형)의 버튼(PC 링크는 값이 있을 때만 싣는다)
     const ata = a.ataTemplate ? { ata_template: String(a.ataTemplate), ...bmsOut } : {}; // 알림톡을 고르면 모든 조건에서 받는 사람은 고객
     if (a.kind === AUTO_KIND_MEMBER_JOINED) return { kind: a.kind, ...ata };
     if (a.kind === AUTO_KIND_LEAD_PLUS) return { kind: a.kind, days: normalizeLeadDays(a.days), ata_template: String(a.ataTemplate || ''), ...bmsOut, ...(a.leadSource === 'cafe24' || a.leadSource === 'airtable' ? { lead_source: a.leadSource } : {}) };
@@ -294,6 +388,35 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     // 사본 번호(2026-11-17): 값이 넘어왔을 때만 싣는다. 출고·주문 후 N일 문자(알림톡 제외)만 뜻이 있고 그 밖은 빈 값
     return a.copyTo !== undefined ? { ...r, auto_copy_to: (a.kind === AUTO_KIND || a.kind === AUTO_KIND_ORDER) && !a.ataTemplate ? String(a.copyTo || '').replace(/\D/g, '') : '' } : r;
   };
+  // 추가 옵션(auto_chain): chain 인자가 넘어왔을 때만 싣는다(기존 호출·단위 테스트와 서버 skip 계약 유지)
+  const chainOut = () => {
+    if (chain === undefined) return {};
+    if (!auto || !AUTO_KINDS.includes(auto.kind)) {
+      return chain?.hadChain ? { auto_chain: null } : {};
+    }
+    const afterNum = Number(chain?.after);
+    const after = Number.isInteger(afterNum) && afterNum > 0 ? afterNum : null;
+    const subject = String(chain?.subject ?? '').trim().slice(0, 40);
+    const from = String(chain?.from ?? '').replace(/\D/g, '');
+    const plain = chain?.plain === true;
+    const sales = isDateKind(auto.kind) ? String(chain?.sales ?? '').trim().slice(0, 20) : '';
+    const daysOff = isDateKind(auto.kind) && Array.isArray(chain?.daysOff)
+      ? [...new Set(chain.daysOff.filter((day) => DAY_OFF_IDS.includes(day)))]
+      : [];
+    if (!after && !subject && !from && !plain && !sales && !daysOff.length) {
+      return chain?.hadChain ? { auto_chain: null } : {};
+    }
+    return {
+      auto_chain: {
+        ...(after ? { after } : {}),
+        ...(subject ? { subject } : {}),
+        ...(from ? { from } : {}),
+        ...(plain ? { plain: true } : {}),
+        ...(sales ? { sales } : {}),
+        ...(daysOff.length ? { days_off: daysOff } : {}),
+      },
+    };
+  };
   return {
     ...(id ? { id } : {}),
     name: String(name || '').trim(),
@@ -301,6 +424,7 @@ export function buildSaveBody({ id, name, body, image, images, auto }) {
     ...(image?.data ? { image: { data: image.data } } : {}),
     ...(list.length ? { images: list.map((item) => ({ data: item.data })) } : {}),
     ...(auto ? { auto: autoOut(auto) } : {}),
+    ...chainOut(),
   };
 }
 
@@ -326,14 +450,22 @@ export const defaultSendTime = (kind) => (kind === AUTO_KIND_LEAD_PLUS ? '09:30'
 // 폼 값 한 벌(등록 팝업 상태). item 은 formInitialFromItem 모양(없으면 빈 등록).
 export function formValuesFromItem(item) {
   const i = item || {};
+  const chainAfterNum = Number(i.chainAfter);
   return {
     name: i.name || '', body: i.body || '', images: Array.isArray(i.images) ? i.images : [],
     autoKind: i.autoKind || '', days: i.days || String(AUTO_DEFAULT_DAYS), sendFrom: i.sendFrom || '',
     repeat: i.repeat || String(AUTO_DEFAULT_REPEAT), interval: i.interval || String(AUTO_DEFAULT_INTERVAL),
     offsetDir: i.offsetDir || 'before', offsetDays: i.offsetDays || '3', unlessStep: i.unlessStep || '', unlessMode: i.unlessMode || 'completed',
     daily: i.daily === 'once' ? 'once' : Boolean(i.daily), weekdays: Boolean(i.weekdays), step: i.step || '', audience: i.audience || 'customer',
-    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', bmsButtons: Array.isArray(i.bmsButtons) ? i.bmsButtons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [], sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
+    staff: Array.isArray(i.staff) ? i.staff : [], ataTemplate: i.ataTemplate || '', bmsButtons: Array.isArray(i.bmsButtons) ? i.bmsButtons.map((b) => normalizeBmsButton(b)) : [], sendTime: SEND_TIMES.includes(i.sendTime) ? i.sendTime : '', copyTo: i.copyTo || '',
     catchupOn: Boolean(i.catchupOn), catchupFrom: i.catchupFrom || '', catchupAt: i.catchupAt || '', catchupDaily: i.catchupDaily ? String(i.catchupDaily) : '', leadSource: LEAD_SOURCES.includes(i.leadSource) ? i.leadSource : '',
+    chainSubject: String(i.chainSubject || ''),
+    chainFrom: String(i.chainFrom || ''),
+    chainSales: String(i.chainSales || ''),
+    chainDaysOff: Array.isArray(i.chainDaysOff) ? i.chainDaysOff.filter((d) => DAY_OFF_IDS.includes(d)) : [],
+    chainPlain: Boolean(i.chainPlain),
+    chainAfter: Number.isInteger(chainAfterNum) && chainAfterNum > 0 ? chainAfterNum : null,
+    hadChain: Boolean(i.hadChain),
   };
 }
 // 단계 순서값(일수 오름차순에 쓴다). 즉시형·회원가입 시는 0, 입력이 올바르지 않으면 null.
@@ -369,7 +501,7 @@ export function stageDirtySig(f) {
 }
 // 새 단계의 폼 값. 기본은 조건만 복사하고 이름·내용·사진을 비운다. withContent 면 내용까지 복사하고 일수만 비운다.
 export function newStageValues(from, withContent) {
-  const base = { ...from, staff: [...(from.staff || [])] };
+  const base = { ...from, staff: [...(from.staff || [])], chainDaysOff: [...(from.chainDaysOff || [])], chainAfter: null, hadChain: false };
   if (!withContent) return { ...base, name: '', body: '', images: [] };
   const dayless = isDateKind(base.autoKind) ? { offsetDir: base.offsetDir === 'same' ? 'after' : base.offsetDir, offsetDays: '' } : { days: '' };
   return { ...base, ...dayless, images: (from.images || []).map((i) => ({ data: i.data, bytes: i.bytes, url: i.data ? `data:image/jpeg;base64,${i.data}` : i.url })) };
@@ -652,6 +784,8 @@ export function imageUrlsFromItem(item) {
 // 단건 조회 응답 item → 등록 양식을 고치기용으로 여는 initial 값
 export function formInitialFromItem(item) {
   const photos = Array.isArray(item?.images) && item.images.length ? item.images.filter((d) => typeof d === 'string' && d) : (item?.image ? [item.image] : []);
+  const chain = item?.auto_chain && typeof item.auto_chain === 'object' ? item.auto_chain : null;
+  const chainAfterNum = Number(chain?.after);
   return {
     id: item?.id,
     name: String(item?.name || ''),
@@ -660,7 +794,7 @@ export function formInitialFromItem(item) {
     autoKind: AUTO_KINDS.includes(item?.auto_kind) ? item.auto_kind : '',
     days: item?.auto_kind === AUTO_KIND_LEAD_PLUS || (item?.auto_kind === AUTO_KIND_ORDER && item?.auto_days !== null && item?.auto_days !== undefined && item?.auto_days !== '') ? String(Number(item?.auto_days) || 0) : String(Number(item?.auto_days) || AUTO_DEFAULT_DAYS),
     ataTemplate: String(item?.auto_ata_template || ''),
-    bmsButtons: Array.isArray(item?.auto_bms_buttons) ? item.auto_bms_buttons.map((b) => ({ name: String(b?.name || ''), link: String(b?.link || '') })) : [],
+    bmsButtons: Array.isArray(item?.auto_bms_buttons) ? item.auto_bms_buttons.map((b) => normalizeBmsButton(b, { trimLinkPc: true })) : [],
     leadSource: LEAD_SOURCES.includes(item?.auto_lead_source) ? item.auto_lead_source : '',
     catchupOn: Boolean(item?.auto_catchup_at), catchupFrom: String(item?.auto_catchup_from || ''), catchupAt: String(item?.auto_catchup_at || ''), catchupDaily: Number(item?.auto_catchup_daily) > 0 ? String(Number(item.auto_catchup_daily)) : '',
     sendFrom: String(item?.auto_send_from || '').slice(0, 10),
@@ -677,6 +811,13 @@ export function formInitialFromItem(item) {
     staff: Array.isArray(item?.auto_staff) ? item.auto_staff : [],
     sendTime: SEND_TIMES.includes(item?.auto_send_time) ? item.auto_send_time : '',
     copyTo: String(item?.auto_copy_to || ''),
+    chainSubject: String(chain?.subject || ''),
+    chainFrom: String(chain?.from || ''),
+    chainSales: String(chain?.sales || ''),
+    chainDaysOff: Array.isArray(chain?.days_off) ? chain.days_off.filter((d) => DAY_OFF_IDS.includes(d)) : [],
+    chainPlain: chain?.plain === true,
+    chainAfter: Number.isInteger(chainAfterNum) && chainAfterNum > 0 ? chainAfterNum : null,
+    hadChain: Boolean(chain),
   };
 }
 
