@@ -148,6 +148,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [catchupDaily, setCatchupDaily] = useState(v0.catchupDaily || ''); // 문구별 하루 최대 건수(비우면 전역 상한)
   const [catchupAt, setCatchupAt] = useState(v0.catchupAt); // 보낼 시각 'YYYY-MM-DDTHH:MM'(KST)
   const [catchupInfo, setCatchupInfo] = useState({ loading: false, error: '', data: null });
+  const [catchupReveal, setCatchupReveal] = useState(false);
   const [chainSubject, setChainSubject] = useState(v0.chainSubject || '');
   const [chainFrom, setChainFrom] = useState(v0.chainFrom || '');
   const [chainSales, setChainSales] = useState(v0.chainSales || '');
@@ -362,7 +363,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const showAdvCopy = Boolean((autoKind === AUTO_KIND || autoKind === AUTO_KIND_ORDER) && !ataTemplate);
   const showAdvPlain = Boolean(autoKind && (!ataTemplate || chainPlain));
   const showAdvCatchup = autoKind === AUTO_KIND;
-  const showAdvSection = showAdvSubject || showAdvFrom || showAdvRepeat || showAdvSales || showAdvDaysOff || showAdvCopy || showAdvPlain || showAdvCatchup || Boolean(chainAfter);
+  const showAdvSection = showAdvSubject || showAdvFrom || showAdvRepeat || showAdvSales || showAdvDaysOff || showAdvCopy || showAdvPlain || (showAdvCatchup && catchupOn) || Boolean(chainAfter);
 
   const activeAdvItems = [
     showAdvSubject && chainSubject.trim(),
@@ -389,7 +390,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setStep(v.step); setAudience(v.audience); setStaff(v.staff); setAtaTemplate(v.ataTemplate);
     setAtaSelected(Boolean(v.ataTemplate) && !isBmsAta(v.ataTemplate));
     setBmsButtons(v.bmsButtons || []); setSendTime(v.sendTime); setCopyTo(v.copyTo || '');
-    setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setCatchupDaily(v.catchupDaily || ''); setLeadSource(v.leadSource || '');
+    setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setCatchupDaily(v.catchupDaily || ''); setCatchupReveal(false); setLeadSource(v.leadSource || '');
     setChainSubject(v.chainSubject || ''); setChainFrom(v.chainFrom || ''); setChainSales(v.chainSales || '');
     setChainDaysOff(v.chainDaysOff || []); setChainPlain(Boolean(v.chainPlain)); setChainAfter(v.chainAfter || null); setHadChain(Boolean(v.hadChain));
     setAdMark(!Boolean(v.chainPlain));
@@ -1011,7 +1012,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                     </div>
                   ) : null}
 
-                  {showAdvCatchup ? (
+                  {showAdvCatchup && (catchupOn || catchupReveal) ? (
                     <div className="stf-field">
                       <label className="stf-inline">
                         <input type="checkbox" className="stf-check" checked={catchupOn} onChange={event => toggleCatchup(event.target.checked)} />
@@ -1049,6 +1050,12 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                           ) : null}
                         </div>
                       ) : null}
+                    </div>
+                  ) : showAdvCatchup ? (
+                    <div className="stf-catchup-rare">
+                      <button type="button" className="stf-catchup-rare-btn" onClick={() => setCatchupReveal(true)}>
+                        예외 설정 · 과거 출고건 소급 발송
+                      </button>
                     </div>
                   ) : null}
                 </div>

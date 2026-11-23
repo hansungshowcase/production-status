@@ -906,7 +906,7 @@ export default function KakaoTemplateManager({
             {summary.howSub ? <span className="stl-cond-sub">{summary.howSub}</span> : null}
           </div>
         </div>
-        {summary.catchup ? <div className="stl-cond-catchup" role="status">{summary.catchup}</div> : null}
+        {summary.catchup && !summary.catchup.includes('발송 완료됨') ? <div className="stl-cond-catchup" role="status">{summary.catchup}</div> : null}
         {summary.tags.length > 0 ? (
           <div className="stl-cond-tags" aria-label="세부 규칙">
             <span className="stl-cond-tags-label">세부 규칙</span>

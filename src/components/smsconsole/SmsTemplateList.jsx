@@ -478,7 +478,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     const onZeroMine = allMine.filter(isEntryOnZeroSend).length;
     const onZeroItems = items.filter(isItemOnZeroSend).length;
     return [
-      { key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, active: issueFilter === 'catchup-paused', onClick: () => toggleIssueFilter('catchup-paused') },
+      ...(pausedCount > 0 ? [{ key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, active: issueFilter === 'catchup-paused', onClick: () => toggleIssueFilter('catchup-paused') }] : []),
       { key: 'off-blocked', tone: 'danger', label: '꺼짐 · 설정 미완료', count: offBlockedMine + offBlockedItems, active: issueFilter === 'off-blocked', onClick: () => toggleIssueFilter('off-blocked') },
       { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, active: issueFilter === 'on-zero-send', onClick: () => toggleIssueFilter('on-zero-send') },
     ];
@@ -678,7 +678,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
         </div>
       </div>
 
-      {summary.catchup ? (
+      {summary.catchup && !summary.catchup.includes('발송 완료됨') ? (
         <div className="stl-cond-catchup" role="status">{summary.catchup}</div>
       ) : null}
 
