@@ -133,7 +133,7 @@ export default function SmsChannelStatusStrip({
                 <button
                   key={item.key}
                   type="button"
-                  className={`scss-issue-chip scss-issue-chip--${item.tone || 'warn'}${item.key === 'today-failed' ? ' scss-issue-chip--urgent' : ''}${item.active ? ' is-active' : ''}`}
+                  className={`scss-issue-chip scss-issue-chip--${item.tone || 'warn'}${item.tone === 'danger' ? ' scss-issue-chip--urgent' : ''}${item.active ? ' is-active' : ''}`}
                   aria-pressed={Boolean(item.active)}
                   onClick={() => (item.onClick ? item.onClick() : onAttentionClick?.())}
                   title={item.hint || undefined}

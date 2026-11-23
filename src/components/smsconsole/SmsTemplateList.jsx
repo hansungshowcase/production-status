@@ -458,13 +458,16 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     attention: attentionTotal,
   }), [runningAll, activeCatalogAll, autoAll, items.length, attentionTotal]);
   const SMS_ISSUE_LABELS = {
+    'on-blocked': '켜짐 · 발송 막힘',
     'catchup-paused': '일괄 발송 멈춤',
-    'off-blocked': '꺼짐 · 설정 미완료',
     'on-zero-send': '켜짐 · 최근 발송 없음',
   };
   const isEntryCatchupPaused = (entry) => Boolean(entry.autoKind && catchupPausedText(autoStatus[entry.id]));
-  const isEntryOffBlocked = (entry) => Boolean(entry.autoKind && ['off', 'blocked'].includes(effOf(entry).tone));
-  const isItemOffBlocked = (item) => ['off', 'blocked'].includes(itemLight(item).tone);
+  const isEntryOnBlocked = (entry) => Boolean(entry.autoKind && entry.autoEnabled && effOf(entry).tone === 'blocked');
+  const isItemOnBlocked = (item) => {
+    const tone = itemLight(item).tone;
+    return Boolean(item.active && (tone === 'blocked' || tone === 'part'));
+  };
   const isEntryOnZeroSend = (entry) => {
     const st = autoStatus[entry.id];
     return Boolean(entry.autoKind && st && effOf(entry).tone !== 'off' && !(Number(st.sent_7d) > 0) && !st.last_sent_date);
@@ -472,14 +475,13 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const isItemOnZeroSend = (item) => itemLight(item).tone === 'on' && item.count === 0 && !item.lastSentAt;
 
   const smsIssues = useMemo(() => {
+    const onBlockedCount = allMine.filter(isEntryOnBlocked).length + items.filter(isItemOnBlocked).length;
     const pausedCount = allMine.filter(isEntryCatchupPaused).length;
-    const offBlockedMine = allMine.filter(isEntryOffBlocked).length;
-    const offBlockedItems = items.filter(isItemOffBlocked).length;
     const onZeroMine = allMine.filter(isEntryOnZeroSend).length;
     const onZeroItems = items.filter(isItemOnZeroSend).length;
     return [
+      ...(onBlockedCount > 0 ? [{ key: 'on-blocked', tone: 'danger', label: '켜짐 · 발송 막힘', count: onBlockedCount, active: issueFilter === 'on-blocked', onClick: () => toggleIssueFilter('on-blocked') }] : []),
       ...(pausedCount > 0 ? [{ key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, active: issueFilter === 'catchup-paused', onClick: () => toggleIssueFilter('catchup-paused') }] : []),
-      { key: 'off-blocked', tone: 'danger', label: '꺼짐 · 설정 미완료', count: offBlockedMine + offBlockedItems, active: issueFilter === 'off-blocked', onClick: () => toggleIssueFilter('off-blocked') },
       { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, active: issueFilter === 'on-zero-send', onClick: () => toggleIssueFilter('on-zero-send') },
     ];
   }, [allMine, autoStatus, items, issueFilter]);
@@ -502,14 +504,14 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const attentionAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [sortedMine, autoStatus]);
   const shownAutos = isMineTab ? [] : (
     issueFilter === 'catchup-paused' ? sortedMine.filter(isEntryCatchupPaused)
-      : issueFilter === 'off-blocked' ? sortedMine.filter(isEntryOffBlocked)
+      : issueFilter === 'on-blocked' ? sortedMine.filter(isEntryOnBlocked)
         : issueFilter === 'on-zero-send' ? sortedMine.filter(isEntryOnZeroSend)
           : (isAttentionTab ? attentionAutos : (tab === 'in_use' ? [...runningAutos, ...manualMatched] : [...allAutos, ...manualMatched]))
   );
   const sectionItems = useMemo(() => {
     if (isMineTab || issueFilter === 'catchup-paused') return [];
-    const filtered = issueFilter === 'off-blocked'
-      ? condItems.filter(isItemOffBlocked)
+    const filtered = issueFilter === 'on-blocked'
+      ? condItems.filter(isItemOnBlocked)
       : issueFilter === 'on-zero-send'
         ? condItems.filter(isItemOnZeroSend)
         : (tab === 'in_use' ? condItems.filter(isCatalogActive) : (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems));

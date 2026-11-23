@@ -399,11 +399,43 @@ export default function KakaoTemplateManager({
     const st = autoStatusMap[entry.id];
     return Boolean(st && displayLightOf(entry).tone === 'on' && !(Number(st.sent_7d) > 0) && !st.last_sent_date);
   }, [autoStatusMap, displayLightOf]);
+  const isManagedOnBlocked = useCallback((entry) => {
+    if (!entry.autoEnabled) return false;
+    return effOf(entry).tone === 'blocked' || Boolean(autoStatusMap[entry.id]?.catchup_paused);
+  }, [effOf, autoStatusMap]);
+  const isAtaOnBlocked = useCallback((item) => {
+    if (item.status !== 'APPROVED') return false;
+    const linkedList = linkedTextEntries(textItems, item.id);
+    const linkedBlocked = linkedList.some((entry) => entry.autoEnabled && (effOf(entry).tone === 'blocked' || Boolean(autoStatusMap[entry.id]?.catchup_paused)));
+    if (linkedBlocked) return true;
+    const used = usageSuccess(usage, item.id, sent);
+    return usageCount(usage, item.id) > 0 && used === 0 && !hasLinkedOn(item.id);
+  }, [textItems, effOf, autoStatusMap, usage, sent, hasLinkedOn]);
+  const isRoOnBlocked = useCallback((entry) => {
+    const tone = itemLight(entry).tone;
+    return Boolean((entry.make_on === true || entry.active) && (tone === 'blocked' || tone === 'part'));
+  }, []);
+  const isAtaZeroSend = useCallback((item) => {
+    if (item.status !== 'APPROVED') return false;
+    const linkedOn = linkedTextEntries(textItems, item.id).filter((entry) => entry.autoEnabled && ['on', 'part'].includes(effOf(entry).tone));
+    if (!linkedOn.length) return false;
+    return linkedOn.every((entry) => {
+      const st = autoStatusMap[entry.id];
+      return Boolean(st && !(Number(st.sent_7d) > 0) && !st.last_sent_date);
+    });
+  }, [textItems, effOf, autoStatusMap]);
 
   // 브랜드메시지(DB) 필터링
   const visibleManaged = useMemo(() => {
     if (inspectFilter) return [];
-    if (issueFilter === 'bms-zero-send') {
+    if (issueFilter === 'kakao-on-blocked') {
+      return managedKakaoEntries.filter((entry) => {
+        if (!isManagedOnBlocked(entry)) return false;
+        const bodyText = bmsDetailMap[entry.id]?.item?.body ?? entry.preview ?? '';
+        return matchesSmsQuery({ ...entry, body: bodyText }, query);
+      });
+    }
+    if (issueFilter === 'kakao-zero-send') {
       return managedKakaoEntries.filter((entry) => {
         if (!isBmsZeroSend(entry)) return false;
         const bodyText = bmsDetailMap[entry.id]?.item?.body ?? entry.preview ?? '';
@@ -417,14 +449,16 @@ export default function KakaoTemplateManager({
       const bodyText = bmsDetailMap[entry.id]?.item?.body ?? entry.preview ?? '';
       return matchesSmsQuery({ ...entry, body: bodyText }, query);
     });
-  }, [inspectFilter, issueFilter, managedKakaoEntries, statusFilter, isManagedActive, isDbAttention, isBmsZeroSend, bmsDetailMap, query]);
+  }, [inspectFilter, issueFilter, managedKakaoEntries, statusFilter, isManagedActive, isDbAttention, isManagedOnBlocked, isBmsZeroSend, bmsDetailMap, query]);
 
   const kakaoIssues = useMemo(() => {
     const rejectedCount = items.filter((item) => item.status === 'REJECTED').length;
     const pendingCount = items.filter((item) => item.status === 'PENDING').length;
     const inspectingCount = items.filter((item) => item.status === 'INSPECTING').length;
-    const attentionCount = kakaoAutoStats.attention;
-    const onZeroBms = managedKakaoEntries.filter(isBmsZeroSend).length;
+    const onBlockedCount = managedKakaoEntries.filter(isManagedOnBlocked).length
+      + items.filter(isAtaOnBlocked).length
+      + allReadOnly.filter(isRoOnBlocked).length;
+    const zeroSendCount = managedKakaoEntries.filter(isBmsZeroSend).length + items.filter(isAtaZeroSend).length;
     const toggleInspect = (status) => {
       userClearedRef.current = false;
       setIssueFilter('');
@@ -435,53 +469,42 @@ export default function KakaoTemplateManager({
       setSelectedBmsId(null);
       setOpenRoId('');
     };
+    const toggleIssue = (key) => {
+      userClearedRef.current = false;
+      setIssueFilter((prev) => (prev === key ? '' : key));
+      setPickedFilter('all');
+      setInspectFilter('');
+      setQuery('');
+      setPageNo(1);
+      setSelectedBmsId(null);
+      setOpenRoId('');
+    };
     return [
-      { key: 'ata-rejected', tone: 'danger', label: '검수 반려', count: rejectedCount, active: inspectFilter === 'REJECTED', onClick: () => toggleInspect('REJECTED') },
-      { key: 'ata-pending', tone: 'warn', label: '검수 전', count: pendingCount, active: inspectFilter === 'PENDING', onClick: () => toggleInspect('PENDING') },
+      ...(onBlockedCount > 0 ? [{ key: 'kakao-on-blocked', tone: 'danger', label: '켜짐 · 발송 막힘', count: onBlockedCount, active: issueFilter === 'kakao-on-blocked', onClick: () => toggleIssue('kakao-on-blocked') }] : []),
+      { key: 'kakao-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: zeroSendCount, active: issueFilter === 'kakao-zero-send', onClick: () => toggleIssue('kakao-zero-send') },
       { key: 'ata-inspecting', tone: 'info', label: '검수 중', count: inspectingCount, active: inspectFilter === 'INSPECTING', onClick: () => toggleInspect('INSPECTING') },
-      {
-        key: 'kakao-attention',
-        tone: 'danger',
-        label: '꺼짐 · 확인 필요',
-        count: attentionCount,
-        active: !inspectFilter && !issueFilter && statusFilter === 'attention',
-        onClick: () => {
-          if (!inspectFilter && !issueFilter && statusFilter === 'attention') pickFilter('all');
-          else {
-            userClearedRef.current = false;
-            setIssueFilter('');
-            setInspectFilter('');
-            setQuery('');
-            setPickedFilter('attention');
-            setPageNo(1);
-            setSelectedBmsId(null);
-            setOpenRoId('');
-          }
-        },
-      },
-      {
-        key: 'bms-zero-send',
-        tone: 'info',
-        label: '켜짐 · 최근 발송 없음',
-        count: onZeroBms,
-        active: issueFilter === 'bms-zero-send',
-        onClick: () => {
-          userClearedRef.current = false;
-          setIssueFilter((prev) => (prev === 'bms-zero-send' ? '' : 'bms-zero-send'));
-          setPickedFilter('all');
-          setInspectFilter('');
-          setQuery('');
-          setPageNo(1);
-          setSelectedBmsId(null);
-          setOpenRoId('');
-        },
-      },
+      { key: 'ata-pending', tone: 'warn', label: '검수 전', count: pendingCount, active: inspectFilter === 'PENDING', onClick: () => toggleInspect('PENDING') },
+      { key: 'ata-rejected', tone: 'warn', label: '검수 반려', count: rejectedCount, active: inspectFilter === 'REJECTED', onClick: () => toggleInspect('REJECTED') },
     ];
-  }, [items, managedKakaoEntries, kakaoAutoStats.attention, isBmsZeroSend, inspectFilter, issueFilter, statusFilter]);
+  }, [items, managedKakaoEntries, allReadOnly, isManagedOnBlocked, isAtaOnBlocked, isRoOnBlocked, isBmsZeroSend, isAtaZeroSend, inspectFilter, issueFilter]);
 
   // 알림톡 필터링(알약 상태 + 검수 상태 드롭다운 + 검색어, 띄어쓰기 무시)
   const visible = useMemo(() => {
-    if (issueFilter === 'bms-zero-send' || statusFilter === 'bms') return [];
+    if (statusFilter === 'bms') return [];
+    if (issueFilter === 'kakao-on-blocked' || issueFilter === 'kakao-zero-send') {
+      const pred = issueFilter === 'kakao-on-blocked' ? isAtaOnBlocked : isAtaZeroSend;
+      const q = String(query || '').trim().toLowerCase();
+      const qNoSpace = q.replace(/\s+/g, '');
+      return items.filter((item) => {
+        if (!pred(item)) return false;
+        if (!q) return true;
+        const name = String(item.name || '').toLowerCase();
+        const id = String(item.id || '').toLowerCase();
+        if (name.includes(q) || id.includes(q) || (qNoSpace && name.replace(/\s+/g, '').includes(qNoSpace))) return true;
+        const linkedEntries = linkedTextEntries(textItems, item.id);
+        return linkedEntries.some((entry) => matchesSmsQuery(entry, q));
+      });
+    }
     const q = String(query || '').trim().toLowerCase();
     const qNoSpace = q.replace(/\s+/g, '');
     return items.filter((item) => {
@@ -500,18 +523,19 @@ export default function KakaoTemplateManager({
       const linkedEntries = linkedTextEntries(textItems, item.id);
       return linkedEntries.some((entry) => matchesSmsQuery(entry, q));
     });
-  }, [issueFilter, statusFilter, inspectFilter, query, items, isAtaActive, sent, isAtaAttention, textItems]);
+  }, [issueFilter, statusFilter, inspectFilter, query, items, isAtaOnBlocked, isAtaZeroSend, isAtaActive, sent, isAtaAttention, textItems]);
 
   const readOnly = useMemo(() => {
-    if (inspectFilter || issueFilter === 'bms-zero-send') return [];
+    if (inspectFilter || issueFilter === 'kakao-zero-send') return [];
     const roStatus = statusFilter === 'in_use' ? 'in_use' : 'all';
     const list = readOnlyKakaoItems(items, sent, { status: roStatus, query })
       .filter((entry) => entry.sender !== SENDERS.make)
+      .filter((entry) => (issueFilter === 'kakao-on-blocked' ? isRoOnBlocked(entry) : true))
       .filter((entry) => (statusFilter === 'in_use' ? isRoActive(entry) : true))
       .filter((entry) => (statusFilter === 'bms' ? entry.channel === 'BMS' : true))
       .filter((entry) => (statusFilter === 'attention' ? isRoAttention(entry) : true));
     return list;
-  }, [inspectFilter, issueFilter, items, sent, statusFilter, query, isRoActive, isRoAttention]);
+  }, [inspectFilter, issueFilter, items, sent, statusFilter, query, isRoOnBlocked, isRoActive, isRoAttention]);
 
   // 비즈니스 카테고리(리뷰 이벤트 · 소개/혜택 · 주문/출고 · 상담/문의 · 직원 알림)로 통일 묶기
   const displayGroups = useMemo(() => {
@@ -1854,9 +1878,11 @@ export default function KakaoTemplateManager({
       .map((group) => ({ group, pageItems: group.items.filter((entry) => pageSet.has(`ro-${entry.id}`)) }))
       .filter((entry) => entry.pageItems.length > 0);
 
-    const activeIssueLabel = issueFilter === 'bms-zero-send'
-      ? '켜짐 · 최근 발송 없음'
-      : (inspectFilter ? (inspectPills.find((p) => p.id === inspectFilter)?.label || inspectFilter) : '');
+    const activeIssueLabel = issueFilter === 'kakao-on-blocked'
+      ? '켜짐 · 발송 막힘'
+      : issueFilter === 'kakao-zero-send'
+        ? '켜짐 · 최근 발송 없음'
+        : (inspectFilter ? (inspectPills.find((p) => p.id === inspectFilter)?.label || inspectFilter) : '');
 
     body = (
       <>
