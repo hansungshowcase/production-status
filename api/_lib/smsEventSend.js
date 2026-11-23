@@ -449,6 +449,18 @@ async function pending(db, template, deps) {
     items = items.filter(item => !optouts.has(autoPhoneHash(item.phone)));
     if (!items.length) return [];
   }
+  if (isBmsTemplate(template) && isInstantKind(template.auto_kind)) { // 즉시형 브랜드메시지(공정 진입·완료 등): 같은 번호 다건 주문은 1건만 남기고 이미 비실패 이력이 있는 번호는 제외
+    const seenPhones = new Set();
+    items = items.filter(item => !seenPhones.has(item.phone) && seenPhones.add(item.phone));
+    const sentPhones = new Set();
+    const hashes = [...new Set(items.map(item => item.hash))];
+    for (let i = 0; i < hashes.length; i += KEY_CHUNK) {
+      const chunk = hashes.slice(i, i + KEY_CHUNK);
+      for (const row of (await db.execute({ sql: `SELECT DISTINCT phone_hash FROM sms_event_sends WHERE template_id = ? AND status <> 'failed' AND phone_hash IN (${placeholders(chunk)})`, args: [template.id, ...chunk] })).rows || []) sentPhones.add(row.phone_hash);
+    }
+    items = items.filter(item => !sentPhones.has(item.hash));
+    if (!items.length) return [];
+  }
   let done;
   if (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template) || template.auto_daily) { // 즉시형·매일 반복: 후보 키만 IN 조회(문구 기록 전체를 읽지 않는다)
     done = new Set();
@@ -646,51 +658,90 @@ export async function runEventSend(template, deps = {}) {
     try { await clearPhones(db, active.map(entry => entry.item.signupId)); } catch { warn('[sms-event] 번호 지우기 실패'); }
   }
 
-  const partStatus = [];
-  const groupIds = [];
-  let reason = '';
-  let stop = false;
-  let wholeFail = false;
-  let failedPhones = null;
-  for (const [partIndex, part] of parts.entries()) {
-    if (stop) { partStatus.push('skipped'); continue; }
-    await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
-    if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
-    const messages = bms ? active.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? active.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataSendVars(entry.item, ataNames) })) : active.map(entry => {
-      const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
-      if (part.image >= 0) message.fileId = fileIds[part.image];
-      return message;
-    });
-    let result;
-    try { result = bms ? await vendor.sendBmsEach({ from, pfId, messages }, { fetchImpl }) : ata ? await vendor.sendKakaoEach({ from, pfId, messages, disableSms: env.SMS_AUTO_ATA_FALLBACK !== '1' }, { fetchImpl }) : await vendor.sendEach({ from, messages }, { fetchImpl }); } catch { result = ata ? { accepted: 0, failed: messages.length, uncertain: false, error: bms ? '브랜드메시지 발송 호출이 실패했습니다.' : '알림톡 발송 호출이 실패했습니다.' } : { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; } // 알림톡의 예외는 접수 전 실패라 다시 시도할 수 있게 통째 실패로 본다(문자 갈래는 그대로)
-    if (result.groupId) groupIds.push(result.groupId);
-    if (result.uncertain) { partStatus.push('uncertain'); stop = true; reason = String(result.error || '불확실').slice(0, 200); }
-    else if (ata && !(result.accepted > 0)) { partStatus.push('failed'); stop = true; wholeFail = true; reason = String(result.error || '거절').slice(0, 200); } // 알림톡 통째 실패(4xx·접수 0건·예외)
-    else if (result.failed === 0) partStatus.push('sent');
-    else if (result.accepted === 0) { partStatus.push('failed'); stop = true; reason = String(result.error || '거절').slice(0, 200); }
-    else if (ata && Array.isArray(result.failedTo) && result.failedTo.length === result.failed) { partStatus.push('sent'); failedPhones = new Set(result.failedTo.map(digits)); reason = '일부 번호 실패'; } // 실패 번호를 알면 그 번호만 failed
-    else { partStatus.push('uncertain'); stop = true; reason = '일부만 실패'; }
+  const sendWave = async (wave) => {
+    const partStatus = [];
+    const groupIds = [];
+    let reason = '';
+    let stop = false;
+    let wholeFail = false;
+    let failedToList = null;
+    for (const [partIndex, part] of parts.entries()) {
+      if (stop) { partStatus.push('skipped'); continue; }
+      await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
+      if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
+      const messages = bms ? wave.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? wave.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataSendVars(entry.item, ataNames) })) : wave.map(entry => {
+        const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
+        if (part.image >= 0) message.fileId = fileIds[part.image];
+        return message;
+      });
+      let result;
+      try { result = bms ? await vendor.sendBmsEach({ from, pfId, messages }, { fetchImpl }) : ata ? await vendor.sendKakaoEach({ from, pfId, messages, disableSms: env.SMS_AUTO_ATA_FALLBACK !== '1' }, { fetchImpl }) : await vendor.sendEach({ from, messages }, { fetchImpl }); } catch { result = ata ? { accepted: 0, failed: messages.length, uncertain: false, error: bms ? '브랜드메시지 발송 호출이 실패했습니다.' : '알림톡 발송 호출이 실패했습니다.' } : { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; } // 알림톡의 예외는 접수 전 실패라 다시 시도할 수 있게 통째 실패로 본다(문자 갈래는 그대로)
+      if (result.groupId) groupIds.push(result.groupId);
+      if (result.uncertain) { partStatus.push('uncertain'); stop = true; reason = String(result.error || '불확실').slice(0, 200); }
+      else if (ata && !(result.accepted > 0)) { partStatus.push('failed'); stop = true; wholeFail = true; reason = String(result.error || '거절').slice(0, 200); } // 알림톡 통째 실패(4xx·접수 0건·예외)
+      else if (result.failed === 0) partStatus.push('sent');
+      else if (result.accepted === 0) { partStatus.push('failed'); stop = true; reason = String(result.error || '거절').slice(0, 200); }
+      else if (ata && Array.isArray(result.failedTo) && result.failedTo.length === result.failed) { partStatus.push('sent'); failedToList = result.failedTo.map(digits); reason = '일부 번호 실패'; } // 실패 번호를 알면 그 번호만 failed
+      else { partStatus.push('uncertain'); stop = true; reason = '일부만 실패'; }
+    }
+    if (wholeFail) {
+      const wf = await ataWholeFail(db, template, wave, { reason, warn, out: { ...out, sent: 0, failed: 0, uncertain: 0 } });
+      return { sent: 0, failed: wf.failed, uncertain: 0, reason: wf.reason, wholeFail: true };
+    }
+    const status = partStatus.every(s => s === 'sent') ? 'sent' : partStatus[0] === 'failed' ? 'failed' : 'uncertain';
+    if (failedToList?.length) { // 알림톡 일부 실패: 실패 번호 횟수만큼만 failed, 나머지는 sent
+      const failedCounts = new Map();
+      for (const phone of failedToList) failedCounts.set(phone, (failedCounts.get(phone) || 0) + 1);
+      const bad = [];
+      const good = [];
+      for (const entry of wave) {
+        const n = failedCounts.get(entry.item.phone) || 0;
+        if (n > 0) { failedCounts.set(entry.item.phone, n - 1); bad.push(entry); }
+        else good.push(entry);
+      }
+      const mark = async (list, st, why) => { if (!list.length) return; try { await db.execute({ sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(list)})`, args: [st, JSON.stringify(partStatus), why, JSON.stringify(groupIds), ...list.map(entry => entry.id)] }); } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다 */ } };
+      await mark(bad, 'failed', reason);
+      await mark(good, 'sent', null);
+      return { sent: good.length, failed: bad.length, uncertain: 0, reason: '', wholeFail: false };
+    }
+    try {
+      await db.execute({
+        sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(wave)})`,
+        args: [status, JSON.stringify(partStatus), reason || null, JSON.stringify(groupIds), ...wave.map(entry => entry.id)],
+      });
+    } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다. 행은 claimed 로 남아 다음 실행이 uncertain 으로 바꾼다. */ }
+    return { sent: status === 'sent' ? wave.length : 0, failed: status === 'failed' ? wave.length : 0, uncertain: status === 'uncertain' ? wave.length : 0, reason: '', wholeFail: false };
+  };
+
+  const waves = ata ? partitionUniquePhones(active) : [active]; // 알림톡·브랜드메시지는 쏠라피 allowDuplicates:false 중복 수신번호 실패를 피하려 웨이브별 중복 없는 번호로 나눈다(일반 문자 갈래는 기존 단일 배치 유지)
+  let stoppedByWholeFail = false;
+  for (let i = 0; i < waves.length; i += 1) {
+    if (waves.length > 1 && tick() >= endAt) {
+      const rest = waves.slice(i).flat();
+      try {
+        await db.execute({
+          sql: `UPDATE sms_event_sends SET status = 'uncertain', reason = '시간 초과' WHERE id IN (${placeholders(rest)})`,
+          args: rest.map(entry => entry.id),
+        });
+      } catch { /* 기록 실패 시 claimed 로 남아 다음 실행에서 uncertain 처리 */ }
+      out.uncertain += rest.length;
+      break;
+    }
+    const waveRes = await sendWave(waves[i]);
+    out.sent += waveRes.sent;
+    out.failed += waveRes.failed;
+    out.uncertain += waveRes.uncertain;
+    if (waveRes.reason) out.reason = waveRes.reason;
+    if (waveRes.wholeFail) {
+      stoppedByWholeFail = true;
+      const rest = waves.slice(i + 1).flat();
+      if (rest.length) {
+        try { await db.execute({ sql: `DELETE FROM sms_event_sends WHERE status = 'claimed' AND id IN (${placeholders(rest)})`, args: rest.map(entry => entry.id) }); } catch { warn('[sms-event] 남은 선점 행 삭제 실패'); }
+      }
+      break;
+    }
   }
-  if (wholeFail) return ataWholeFail(db, template, active, { reason, warn, out });
-  const status = partStatus.every(s => s === 'sent') ? 'sent' : partStatus[0] === 'failed' ? 'failed' : 'uncertain';
-  if (failedPhones?.size) { // 알림톡 일부 실패: 실패 번호 행만 failed, 나머지는 sent
-    const bad = active.filter(entry => failedPhones.has(entry.item.phone));
-    const good = active.filter(entry => !failedPhones.has(entry.item.phone));
-    const mark = async (list, st, why) => { if (!list.length) return; try { await db.execute({ sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(list)})`, args: [st, JSON.stringify(partStatus), why, JSON.stringify(groupIds), ...list.map(entry => entry.id)] }); } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다 */ } };
-    await mark(bad, 'failed', reason);
-    await mark(good, 'sent', null);
-    out.failed = bad.length; out.sent = good.length;
-    await clearAtaFail(db, template);
-    return out;
-  }
-  try {
-    await db.execute({
-      sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(active)})`,
-      args: [status, JSON.stringify(partStatus), reason || null, JSON.stringify(groupIds), ...active.map(entry => entry.id)],
-    });
-  } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다. 행은 claimed 로 남아 다음 실행이 uncertain 으로 바꾼다. */ }
-  out[status] = active.length;
-  if (status === 'sent') await clearAtaFail(db, template);
+  if (!stoppedByWholeFail && out.sent > 0) await clearAtaFail(db, template);
   return out;
 }
 
@@ -887,10 +938,22 @@ export async function runInstantSendAll(deps = {}) {
   return total;
 }
 
-// 공정 완료 직후(complete API): 방금 완료된 공정의 켜진 'process_completed' 문구를 크론 대기 없이 즉시 발송한다.
+function partitionUniquePhones(list) {
+  const waves = [];
+  for (const entry of list) {
+    const phone = entry.item.phone;
+    let slot = waves.find(wave => !wave.phones.has(phone));
+    if (!slot) { slot = { phones: new Set(), entries: [] }; waves.push(slot); }
+    slot.phones.add(phone);
+    slot.entries.push(entry);
+  }
+  return waves.map(wave => wave.entries);
+}
+
+// 공정 시작/완료 직후(start · complete API): 방금 시작·완료된 공정의 켜진 문구를 크론 대기 없이 즉시 발송한다.
 // sms_event_sends 의 UNIQUE(template_id, dedupe_key) 멱등 선점이 5분 크론(runInstantSendAll)과 겹쳐도 중복 발송을 막는다.
-export async function triggerProcessCompletedAutoSends(db, completedStepNames = [], deps = {}) {
-  const steps = [...new Set((Array.isArray(completedStepNames) ? completedStepNames : []).filter(step => STEPS.includes(step)))];
+async function triggerProcessStepAutoSends(db, autoKind, stepNames = [], deps = {}) {
+  const steps = [...new Set((Array.isArray(stepNames) ? stepNames : []).filter(step => STEPS.includes(step)))];
   const nowMs = deps.nowMs ?? Date.now();
   const env = deps.env || process.env;
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
@@ -898,8 +961,8 @@ export async function triggerProcessCompletedAutoSends(db, completedStepNames = 
   let list;
   try {
     list = await db.execute({
-      sql: `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind = 'process_completed' AND auto_step IN (${placeholders(steps)}) ORDER BY id ASC`,
-      args: steps,
+      sql: `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind = ? AND auto_step IN (${placeholders(steps)}) ORDER BY id ASC`,
+      args: [autoKind, ...steps],
     });
   } catch (error) {
     if (error?.code === '42703' || error?.code === '42P01') return total;
@@ -919,6 +982,14 @@ export async function triggerProcessCompletedAutoSends(db, completedStepNames = 
     for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
   }
   return total;
+}
+
+export async function triggerProcessStartedAutoSends(db, startedStepNames = [], deps = {}) {
+  return triggerProcessStepAutoSends(db, 'process_started', startedStepNames, deps);
+}
+
+export async function triggerProcessCompletedAutoSends(db, completedStepNames = [], deps = {}) {
+  return triggerProcessStepAutoSends(db, 'process_completed', completedStepNames, deps);
 }
 
 // ---- 화면 자료 ----

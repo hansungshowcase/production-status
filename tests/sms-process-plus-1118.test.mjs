@@ -10,7 +10,7 @@ import {
 import { getSendProvider } from '../api/_lib/sendProvider.js';
 import { parseBmsConfig } from '../api/_lib/smsBms.js';
 import { bmsButtonsCheck } from '../shared/smsBmsLimits.js';
-import { _resetEventSchemaForTest, eventPhoneHash, runGuarded, triggerProcessCompletedAutoSends } from '../api/_lib/smsEventSend.js';
+import { _resetEventSchemaForTest, eventPhoneHash, runEventSend, runGuarded, triggerProcessCompletedAutoSends, triggerProcessStartedAutoSends } from '../api/_lib/smsEventSend.js';
 import { autoMarkSent } from '../api/_lib/smsAutoSend.js';
 import { handleSmsConsole } from '../api/sms-console.js';
 import { autoEffective } from '../shared/smsAutoEffective.js';
@@ -35,7 +35,7 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
     async execute({ sql, args }) {
       const t = sql.replace(/\s+/g, ' ').trim();
       state.sql.push(t);
-      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE)/.test(t)) return { rows: [] };
+      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE|SELECT conname)/.test(t)) return { rows: [] };
       if (t.startsWith('SELECT conname FROM pg_constraint')) return { rows: [] };
       if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled, auto_start_date')) return { rows: args[0] === state.tpl.id ? [state.tpl] : [] };
       if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days, auto_enabled')) return { rows: state.templates.filter(r => r.id === args[0]) };
@@ -463,7 +463,7 @@ test('triggerProcessCompletedAutoSends: 조립작업 완료 시 켜진 process_c
   const db = {
     async execute({ sql, args }) {
       const t = sql.replace(/\s+/g, ' ').trim();
-      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE)/.test(t)) return { rows: [] };
+      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE|SELECT conname)/.test(t)) return { rows: [] };
       if (t.startsWith('SELECT id FROM sms_text_templates WHERE auto_enabled = true')) return { rows: args.includes('조립작업') ? [{ id: 24 }] : [] };
       if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_enabled')) return { rows: [tplRow] };
       if (t.startsWith('SELECT dedupe_key FROM sms_event_sends WHERE template_id = ? AND dedupe_key IN')) return { rows: sends.filter(r => r.template_id === args[0] && args.slice(1).includes(r.dedupe_key)).map(r => ({ dedupe_key: r.dedupe_key })) };
@@ -506,4 +506,173 @@ test('화면 모델: process_completed_plus_days 조건 줄·대상 줄·요약�
   const summary = buildConditionSummary(entry, { isMine: true });
   assert.equal(summary.whenMain, '설비작업 공정 완료 3일 뒤');
   assert.equal(conditionTagForName({ autoKind: KIND_DONE, step: '설비작업', days: '3' }), '설비 완료+3일');
+});
+
+// ---------- 7. 즉시형 BMS 동일 번호 보호 · ATA 동일 번호 웨이브 · failedTo 횟수 매칭 · process_started 실시간 훅 ----------
+function eventHookDb({ templateRow, orders = [] }) {
+  const sends = [];
+  let nextId = 1;
+  return {
+    state: { sends, orders },
+    async execute({ sql, args }) {
+      const t = sql.replace(/\s+/g, ' ').trim();
+      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE|SELECT conname)/.test(t)) return { rows: [] };
+      if (t.startsWith('SELECT id FROM sms_text_templates WHERE auto_enabled = true')) {
+        return { rows: args[0] === templateRow.auto_kind && args.slice(1).includes(templateRow.auto_step) ? [{ id: templateRow.id }] : [] };
+      }
+      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_enabled')) return { rows: [templateRow] };
+      if (t.startsWith('SELECT phone_hash FROM sms_optouts')) return { rows: [] };
+      if (t.startsWith('SELECT DISTINCT phone_hash FROM sms_event_sends WHERE template_id = ?')) {
+        const tplId = args[0];
+        const wanted = new Set(args.slice(1));
+        const rows = [...new Set(sends.filter(r => r.template_id === tplId && r.status !== 'failed' && wanted.has(r.phone_hash)).map(r => r.phone_hash))].map(phone_hash => ({ phone_hash }));
+        return { rows };
+      }
+      if (t.startsWith('SELECT dedupe_key FROM sms_event_sends WHERE template_id = ? AND dedupe_key IN')) {
+        const tplId = args[0];
+        const wanted = args.slice(1);
+        return { rows: sends.filter(r => r.template_id === tplId && wanted.includes(r.dedupe_key)).map(r => ({ dedupe_key: r.dedupe_key })) };
+      }
+      if (t.startsWith('SELECT id, dedupe_key FROM sms_event_sends WHERE template_id = ? AND status = \'failed\'')) return { rows: [] };
+      if (t.startsWith('SELECT COUNT(*) AS n FROM sms_event_sends')) return { rows: [{ n: sends.filter(r => r.kst_date === args[0] && r.status === 'sent').length }] };
+      if (t.startsWith('SELECT id, track_token FROM orders')) return { rows: [] };
+      if (t.includes('FROM processes p JOIN orders o')) return { rows: orders };
+      if (t.startsWith('INSERT INTO sms_event_sends')) {
+        const rows = [];
+        for (let i = 0; i < args.length; i += 6) {
+          const [template_id, dedupe_key, order_id, phone_hash, , kst_date] = args.slice(i, i + 6);
+          if (sends.some(r => r.template_id === template_id && r.dedupe_key === dedupe_key)) continue;
+          const row = { id: nextId++, template_id, dedupe_key, order_id, phone_hash, kst_date, status: 'claimed', reason: null };
+          sends.push(row);
+          rows.push({ id: row.id, dedupe_key });
+        }
+        return { rows };
+      }
+      if (t.startsWith('UPDATE sms_event_sends SET status = ?')) {
+        const [status, , reason, , ...ids] = args;
+        for (const r of sends) if (ids.includes(r.id)) { r.status = status; r.reason = reason; }
+        return { rows: [] };
+      }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_ata_fail_at = NULL')) return { rows: [{ id: args[0] }] };
+      throw new Error(`예상 못 한 SQL(eventHookDb) ${t}`);
+    },
+  };
+}
+
+const instantTplRow = (over = {}) => ({
+  id: 22, name: '블로그 리뷰 이벤트(설비 진입)', body: '안녕하세요 #{고객명} 대표님\n리뷰 이벤트 안내\n무료수신거부 080-123-4567',
+  image: null, images: null, auto_kind: 'process_started', auto_enabled: true, auto_offset: 0,
+  auto_unless_step: '', auto_audience: 'customer', auto_staff: null, auto_msg_type: 'info',
+  auto_step: '설비작업', auto_enabled_at: new Date(NOW - 3600000).toISOString(), auto_daily: '',
+  auto_weekdays: false, auto_unless_mode: 'completed', auto_days: 0, auto_ata_template: 'BMS_FREE',
+  auto_send_time: '', auto_catchup_from: '', auto_catchup_at: '', auto_catchup_daily: 0,
+  auto_catchup_done_at: null, auto_lead_source: '', auto_catchup_paused_at: null,
+  auto_catchup_error: '', auto_ata_fail_at: null, auto_bms: JSON.stringify({ pfId: 'PF1', from: '0319862458', buttons: [] }),
+  auto_skip_reason: '', auto_chain: null, ...over,
+});
+
+const orderRow = (id, phone, name = `거래처-${id}`) => ({
+  id, phone, client_name: name, order_date: '2026-11-20', due_date: '2026-11-25',
+  ship_scheduled_date: '2026-11-25', product_type: '쇼케이스', door_type: '양문형',
+  width: 1200, depth: 700, height: 1800, quantity: 1, sales_person: '',
+});
+
+test('process_started + BMS_FREE 중복 번호 보호: 동시 2건은 1통만 보내고 3번째 주문은 기존 이력으로 건너뛴다', async () => {
+  _resetEventSchemaForTest();
+  _resetAutoSchemaForTest();
+  _resetTextTemplateSchemaForTest();
+  const orders = [orderRow(558, '010-1111-8108', '에제르-1'), orderRow(559, '010-1111-8108', '에제르-2')];
+  const db = eventHookDb({ templateRow: instantTplRow(), orders });
+  const bmsCalls = [];
+  const provider = {
+    estimateBms: ({ count }) => ({ unit: 100, total: 100 * count, fallback_unit: 45 }),
+    async sendBmsEach(input) { bmsCalls.push(input.messages); return { accepted: input.messages.length, failed: 0, groupId: 'GB1', uncertain: false, error: '' }; },
+  };
+  const kakao = { async getBalance() { return 100000; } };
+  const tpl = { ...instantTplRow(), images: [], auto_staff: [] };
+  const first = await runEventSend(tpl, { db, provider, env: ENV, nowMs: NOW, kakao, warn: () => {} });
+  assert.equal(first.sent, 1);
+  assert.equal(bmsCalls.length, 1);
+  assert.deepEqual(bmsCalls[0].map(m => m.to), ['01011118108']);
+
+  // 3번째 동일 번호 주문이 진입해도 이미 sent 행이 있으므로 추가 발송 없음
+  orders.push(orderRow(560, '010-1111-8108', '에제르-3'));
+  const second = await runEventSend(tpl, { db, provider, env: ENV, nowMs: NOW, kakao, warn: () => {} });
+  assert.equal(second.sent, 0);
+  assert.equal(bmsCalls.length, 1);
+  assert.equal(db.state.sends.filter(r => r.phone_hash === eventPhoneHash('01011118108')).length, 1);
+});
+
+test('process_completed + ATA 동일 번호 웨이브 분할: 같은 번호 2건은 2개 웨이브로 나뉘어 중복 오류 없이 모두 sent 처리된다', async () => {
+  _resetEventSchemaForTest();
+  _resetTextTemplateSchemaForTest();
+  const tplRow = instantTplRow({ id: 24, name: '유튜브 인터뷰(조립 완료)', auto_kind: 'process_completed', auto_step: '조립작업', auto_ata_template: 'KA01TP_YT', auto_bms: null, body: '#{고객명} 대표님 조립 완료 안내' });
+  const orders = [orderRow(601, '010-2222-8108', '고객A-1'), orderRow(602, '010-2222-8108', '고객A-2')];
+  const db = eventHookDb({ templateRow: tplRow, orders });
+  const kakaoCalls = [];
+  const provider = {
+    estimateKakao: ({ count }) => ({ unit: 13, total: 13 * count }),
+    async sendKakaoEach(input) { kakaoCalls.push(input.messages); return { accepted: input.messages.length, failed: 0, groupId: `GK${kakaoCalls.length}`, uncertain: false, error: '' }; },
+  };
+  const kakao = {
+    async getBalance() { return 100000; },
+    async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables: ['#{고객명}'], content: '#{고객명} 대표님' }, scope: { allowed: true, kind: 'channel' } }; },
+  };
+  const tpl = { ...tplRow, images: [], auto_staff: [] };
+  const out = await runEventSend(tpl, { db, provider, env: ENV, nowMs: NOW, kakao, warn: () => {} });
+  assert.equal(out.sent, 2);
+  assert.equal(kakaoCalls.length, 2, '동일 번호 2건은 2개 웨이브로 분할 호출');
+  assert.deepEqual(kakaoCalls.map(batch => batch.map(m => m.to)), [['01022228108'], ['01022228108']]);
+  assert.equal(db.state.sends.filter(r => r.status === 'sent').length, 2);
+});
+
+test('failedTo 횟수 매칭: 웨이브 내 실패 번호 횟수만 failed 로 남기고 다른 주문·번호와 섞이지 않는다', async () => {
+  _resetEventSchemaForTest();
+  _resetTextTemplateSchemaForTest();
+  const tplRow = instantTplRow({ id: 24, name: '유튜브 인터뷰(조립 완료)', auto_kind: 'process_completed', auto_step: '조립작업', auto_ata_template: 'KA01TP_YT', auto_bms: null, body: '#{고객명} 대표님 조립 완료 안내' });
+  const orders = [
+    orderRow(701, '010-3333-0001', '고객1'),
+    orderRow(702, '010-3333-0002', '고객2'),
+    orderRow(703, '010-3333-0001', '고객1-2'),
+  ];
+  const db = eventHookDb({ templateRow: tplRow, orders });
+  let callIdx = 0;
+  const provider = {
+    estimateKakao: ({ count }) => ({ unit: 13, total: 13 * count }),
+    async sendKakaoEach(input) {
+      callIdx += 1;
+      if (callIdx === 1) return { accepted: 1, failed: 1, groupId: 'GW1', uncertain: false, error: '', failedTo: ['01033330001'] };
+      return { accepted: input.messages.length, failed: 0, groupId: 'GW2', uncertain: false, error: '' };
+    },
+  };
+  const kakao = {
+    async getBalance() { return 100000; },
+    async getTemplateFresh() { return { raw: { channelId: 'PF1' }, template: { status: 'APPROVED', variables: ['#{고객명}'], content: '#{고객명} 대표님' }, scope: { allowed: true, kind: 'channel' } }; },
+  };
+  const tpl = { ...tplRow, images: [], auto_staff: [] };
+  const out = await runEventSend(tpl, { db, provider, env: ENV, nowMs: NOW, kakao, warn: () => {} });
+  assert.deepEqual([out.sent, out.failed], [2, 1]);
+  assert.equal(db.state.sends.find(r => r.order_id === 701).status, 'failed');
+  assert.equal(db.state.sends.find(r => r.order_id === 702).status, 'sent');
+  assert.equal(db.state.sends.find(r => r.order_id === 703).status, 'sent');
+});
+
+test('triggerProcessStartedAutoSends: 설비작업 시작 시 켜진 process_started 문구를 즉시 발송하고 재호출 시 중복 0건', async () => {
+  _resetEventSchemaForTest();
+  _resetTextTemplateSchemaForTest();
+  const tplRow = instantTplRow();
+  const orders = [orderRow(801, '010-4444-5555', '시작거래처')];
+  const db = eventHookDb({ templateRow: tplRow, orders });
+  const sentMsgs = [];
+  const provider = {
+    estimateBms: ({ count }) => ({ unit: 100, total: 100 * count, fallback_unit: 45 }),
+    async sendBmsEach(input) { sentMsgs.push(...input.messages); return { accepted: input.messages.length, failed: 0, groupId: 'GS1', uncertain: false, error: '' }; },
+  };
+  const kakao = { async getBalance() { return 100000; } };
+  const first = await triggerProcessStartedAutoSends(db, ['설비작업'], { nowMs: NOW, env: ENV, provider, kakao, warn: () => {} });
+  assert.equal(first.sent, 1);
+  assert.equal(sentMsgs.length, 1);
+  const second = await triggerProcessStartedAutoSends(db, ['설비작업'], { nowMs: NOW, env: ENV, provider, kakao, warn: () => {} });
+  assert.equal(second.sent, 0);
+  assert.equal(sentMsgs.length, 1);
 });

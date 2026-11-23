@@ -33,6 +33,7 @@ function fakeDb({ orders = [], optouts = [], countToday = 0 } = {}) {
       if (t.includes('FROM orders o WHERE o.created_at')) { state.orderCalls += 1; return { rows: orders }; }
       if (t.startsWith('SELECT id, track_token FROM orders')) return { rows: [] };
       if (t.startsWith('SELECT dedupe_key FROM sms_event_sends')) return { rows: [] };
+      if (t.startsWith('SELECT DISTINCT phone_hash FROM sms_event_sends')) return { rows: [] };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_event_sends')) return { rows: [{ n: countToday }] };
       if (t.startsWith('INSERT INTO sms_event_sends')) {
         const rows = [];

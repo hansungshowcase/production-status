@@ -4,6 +4,7 @@ import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
+import { triggerProcessStartedAutoSends } from '../../_lib/smsEventSend.js';
 import { hasValidWorkInstructionReceipt } from '../../../shared/workInstructionReceipt.js';
 import { canWorkerAccessDepartment } from '../../../shared/workerAccess.js';
 
@@ -32,6 +33,7 @@ export async function handleStartProcess(req, res, dependencies = {}) {
 
   const db = dependencies.db || getDb();
   const notifyInternalStart = dependencies.notifyInternalStart || defaultInternalStartNotify;
+  const runProcessStartedAutoSends = dependencies.triggerProcessStartedAutoSends || triggerProcessStartedAutoSends;
   const { work_date, assigned_worker, assigned_team } = req.body || {};
 
   // Validate required fields
@@ -188,6 +190,11 @@ export async function handleStartProcess(req, res, dependencies = {}) {
     } catch (e) {
       console.error('[start] 레이저 내부 알림 발송 실패(무시):', e?.message || e);
     }
+    try {
+      await runProcessStartedAutoSends(db, [updatedProcess.step_name]);
+    } catch (e) {
+      console.error('[start] 레이저 공정 시작 자동 발송 실패(무시):', e?.message || e);
+    }
     return res.json(updatedProcess);
   }
 
@@ -291,6 +298,11 @@ export async function handleStartProcess(req, res, dependencies = {}) {
       });
     } catch (e) {
       console.error('[start] 조립팀 내부 알림 발송 실패(무시):', e?.message || e);
+    }
+    try {
+      await runProcessStartedAutoSends(db, [updatedProcess.step_name]);
+    } catch (e) {
+      console.error('[start] 공정 시작 자동 발송 실패(무시):', e?.message || e);
     }
   }
 
