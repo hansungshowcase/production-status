@@ -238,7 +238,13 @@
 .scss-tone-danger { color: var(--smsc-danger, #d92d20); }
 
 .scss-refresh {
-  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-height: 26px;
+  box-sizing: border-box;
+  line-height: 1;
   padding: 0 8px;
   border: 1px solid #d5dbe1;
   border-radius: 5px;

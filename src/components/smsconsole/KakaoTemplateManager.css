@@ -6,12 +6,14 @@
 .ktm-sub { margin: 2px 0 0; font-size: 13px; color: #4e5968; overflow-wrap: anywhere; line-height: 1.38; }
 
 .ktm-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; box-sizing: border-box;
   min-height: 31px; padding: 0 11px; border-radius: 6px; cursor: pointer;
   border: 1px solid #cbd5e1; background: var(--smsc-surface, #fff);
-  color: #1f2937; font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap;
+  color: #1f2937; font: inherit; font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap;
   transition: background 120ms ease, border-color 120ms ease;
 }
+.ktm-header .ktm-btn,
+.ktm-header-actions .ktm-btn { height: 34px; min-height: 34px; padding: 0 12px; }
 .ktm-btn:hover:not(:disabled) { background: #f2f4f6; border-color: #94a3b8; }
 .ktm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .ktm-btn--primary { background: #191f28; border-color: #191f28; color: #fff; font-weight: 700; }

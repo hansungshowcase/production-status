@@ -43,10 +43,11 @@
 .stf-subbox label, .stf-sublabel { font-size: 12.5px; font-weight: 600; color: #333d4b; }
 
 /* 세그먼트 토글 (자동/수동, 당일/며칠 뒤, 전/당일/지남) */
-.stf-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; border-radius: 8px; background: #f2f4f6; max-width: 100%; }
+.stf-seg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; box-sizing: border-box; min-height: 38px; padding: 3px; border-radius: 8px; background: #f2f4f6; max-width: 100%; }
 .stf-seg-btn {
-  min-height: 30px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent;
-  font: inherit; font-size: 12.5px; font-weight: 600; color: #4e5968; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+  height: 32px; min-height: 32px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; color: #4e5968; cursor: pointer; white-space: nowrap;
 }
 .stf-seg-btn.is-active { background: #fff; color: #191f28; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08); }
 
@@ -64,7 +65,7 @@
 .stf-form input[type='date'],
 .stf-form input[type='datetime-local'],
 .stf-form input[type='number'],
-.stf-form select { min-height: 38px; padding: 6px 10px; }
+.stf-form select { height: 38px; min-height: 38px; padding: 6px 10px; box-sizing: border-box; }
 .stf-form input[type='text']:focus,
 .stf-form textarea:focus,
 .stf-form select:focus { outline: 2px solid #1b64da; outline-offset: -1px; border-color: #1b64da; }
@@ -118,6 +119,7 @@
   border: 1px solid #e5e8eb; border-radius: 8px; background: #fafbfc;
 }
 .stf-bms-top { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.stf-bms-top .ktm-btn { height: 38px; min-height: 38px; box-sizing: border-box; }
 .stf-bms-pc { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px; align-items: center; }
 .stf-bms-pclabel { font-size: 11.5px; font-weight: 600; color: #6b7684; }
 
@@ -208,6 +210,7 @@
 
 /* 저장 버튼·완료·경고 */
 .stf-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+.stf-actions .ktm-btn { min-width: 76px; height: 36px; min-height: 36px; padding: 0 16px; box-sizing: border-box; line-height: 1; }
 .stf-done { margin: 0; padding: 12px 14px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; font-size: 14.5px; font-weight: 600; }
 .stf-clone-banner {
   margin: 0; padding: 10px 12px; border-radius: 8px;

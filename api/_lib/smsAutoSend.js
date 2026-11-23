@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
-import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, ensureTextTemplateSchema, parseAutoChain, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, isProcessPlusKind, ensureTextTemplateSchema, parseAutoChain, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { STEPS } from './steps.js';
 import { BMS_TEMPLATE_ID, bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { dueMarkEntries, ataReady, ataSendVars, nameVars, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
@@ -150,7 +150,7 @@ export async function findTargets(db, { nowMs, days, startDate, kind = AUTO_KIND
   let lower = addDays(upper, -CATCH_UP_DAYS);
   if (startDate && startDate > lower) lower = startDate;
   if (lower > upper) return [];
-  if (kind === AUTO_KIND_PROCESS) return processStartTargets(db, { step, lower, upper });
+  if (isProcessPlusKind(kind)) return processDateTargets(db, { step, column: kind === AUTO_KIND_PROCESS_COMPLETED ? 'completed_at' : 'started_at', lower, upper });
   const out = await db.execute({
     sql: kind === 'order_plus_days'
       ? `SELECT id, phone, client_name, LEFT(order_date, 10) AS ship_day FROM orders
@@ -172,25 +172,26 @@ export async function findTargets(db, { nowMs, days, startDate, kind = AUTO_KIND
   return targets;
 }
 
-// 공정 시작 후 N일(2026-11-18): 기준일 = 공정(step) started_at(UTC ISO)의 KST 날짜. 취소 주문·전화 없음(TARGET_RE)은 제외한다. 되돌려서 started_at 이 비면 대상에서 빠진다.
-// started_at 은 TEXT(UTC ISO)라 ISO 형식만 보고, KST 날짜 경계는 아래에서 JS 로 정확히 거른다.
+// 공정 시작·완료 후 N일: 기준일 = 공정(step) started_at 또는 completed_at(UTC ISO)의 KST 날짜. 취소 주문·전화 없음(TARGET_RE) 제외.
+// 날짜 칸은 TEXT(UTC ISO)라 ISO 형식만 보고, KST 날짜 경계는 아래에서 JS 로 정확히 거른다.
 const ISO_RE = '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.0-9]*Z$'; // SQL 안에 ? 를 쓰지 않는다(db.js 가 ? 를 모두 자리표시자로 바꾼다)
-async function processStartTargets(db, { step, lower, upper }) {
+async function processDateTargets(db, { step, column, lower, upper }) {
   if (!STEPS.includes(step)) return [];
+  const col = column === 'completed_at' ? 'completed_at' : 'started_at';
   const fromIso = new Date(Date.parse(`${lower}T00:00:00Z`) - 9 * 3600000).toISOString(); // lower 00:00 KST
   const toIso = new Date(Date.parse(`${addDays(upper, 1)}T00:00:00Z`) - 9 * 3600000).toISOString(); // upper 다음 날 00:00 KST(미포함)
   const out = await db.execute({
-    sql: `SELECT o.id AS id, o.phone AS phone, o.client_name AS client_name, p.started_at AS started_at FROM processes p JOIN orders o ON o.id = p.order_id
-      WHERE p.step_name = ? AND p.started_at IS NOT NULL AND p.started_at ~ '${ISO_RE}' AND p.started_at >= ? AND p.started_at < ? AND COALESCE(o.status, '') <> 'cancelled'
-      ORDER BY p.started_at ASC, o.id ASC LIMIT ${TARGET_LIMIT}`,
+    sql: `SELECT o.id AS id, o.phone AS phone, o.client_name AS client_name, p.${col} AS target_at FROM processes p JOIN orders o ON o.id = p.order_id
+      WHERE p.step_name = ? AND p.${col} IS NOT NULL AND p.${col} ~ '${ISO_RE}' AND p.${col} >= ? AND p.${col} < ? AND COALESCE(o.status, '') <> 'cancelled'
+      ORDER BY p.${col} ASC, o.id ASC LIMIT ${TARGET_LIMIT}`,
     args: [step, fromIso, toIso],
   });
   const seen = new Set();
   const targets = [];
   for (const row of out.rows || []) {
-    const startedMs = Date.parse(row.started_at);
-    if (!Number.isFinite(startedMs)) continue;
-    const day = kstDate(startedMs);
+    const targetMs = Date.parse(row.target_at ?? row[col]);
+    if (!Number.isFinite(targetMs)) continue;
+    const day = kstDate(targetMs);
     if (day < lower || day > upper) continue;
     const phone = digits(row.phone);
     if (!TARGET_RE.test(phone) || seen.has(phone)) continue;
@@ -323,7 +324,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   const blocked = adCheckOf(template); // ③
   if (blocked) return { ...out, reason: blocked };
   if (!isAutoKind(template.auto_kind) || !daysOk(template)) return { ...out, reason: 'no_auto' };
-  if (template.auto_kind === AUTO_KIND_PROCESS && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' }; // 공정 시작 후 N일은 공정이 있어야 한다
+  if (isProcessPlusKind(template.auto_kind) && !STEPS.includes(template.auto_step)) return { ...out, reason: 'no_step' }; // 공정 시작·완료 후 N일은 공정이 있어야 한다
 
   const vendor = provider || getSendProvider();
   const from = digits(template.auto_chain?.from) || digits(env.SMS_SENDER); // 연쇄 문구는 자기 발신번호(Make 와 같게)
@@ -491,7 +492,7 @@ export async function runAutoSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;
   await ensureTextTemplateSchema(db);
   await sweepStaleClaims(db, nowMs);
-  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'process_started_plus_days') AND COALESCE(auto_send_time, '') = '' ORDER BY id ASC", args: [] });
+  const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'process_completed_plus_days') AND COALESCE(auto_send_time, '') = '' ORDER BY id ASC", args: [] });
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS; // 전체 마감 시각 하나를 문구마다 넘긴다
   for (const row of list.rows || []) {
@@ -513,7 +514,7 @@ export async function runTimedSendAll(deps = {}) {
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   if (kstMinutes(nowMs) < 9 * 60) return total; // 가장 이른 시각(09:00) 전에는 조회도 하지 않는다
   await ensureTextTemplateSchema(db);
-  const list = await db.execute({ sql: "SELECT id, auto_kind, auto_send_time FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'due_date', 'ship_scheduled', 'ship_or_due') AND COALESCE(auto_send_time, '') <> '' ORDER BY id ASC", args: [] });
+  const list = await db.execute({ sql: "SELECT id, auto_kind, auto_send_time FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'process_completed_plus_days', 'due_date', 'ship_scheduled', 'ship_or_due') AND COALESCE(auto_send_time, '') <> '' ORDER BY id ASC", args: [] });
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS;
   for (const row of list.rows || []) {
     if (!inTimedWindow(row.auto_send_time, nowMs)) continue;
@@ -547,7 +548,7 @@ export async function autoStatus(db, { id, nowMs = Date.now(), env = process.env
     const startDate = template.auto_start_date || addDays(today, -template.auto_days);
     todayTargets = (await eligibleTargets(db, template, { nowMs, startDate })).length;
   }
-  const reason = !isAutoKind(template.auto_kind) ? 'no_auto' : (template.auto_kind === AUTO_KIND_PROCESS && !STEPS.includes(template.auto_step) ? 'no_step' : adCheckOf(template));
+  const reason = !isAutoKind(template.auto_kind) ? 'no_auto' : (isProcessPlusKind(template.auto_kind) && !STEPS.includes(template.auto_step) ? 'no_step' : adCheckOf(template));
   return reply(200, withEffective({
     enabled: template.auto_enabled && autoSettings(env).on, no_provider: !getSendProvider() || !hasSolapiCredentials(), ata_backoff: false, failed_7d: failed7, auto_skip_reason: template.auto_skip_reason || '', cron_last_run: await cronLastRun(db), days: template.auto_days, start_date: template.auto_start_date || '',
     today_targets: todayTargets, sent_7d: sent7, sent_total: count('sent'), failed_total: count('failed'), uncertain_total: count('uncertain') + count('claimed'),
@@ -672,7 +673,7 @@ export async function autoMarkSent(body, { db } = {}) {
         for (const orderId of ids) entries.push({ phone, hash, key: `${hash}:${orderId}:${template.auto_kind}` });
       }
     } else {
-      const word = template.auto_kind === AUTO_KIND ? 'ship' : 'order'; // smsEventSend.js dayWord 와 같은 규칙
+      const word = template.auto_kind === AUTO_KIND ? 'ship' : template.auto_kind === AUTO_KIND_PROCESS ? 'pstart' : template.auto_kind === AUTO_KIND_PROCESS_COMPLETED ? 'pdone' : 'order'; // smsEventSend.js dayWord 와 같은 규칙
       for (const phone of list) { const hash = eventPhoneHash(phone); entries.push({ phone, hash, key: `${hash}:${word}` }); }
     }
     keyCount = entries.length;
@@ -747,7 +748,7 @@ export async function autoToggle(body, { db, provider, env = process.env, nowMs 
   }
   if (isInfoTemplate(template)) { await ensureEventSchema(db); return eventToggleOn(body, template, { db, provider, env, nowMs, kakao, kakaoOpts }); } // 안내 문구는 새 모듈
   if (!isAutoKind(template.auto_kind) || !daysOk(template)) return errorReply(400, '자동 발송이 설정된 문구가 아닙니다.', { reason: 'no_auto' });
-  if (template.auto_kind === AUTO_KIND_PROCESS && !STEPS.includes(template.auto_step)) return errorReply(400, '공정을 골라야 켤 수 있습니다.', { reason: 'no_step' });
+  if (isProcessPlusKind(template.auto_kind) && !STEPS.includes(template.auto_step)) return errorReply(400, '공정을 골라야 켤 수 있습니다.', { reason: 'no_step' });
   const blocked = adCheckOf(template);
   if (blocked) return errorReply(400, blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.', { reason: blocked });
   if (!autoSettings(env).on) return errorReply(503, '자동 발송이 꺼져 있습니다.');

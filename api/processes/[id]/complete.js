@@ -8,6 +8,7 @@ import { ensureShippingSheetSyncSchema } from '../../_lib/shippingSheetSyncSchem
 import { ensureShippingProcessUniqueIndex } from '../../_lib/ensureShippingProcess.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 import { canWorkerAccessDepartment } from '../../../shared/workerAccess.js';
+import { triggerProcessCompletedAutoSends } from '../../_lib/smsEventSend.js';
 
 async function defaultNotify(db, order, milestone) {
   const { maybeNotify } = await import('../../_lib/notify.js');
@@ -39,6 +40,7 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
   const notifyInternalCompletion = dependencies.notifyInternalCompletion || defaultInternalCompletionNotify;
   const ensureShippingIndex = dependencies.ensureShippingProcessUniqueIndex || ensureShippingProcessUniqueIndex;
   const ensureShippingSchema = dependencies.ensureShippingSheetSyncSchema || ensureShippingSheetSyncSchema;
+  const runProcessCompletedAutoSends = dependencies.triggerProcessCompletedAutoSends || triggerProcessCompletedAutoSends;
   const requestBody = req.body || {};
   const { completed_date, start_next_step, assigned_worker } = requestBody;
 
@@ -345,6 +347,14 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
       await notify(db, committed.shipped_order, 'shipped');
     } catch (e) {
       console.error('[complete] shipped 알림 발송 실패(무시):', e?.message || e);
+    }
+  }
+  if (order) {
+    const completedSteps = [process.step_name, ...completedIntermediateStepNames].filter(Boolean);
+    try {
+      await runProcessCompletedAutoSends(db, completedSteps);
+    } catch (e) {
+      console.error('[complete] 공정 완료 자동 발송 실패(무시):', e?.message || e);
     }
   }
 

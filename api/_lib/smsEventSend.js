@@ -7,7 +7,7 @@ import { getSendProvider } from './sendProvider.js';
 import { staffDirectory, multiPartTimeShort, templateVariableNames, waitBeforePart } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
-import { ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, LEAD_KINDS, parseAutoChain, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, isProcessPlusKind, LEAD_KINDS, parseAutoChain, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
@@ -231,7 +231,7 @@ async function leadCandidatesFor(db, template, { nowMs, preview }) {
 // 출고·주문 후 N일 + 알림톡 후보(읽기만): 대상 조회(findTargets)를 재사용. KST 기준일(출고일·주문일) + N일 이 오늘 − 3일 ~ 오늘이고(2026-11-18: 그날 하루만이 아니라 3일 안은 다시 시도, 중복은 dedupe 키가 막는다),
 // 기준일 + N일 이 켠 날 이상인 것만(켜기 전에 이미 지난 분은 보내지 않는다). 수신거부 번호 제외. 키 = 해시:ship | 해시:order (번호당 평생 1번).
 // 출고 완료 후는 '이미 출고된 주문 1회 발송'(catchup)이 켜져 시각이 됐으면 출고일 범위의 출고분도 같은 키(해시:ship)로 더한다 → 나중 자동 발송과 겹치지 않는다.
-const dayWord = template => (template.auto_kind === AUTO_KIND_SHIP ? 'ship' : 'order');
+const dayWord = template => (template.auto_kind === AUTO_KIND_SHIP ? 'ship' : template.auto_kind === AUTO_KIND_PROCESS ? 'pstart' : template.auto_kind === AUTO_KIND_PROCESS_COMPLETED ? 'pdone' : 'order');
 async function optoutHashes(db) {
   await ensureAutoSchema(db);
   return new Set(((await db.execute({ sql: 'SELECT phone_hash FROM sms_optouts', args: [] })).rows || []).map(row => row.phone_hash));
@@ -244,8 +244,8 @@ async function dayCandidatesFor(db, template, { nowMs, preview, catchupOnly }) {
   const optouts = await optoutHashes(db);
   const items = [];
   const keys = new Set();
-  if (!catchupOnly && Number.isFinite(enabledMs) && (days >= 1 || (days === 0 && template.auto_kind === 'order_plus_days'))) { // 주문 후 0일 = 주문일 당일(S2). 출고 후는 1일 이상만
-    for (const target of await findTargets(db, { nowMs, days, startDate: addDays(today, -days - DAY_CATCH_UP), kind: template.auto_kind })) {
+  if (!catchupOnly && Number.isFinite(enabledMs) && (days >= 1 || (days === 0 && template.auto_kind === 'order_plus_days'))) { // 주문 후 0일 = 주문일 당일(S2). 출고·공정 후는 1일 이상만
+    for (const target of await findTargets(db, { nowMs, days, startDate: addDays(today, -days - DAY_CATCH_UP), kind: template.auto_kind, step: template.auto_step })) {
       const due = addDays(target.shipDate, days); // 예정일: 오늘부터 3일 전까지는 아직 안 나간 번호를 다시 시도한다(이미 보낸 번호·주문은 pending 의 키 조회가 뺀다)
       if (due > today || due < addDays(today, -DAY_CATCH_UP) || due < kstDate(enabledMs)) continue;
       if (optouts.has(autoPhoneHash(target.phone))) continue;
@@ -887,6 +887,40 @@ export async function runInstantSendAll(deps = {}) {
   return total;
 }
 
+// 공정 완료 직후(complete API): 방금 완료된 공정의 켜진 'process_completed' 문구를 크론 대기 없이 즉시 발송한다.
+// sms_event_sends 의 UNIQUE(template_id, dedupe_key) 멱등 선점이 5분 크론(runInstantSendAll)과 겹쳐도 중복 발송을 막는다.
+export async function triggerProcessCompletedAutoSends(db, completedStepNames = [], deps = {}) {
+  const steps = [...new Set((Array.isArray(completedStepNames) ? completedStepNames : []).filter(step => STEPS.includes(step)))];
+  const nowMs = deps.nowMs ?? Date.now();
+  const env = deps.env || process.env;
+  const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
+  if (!steps.length || !autoOn(env) || !inSendWindow(nowMs)) return total;
+  let list;
+  try {
+    list = await db.execute({
+      sql: `SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind = 'process_completed' AND auto_step IN (${placeholders(steps)}) ORDER BY id ASC`,
+      args: steps,
+    });
+  } catch (error) {
+    if (error?.code === '42703' || error?.code === '42P01') return total;
+    throw error;
+  }
+  if (!(list.rows || []).length) return total;
+  await ensureTextTemplateSchema(db);
+  await ensureEventSchema(db);
+  const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + 15000;
+  for (const row of list.rows) {
+    const template = await loadEventTemplate(db, Number(row.id));
+    if (!template) continue;
+    total.templates += 1;
+    const result = await runGuarded(db, template, () => runEventSend(template, { ...deps, db, nowMs, env, deadline }), deps.warn);
+    if (!result) { total.skipped += 1; continue; }
+    if (result.reason && !result.ran) total.skipped += 1;
+    for (const key of ['targets', 'claimed', 'sent', 'failed', 'uncertain']) total[key] += result[key];
+  }
+  return total;
+}
+
 // ---- 화면 자료 ----
 export async function eventStatus(db, template, { nowMs = Date.now(), env = process.env, staff } = {}) {
   await ensureEventSchema(db);
@@ -920,7 +954,7 @@ export function eventNoProvider(template, env = process.env) {
   return !vendor || typeof (bms ? vendor.sendBmsEach : ata ? vendor.sendKakaoEach : vendor.sendEach) !== 'function' || !from || !hasSolapiCredentials();
 }
 
-const needsStep = kind => kind === 'process_started' || kind === 'process_completed';
+const needsStep = kind => kind === 'process_started' || kind === 'process_completed' || isProcessPlusKind(kind);
 const previewMode = template => (isInstantKind(template.auto_kind) || isLeadKind(template.auto_kind) || isDayAta(template)) && !template.auto_enabled; // 켜기 전 미리 보기
 // 080 줄이 없는 브랜드메시지(2026-11-18 사장님: 080 줄은 넣지 않는다): 막지 않고 경고만 남긴다(화면 '켜짐 · 080 수신거부 줄 필요').
 export const eventWarnReason = template => (isBmsTemplate(template) && bmsOptoutCheck(template.body) ? 'no_optout_080' : '');

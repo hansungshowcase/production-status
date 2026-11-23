@@ -83,15 +83,16 @@ const KIND_AUTO = {
   order_plus_days: { days: 3 },
   process_started: { step: '도면설계' },
   process_completed: { step: '포장' },
+  process_started_plus_days: { days: 2, step: '설비작업' },
+  process_completed_plus_days: { days: 3, step: '설비작업' },
   ship_plus_days: { days: 3 },
   due_date: { offset: -2 },
   ship_scheduled: { offset: 0 },
   ship_or_due: { offset: 1 },
 };
 
-test('점검표: 화면의 모든 자동 발송 조건(10종)이 알림톡 가능 목록과 일치한다', () => {
-  // process_started_plus_days(2026-11-18)는 광고 문자 전용이라 알림톡이 없다(저장 때 no_ata 로 거절, tests/sms-process-plus-1118.test.mjs). 나머지 10종은 종전 그대로 대조한다.
-  const ataKinds = [...AUTO_KINDS].filter(kind => kind !== 'process_started_plus_days');
+test('점검표: 화면의 모든 자동 발송 조건(12종)이 알림톡 가능 목록과 일치한다', () => {
+  const ataKinds = [...AUTO_KINDS];
   assert.deepEqual(Object.keys(KIND_AUTO).sort(), ataKinds.sort());
   assert.deepEqual(Object.keys(ATA_CONDITIONS).sort(), ataKinds.sort());
 });
@@ -111,7 +112,7 @@ for (const [kind, extra] of Object.entries(KIND_AUTO)) {
     const orderVar = await saveTextTemplate(db, { name: `b-${kind}`, body: '#{주문번호} 안내', auto: { kind, ...extra, ata_template: 'KA01TP1' } }, { staff: [] });
     assert.equal(orderVar.status, 400); assert.equal(orderVar.body.reason, 'info_unknown_var');
     assert.equal((await saveTextTemplate(db, { name: `c-${kind}`, body: BODY, auto: { kind, ...extra, ata_template: 'bad id!' } }, { staff: [] })).status, 400);
-    if (kind !== 'member_joined' && kind !== 'lead_plus_days' && !['order_plus_days', 'ship_plus_days'].includes(kind)) {
+    if (kind !== 'member_joined' && kind !== 'lead_plus_days' && !['order_plus_days', 'ship_plus_days', 'process_started_plus_days', 'process_completed_plus_days'].includes(kind)) {
       const staff = await saveTextTemplate(db, { name: `d-${kind}`, body: BODY, auto: { kind, ...extra, audience: 'staff', staff: ['s1'], ata_template: 'KA01TP1' } }, { staff: [{ id: 's1', name: '직원', phone: '01099998888' }] });
       assert.equal(staff.status, 400); assert.equal(staff.body.reason, 'ata_customer_only');
     }

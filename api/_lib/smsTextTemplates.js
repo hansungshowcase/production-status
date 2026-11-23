@@ -7,10 +7,11 @@ import { STEPS } from './steps.js';
 export const TEXT_TEMPLATE_LIMITS = Object.freeze({ name: 40, bodyBytes: 2000, count: 100, images: 3, autoDaysMax: 365 });
 export const AUTO_KIND = 'ship_plus_days';
 // 기준 사건: 출고 완료 후 / 주문 등록 후(2026-11-13 더함)
-export const AUTO_KINDS = Object.freeze(['ship_plus_days', 'order_plus_days', 'process_started_plus_days']);
-// 2026-11-18(20:45): 'process_started_plus_days' = 공정(auto_step) 시작일(processes.started_at, KST) + N일. 광고 문자 갈래(sms_auto_sends)를 타며 알림톡·일괄 발송은 없다.
+export const AUTO_KINDS = Object.freeze(['ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'process_completed_plus_days']);
+// 2026-11-18(20:45): 'process_started_plus_days' / 'process_completed_plus_days' = 공정 시작·완료일(KST) + N일.
 export const AUTO_KIND_PROCESS = 'process_started_plus_days';
-export const isProcessPlusKind = kind => kind === AUTO_KIND_PROCESS;
+export const AUTO_KIND_PROCESS_COMPLETED = 'process_completed_plus_days';
+export const isProcessPlusKind = kind => kind === AUTO_KIND_PROCESS || kind === AUTO_KIND_PROCESS_COMPLETED;
 export const isAutoKind = kind => AUTO_KINDS.includes(kind);
 // 2단계-가(2026-11-13): 기준일형(납기일·출고예정일 기준) — 항상 안내(info) 문구
 // 3단계-가(설계 17절): 'ship_or_due' = 출고예정일(없으면 납기일) 기준
@@ -41,6 +42,8 @@ export const ATA_CONDITIONS = Object.freeze({
   order_plus_days: '주문 등록 후: 대상=findTargets(order_plus_days)',
   process_started: '공정 시작 시: 대상=processes.started_at 창(instantCandidates)',
   process_completed: '공정 완료 시: 대상=processes.completed_at 창(instantCandidates)',
+  process_started_plus_days: '공정 시작 후: 대상=findTargets(process_started_plus_days)',
+  process_completed_plus_days: '공정 완료 후: 대상=findTargets(process_completed_plus_days)',
   ship_plus_days: '출고 완료 후: 대상=findTargets(ship_plus_days)',
   due_date: '납기일 기준: 대상=candidates(기준일형)',
   ship_scheduled: '출고예정일 기준: 대상=candidates(기준일형)',
@@ -248,12 +251,14 @@ function readAutoBase(input, staff) {
   if (!isAutoKind(input.auto.kind)) return { error: '자동 발송 종류가 올바르지 않습니다.' };
   const days = Number(input.auto.days);
   const minDays = input.auto.kind === 'order_plus_days' ? 0 : 1; // 주문 등록 후는 0일(당일) 허용(2026-11-19)
-  const when = input.auto.kind === AUTO_KIND ? '출고' : isProcessPlusKind(input.auto.kind) ? '공정 시작' : '주문';
+  const when = input.auto.kind === AUTO_KIND ? '출고' : input.auto.kind === AUTO_KIND_PROCESS ? '공정 시작' : input.auto.kind === AUTO_KIND_PROCESS_COMPLETED ? '공정 완료' : '주문';
   if (!(Number.isInteger(days) && days >= minDays && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `${when} 후 일수는 ${minDays}~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
-  if (isProcessPlusKind(input.auto.kind)) { // 공정 시작 후 N일(2026-11-18): 광고 문자 갈래. 공정 필수, 알림톡·일괄 발송·반복은 없다.
+  if (isProcessPlusKind(input.auto.kind)) { // 공정 시작·완료 후 N일: 공정 필수. 알림톡·브랜드메시지는 정보성(info) 경로, 미선택 시 광고 문자 갈래.
     const step = typeof input.auto.step === 'string' ? input.auto.step.trim() : '';
     if (!STEPS.includes(step)) return { error: '공정을 골라 주세요.' };
-    if (typeof input.auto.ata_template === 'string' && input.auto.ata_template.trim()) return { error: '공정 시작 후 N일은 알림톡을 쓸 수 없습니다.', reason: 'no_ata' };
+    const picked = readAta(input.auto, typeof input.body === 'string' ? input.body : '', input.auto.kind);
+    if (picked.error) return picked;
+    if (picked.ata) return { kind: input.auto.kind, days, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, step, msg_type: 'info', ata: picked.ata, catchup_from: '', catchup_at: '', catchup_daily: null };
     const rawFrom = input.auto.send_from;
     let sendFrom = null;
     if (rawFrom !== undefined && rawFrom !== null && rawFrom !== '') {

@@ -4,7 +4,7 @@ import { IMAGE_MAX_BYTES, shrinkImage, textInfo } from './sendPanelModel.js';
 import { getKstToday } from '../../utils/dateUtils.js';
 import {
   BMS_TEMPLATE_ID, isBmsAta, AUTO_DEFAULT_DAYS, AUTO_DEFAULT_INTERVAL, AUTO_DEFAULT_REPEAT,
-  AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE,
+  AUTO_KIND, AUTO_KIND_ORDER, AUTO_KIND_PROCESS_PLUS, AUTO_KIND_PROCESS_COMPLETED_PLUS, isProcessPlusKind, AUTO_KIND_DUE, AUTO_KIND_SHIP_PLAN, AUTO_KIND_SHIP_OR_DUE,
   AUDIENCE_SALES, AUTO_KIND_ORDER_CREATED, AUTO_KIND_PROCESS_STARTED, AUTO_KIND_PROCESS_COMPLETED,
   AUTO_KIND_MEMBER_JOINED, AUTO_KIND_LEAD_PLUS, AUDIENCE_STAFF, IMAGE_MAX, DAY_OFF_OPTIONS,
   mergeLayout, autoVariables, bodyVarNames, previewFill, isAdKind, isDateKind, isImmediateKind,
@@ -241,7 +241,6 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     }
   };
   const pickChannel = mode => {
-    if (mode !== 'sms' && autoKind === AUTO_KIND_PROCESS_PLUS) return;
     if (mode === 'sms') {
       setAtaSelected(false);
       pickAta('');
@@ -276,12 +275,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   };
   const pickAutoKind = nextKind => {
     setAutoKind(nextKind);
-    if (nextKind === AUTO_KIND_PROCESS_PLUS && (ataTemplate || ataSelected)) {
-      setAtaSelected(false);
-      pickAta('');
-    }
-    if ((nextKind === AUTO_KIND || nextKind === AUTO_KIND_PROCESS_PLUS) && (days === '0' || days === '')) {
-      setDays('2');
+    if ((nextKind === AUTO_KIND || isProcessPlusKind(nextKind)) && (days === '0' || days === '')) {
+      setDays(nextKind === AUTO_KIND_PROCESS_COMPLETED_PLUS ? '3' : '2');
     }
   };
   const toggleDayOff = dayId => {
@@ -602,8 +597,6 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               type="button"
               className={`stf-ch-card${channelMode === 'ata' ? ' is-active' : ''}`}
               aria-pressed={channelMode === 'ata'}
-              disabled={autoKind === AUTO_KIND_PROCESS_PLUS}
-              title={autoKind === AUTO_KIND_PROCESS_PLUS ? '공정 시작 후 조건은 문자로만 보낼 수 있습니다' : ''}
               onClick={() => pickChannel('ata')}
             >
               <span className="stf-ch-title">카카오 알림톡</span>
@@ -614,8 +607,6 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               type="button"
               className={`stf-ch-card${channelMode === 'bms' ? ' is-active' : ''}`}
               aria-pressed={channelMode === 'bms'}
-              disabled={autoKind === AUTO_KIND_PROCESS_PLUS}
-              title={autoKind === AUTO_KIND_PROCESS_PLUS ? '공정 시작 후 조건은 문자로만 보낼 수 있습니다' : ''}
               onClick={() => pickChannel('bms')}
             >
               <span className="stf-ch-title">카카오 브랜드메시지</span>
@@ -623,7 +614,6 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               <span className="stf-ch-desc">사진 1장 + 링크 버튼, 미친구는 장문문자 대체</span>
             </button>
           </div>
-          {autoKind === AUTO_KIND_PROCESS_PLUS ? <p className="stf-hint">공정 시작 후 조건은 일반 문자로만 발송할 수 있습니다.</p> : null}
           {channelMode === 'ata' ? (
             <div className="stf-subbox">
               <label htmlFor={`${formId}-ata`}>사용할 카카오 알림톡 템플릿</label>
@@ -663,6 +653,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                       <option value={AUTO_KIND_PROCESS_STARTED}>공정 시작 시 (바로 발송)</option>
                       <option value={AUTO_KIND_PROCESS_COMPLETED}>공정 완료 시 (바로 발송)</option>
                       <option value={AUTO_KIND_PROCESS_PLUS}>공정 시작 후 (N일 뒤)</option>
+                      <option value={AUTO_KIND_PROCESS_COMPLETED_PLUS}>공정 완료 후 (N일 뒤)</option>
                     </optgroup>
                     <optgroup label="출고·납기일 기준">
                       <option value={AUTO_KIND}>출고 완료 후 (N일 뒤)</option>
@@ -731,7 +722,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
                 </div>
               ) : null}
 
-              {dateKind || (immKind && autoKind !== AUTO_KIND_ORDER_CREATED && autoKind !== AUTO_KIND_MEMBER_JOINED) || autoKind === AUTO_KIND_PROCESS_PLUS ? (
+              {dateKind || (immKind && autoKind !== AUTO_KIND_ORDER_CREATED && autoKind !== AUTO_KIND_MEMBER_JOINED) || isProcessPlusKind(autoKind) ? (
                 <div className="stf-line">
                   <span className="stf-tag">{dateKind ? '공정 제외' : '기준 공정'}</span>
                   <div className="stf-cells">

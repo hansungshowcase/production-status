@@ -10,12 +10,12 @@ import {
 import { getSendProvider } from '../api/_lib/sendProvider.js';
 import { parseBmsConfig } from '../api/_lib/smsBms.js';
 import { bmsButtonsCheck } from '../shared/smsBmsLimits.js';
-import { eventPhoneHash, runGuarded } from '../api/_lib/smsEventSend.js';
+import { _resetEventSchemaForTest, eventPhoneHash, runGuarded, triggerProcessCompletedAutoSends } from '../api/_lib/smsEventSend.js';
 import { autoMarkSent } from '../api/_lib/smsAutoSend.js';
 import { handleSmsConsole } from '../api/sms-console.js';
 import { autoEffective } from '../shared/smsAutoEffective.js';
-import { groupFlows, flowStepText } from '../src/components/smsconsole/smsTemplateListModel.js';
-import { autoConditionLine, autoTargetText, buildSaveBody, validateTextForm, AUTO_KINDS as UI_KINDS } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
+import { buildConditionSummary, groupFlows, flowStepText } from '../src/components/smsconsole/smsTemplateListModel.js';
+import { autoConditionLine, autoTargetText, buildSaveBody, conditionTagForName, validateTextForm, AUTO_KINDS as UI_KINDS } from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 1, 2, 3]).toString('base64');
 const BODY = '(광고) 한성쇼케이스\n#{고객명} 대표님, 쇼케이스는 잘 쓰고 계신가요?\n무료수신거부 080-123-4567';
@@ -121,10 +121,11 @@ function fakeDb({ template = {}, orders = [], optouts = [], beforeInsert } = {})
       if (t.includes('FROM processes p JOIN orders o')) {
         (state.procCalls ||= []).push({ t, args });
         const [step, from, to] = args;
+        const col = t.includes('p.completed_at') ? 'completed_at' : 'started_at';
         const ISO = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(.[0-9]+)?Z$/;
-        const rows = (state.processes || []).filter(p => p.step_name === step && p.started_at && ISO.test(p.started_at) && p.started_at >= from && p.started_at < to)
+        const rows = (state.processes || []).filter(p => p.step_name === step && p[col] && ISO.test(p[col]) && p[col] >= from && p[col] < to)
           .map(p => ({ p, o: state.orders.find(x => x.id === p.order_id) })).filter(x => x.o && x.o.status !== 'cancelled')
-          .map(x => ({ id: x.o.id, phone: x.o.phone, client_name: x.o.client_name, started_at: x.p.started_at }));
+          .map(x => ({ id: x.o.id, phone: x.o.phone, client_name: x.o.client_name, target_at: x.p[col], [col]: x.p[col] }));
         return { rows };
       }
       if (t.startsWith('INSERT INTO sms_event_sends') && t.includes('make_migrated')) {
@@ -274,13 +275,16 @@ test('process_started_plus_days 발송: 번호당 1회 기록(sms_auto_sends), �
   assert.equal(noStep.reason, 'no_step');
 });
 
-test('process_started_plus_days 저장·켜기·상태: 공정 필수, 일수 1 이상, 알림톡 불가, 공정 없으면 막힘 표시', async () => {
+test('process_started_plus_days 저장·켜기·상태: 공정 필수, 일수 1 이상, 알림톡·브랜드메시지 허용, 공정 없으면 막힘 표시', async () => {
   const db = setup({});
   const ok = await saveTextTemplate(db, { name: '설비+2', body: PLAIN, auto: { kind: KIND, days: 2, step: '설비작업' } }, { staff: [] });
   assert.equal(ok.status, 201); assert.equal(ok.body.item.auto_kind, KIND); assert.equal(ok.body.item.auto_step, '설비작업'); assert.equal(ok.body.item.auto_days, 2);
   assert.equal((await saveTextTemplate(db, { name: '설비+2 b', body: PLAIN, auto: { kind: KIND, days: 2 } }, { staff: [] })).status, 400, '공정 필수');
   assert.equal((await saveTextTemplate(db, { name: '설비+2 c', body: PLAIN, auto: { kind: KIND, days: 0, step: '설비작업' } }, { staff: [] })).status, 400);
-  assert.equal((await saveTextTemplate(db, { name: '설비+2 d', body: PLAIN, auto: { kind: KIND, days: 2, step: '설비작업', ata_template: 'KA01TP1' } }, { staff: [] })).status, 400, '알림톡 불가');
+  const okAta = await saveTextTemplate(db, { name: '설비+2 ata', body: '#{고객명}님 안내', auto: { kind: KIND, days: 2, step: '설비작업', ata_template: 'KA01TP1' } }, { staff: [] });
+  assert.equal(okAta.status, 201, '공정 시작 후 N일도 알림톡 허용');
+  assert.equal(okAta.body.item.auto_ata_template, 'KA01TP1');
+  assert.equal(okAta.body.item.auto_step, '설비작업');
   const d2 = setup({});
   d2.state.tpl = { ...d2.state.tpl, ...procTpl({ auto_step: '', auto_enabled: true, images: JSON.stringify([JPG]), auto_chain: JSON.stringify(NO_AFTER) }) };
   const status = await autoStatus(d2, { id: 7, nowMs: NOW, env: ENV });
@@ -400,4 +404,106 @@ test('상태 집계: make_migrated 로 넣은 기록은 sent_total·last_sent_da
   db.state.sends.push({ id: 80, template_id: 7, phone_hash: phoneHash('01099990000'), order_id: 5, kst_date: '2026-11-19', status: 'sent', round: 1 });
   const status = await autoStatus(db, { id: 7, nowMs: NOW, env: ENV });
   assert.equal(status.body.sent_total, 1); assert.equal(status.body.last_sent_date, '2026-11-19');
+});
+
+// ---------- 6. process_completed_plus_days · 공정 완료 즉시 훅 · 화면 모델 ----------
+const KIND_DONE = 'process_completed_plus_days';
+
+test('process_completed_plus_days: 설비작업 완료일(KST)+3일=오늘(11-20) 매칭 및 completed_at NULL 제외, BMS_FREE autoStatus 동작', async () => {
+  const db = setup({ orders: [plain(1, '010-1111-0001'), plain(2, '010-1111-0002'), plain(3, '010-1111-0003')] });
+  db.state.processes = [
+    { order_id: 1, step_name: '설비작업', completed_at: '2026-11-16T15:00:00.000Z' }, // KST 11-17 00:00 (+3일 = 11-20)
+    { order_id: 2, step_name: '설비작업', completed_at: null }, // 미완료/되돌림
+    { order_id: 3, step_name: '설비작업', completed_at: '2026-11-17T15:00:00Z' }, // KST 11-18 00:00 (+3일 = 11-21 미래)
+  ];
+  const got = await findTargets(db, { nowMs: NOW, days: 3, startDate: '2026-10-01', kind: KIND_DONE, step: '설비작업' });
+  assert.deepEqual(got.map(t => [t.orderId, t.shipDate]), [[1, '2026-11-17']]);
+
+  _resetEventSchemaForTest();
+  _resetAutoSchemaForTest();
+  const evState = { eventRows: [] };
+  const evDb = {
+    async execute({ sql, args }) {
+      const t = sql.replace(/\s+/g, ' ').trim();
+      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE|SELECT MAX|SELECT conname)/.test(t)) return { rows: [{ last_run: null }] };
+      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_days')) {
+        return { rows: [{ id: 30, name: '블로그 설비완료+3', body: '리뷰 안내', image: null, images: null, auto_kind: KIND_DONE, auto_days: 3, auto_step: '설비작업', auto_enabled: true, auto_ata_template: 'BMS_FREE', auto_bms: JSON.stringify({ pfId: 'PF1', from: '0212345678', buttons: [{ name: '보기', link: 'https://a.kr' }] }), auto_enabled_at: '2026-11-19T00:00:00Z', auto_send_time: '12:00', auto_audience: 'customer', auto_staff: null, auto_msg_type: 'info' }] };
+      }
+      if (t.startsWith('SELECT status, COUNT(*) AS n, MAX(kst_date)')) return { rows: [] };
+      if (t.startsWith('SELECT status, COUNT(*) AS n FROM sms_event_sends')) return { rows: [] };
+      if (t.startsWith('SELECT phone_hash FROM sms_optouts')) return { rows: [] };
+      if (t.startsWith('SELECT dedupe_key FROM sms_event_sends')) return { rows: [] };
+      if (t.includes('FROM processes p JOIN orders o')) return { rows: [{ id: 1, phone: '010-1111-0001', client_name: '김철수', completed_at: '2026-11-16T15:00:00.000Z', target_at: '2026-11-16T15:00:00.000Z' }] };
+      throw new Error(`예상 못 한 SQL(evDb) ${t}`);
+    },
+  };
+  const st = await autoStatus(evDb, { id: 30, nowMs: NOW, env: ENV });
+  assert.equal(st.status, 200);
+  assert.equal(st.body.today_targets, 1);
+  assert.equal(st.body.enable_blocked_reason, 'no_optout_080');
+  assert.equal(autoEffective({ ...st.body, no_provider: false }, NOW).tone, 'part');
+  void evState;
+});
+
+test('triggerProcessCompletedAutoSends: 조립작업 완료 시 켜진 process_completed 문구를 즉시 발송하고 재호출 시 중복 0건', async () => {
+  _resetEventSchemaForTest();
+  _resetTextTemplateSchemaForTest();
+  const sends = [];
+  let nextId = 1;
+  const tplRow = {
+    id: 24, name: '유튜브 인터뷰(조립 완료)', body: '#{고객명}님 주문 #{주문번호} 조립 완료',
+    image: null, images: null, auto_kind: 'process_completed', auto_enabled: true, auto_offset: 0,
+    auto_unless_step: '', auto_audience: 'customer', auto_staff: null, auto_msg_type: 'info',
+    auto_step: '조립작업', auto_enabled_at: new Date(NOW - 3600000).toISOString(), auto_daily: '',
+    auto_weekdays: false, auto_unless_mode: 'completed', auto_days: 0, auto_ata_template: '',
+    auto_send_time: '', auto_catchup_from: '', auto_catchup_at: '', auto_catchup_daily: 0,
+    auto_catchup_done_at: null, auto_lead_source: '', auto_catchup_paused_at: null,
+    auto_catchup_error: '', auto_ata_fail_at: null, auto_bms: null, auto_skip_reason: '', auto_chain: null,
+  };
+  const db = {
+    async execute({ sql, args }) {
+      const t = sql.replace(/\s+/g, ' ').trim();
+      if (/^(CREATE TABLE|CREATE UNIQUE INDEX|ALTER TABLE)/.test(t)) return { rows: [] };
+      if (t.startsWith('SELECT id FROM sms_text_templates WHERE auto_enabled = true')) return { rows: args.includes('조립작업') ? [{ id: 24 }] : [] };
+      if (t.startsWith('SELECT id, name, body, image, images, auto_kind, auto_enabled')) return { rows: [tplRow] };
+      if (t.startsWith('SELECT dedupe_key FROM sms_event_sends WHERE template_id = ? AND dedupe_key IN')) return { rows: sends.filter(r => r.template_id === args[0] && args.slice(1).includes(r.dedupe_key)).map(r => ({ dedupe_key: r.dedupe_key })) };
+      if (t.startsWith('SELECT phone_hash FROM sms_optouts')) return { rows: [] };
+      if (t.startsWith('SELECT COUNT(*) AS n FROM sms_event_sends')) return { rows: [{ n: sends.length }] };
+      if (t.startsWith('SELECT id, track_token FROM orders')) return { rows: [] };
+      if (t.includes('FROM processes p JOIN orders o')) return { rows: [{ id: 88, phone: '010-2222-3333', client_name: '테스트', order_date: '2026-11-20', due_date: '2026-11-25', ship_scheduled_date: '2026-11-25', product_type: '쇼케이스', door_type: '양문형', width: 1200, depth: 700, height: 1800, quantity: 1, sales_person: '' }] };
+      if (t.startsWith('INSERT INTO sms_event_sends')) {
+        const rows = [];
+        for (let i = 0; i < args.length; i += 6) {
+          const [template_id, dedupe_key, order_id, phone_hash, , kst_date] = args.slice(i, i + 6);
+          if (sends.some(r => r.template_id === template_id && r.dedupe_key === dedupe_key)) continue;
+          const row = { id: nextId++, template_id, dedupe_key, order_id, phone_hash, kst_date, status: 'claimed' };
+          sends.push(row);
+          rows.push({ id: row.id, dedupe_key });
+        }
+        return { rows };
+      }
+      if (t.startsWith('UPDATE sms_event_sends SET status = ?')) { const [status] = args; for (const r of sends) r.status = status; return { rows: [] }; }
+      throw new Error(`예상 못 한 SQL(hook) ${t}`);
+    },
+  };
+  const sentMsgs = [];
+  const provider = {
+    estimate: () => ({ unit: 45, total: 45 }),
+    async sendEach(input) { sentMsgs.push(...input.messages); return { accepted: input.messages.length, failed: 0, groupId: 'GH1', uncertain: false, error: '' }; },
+  };
+  const first = await triggerProcessCompletedAutoSends(db, ['조립작업'], { nowMs: NOW, env: ENV, provider });
+  assert.equal(first.sent, 1);
+  assert.equal(sentMsgs.length, 1);
+  const second = await triggerProcessCompletedAutoSends(db, ['조립작업'], { nowMs: NOW, env: ENV, provider });
+  assert.equal(second.sent, 0);
+  assert.equal(sentMsgs.length, 1, '이미 보낸 주문은 중복 발송하지 않는다');
+});
+
+test('화면 모델: process_completed_plus_days 조건 줄·대상 줄·요약·복제 이름 태그', () => {
+  const entry = { id: 30, autoKind: KIND_DONE, autoDays: 3, autoStep: '설비작업', autoSendTime: '12:00', autoAtaTemplate: 'BMS_FREE', autoEnabled: true, name: '블로그 리뷰' };
+  assert.match(autoConditionLine(entry), /공정 완료 후\(설비작업\) 3일 뒤/);
+  assert.match(autoTargetText(entry), /설비작업 공정 완료일\+3일=오늘/);
+  const summary = buildConditionSummary(entry, { isMine: true });
+  assert.equal(summary.whenMain, '설비작업 공정 완료 3일 뒤');
+  assert.equal(conditionTagForName({ autoKind: KIND_DONE, step: '설비작업', days: '3' }), '설비 완료+3일');
 });

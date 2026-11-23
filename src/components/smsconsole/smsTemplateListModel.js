@@ -262,7 +262,8 @@ export function conditionGroup(row) {
 
 // ---------- 흐름(기준 시점) 묶기: 같은 종류·받는 사람(·공정)의 자동 문구를 한 행으로 ----------
 const FLOW_LABELS = {
-  lead_plus_days: '가입·문의 후', ship_plus_days: '출고 완료 후', order_plus_days: '주문 등록 후', process_started_plus_days: '공정 시작 후',
+  lead_plus_days: '가입·문의 후', ship_plus_days: '출고 완료 후', order_plus_days: '주문 등록 후',
+  process_started_plus_days: '공정 시작 후', process_completed_plus_days: '공정 완료 후',
   due_date: '납기일', ship_scheduled: '출고예정일', ship_or_due: '출고·납기일',
   order_created: '주문 등록 시', process_started: '공정 시작 시', process_completed: '공정 완료 시', member_joined: '자사몰 회원가입 시',
 };
@@ -489,8 +490,9 @@ function buildMineConditionSummary(entry) {
   } else if (kind === 'order_plus_days') {
     whenMain = days === 0 ? '주문 등록 당일' : `주문 등록 ${days}일 뒤`;
     whenSub = `${timeText || '오전 10:00'} 발송`;
-  } else if (kind === 'process_started_plus_days') {
-    whenMain = `${step ? `${step} 공정 ` : '공정 '}시작 ${days === 0 ? '당일' : `${days}일 뒤`}`;
+  } else if (kind === 'process_started_plus_days' || kind === 'process_completed_plus_days') {
+    const verb = kind === 'process_completed_plus_days' ? '완료' : '시작';
+    whenMain = `${step ? `${step} 공정 ` : '공정 '}${verb} ${days === 0 ? '당일' : `${days}일 뒤`}`;
     whenSub = `${timeText || '오전 10:00'} 발송`;
   } else if (DATE_TRIGGER_KINDS.has(kind)) {
     const dateLabel = kind === 'ship_or_due' ? '출고·납기일' : (kind === 'ship_scheduled' ? '출고예정일' : '납기일');
@@ -580,7 +582,7 @@ function buildMineConditionSummary(entry) {
   if (entry.autoFrom) tags.push(`별도 발신번호: ${formatKoreanPhone(entry.autoFrom)}`);
 
   let howMain = '';
-  if (['ship_plus_days', 'order_plus_days', 'process_started_plus_days'].includes(kind)) {
+  if (['ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'process_completed_plus_days'].includes(kind)) {
     const rep = Number(entry.autoRepeat) || 1;
     const interval = Number(entry.autoInterval) || 30;
     howMain = rep > 1 ? `번호당 최대 ${rep}번 (${interval}일 간격)` : '번호당 1번만';
