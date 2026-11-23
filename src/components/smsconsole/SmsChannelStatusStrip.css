@@ -138,6 +138,20 @@
   font-weight: 600;
 }
 
+.scss-sub-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f2f4f6;
+  color: #333d4b;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .scss-warn-text {
   margin: 0;
   font-size: 12.5px;
@@ -339,17 +353,21 @@
 .scss-issue-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 2px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
 }
 
 .scss-issue-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  min-height: 26px;
-  padding: 2px 9px;
-  border-radius: 6px;
+  gap: 6px;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  line-height: 1;
+  padding: 0 10px;
+  border-radius: 7px;
   border: 1px solid #d5dbe1;
   background: #f8fafc;
   color: #191f28;
@@ -358,19 +376,50 @@
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.scss-issue-chip strong {
+.scss-issue-name {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.scss-issue-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 12px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.scss-issue-arrow {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.scss-issue-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  flex: none;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
 }
 
 .scss-issue-chip--danger {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #b91c1c;
+  background: #fff1f2;
+  border: 1.5px solid #ef4444;
+  color: #991b1b;
 }
 .scss-issue-chip--danger:hover { background: #fee2e2; }
+.scss-issue-chip--danger .scss-issue-count { background: #dc2626; color: #ffffff; }
+.scss-issue-chip--urgent { box-shadow: 0 1px 4px rgba(220, 38, 38, 0.14); }
 
 .scss-issue-chip--warn {
   background: #fffbeb;
@@ -378,6 +427,7 @@
   color: #b45309;
 }
 .scss-issue-chip--warn:hover { background: #fef3c7; }
+.scss-issue-chip--warn .scss-issue-count { background: #fef3c7; color: #92400e; }
 
 .scss-issue-chip--info {
   background: #eef4ff;
@@ -385,19 +435,25 @@
   color: #1b64da;
 }
 .scss-issue-chip--info:hover { background: #dbeafe; }
+.scss-issue-chip--info .scss-issue-count { background: #dbeafe; color: #1d4ed8; }
 
 .scss-issue-chip.is-active { box-shadow: 0 0 0 2px rgba(25, 31, 40, 0.14); }
 .scss-issue-chip--danger.is-active { background: #dc2626; border-color: #b91c1c; color: #ffffff; }
 .scss-issue-chip--warn.is-active { background: #d97706; border-color: #b45309; color: #ffffff; }
 .scss-issue-chip--info.is-active { background: #1d4ed8; border-color: #1e40af; color: #ffffff; }
+.scss-issue-chip.is-active .scss-issue-count { background: rgba(255, 255, 255, 0.22); color: #ffffff; }
+.scss-issue-chip.is-active .scss-issue-dot { background: #ffffff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.28); }
 
 .scss-issue-ok {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  margin-top: 2px;
-  padding: 3px 10px;
-  border-radius: 6px;
+  height: 32px;
+  min-height: 32px;
+  box-sizing: border-box;
+  margin-top: 5px;
+  padding: 0 12px;
+  border-radius: 7px;
   background: #ecfdf3;
   border: 1px solid #86efac;
   color: #15803d;

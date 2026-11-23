@@ -120,7 +120,7 @@ export default function SmsChannelStatusStrip({
           <div className="scss-label-row">
             <span className="scss-label">지금 확인할 이슈</span>
             {autoStats ? (
-              <span className="scss-sub-inline">
+              <span className="scss-sub-pill">
                 켜짐 {onCount}개 / 전체 {totalCount}개{isKakao ? ` (알림톡 ${ataOn} · 브랜드 ${bmsOn})` : ''}
               </span>
             ) : (
@@ -133,13 +133,15 @@ export default function SmsChannelStatusStrip({
                 <button
                   key={item.key}
                   type="button"
-                  className={`scss-issue-chip scss-issue-chip--${item.tone || 'warn'}${item.active ? ' is-active' : ''}`}
+                  className={`scss-issue-chip scss-issue-chip--${item.tone || 'warn'}${item.key === 'today-failed' ? ' scss-issue-chip--urgent' : ''}${item.active ? ' is-active' : ''}`}
                   aria-pressed={Boolean(item.active)}
                   onClick={() => (item.onClick ? item.onClick() : onAttentionClick?.())}
                   title={item.hint || undefined}
                 >
-                  <span>{item.label}</span>
-                  <strong>{item.count}건 →</strong>
+                  {item.tone === 'danger' ? <span className="scss-issue-dot" aria-hidden="true" /> : null}
+                  <span className="scss-issue-name">{item.label}</span>
+                  <strong className="scss-issue-count">{item.count}건</strong>
+                  <span className="scss-issue-arrow" aria-hidden="true">→</span>
                 </button>
               ))}
             </div>

@@ -197,9 +197,10 @@
 .ktm-cards:has(> .ktm-card--slim) { gap: 5px; }
 .ktm-light,
 .ktm-root .stl-light {
-  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
-  padding: 2px 9px; border-radius: 999px; background: #f2f4f6; border: 1px solid #d5dbe1;
-  font-size: 12.5px; font-weight: 800; line-height: 18px; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto;
+  height: 24px; min-height: 24px; min-width: 60px; box-sizing: border-box;
+  padding: 0 9px; border-radius: 999px; background: #f2f4f6; border: 1px solid #d5dbe1;
+  font-size: 12.5px; font-weight: 800; line-height: 1; white-space: nowrap;
 }
 .ktm-light::before,
 .ktm-root .stl-light::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: none; }
@@ -337,12 +338,12 @@
 .ktm-root .stl-lb-img--contain { max-width: 100%; max-height: calc(100vh - 104px); width: auto; height: auto; margin: auto 0; }
 
 /* ============ 카카오톡 템플릿 통일 레이아웃(.ktm-kakao) ============ */
-.ktm-kakao .ktm-ata-item { display: flex; align-items: stretch; }
-.ktm-kakao .ktm-ata-item .stl-item-btn { flex: 1 1 auto; min-width: 0; padding-right: 4px; }
-.ktm-kakao .ktm-ata-item .ktm-menu-wrap { padding: 3px 3px 0 0; align-items: flex-start; }
-.ktm-kakao .ktm-ata-item .ktm-more { width: 28px; height: 28px; }
+.ktm-kakao .stl-list-card .stl-item { position: relative; display: block; }
+.ktm-kakao .stl-list-card .stl-item .stl-item-btn { width: 100%; box-sizing: border-box; padding: 8px 36px 8px 10px; }
+.ktm-kakao .ktm-ata-item .ktm-menu-wrap { position: absolute; top: 8px; right: 6px; padding: 0; align-items: center; }
+.ktm-kakao .ktm-ata-item .ktm-more { width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .ktm-kakao .stl-item-top .ktm-card-name {
-  flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 700; line-height: 1.32;
+  flex: 1 1 auto; min-width: 0; padding-top: 2px; font-size: 14px; font-weight: 700; line-height: 1.32;
   letter-spacing: -0.015em; color: #111827; overflow-wrap: anywhere; word-break: keep-all;
   display: block; -webkit-line-clamp: unset;
 }
@@ -460,5 +461,6 @@
 }
 .ktm-kakao .ktm-id code { word-break: break-all; font-size: 11.5px; }
 @media (max-width: 1023px) {
+  .ktm-kakao .stl-list-card .stl-item .stl-item-btn { padding-right: 48px; }
   .ktm-kakao .ktm-ata-item .ktm-more { width: 40px; height: 40px; }
 }

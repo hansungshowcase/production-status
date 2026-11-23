@@ -236,8 +236,9 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
   const claimedOrder = new Set(claimed.map(row => `${Number(row.order_id)}|${roundOf(row)}`));
   const sentHash = new Set(claimed.filter(row => row.status === 'sent').map(row => `${row.phone_hash}|${roundOf(row)}`));
   const sentRounds = new Set(claimed.filter(row => row.status === 'sent').map(roundOf));
-  const lastByHash = new Map(); // 출고 후 문구만: 번호별 이 문구의 가장 최근 기록일(failed 제외)
-  if (kind === AUTO_KIND) for (const row of claimed) { const d = String(row.kst_date || '').slice(0, 10); if (d && (!lastByHash.has(row.phone_hash) || d > lastByHash.get(row.phone_hash))) lastByHash.set(row.phone_hash, d); }
+  const repeatTracked = kind === AUTO_KIND || isProcessPlusKind(kind); // 출고·공정 후 반복 문구: 번호별 이 문구의 가장 최근 기록일(failed 제외)
+  const lastByHash = new Map();
+  if (repeatTracked) for (const row of claimed) { const d = String(row.kst_date || '').slice(0, 10); if (d && (!lastByHash.has(row.phone_hash) || d > lastByHash.get(row.phone_hash))) lastByHash.set(row.phone_hash, d); }
   const recentLimit = addDays(today, -Math.floor(interval / 2));
   const raw = [];
   for (let round = 1; round <= repeat; round += 1) {
@@ -260,8 +261,8 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
     if (chain?.after) { if (optouts.has(hash) || !(chainOk.event.has(eventPhoneHash(t.phone)) || chainOk.auto.has(hash))) return false; }
     else if (optouts.has(hash) || (!plainAd && todayHash.has(hash)) || bmsToday.has(eventPhoneHash(t.phone))) return false;
     if (claimedHash.has(`${hash}|${t.round}`) || claimedOrder.has(`${t.orderId}|${t.round}`)) return false;
-    if (kind === AUTO_KIND && t.round === 1 && lastByHash.has(hash)) return false; // 2026-11-19 이틀 연속 발송 3건: 일괄 발송 회차와 새 주문 1회차가 겹침 → 이 문구를 받은 번호는 새 주문 1회차를 받지 않는다
-    if (kind === AUTO_KIND && lastByHash.has(hash) && lastByHash.get(hash) > recentLimit) return false; // 2026-11-19 이틀 연속 발송 3건: 최근 기록이 간격의 절반 안이면 어느 회차든 보내지 않는다
+    if (repeatTracked && t.round === 1 && lastByHash.has(hash)) return false; // 2026-11-19 이틀 연속 발송 3건: 일괄 발송·기준 전환과 새 주문 1회차가 겹침 → 이 문구를 받은 번호는 새 주문 1회차를 받지 않는다
+    if (repeatTracked && lastByHash.has(hash) && lastByHash.get(hash) > recentLimit) return false; // 2026-11-19 이틀 연속 발송 3건: 최근 기록이 간격의 절반 안이면 어느 회차든 보내지 않는다
     return t.round === 1 || sentHash.has(`${hash}|${t.round - 1}`);
   });
   const byPhone = new Map();

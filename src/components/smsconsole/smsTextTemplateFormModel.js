@@ -387,8 +387,8 @@ export function buildSaveBody({ id, name, body, image, images, auto, chain }) {
     const o = autoBody(a);
     if (!o.kind) return o;
     const r = a.sendTime !== undefined ? { ...o, auto_send_time: hasSendTime(a.kind, a.days) && SEND_TIMES.includes(a.sendTime) ? a.sendTime : '' } : o;
-    // 사본 번호(2026-11-17): 값이 넘어왔을 때만 싣는다. 출고·주문 후 N일 문자(알림톡 제외)만 뜻이 있고 그 밖은 빈 값
-    return a.copyTo !== undefined ? { ...r, auto_copy_to: (a.kind === AUTO_KIND || a.kind === AUTO_KIND_ORDER) && !a.ataTemplate ? String(a.copyTo || '').replace(/\D/g, '') : '' } : r;
+    // 사본 번호(2026-11-17): 값이 넘어왔을 때만 싣는다. 출고·주문·공정 후 N일 문자(알림톡 제외)만 뜻이 있고 그 밖은 빈 값
+    return a.copyTo !== undefined ? { ...r, auto_copy_to: (a.kind === AUTO_KIND || a.kind === AUTO_KIND_ORDER || isProcessPlusKind(a.kind)) && !a.ataTemplate ? String(a.copyTo || '').replace(/\D/g, '') : '' } : r;
   };
   // 추가 옵션(auto_chain): chain 인자가 넘어왔을 때만 싣는다(기존 호출·단위 테스트와 서버 skip 계약 유지)
   const chainOut = () => {

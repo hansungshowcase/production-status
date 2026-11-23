@@ -355,7 +355,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const showAdvRepeat = Boolean((dayKind && !ataTemplate) || dateKind);
   const showAdvSales = Boolean(dateKind && audience !== AUDIENCE_SALES);
   const showAdvDaysOff = Boolean(dateKind);
-  const showAdvCopy = Boolean((autoKind === AUTO_KIND || autoKind === AUTO_KIND_ORDER) && !ataTemplate);
+  const showAdvCopy = Boolean(dayKind && !ataTemplate);
   const showAdvPlain = Boolean(autoKind && (!ataTemplate || chainPlain));
   const showAdvCatchup = autoKind === AUTO_KIND;
   const showAdvSection = showAdvSubject || showAdvFrom || showAdvRepeat || showAdvSales || showAdvDaysOff || showAdvCopy || showAdvPlain || (showAdvCatchup && catchupOn) || Boolean(chainAfter);

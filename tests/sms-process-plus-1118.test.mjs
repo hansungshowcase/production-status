@@ -676,3 +676,59 @@ test('triggerProcessStartedAutoSends: 설비작업 시작 시 켜진 process_sta
   assert.equal(second.sent, 0);
   assert.equal(sentMsgs.length, 1);
 });
+
+test('process_completed_plus_days 반복·간격·사본: 20일 뒤 50일 간격 10회 저장, 다회차 발송 및 기준 전환 중복 방지', async () => {
+  const db = setup({
+    orders: [
+      plain(1, '010-1111-0001'), // round 1 대상: 11-01 완료 -> +20일 = 11-21
+      plain(2, '010-1111-0002'), // round 2 대상: 09-12 완료 -> +70일 = 11-21 (아래에서 round 1 50일 전 기발송)
+      plain(3, '010-1111-0003'), // 직전(11-20) 출고 기준으로 이미 1회 수신 -> 새 기준으로 1회 중복 차단
+    ],
+  });
+  const saved = await saveTextTemplate(db, {
+    name: '소개 혜택(설비+20일)',
+    body: BODY,
+    auto: { kind: KIND_DONE, days: 20, step: '설비작업', repeat: 10, interval: 50, auto_send_time: '13:00', auto_copy_to: '010-7731-4237' },
+  }, { staff: [] });
+  assert.equal(saved.status, 201);
+  assert.equal(saved.body.item.auto_kind, KIND_DONE);
+  assert.equal(saved.body.item.auto_days, 20);
+  assert.equal(saved.body.item.auto_step, '설비작업');
+  assert.equal(saved.body.item.auto_repeat, 10);
+  assert.equal(saved.body.item.auto_interval, 50);
+  assert.equal(saved.body.item.auto_send_time, '13:00');
+  assert.equal(saved.body.item.auto_copy_to, '01077314237');
+
+  const modelOut = buildSaveBody({
+    name: '소개 혜택 안내',
+    body: BODY,
+    auto: { kind: KIND_DONE, days: '20', step: '설비작업', repeat: '10', interval: '50', sendTime: '13:00', copyTo: '01077314237' },
+  });
+  assert.equal(modelOut.auto.repeat, 10);
+  assert.equal(modelOut.auto.interval, 50);
+  assert.equal(modelOut.auto.auto_copy_to, '01077314237');
+
+  // round 2 준비: 2번은 50일 전 round 1 발송, 3번은 어제(11-20) round 1 발송
+  const runNow = Date.parse('2026-11-21T04:00:00Z'); // KST 11-21 13:00
+  const tplId = saved.body.item.id;
+  db.state.processes = [
+    { order_id: 1, step_name: '설비작업', completed_at: '2026-11-01T03:00:00Z' }, // +20일 = 11-21
+    { order_id: 2, step_name: '설비작업', completed_at: '2026-09-12T03:00:00Z' }, // +70일 = 11-21
+    { order_id: 3, step_name: '설비작업', completed_at: '2026-11-01T03:00:00Z' }, // +20일 = 11-21
+  ];
+  db.state.sends.push(
+    { id: 901, template_id: tplId, phone_hash: phoneHash('01011110002'), order_id: 2, kst_date: '2026-10-02', status: 'sent', round: 1 },
+    { id: 902, template_id: tplId, phone_hash: phoneHash('01011110003'), order_id: 99, kst_date: '2026-11-20', status: 'sent', round: 1 },
+  );
+  const sentBatches = [];
+  const p = {
+    estimate: ({ count }) => ({ unit: 45, total: 45 * count }),
+    async sendEach(input) { sentBatches.push(input.messages.map(m => m.to)); return { accepted: input.messages.length, failed: 0, groupId: 'GR1', uncertain: false, error: '' }; },
+  };
+  _resetAutoSchemaForTest();
+  _resetTextTemplateSchemaForTest();
+  const out = await runAutoSend({ ...db.state.templates[0], auto_enabled: true, auto_copy_to: '', images: [] }, { db, provider: p, env: ENV, nowMs: runNow });
+  assert.equal(out.sent, 2);
+  assert.deepEqual(sentBatches[0], ['01011110001', '01011110002'], '1번은 1회차, 2번은 2회차(50일 뒤) 발송, 3번은 직전 1회차 이력으로 제외');
+  assert.equal(db.state.sends.find(r => r.order_id === 2 && r.round === 2)?.status, 'sent');
+});
