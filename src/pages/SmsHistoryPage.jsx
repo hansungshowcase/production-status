@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { buildConsoleQuery, parseConsoleQuery } from '../../shared/smsConsole.js';
 import { KIND_SMS, normalizeKind } from '../components/smsconsole/smsTextTemplateFormModel.js';
 import SmsConsoleSidebar from '../components/smsconsole/SmsConsoleSidebar';
+import { SmsConsoleJumpContext } from '../components/smsconsole/smsConsoleJump.js';
 import CustomerSmsPanel from '../components/CustomerSmsPanel';
 import NotificationOverview from '../components/NotificationOverview';
 import SolapiMessageLog from '../components/SolapiMessageLog';
@@ -61,6 +62,9 @@ export default function SmsHistoryPage() {
   const selectMenu = useCallback((menu, patch = {}) => {
     writeState({ aud: 'all', ch: 'all', tpl: '', mode: '', ...patch, menu }, false);
   }, [writeState]);
+  const openTemplateChannel = useCallback((ch = 'sms') => {
+    selectMenu('templates', { ch: ch === 'kakao' ? 'kakao' : 'sms' });
+  }, [selectMenu]);
   const kind = normalizeKind(searchParams.get('kind'));
   const textId = state.menu === 'send' && /^\d{1,12}$/.test(searchParams.get('text') || '') ? searchParams.get('text') : '';
   const patchState = useCallback(patch => {
@@ -97,6 +101,7 @@ export default function SmsHistoryPage() {
         <SmsConsoleSidebar state={state} onSelect={selectMenu} />
 
         <div className="sms-console-content">
+        <SmsConsoleJumpContext.Provider value={openTemplateChannel}>
         {isMounted('send') && (
           <div className="sms-console-pane" hidden={state.menu !== 'send'}>
             <Suspense fallback={PANE_LOADING}>
@@ -157,7 +162,7 @@ export default function SmsHistoryPage() {
 
         {(isMounted('customer') || isMounted('staff')) && (
           <div className="sms-console-campaign" hidden={state.menu !== 'customer' && state.menu !== 'staff'}>
-            <button type="button" className="sms-console-new-text" onClick={() => selectMenu('templates', { mode: 'new', kind: KIND_SMS })}>+ 새 발송 등록</button>
+            <button type="button" className="sms-console-new-text" onClick={() => selectMenu('templates', { mode: 'new', kind: KIND_SMS })}>새 발송 등록</button>
           </div>
         )}
 
@@ -262,6 +267,7 @@ export default function SmsHistoryPage() {
         </div>
         </div>
         )}
+        </SmsConsoleJumpContext.Provider>
         </div>
       </main>
     </div>

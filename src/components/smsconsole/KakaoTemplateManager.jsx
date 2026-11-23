@@ -128,10 +128,11 @@ export default function KakaoTemplateManager({
   const [openRoId, setOpenRoId] = useState('');
   const [bmsDetailMap, setBmsDetailMap] = useState({}); // { [id]: { loading, error, item, photos, buttons } }
   const [query, setQuery] = useState('');
-  const [pickedFilter, setPickedFilter] = useState('all');
+  const [pickedFilter, setPickedFilter] = useState(selectedId ? 'all' : 'in_use');
   const [inspectFilter, setInspectFilter] = useState('');
   const [issueFilter, setIssueFilter] = useState(''); // '' | 'bms-zero-send'
   const [pageNo, setPageNo] = useState(1);
+  const autoPickedRef = useRef(Boolean(selectedId));
   const [menuId, setMenuId] = useState('');
   const [dialog, setDialog] = useState(null);
   const [dialogError, setDialogError] = useState('');
@@ -325,60 +326,72 @@ export default function KakaoTemplateManager({
     [items, sent],
   );
 
-  // 현황판 카톡 자동 발송 집계
+  // 현황판·알약·목록 1:1 일치 기준
   const hasLinkedOn = useCallback((ataId) => {
     const linkedList = linkedTextEntries(textItems, ataId);
     return linkedList.some((entry) => ['on', 'part'].includes(effOf(entry).tone));
   }, [textItems, effOf]);
+  const isManagedActive = useCallback((entry) => ['on', 'part'].includes(effOf(entry).tone), [effOf]);
+  const isRoActive = useCallback((entry) => itemLight(entry).tone === 'on', []);
+  const isAtaActive = useCallback((item) => {
+    if (item.status !== 'APPROVED') return false;
+    const ex = nonMakeExtras(item.id, sent);
+    if (ex && ex.off) return false;
+    return Boolean(item.program_use || ex || hasLinkedOn(item.id) || (usageSuccess(usage, item.id, sent) ?? 0) > 0);
+  }, [sent, hasLinkedOn, usage]);
   const isDbAttention = useCallback((entry) => isAttentionTone(displayLightOf(entry).tone) || Boolean(autoStatusMap[entry.id]?.catchup_paused), [displayLightOf, autoStatusMap]);
   const isAtaAttention = useCallback((item) => item.status === 'REJECTED' || Boolean(nonMakeExtras(item.id, sent)?.off), [sent]);
   const isRoAttention = useCallback((entry) => isAttentionTone(itemLight(entry).tone), []);
 
   const kakaoAutoStats = useMemo(() => {
-    const dbAta = kakaoMineEntries.filter((entry) => entry.autoAtaTemplate !== BMS_TEMPLATE_ID);
-    const dbBms = kakaoMineEntries.filter((entry) => entry.autoAtaTemplate === BMS_TEMPLATE_ID);
-    const dbAtaOn = dbAta.filter((entry) => ['on', 'part'].includes(effOf(entry).tone)).length;
-    const dbBmsOn = dbBms.filter((entry) => ['on', 'part'].includes(effOf(entry).tone)).length;
-    const roAta = allReadOnly.filter((entry) => entry.channel !== 'BMS');
-    const roBms = allReadOnly.filter((entry) => entry.channel === 'BMS');
-    const roAtaOn = roAta.filter((entry) => itemLight(entry).tone === 'on').length;
-    const roBmsOn = roBms.filter((entry) => itemLight(entry).tone === 'on').length;
-    const extProgramAta = items.filter((item) => Boolean(item.program_use || nonMakeExtras(item.id, sent)));
-    const extProgramAtaOn = extProgramAta.filter((item) => {
-      const ex = nonMakeExtras(item.id, sent);
-      return item.status === 'APPROVED' && !(ex && ex.off);
-    }).length;
-    const dbAttention = kakaoMineEntries.filter(isDbAttention).length;
-    const ataOn = dbAtaOn + roAtaOn + extProgramAtaOn;
-    const bmsOn = dbBmsOn + roBmsOn;
+    const activeManagedCount = managedKakaoEntries.filter(isManagedActive).length;
+    const activeAtaCount = items.filter(isAtaActive).length;
+    const activeRoCount = allReadOnly.filter(isRoActive).length;
+    const ataOn = activeAtaCount
+      + managedKakaoEntries.filter((entry) => entry.autoAtaTemplate !== BMS_TEMPLATE_ID && isManagedActive(entry)).length
+      + allReadOnly.filter((entry) => entry.channel !== 'BMS' && isRoActive(entry)).length;
+    const bmsOn = managedKakaoEntries.filter((entry) => entry.autoAtaTemplate === BMS_TEMPLATE_ID && isManagedActive(entry)).length
+      + allReadOnly.filter((entry) => entry.channel === 'BMS' && isRoActive(entry)).length;
+    const attention = managedKakaoEntries.filter(isDbAttention).length
+      + items.filter(isAtaAttention).length
+      + allReadOnly.filter(isRoAttention).length;
     return {
-      on: ataOn + bmsOn,
-      total: dbAta.length + dbBms.length + roAta.length + roBms.length + extProgramAta.length,
+      on: activeAtaCount + activeManagedCount + activeRoCount,
+      total: items.length + managedKakaoEntries.length + allReadOnly.length,
       ataOn,
       bmsOn,
-      attention: dbAttention,
+      attention,
     };
-  }, [kakaoMineEntries, effOf, allReadOnly, items, sent, isDbAttention]);
+  }, [managedKakaoEntries, items, allReadOnly, isManagedActive, isAtaActive, isRoActive, isDbAttention, isAtaAttention, isRoAttention]);
 
-  // 상단 알약(전체·발송 중·브랜드메시지·꺼짐·확인 필요) + 우측 검수 상태 드롭다운(문자 템플릿과 통일)
+  // 상단 알약(발송 중·브랜드메시지·꺼짐·확인 필요·전체) + 우측 검수 상태 드롭다운(문자 템플릿과 통일)
   const inspectPills = useMemo(
     () => statusPills(items, usage, sent).filter((pill) => !['all', 'in_use'].includes(pill.id)),
     [items, usage, sent],
   );
 
   const pills = useMemo(() => {
-    const activeManagedCount = managedKakaoEntries.filter((entry) => ['on', 'part'].includes(effOf(entry).tone)).length;
-    const activeRoCount = allReadOnly.filter((entry) => itemLight(entry).tone === 'on').length;
-    const activeAtaCount = items.filter((item) => (usageSuccess(usage, item.id, sent) ?? 0) > 0 || hasLinkedOn(item.id)).length;
     const bmsCount = managedKakaoEntries.length + allReadOnly.filter((entry) => entry.channel === 'BMS').length;
-    const attentionCount = managedKakaoEntries.filter(isDbAttention).length + items.filter(isAtaAttention).length + allReadOnly.filter(isRoAttention).length;
     return [
-      { id: 'all', label: '전체', count: items.length + managedKakaoEntries.length + allReadOnly.length },
-      { id: 'in_use', label: '발송 중', count: activeAtaCount + activeManagedCount + activeRoCount },
+      { id: 'in_use', label: '발송 중', count: kakaoAutoStats.on },
       ...(bmsCount > 0 ? [{ id: 'bms', label: '브랜드메시지', count: bmsCount }] : []),
-      { id: 'attention', label: '꺼짐·확인 필요', count: attentionCount },
+      { id: 'attention', label: '꺼짐·확인 필요', count: kakaoAutoStats.attention },
+      { id: 'all', label: '전체', count: kakaoAutoStats.total },
     ];
-  }, [managedKakaoEntries, effOf, allReadOnly, items, usage, sent, hasLinkedOn, isDbAttention, isAtaAttention, isRoAttention]);
+  }, [kakaoAutoStats, managedKakaoEntries.length, allReadOnly]);
+
+  useEffect(() => {
+    if (!active || !tplState.loaded || !data || autoPickedRef.current) return;
+    if (selectedId) {
+      autoPickedRef.current = true;
+      const selItem = items.find((item) => item.id === selectedId);
+      if (selItem && !isAtaActive(selItem)) setPickedFilter('all');
+      return;
+    }
+    if (usage === null) return;
+    autoPickedRef.current = true;
+    if (kakaoAutoStats.on === 0 && pickedFilter === 'in_use') setPickedFilter('all');
+  }, [active, tplState.loaded, data, usage, selectedId, items, isAtaActive, kakaoAutoStats.on, pickedFilter]);
 
   const statusFilter = pickedFilter || 'all';
 
@@ -399,20 +412,18 @@ export default function KakaoTemplateManager({
     }
     if (!['in_use', 'all', 'bms', 'attention'].includes(statusFilter)) return [];
     return managedKakaoEntries.filter((entry) => {
-      if (statusFilter === 'in_use' && !['on', 'part'].includes(effOf(entry).tone)) return false;
+      if (statusFilter === 'in_use' && !isManagedActive(entry)) return false;
       if (statusFilter === 'attention' && !isDbAttention(entry)) return false;
       const bodyText = bmsDetailMap[entry.id]?.item?.body ?? entry.preview ?? '';
       return matchesSmsQuery({ ...entry, body: bodyText }, query);
     });
-  }, [inspectFilter, issueFilter, managedKakaoEntries, statusFilter, effOf, isDbAttention, isBmsZeroSend, bmsDetailMap, query]);
+  }, [inspectFilter, issueFilter, managedKakaoEntries, statusFilter, isManagedActive, isDbAttention, isBmsZeroSend, bmsDetailMap, query]);
 
   const kakaoIssues = useMemo(() => {
     const rejectedCount = items.filter((item) => item.status === 'REJECTED').length;
     const pendingCount = items.filter((item) => item.status === 'PENDING').length;
     const inspectingCount = items.filter((item) => item.status === 'INSPECTING').length;
-    const attentionCount = managedKakaoEntries.filter(isDbAttention).length
-      + items.filter(isAtaAttention).length
-      + allReadOnly.filter(isRoAttention).length;
+    const attentionCount = kakaoAutoStats.attention;
     const onZeroBms = managedKakaoEntries.filter(isBmsZeroSend).length;
     const toggleInspect = (status) => {
       userClearedRef.current = false;
@@ -466,7 +477,7 @@ export default function KakaoTemplateManager({
         },
       },
     ];
-  }, [items, managedKakaoEntries, allReadOnly, isDbAttention, isAtaAttention, isRoAttention, isBmsZeroSend, inspectFilter, issueFilter, statusFilter]);
+  }, [items, managedKakaoEntries, kakaoAutoStats.attention, isBmsZeroSend, inspectFilter, issueFilter, statusFilter]);
 
   // 알림톡 필터링(알약 상태 + 검수 상태 드롭다운 + 검색어, 띄어쓰기 무시)
   const visible = useMemo(() => {
@@ -476,7 +487,7 @@ export default function KakaoTemplateManager({
     return items.filter((item) => {
       if (inspectFilter && item.status !== inspectFilter) return false;
       if (statusFilter === 'in_use') {
-        if (!((usageSuccess(usage, item.id, sent) ?? 0) > 0 || hasLinkedOn(item.id))) return false;
+        if (!isAtaActive(item)) return false;
       } else if (statusFilter === 'attention') {
         if (!isAtaAttention(item)) return false;
       }
@@ -489,17 +500,18 @@ export default function KakaoTemplateManager({
       const linkedEntries = linkedTextEntries(textItems, item.id);
       return linkedEntries.some((entry) => matchesSmsQuery(entry, q));
     });
-  }, [issueFilter, statusFilter, inspectFilter, query, items, usage, sent, hasLinkedOn, isAtaAttention, textItems]);
+  }, [issueFilter, statusFilter, inspectFilter, query, items, isAtaActive, sent, isAtaAttention, textItems]);
 
   const readOnly = useMemo(() => {
     if (inspectFilter || issueFilter === 'bms-zero-send') return [];
     const roStatus = statusFilter === 'in_use' ? 'in_use' : 'all';
     const list = readOnlyKakaoItems(items, sent, { status: roStatus, query })
       .filter((entry) => entry.sender !== SENDERS.make)
+      .filter((entry) => (statusFilter === 'in_use' ? isRoActive(entry) : true))
       .filter((entry) => (statusFilter === 'bms' ? entry.channel === 'BMS' : true))
       .filter((entry) => (statusFilter === 'attention' ? isRoAttention(entry) : true));
     return list;
-  }, [inspectFilter, issueFilter, items, sent, statusFilter, query, isRoAttention]);
+  }, [inspectFilter, issueFilter, items, sent, statusFilter, query, isRoActive, isRoAttention]);
 
   // 비즈니스 카테고리(리뷰 이벤트 · 소개/혜택 · 주문/출고 · 상담/문의 · 직원 알림)로 통일 묶기
   const displayGroups = useMemo(() => {
@@ -561,13 +573,13 @@ export default function KakaoTemplateManager({
     setSelectedBmsId(null);
     setOpenRoId('');
   };
-  const hasActiveFilters = Boolean(query.trim() || inspectFilter || issueFilter || statusFilter !== 'all');
+  const hasActiveFilters = Boolean(query.trim() || inspectFilter || issueFilter || (statusFilter !== 'in_use' && statusFilter !== 'all'));
   const resetFilters = () => {
     userClearedRef.current = false;
     setQuery('');
     setInspectFilter('');
     setIssueFilter('');
-    setPickedFilter('all');
+    setPickedFilter(kakaoAutoStats.on > 0 ? 'in_use' : 'all');
     setPageNo(1);
     setSelectedBmsId(null);
     setOpenRoId('');

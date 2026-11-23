@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import { fetchNotificationOverview } from '../api/notificationOverview';
+import { SmsConsoleJumpContext } from './smsconsole/smsConsoleJump.js';
 import {
   notificationChannelBadge,
   notificationChannelPresentation,
@@ -70,7 +71,7 @@ function ExampleMessage({ exampleMessage }) {
   );
 }
 
-function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
+function OverviewItem({ item, days, expanded, onToggle, onJump = null, shortPhones = false }) {
   const detailsId = `notification-overview-details-${item.id}`;
   const state = notificationStatusPresentation(item);
   // 직원 발송 관리에서는 번호를 끝 4자리만: 이시아 부장 (4237)
@@ -154,6 +155,17 @@ function OverviewItem({ item, days, expanded, onToggle, shortPhones = false }) {
             )}
           </dl>
           <ExampleMessage exampleMessage={item.example_message} />
+          {onJump && (
+            <div className="notification-overview-details__foot">
+              <button
+                type="button"
+                className="notification-overview-jump"
+                onClick={() => onJump(chBadge.key === 'bms' || chBadge.key === 'ata' ? 'kakao' : 'sms')}
+              >
+                {chBadge.key === 'bms' || chBadge.key === 'ata' ? '카카오톡 템플릿에서 설정·켜기/끄기 →' : '문자 템플릿에서 설정·켜기/끄기 →'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -192,6 +204,7 @@ function matchesOverviewQuery(item, normalizedQuery, shortPhones) {
 }
 
 export default function NotificationOverview({ group: onlyGroup = null } = {}) {
+  const onJump = useContext(SmsConsoleJumpContext);
   const copy = GROUP_COPY[onlyGroup] || null;
   const titleId = useId();
   const [status, setStatus] = useState('loading');
@@ -443,6 +456,7 @@ export default function NotificationOverview({ group: onlyGroup = null } = {}) {
                                 item={item}
                                 days={days}
                                 shortPhones={onlyGroup === 'internal'}
+                                onJump={onJump}
                                 expanded={expandedByGroup[group.id] === item.id}
                                 onToggle={() => setExpandedByGroup(current => ({
                                   ...current,

@@ -866,6 +866,20 @@
 @media (min-width: 769px) {
   .sms-history-page:has(.sms-console) .sms-history-header__inner {
     width: calc(100% - 16px);
+    min-height: 46px;
+    padding: 6px 0;
+  }
+
+  .sms-history-page:has(.sms-console) .sms-history-header__inner > div {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .sms-history-page:has(.sms-console) .sms-history-eyebrow {
+    margin: 0;
+    order: 2;
   }
 
   .sms-history-main.sms-console {

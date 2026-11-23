@@ -438,20 +438,20 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     return map;
   }, [allMine]);
   const [flowOpen, setFlowOpen] = useState('');
-  // 탭 숫자는 조건 거르기·검색과 상관없이 전체 기준
-  const runningAll = useMemo(() => allMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)).length, [allMine, autoStatus]);
+  // 탭 숫자는 조건 거르기·검색과 상관없이 전체 기준(상단 현황판·알약·목록 1:1 일치)
+  const isMineActive = (entry) => Boolean(entry.autoKind && (autoStatus[entry.id] ? ['on', 'part'].includes(effOf(entry).tone) : entry.autoEnabled));
+  const isCatalogActive = (item) => itemLight(item).tone === 'on';
+  const runningAll = useMemo(() => allMine.filter(isMineActive).length, [allMine, autoStatus]);
   const condItems = useMemo(
     () => items.filter((item) => (!cond || conditionGroup(item) === cond) && matchesSmsQuery(item, query, recipients)),
     [items, cond, query, recipients],
   );
-  const runningAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && (autoStatus[entry.id]?.enabled ?? entry.autoEnabled)), [sortedMine, autoStatus]);
-  // '발송 중' 숫자에는 켜진 내 자동 문구도 센다(표의 총 건수와 같게)
-  // '전체'에는 내 자동 문구를 켜짐·꺼짐 상관없이 모두 보인다(2026-11-16 사장님: 한눈에 신호등처럼)
+  const runningAutos = useMemo(() => sortedMine.filter(isMineActive), [sortedMine, autoStatus]);
   const autoAll = useMemo(() => allMine.filter((entry) => entry.autoKind).length, [allMine]);
   const attentionAutosAll = useMemo(() => allMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [allMine, autoStatus]);
   const attentionItemsAll = useMemo(() => items.filter((item) => isAttentionTone(itemLight(item).tone)), [items]);
   const attentionTotal = attentionAutosAll.length + attentionItemsAll.length;
-  const activeCatalogAll = useMemo(() => items.filter((item) => itemLight(item).tone === 'on').length, [items]);
+  const activeCatalogAll = useMemo(() => items.filter(isCatalogActive).length, [items]);
   const smsAutoStats = useMemo(() => ({
     on: runningAll + activeCatalogAll,
     total: autoAll + items.length,
@@ -483,16 +483,15 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
       { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, active: issueFilter === 'on-zero-send', onClick: () => toggleIssueFilter('on-zero-send') },
     ];
   }, [allMine, autoStatus, items, issueFilter]);
-  const pills = useMemo(() => {
-    const base = smsPills(items).map((pill) => (pill.id === 'in_use' ? { ...pill, count: pill.count + runningAll } : { ...pill, count: pill.count + autoAll }));
-    return [
-      ...base,
-      { id: 'attention', label: '꺼짐·확인 필요', count: attentionTotal },
-      ...(mySection ? [{ id: 'mine', label: '내 문구', count: mySection.count }] : []),
-    ];
-  }, [items, mySection, runningAll, autoAll, attentionTotal]);
-  const rawTab = picked ?? defaultSmsFilter(items);
-  const tab = rawTab === 'mine' && !mySection ? defaultSmsFilter(items) : rawTab;
+  const pills = useMemo(() => [
+    { id: 'in_use', label: '발송 중', count: runningAll + activeCatalogAll },
+    { id: 'attention', label: '꺼짐·확인 필요', count: attentionTotal },
+    { id: 'all', label: '전체', count: autoAll + items.length },
+    ...(mySection ? [{ id: 'mine', label: '직접 등록', count: mySection.count }] : []),
+  ], [items.length, mySection, runningAll, activeCatalogAll, autoAll, attentionTotal]);
+  const defaultTab = (runningAll + activeCatalogAll) > 0 ? 'in_use' : 'all';
+  const rawTab = picked ?? defaultTab;
+  const tab = rawTab === 'mine' && !mySection ? defaultTab : rawTab;
   const isMineTab = tab === 'mine';
   const isAttentionTab = tab === 'attention';
   const allAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind), [sortedMine]);
@@ -513,7 +512,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
       ? condItems.filter(isItemOffBlocked)
       : issueFilter === 'on-zero-send'
         ? condItems.filter(isItemOnZeroSend)
-        : (tab === 'in_use' ? condItems.filter((item) => (item.count ?? 0) > 0) : (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems));
+        : (tab === 'in_use' ? condItems.filter(isCatalogActive) : (isAttentionTab ? condItems.filter((item) => isAttentionTone(itemLight(item).tone)) : condItems));
     return sortSmsItems(filtered);
   }, [condItems, isMineTab, isAttentionTab, tab, issueFilter]);
 
@@ -564,8 +563,8 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   };
   const goPage = (next) => { setPageNo(next); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
   const changeQuery = (value) => { setQuery(value); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
-  const hasActiveFilters = Boolean(query.trim() || cond || issueFilter || tab !== 'all');
-  const resetFilters = () => { setQuery(''); setCond(''); setIssueFilter(''); setPicked('all'); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
+  const hasActiveFilters = Boolean(query.trim() || cond || issueFilter || (tab !== 'in_use' && tab !== 'all'));
+  const resetFilters = () => { setQuery(''); setCond(''); setIssueFilter(''); setPicked(null); setPageNo(1); setMineOpen(''); setMineConfirm(''); setFlowOpen(''); setSelectedKey(''); };
 
   // 현재 쪽에서 선택 가능한 항목 키 목록(표시 순서)
   const visibleCandidateKeys = useMemo(() => {
@@ -1302,7 +1301,6 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
                 <h3 className="stl-grouphead">
                   <span className="stl-grouphead-left">
                     <span>{group.groupLabel}</span>
-                    <span className="stl-grouphead-tag">{group.tag}</span>
                   </span>
                   <span className="ktm-kind-count">{group.mineEntries.length + group.items.length}</span>
                 </h3>

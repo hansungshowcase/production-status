@@ -14,6 +14,20 @@
 
 .smsc-menu,
 .smsc-sub { list-style: none; margin: 0; padding: 0; }
+.smsc-groups { display: flex; flex-direction: column; gap: 10px; }
+.smsc-sec-group { display: flex; flex-direction: column; gap: 2px; }
+.smsc-sec-label {
+  margin: 0;
+  padding: 2px 9px 3px;
+  color: #8b95a1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+@media (max-width: 768px) {
+  .smsc-groups { padding: 4px 8px; }
+  .smsc-item { min-height: 44px; }
+}
 
 .smsc-item,
 .smsc-subitem,

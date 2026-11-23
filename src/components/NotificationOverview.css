@@ -663,6 +663,33 @@
   white-space: pre-wrap;
 }
 
+.notification-overview-details__foot {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #dce3ec;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.notification-overview-jump {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1b64da;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notification-overview-jump:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
 .notification-overview-disclosure:focus-visible,
 .notification-overview-state button:focus-visible,
 .notification-overview-group-tabs button:focus-visible,

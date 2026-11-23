@@ -180,6 +180,8 @@ export default function SendPanel({ active = true, template = '', text: textPara
   if (loadError) return <p className="smsc-send__error" role="alert">{loadError}</p>;
   if (!options) return <p className="sms-console-loading" role="status">불러오는 중…</p>;
 
+  const smsOnlyTexts = texts.filter(item => !item.auto_ata_template);
+
   return (
     <div className="smsc-send-wrap">
     <div className="smsc-send-header">
@@ -188,130 +190,146 @@ export default function SendPanel({ active = true, template = '', text: textPara
     </div>
     <div className="smsc-send-layout">
     <form className="smsc-send" onSubmit={event => event.preventDefault()} noValidate>
-      <div className="smsc-send__field">
-        <div className="smsc-send__labelrow">
-          <label htmlFor="smsc-send-phones">받는 번호</label>
-          <div className="smsc-send__row">
+      <section className="smsc-send-card" aria-label="1단계 받는 사람">
+        <div className="smsc-send-card__head">
+          <span className="smsc-send-step">1</span>
+          <h3>누구에게 보낼까요?</h3>
+          <div className="smsc-send__row smsc-send__headright">
             {(phoneText || staffIds.length > 0) ? (
               <button type="button" className="smsc-send__clear" onClick={() => { setPhoneText(''); setStaffIds([]); setPreview(null); setResult(null); }}>비우기</button>
             ) : null}
             <span className={`smsc-send__badge${recipients.length > 0 ? ' is-active' : ''}`}>받는 사람 {recipients.length}명</span>
           </div>
         </div>
-        <textarea id="smsc-send-phones" rows={4} value={phoneText} inputMode="tel" autoComplete="off"
-          placeholder="010-1234-5678 (줄바꿈 또는 쉼표로 여러 명 입력)"
-          onChange={event => { setPhoneText(event.target.value); setResult(null); }} aria-invalid={invalid > 0} />
-        {invalid > 0 ? <p className="smsc-send__error">휴대폰 번호 형식이 아닌 번호가 {invalid}개 있습니다.</p> : null}
-      </div>
-      {options.staff?.length ? (
-        <fieldset className="smsc-send__group">
-          <legend>직원</legend>
-          <div className="smsc-send__choices">
-            <button type="button" className="smsc-send__btn smsc-send__btn--small" aria-pressed={allStaffOn} onClick={toggleAllStaff}>전체</button>
-            {options.staff.map(person => (
-              <label key={person.id} className="smsc-send__choice">
-                <input type="checkbox" checked={staffIds.includes(person.id)} onChange={() => toggleStaff(person.id)} />
-                <span>{person.name} ({person.tail})</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      ) : null}
-      {template ? (
-        <div className="smsc-send__tpl">
-          {tplError ? <p className="smsc-send__error" role="alert">{tplError}</p> : null}
-          {!tplError && !tplItem ? <p className="sms-console-loading" role="status">불러오는 중…</p> : null}
-          {tplItem ? (
-            <>
-              <div className="smsc-send__field">
-                <label>{tplItem.name}</label>
-                <pre className="smsc-send__tplbody">{fillTemplateContent(tplItem.content, values)}</pre>
-              </div>
-              {varNames.map((name, index) => (
-                <div className="smsc-send__field" key={name}>
-                  <label htmlFor={`smsc-send-var-${index}`}>{name}</label>
-                  <textarea id={`smsc-send-var-${index}`} rows={2} value={values[name] || ''}
-                    onChange={event => { setValues(prev => ({ ...prev, [name]: event.target.value })); setResult(null); }} />
-                </div>
-              ))}
-            </>
-          ) : null}
-        </div>
-      ) : null}
-      {!template && texts.length ? (
         <div className="smsc-send__field">
-          <label htmlFor="smsc-send-mytext">내 문구</label>
-          <select id="smsc-send-mytext" className="smsc-send__select" value={textId} onChange={event => pickText(event.target.value)}>
-            <option value="">저장된 문구 불러오기 (선택)</option>
-            {groupTexts(texts).map(group => (
-              <optgroup key={group.label} label={group.label}>
-                {group.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </optgroup>
-            ))}
-          </select>
+          <label htmlFor="smsc-send-phones">휴대폰 번호 직접 입력</label>
+          <textarea id="smsc-send-phones" rows={3} value={phoneText} inputMode="tel" autoComplete="off"
+            placeholder="010-1234-5678 (줄바꿈 또는 쉼표로 여러 명 입력)"
+            onChange={event => { setPhoneText(event.target.value); setResult(null); }} aria-invalid={invalid > 0} />
+          {invalid > 0 ? <p className="smsc-send__error">휴대폰 번호 형식이 아닌 번호가 {invalid}개 있습니다.</p> : null}
         </div>
-      ) : null}
-      <div className="smsc-send__field" hidden={Boolean(template)}>
-        <label htmlFor="smsc-send-text">내용</label>
-        <textarea id="smsc-send-text" rows={6} value={text} placeholder="보낼 문자 내용을 입력하세요" onChange={event => { setText(event.target.value); setResult(null); }} />
-        <p className="smsc-send__count">
-          {[...text.trim()].length}자 · {photo ? '사진 문자 (건당 110원)' : (info.type === 'SMS' ? '단문 문자 (건당 18원)' : info.type === 'LMS' ? '장문 문자 (건당 45원)' : '한글 약 45자까지 단문 18원 · 초과 시 장문 45원')}
-          {info.tooLong ? ' · 글자 수가 너무 깁니다' : ''}
-        </p>
-        {!template ? (
-          <div className="smsc-send__row">
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
-            <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={() => fileRef.current?.click()}>사진</button>
-            {image ? <img className="smsc-send__thumb" src={image.url} alt="" /> : null}
-            {image ? <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={removeImage}>빼기</button> : null}
+        {options.staff?.length ? (
+          <fieldset className="smsc-send__group">
+            <legend>또는 직원 빠른 선택</legend>
+            <div className="smsc-send__choices">
+              <button type="button" className="smsc-send__btn smsc-send__btn--small" aria-pressed={allStaffOn} onClick={toggleAllStaff}>전체</button>
+              {options.staff.map(person => (
+                <label key={person.id} className={`smsc-send__choice smsc-send__choice--chip${staffIds.includes(person.id) ? ' is-checked' : ''}`}>
+                  <input type="checkbox" checked={staffIds.includes(person.id)} onChange={() => toggleStaff(person.id)} />
+                  <span>{person.name} ({person.tail})</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
+      </section>
+
+      <section className="smsc-send-card" aria-label="2단계 보낼 내용">
+        <div className="smsc-send-card__head">
+          <span className="smsc-send-step">2</span>
+          <h3>무슨 내용을 보낼까요?</h3>
+        </div>
+        {template ? (
+          <div className="smsc-send__tpl">
+            {tplError ? <p className="smsc-send__error" role="alert">{tplError}</p> : null}
+            {!tplError && !tplItem ? <p className="sms-console-loading" role="status">불러오는 중…</p> : null}
+            {tplItem ? (
+              <>
+                <div className="smsc-send__field">
+                  <label>{tplItem.name}</label>
+                  <pre className="smsc-send__tplbody">{fillTemplateContent(tplItem.content, values)}</pre>
+                </div>
+                {varNames.map((name, index) => (
+                  <div className="smsc-send__field" key={name}>
+                    <label htmlFor={`smsc-send-var-${index}`}>{name}</label>
+                    <textarea id={`smsc-send-var-${index}`} rows={2} value={values[name] || ''}
+                      onChange={event => { setValues(prev => ({ ...prev, [name]: event.target.value })); setResult(null); }} />
+                  </div>
+                ))}
+              </>
+            ) : null}
           </div>
         ) : null}
-        {imageError ? <p className="smsc-send__error" role="alert">{imageError}</p> : null}
-      </div>
-      {!template ? (
-        <div className="smsc-send__field">
-          {saveOpen ? (
-            <div className="smsc-send__row">
-              <input className="smsc-send__input" aria-label="문구 이름" placeholder="저장할 문구 이름 (최대 40자)" maxLength={40} value={saveName} onChange={event => setSaveName(event.target.value)} />
-              <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={saving || !saveName.trim() || !info.type} onClick={saveText}>저장</button>
+        {!template && smsOnlyTexts.length ? (
+          <div className="smsc-send__field">
+            <label htmlFor="smsc-send-mytext">자주 쓰는 문자 문구 불러오기</label>
+            <select id="smsc-send-mytext" className="smsc-send__select" value={textId} onChange={event => pickText(event.target.value)}>
+              <option value="">직접 입력하거나 저장된 문자 선택</option>
+              {groupTexts(smsOnlyTexts).map(group => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        <div className="smsc-send__field" hidden={Boolean(template)}>
+          <label htmlFor="smsc-send-text">보낼 문자 내용</label>
+          <textarea id="smsc-send-text" rows={6} value={text} placeholder="고객이나 직원에게 보낼 문자 내용을 입력하세요" onChange={event => { setText(event.target.value); setResult(null); }} />
+          <p className="smsc-send__count">
+            {[...text.trim()].length}자 · {photo ? '사진 문자 (건당 110원)' : (info.type === 'SMS' ? '단문 문자 (건당 18원)' : info.type === 'LMS' ? '장문 문자 (건당 45원)' : '한글 약 45자까지 단문 18원 · 초과 시 장문 45원')}
+            {info.tooLong ? ' · 글자 수가 너무 깁니다' : ''}
+          </p>
+        </div>
+        {!template ? (
+          <div className="smsc-send__field">
+            <div className="smsc-send__toolsrow">
+              <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
+              <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={() => fileRef.current?.click()}>사진 첨부</button>
+              {image ? <img className="smsc-send__thumb" src={image.url} alt="" /> : null}
+              {image ? <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={removeImage}>사진 빼기</button> : null}
+              {saveOpen ? (
+                <>
+                  <input className="smsc-send__input" aria-label="문구 이름" placeholder="저장할 문구 이름 (최대 40자)" maxLength={40} value={saveName} onChange={event => setSaveName(event.target.value)} />
+                  <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={saving || !saveName.trim() || !info.type} onClick={saveText}>저장</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={!info.type} onClick={() => { setSaveName(selectedText ? selectedText.name : ''); setSaveOpen(true); setTextError(''); setConfirmDelete(false); }}>문구 저장</button>
+                  {selectedText ? <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={deleteText}>{confirmDelete ? '삭제 확인' : '삭제'}</button> : null}
+                </>
+              )}
             </div>
-          ) : (
-            <div className="smsc-send__row">
-              <button type="button" className="smsc-send__btn smsc-send__btn--small" disabled={!info.type} onClick={() => { setSaveName(selectedText ? selectedText.name : ''); setSaveOpen(true); setTextError(''); setConfirmDelete(false); }}>문구 저장</button>
-              {selectedText ? <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={deleteText}>{confirmDelete ? '삭제 확인' : '삭제'}</button> : null}
-            </div>
-          )}
-          {textError ? <p className="smsc-send__error" role="alert">{textError}</p> : null}
-          {autoOffId ? <AutoOffNotice key={autoOffId} id={autoOffId} /> : null}
+            {imageError ? <p className="smsc-send__error" role="alert">{imageError}</p> : null}
+            {textError ? <p className="smsc-send__error" role="alert">{textError}</p> : null}
+            {autoOffId ? <AutoOffNotice key={autoOffId} id={autoOffId} /> : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="smsc-send-card" aria-label="3단계 언제 보낼지">
+        <div className="smsc-send-card__head">
+          <span className="smsc-send-step">3</span>
+          <h3>언제 보낼까요?</h3>
         </div>
-      ) : null}
-      {error ? <p className="smsc-send__server" role="alert">{error}</p> : null}
-      {result ? <p className="smsc-send__result" role="status">성공 {result.success}건 · 실패 {result.fail}건{result.message ? ` · ${result.message}` : ''}</p> : null}
-      {!template && !locked ? (
-        <div className="smsc-send__row">
-          <label className="smsc-send__choice"><input type="checkbox" checked={scheduleOn} onChange={event => { setScheduleOn(event.target.checked); setResult(null); }} /><span>예약</span></label>
-          {scheduleOn ? <input className="smsc-send__input" type="datetime-local" aria-label="예약 시각" value={scheduleValue} onChange={event => { setScheduleValue(event.target.value); setResult(null); }} aria-invalid={Boolean(schedule.error)} /> : null}
-        </div>
-      ) : null}
-      {scheduleOn && schedule.error ? <p className="smsc-send__error">{schedule.error}</p> : null}
-      {locked ? <p className="smsc-send__locked">{locked}</p> : (
-        <div className="smsc-send__actions">
-          {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}{preview.at ? ` · 예약 ${shortKst(Date.parse(`${preview.at}:00+09:00`))}` : ''}</p> : null}
-          {!previewOk && disabledHint ? <p className="smsc-send__hint">{disabledHint}</p> : null}
-          <button type="button" className="smsc-send__btn smsc-send__btn--primary" disabled={!canPreview} onClick={() => request(!previewOk)}>{sendButtonLabel(busy, previewOk ? preview : null)}</button>
-        </div>
-      )}
-      {!template && scheduled.length ? (
-        <ul className="smsc-send__scheduled">
-          {scheduled.map(item => (
-            <li key={item.id}>
-              <span>{shortKst(item.at)} · {item.count}명 · {typeText(item.type)}</span>
-              <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={() => cancelSchedule(item.id)}>취소</button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {cancelError ? <p className="smsc-send__error" role="alert">{cancelError}</p> : null}
+        {error ? <p className="smsc-send__server" role="alert">{error}</p> : null}
+        {result ? <p className="smsc-send__result" role="status">성공 {result.success}건 · 실패 {result.fail}건{result.message ? ` · ${result.message}` : ''}</p> : null}
+        {!template && !locked ? (
+          <div className="smsc-send__row">
+            <label className="smsc-send__choice"><input type="checkbox" checked={scheduleOn} onChange={event => { setScheduleOn(event.target.checked); setResult(null); }} /><span>지금 바로 안 보내고 예약 발송하기</span></label>
+            {scheduleOn ? <input className="smsc-send__input" type="datetime-local" aria-label="예약 시각" value={scheduleValue} onChange={event => { setScheduleValue(event.target.value); setResult(null); }} aria-invalid={Boolean(schedule.error)} /> : null}
+          </div>
+        ) : null}
+        {scheduleOn && schedule.error ? <p className="smsc-send__error">{schedule.error}</p> : null}
+        {locked ? <p className="smsc-send__locked">{locked}</p> : (
+          <div className="smsc-send__actions">
+            {previewOk ? <p className="smsc-send__preview" role="status">{preview.count}명 · {typeText(preview.type)} · 예상 {wonText(preview.cost)}{preview.at ? ` · 예약 ${shortKst(Date.parse(`${preview.at}:00+09:00`))}` : ''}</p> : null}
+            {!previewOk && disabledHint ? <p className="smsc-send__hint">{disabledHint}</p> : null}
+            <button type="button" className="smsc-send__btn smsc-send__btn--primary" disabled={!canPreview} onClick={() => request(!previewOk)}>{sendButtonLabel(busy, previewOk ? preview : null)}</button>
+          </div>
+        )}
+        {!template && scheduled.length ? (
+          <ul className="smsc-send__scheduled">
+            {scheduled.map(item => (
+              <li key={item.id}>
+                <span>{shortKst(item.at)} · {item.count}명 · {typeText(item.type)}</span>
+                <button type="button" className="smsc-send__btn smsc-send__btn--small" onClick={() => cancelSchedule(item.id)}>취소</button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {cancelError ? <p className="smsc-send__error" role="alert">{cancelError}</p> : null}
+      </section>
     </form>
     <aside className="smsc-send__aside" aria-label="실시간 수신 미리보기">
       <div className="smsc-send__labelrow">
@@ -333,6 +351,14 @@ export default function SendPanel({ active = true, template = '', text: textPara
         ) : (
           <p className="smsc-send__pempty">문구 입력 또는 사진 첨부 시 실제 수신 화면처럼 미리 볼 수 있습니다.</p>
         )}
+      </div>
+      <div className="smsc-send__guide">
+        <strong>발송 전 확인</strong>
+        <ul>
+          <li><strong>보내는 방식</strong>: {template ? '알림톡 (건당 13원)' : (photo ? '사진 문자 (건당 110원)' : (info.type === 'SMS' ? '단문 문자 (건당 18원)' : '장문 문자 (건당 45원)'))}</li>
+          <li><strong>발송 한도</strong>: 1회 최대 {options.max || 50}명 · 하루 최대 300건</li>
+          <li><strong>안전 확인</strong>: <code>보내기</code>를 누르면 예상 비용이 먼저 뜨고, 한 번 더 눌러야 실제 발송됩니다.</li>
+        </ul>
       </div>
     </aside>
     </div>

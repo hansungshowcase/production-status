@@ -71,6 +71,10 @@ const FILTER_KEYS_BY_VIEW = {
   groups: CHIPS.groups.filter((c) => c.key !== 'date').map((c) => c.key),
   messages: CHIPS.messages.filter((c) => c.key !== 'date').map((c) => c.key),
 };
+const BASIC_CHIP_KEYS = {
+  groups: new Set(['date']),
+  messages: new Set(['date', 'status', 'to4']),
+};
 
 const kstDateFormat = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Seoul',
@@ -248,6 +252,7 @@ export default function SolapiMessageLog({
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [selected, setSelected] = useState(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const requestIdRef = useRef(0);
   const rowRef = useRef(null);
 
@@ -375,10 +380,24 @@ export default function SolapiMessageLog({
   }
 
   const chips = CHIPS[view];
+  const basicSet = BASIC_CHIP_KEYS[view] || BASIC_CHIP_KEYS.groups;
+  const basicChips = chips.filter((chip) => basicSet.has(chip.key));
+  const advancedChips = chips.filter((chip) => !basicSet.has(chip.key));
+  const activeAdvancedCount = advancedChips.filter((chip) => Boolean(filters[chip.key])).length;
+  const shownChips = (showAdvanced || activeAdvancedCount > 0) ? chips : basicChips;
   const checked = clock(data?.checked_at);
 
   return (
     <section className="solapi-log" aria-label="쏠라피 발송내역">
+      <div className="solapi-log-head">
+        <div>
+          <h2>전체 발송 기록</h2>
+          <p>
+            {date} 하루(한국시간) · 수신번호 가운데와 본문 속 링크·전화번호는 가림{checked ? ` · 확인 ${checked}` : ''}
+          </p>
+        </div>
+      </div>
+
       <div className="solapi-log-tabrow">
         <div className="solapi-log-pills" role="tablist" aria-label="보기 전환">
           {VIEW_TABS.map((tab) => (
@@ -424,18 +443,20 @@ export default function SolapiMessageLog({
 
       <div className="solapi-log-notice" role="status" aria-live="polite" aria-atomic="true">
         <p>
-          쏠라피 발송 기록 · {date} 하루(한국시간) · 수신번호 가운데와 본문 속 링크·전화번호는 가림
-          {checked ? ` · 확인 ${checked}` : ''}
+          쏠라피에 닿기 전에 멈춘 문자(키 미설정·시험 기록·요청 실패)는 이 탭에 없고 &apos;고객 발송 관리&apos;·&apos;직원 발송 관리&apos; 메뉴에 있습니다.
         </p>
-        <p>쏠라피에 닿기 전에 멈춘 문자(키 미설정·시험 기록·요청 실패)는 이 탭에 없고 &apos;고객 발송 관리&apos;·&apos;직원 발송 관리&apos; 메뉴에 있습니다.</p>
         {data?.partial ? <p className="solapi-log-notice__warn">건수가 많아 1,500건까지만 표시합니다(일부 누락).</p> : null}
         {notConfigured ? <p className="solapi-log-notice__warn">쏠라피 키가 설정되지 않아 조회할 수 없습니다.</p> : null}
         {data?.groups_partial ? <p className="solapi-log-notice__warn">쏠라피 요청 목록을 일부만 불러왔습니다(조회 실패 또는 건수 많음). 상태·타입이 비어 있는 줄이 있을 수 있습니다.</p> : null}
       </div>
 
       <div className="solapi-log-chips" role="group" aria-label="필터">
-        <span className="solapi-log-funnel" aria-hidden="true">▼</span>
-        {chips.map((chip) => {
+        <button type="button" className="solapi-log-day" aria-label="이전 날" onClick={() => changeDate(shiftDateKst(date, -1))}>‹ 이전 날</button>
+        {[['오늘', 0], ['어제', 1]].map(([label, back]) => (
+          <button key={label} type="button" className={`solapi-log-day${date === dayBeforeKst(back) ? ' is-active' : ''}`} onClick={() => changeDate(dayBeforeKst(back))}>{label}</button>
+        ))}
+        <button type="button" className="solapi-log-day" aria-label="다음 날" disabled={date >= todayKst()} onClick={() => changeDate(shiftDateKst(date, 1))}>다음 날 ›</button>
+        {shownChips.map((chip) => {
           const options = chip.dynamic === 'types'
             ? (data?.types || []).map((t) => ({ value: t.type, label: `${t.type} (${t.count})` }))
             : chip.dynamic === 'senders'
@@ -452,11 +473,16 @@ export default function SolapiMessageLog({
             />
           );
         })}
-        <button type="button" className="solapi-log-day" aria-label="이전 날" onClick={() => changeDate(shiftDateKst(date, -1))}>‹ 이전 날</button>
-        {[['오늘', 0], ['어제', 1]].map(([label, back]) => (
-          <button key={label} type="button" className={`solapi-log-day${date === dayBeforeKst(back) ? ' is-active' : ''}`} onClick={() => changeDate(dayBeforeKst(back))}>{label}</button>
-        ))}
-        <button type="button" className="solapi-log-day" aria-label="다음 날" disabled={date >= todayKst()} onClick={() => changeDate(shiftDateKst(date, 1))}>다음 날 ›</button>
+        {advancedChips.length > 0 ? (
+          <button
+            type="button"
+            className={`solapi-log-adv-toggle${(showAdvanced || activeAdvancedCount > 0) ? ' is-open' : ''}`}
+            aria-expanded={showAdvanced || activeAdvancedCount > 0}
+            onClick={() => setShowAdvanced((v) => !v)}
+          >
+            {showAdvanced ? '상세 필터 접기 ▴' : `상세 필터${activeAdvancedCount ? ` (${activeAdvancedCount})` : ''} ▾`}
+          </button>
+        ) : null}
       </div>
 
       {view === 'messages' ? (

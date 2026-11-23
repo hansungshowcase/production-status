@@ -1,20 +1,43 @@
 .solapi-log {
-  --sl-ink: #444444;
-  --sl-head: #302db2;
-  --sl-active: #4541ff;
-  --sl-bg: #f4f5f7;
-  --sl-line: #eeeeee;
+  --sl-ink: #191f28;
+  --sl-head: #111827;
+  --sl-active: #1b64da;
+  --sl-bg: #ffffff;
+  --sl-line: #e5e8eb;
   --sl-white: #ffffff;
   --sl-warn-bg: #fff2cc;
   --sl-warn-ink: #854d0e;
   --sl-ctl: 36px;
   min-width: 0;
   max-width: 100%;
-  padding: var(--space-3);
-  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  border: 1px solid var(--sl-line);
+  border-radius: 10px;
   background: var(--sl-bg);
   color: var(--sl-ink);
   overflow-wrap: anywhere;
+}
+
+.solapi-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eef0f3;
+}
+.solapi-log-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--sl-head);
+}
+.solapi-log-head p {
+  margin: 2px 0 0;
+  color: #6b7684;
+  font-size: 12.5px;
 }
 
 .solapi-log button:focus-visible,
@@ -28,60 +51,68 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .solapi-log-pills {
   display: inline-flex;
   max-width: 100%;
-  padding: 4px;
+  padding: 3px;
   gap: 2px;
-  border-radius: 999px;
-  background: var(--sl-white);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e8eb;
+  border-radius: 8px;
+  background: #f2f4f6;
+  box-shadow: none;
 }
 
 .solapi-log-pills button {
-  min-height: var(--sl-ctl);
-  padding: 0 var(--space-4);
+  min-height: 30px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  gap: 6px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 6px;
   background: transparent;
-  color: var(--sl-ink);
+  color: #4e5968;
   cursor: pointer;
   font: inherit;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .solapi-log-pills button[aria-selected='true'] {
-  background: var(--sl-white);
-  color: var(--sl-active);
-  box-shadow: 0 0 0 1px var(--sl-active) inset;
+  background: #ffffff;
+  color: #191f28;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(25, 31, 40, 0.08);
 }
 
 .solapi-log-badge {
-  min-width: 22px;
-  padding: 0 6px;
+  min-width: 20px;
+  padding: 0 5px;
   border-radius: 999px;
-  background: var(--sl-bg);
-  font-size: 12px;
+  background: #e9ecf0;
+  color: #333d4b;
+  font-size: 11.5px;
   font-weight: 700;
-  line-height: 20px;
+  line-height: 18px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .solapi-log-notice {
-  margin-bottom: var(--space-3);
-  color: var(--text-mid);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: #fafbfc;
+  border: 1px solid #eef0f3;
+  color: #6b7684;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.45;
   overflow-wrap: anywhere;
   word-break: break-all;
 }
@@ -93,8 +124,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .solapi-log-funnel { color: var(--text-dim); font-size: 11px; }
@@ -104,25 +135,29 @@
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--sl-white);
+  border: 1px solid #d5dbe1;
+  border-radius: 7px;
+  background: #ffffff;
 }
 
-.solapi-log-day { min-height: var(--sl-ctl); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: var(--sl-white); color: inherit; cursor: pointer; font: inherit; font-size: 13px; white-space: nowrap; }
+.solapi-log-day,
+.solapi-log-adv-toggle { min-height: 32px; padding: 0 10px; border: 1px solid #d5dbe1; border-radius: 7px; background: #ffffff; color: #333d4b; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.solapi-log-adv-toggle { border-style: dashed; color: #4e5968; background: #fafbfc; }
+.solapi-log-adv-toggle.is-open { border-style: solid; border-color: #1b64da; color: #1b64da; background: #eff6ff; }
 .solapi-log-day:disabled { opacity: 0.4; cursor: default; }
-.solapi-log-day.is-active { border-color: var(--sl-active); color: var(--sl-active); }
-.solapi-log-chip.is-active { border-color: var(--sl-active); color: var(--sl-active); }
+.solapi-log-day.is-active { border-color: #191f28; background: #191f28; color: #ffffff; }
+.solapi-log-chip.is-active { border-color: #1b64da; background: #eff6ff; color: #1b64da; }
 
 .solapi-log-chip button {
-  min-height: var(--sl-ctl);
-  padding: 0 var(--space-3);
+  min-height: 30px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
