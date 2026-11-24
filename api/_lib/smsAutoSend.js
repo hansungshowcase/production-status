@@ -9,6 +9,9 @@ import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, AUTO_LIMITS,
 import { STEPS } from './steps.js';
 import { BMS_TEMPLATE_ID, bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { dueMarkEntries, ataReady, ataSendVars, nameVars, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
+import { buildAdminCopySms, sendAdminCopySms } from './adminCopySms.js';
+
+export { buildAdminCopySms };
 
 const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
@@ -463,21 +466,19 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
       try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_paused_at = NOW(), auto_catchup_error = ? WHERE id = ? RETURNING id', args: [String(reason || (status === 'failed' ? '거절' : '불확실')).slice(0, 200), template.id] }); } catch { console.error('[sms-auto] 일괄 발송 멈춤 표시 실패'); }
     }
   }
-  if (out.sent >= 1 && template.auto_copy_to && !timeShort()) { // 사본(2026-11-17): 고객 발송·기록이 끝난 뒤 하루 1통. 실패해도 위 결과는 그대로
-    try {
-      const claimed = await db.execute({ sql: "UPDATE sms_text_templates SET auto_copy_date = ? WHERE id = ? AND COALESCE(auto_copy_date, '') <> ? RETURNING id", args: [today, template.id, today] });
-      if (claimed.rows?.[0]) {
-        out.copy = 'failed';
-        for (const [partIndex, part] of parts.entries()) {
-          await waitBeforePart(partIndex, { env, sleep });
-          const item = { to: template.auto_copy_to, text: partText(part, template, '고객'), ...subjectOf(template) };
-          if (part.image >= 0) item.fileId = fileIds[part.image];
-          const result = await vendor.sendEach({ from, messages: [item] }, { fetchImpl });
-          if (result.uncertain || result.failed !== 0) break;
-          if (partIndex === parts.length - 1) out.copy = 'sent';
-        }
-      }
-    } catch (error) { console.error('사본 발송 실패', error?.message || error); out.copy = 'failed'; }
+  if (out.sent >= 1 && template.auto_copy_to && !timeShort()) { // 관리자 확인 단문(18원): 고객 발송·기록이 끝난 뒤 하루 1통. 실패해도 위 결과는 그대로
+    const copyStatus = await sendAdminCopySms({
+      db,
+      vendor,
+      from,
+      to: template.auto_copy_to,
+      templateId: template.id,
+      templateName: template.name,
+      recipientNames: active.map(item => item.target.name),
+      today,
+      fetchImpl,
+    });
+    if (copyStatus) out.copy = copyStatus;
   }
   return out;
 }

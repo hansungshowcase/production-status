@@ -12,6 +12,7 @@ import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
+import { sendAdminCopySms } from './adminCopySms.js';
 import { bmsInWindow, bmsOptoutCheck, bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { STEPS } from './steps.js';
 import { autoEffective } from '../../shared/smsAutoEffective.js';
@@ -145,7 +146,7 @@ export async function loadEventTemplate(db, id) {
   await ensureTextTemplateSchema(db);
   await ensureEventSchema(db);
   const out = await db.execute({
-    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms, auto_skip_reason, auto_chain FROM sms_text_templates WHERE id = ?',
+    sql: 'SELECT id, name, body, image, images, auto_kind, auto_enabled, auto_offset, auto_unless_step, auto_audience, auto_staff, auto_msg_type, auto_step, auto_enabled_at, auto_daily, auto_weekdays, auto_unless_mode, auto_days, auto_ata_template, auto_send_time, auto_catchup_from, auto_catchup_at, auto_catchup_daily, auto_catchup_done_at, auto_lead_source, auto_catchup_paused_at, auto_catchup_error, auto_ata_fail_at, auto_bms, auto_skip_reason, auto_chain, auto_copy_to FROM sms_text_templates WHERE id = ?',
     args: [id],
   });
   const row = out.rows?.[0];
@@ -159,6 +160,7 @@ export async function loadEventTemplate(db, id) {
     auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '', auto_lead_source: row.auto_lead_source || '',
     auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_daily: Number(row.auto_catchup_daily) > 0 ? Number(row.auto_catchup_daily) : 0, auto_catchup_done: Boolean(row.auto_catchup_done_at),
     auto_catchup_paused: Boolean(row.auto_catchup_paused_at), auto_catchup_error: row.auto_catchup_error || '', auto_ata_fail_at: row.auto_ata_fail_at ? new Date(row.auto_ata_fail_at).toISOString() : '',
+    auto_copy_to: row.auto_copy_to || '',
   };
 }
 
@@ -658,6 +660,7 @@ export async function runEventSend(template, deps = {}) {
     try { await clearPhones(db, active.map(entry => entry.item.signupId)); } catch { warn('[sms-event] 번호 지우기 실패'); }
   }
 
+  const recipientNameOf = item => item?.order?.client_name || item?.vars?.고객명 || '고객';
   const sendWave = async (wave) => {
     const partStatus = [];
     const groupIds = [];
@@ -686,7 +689,7 @@ export async function runEventSend(template, deps = {}) {
     }
     if (wholeFail) {
       const wf = await ataWholeFail(db, template, wave, { reason, warn, out: { ...out, sent: 0, failed: 0, uncertain: 0 } });
-      return { sent: 0, failed: wf.failed, uncertain: 0, reason: wf.reason, wholeFail: true };
+      return { sent: 0, failed: wf.failed, uncertain: 0, reason: wf.reason, wholeFail: true, sentNames: [] };
     }
     const status = partStatus.every(s => s === 'sent') ? 'sent' : partStatus[0] === 'failed' ? 'failed' : 'uncertain';
     if (failedToList?.length) { // 알림톡 일부 실패: 실패 번호 횟수만큼만 failed, 나머지는 sent
@@ -702,7 +705,7 @@ export async function runEventSend(template, deps = {}) {
       const mark = async (list, st, why) => { if (!list.length) return; try { await db.execute({ sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(list)})`, args: [st, JSON.stringify(partStatus), why, JSON.stringify(groupIds), ...list.map(entry => entry.id)] }); } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다 */ } };
       await mark(bad, 'failed', reason);
       await mark(good, 'sent', null);
-      return { sent: good.length, failed: bad.length, uncertain: 0, reason: '', wholeFail: false };
+      return { sent: good.length, failed: bad.length, uncertain: 0, reason: '', wholeFail: false, sentNames: good.map(entry => recipientNameOf(entry.item)) };
     }
     try {
       await db.execute({
@@ -710,11 +713,12 @@ export async function runEventSend(template, deps = {}) {
         args: [status, JSON.stringify(partStatus), reason || null, JSON.stringify(groupIds), ...wave.map(entry => entry.id)],
       });
     } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다. 행은 claimed 로 남아 다음 실행이 uncertain 으로 바꾼다. */ }
-    return { sent: status === 'sent' ? wave.length : 0, failed: status === 'failed' ? wave.length : 0, uncertain: status === 'uncertain' ? wave.length : 0, reason: '', wholeFail: false };
+    return { sent: status === 'sent' ? wave.length : 0, failed: status === 'failed' ? wave.length : 0, uncertain: status === 'uncertain' ? wave.length : 0, reason: '', wholeFail: false, sentNames: status === 'sent' ? wave.map(entry => recipientNameOf(entry.item)) : [] };
   };
 
   const waves = ata ? partitionUniquePhones(active) : [active]; // 알림톡·브랜드메시지는 쏠라피 allowDuplicates:false 중복 수신번호 실패를 피하려 웨이브별 중복 없는 번호로 나눈다(일반 문자 갈래는 기존 단일 배치 유지)
   let stoppedByWholeFail = false;
+  const sentNames = [];
   for (let i = 0; i < waves.length; i += 1) {
     if (waves.length > 1 && tick() >= endAt) {
       const rest = waves.slice(i).flat();
@@ -731,6 +735,7 @@ export async function runEventSend(template, deps = {}) {
     out.sent += waveRes.sent;
     out.failed += waveRes.failed;
     out.uncertain += waveRes.uncertain;
+    if (waveRes.sentNames?.length) sentNames.push(...waveRes.sentNames);
     if (waveRes.reason) out.reason = waveRes.reason;
     if (waveRes.wholeFail) {
       stoppedByWholeFail = true;
@@ -742,6 +747,20 @@ export async function runEventSend(template, deps = {}) {
     }
   }
   if (!stoppedByWholeFail && out.sent > 0) await clearAtaFail(db, template);
+  if (out.sent >= 1 && template.auto_copy_to && !timeShort()) {
+    const copyStatus = await sendAdminCopySms({
+      db,
+      vendor,
+      from: digits(template.auto_chain?.from) || digits(env.SMS_SENDER) || from,
+      to: template.auto_copy_to,
+      templateId: template.id,
+      templateName: template.name,
+      recipientNames: sentNames,
+      today,
+      fetchImpl,
+    });
+    if (copyStatus) out.copy = copyStatus;
+  }
   return out;
 }
 

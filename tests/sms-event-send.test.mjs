@@ -4,6 +4,7 @@ import test from 'node:test';
 import { handleSmsConsole } from '../api/sms-console.js';
 import { _resetTextTemplateSchemaForTest, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
 import { _resetEventSchemaForTest, fillVars, orderVars, runEventSend, runEventSendAll, runInstantSendAll } from '../api/_lib/smsEventSend.js';
+import { byteLength, classifyText, SMS_MAX_BYTES } from '../api/_lib/sendProvider.js';
 import { runTimedSendAll } from '../api/_lib/smsAutoSend.js';
 
 const NOW = Date.parse('2026-11-20T01:00:00Z'); // KST 2026-11-20 10:00
@@ -65,6 +66,11 @@ function fakeDb({ orders = [], processes = [], templates = [] } = {}) {
         const changed = row.body !== args[3] || (row.auto_offset ?? 0) !== args[9] || (row.auto_unless_step ?? null) !== args[10] || (row.auto_audience ?? 'customer') !== args[11] || (row.auto_staff ?? null) !== args[12];
         if (row.auto_enabled && changed) { row.auto_enabled = false; return { rows: [{ id: row.id, auto_kind: row.auto_kind }] }; }
         return { rows: [] };
+      }
+      if (t.startsWith('UPDATE sms_text_templates SET auto_copy_date = ? WHERE id = ?')) {
+        if ((state.copyDate || '') === args[0]) return { rows: [] };
+        state.copyDate = args[0];
+        return { rows: [{ id: args[1] }] };
       }
       if (t.startsWith('UPDATE sms_text_templates SET')) {
         const sets = t.slice('UPDATE sms_text_templates SET '.length, t.indexOf(', updated_at')).split(', ');
@@ -542,4 +548,32 @@ test('즉시형 공정 조회 SQL: ? 자리표시자 수가 넘기는 값 수와
   await go(db, fakeProvider(), itpl());
   assert.ok(db.state.procSql?.length >= 1, '공정 조회가 실행돼야 한다');
   for (const { t, args } of db.state.procSql) assert.equal([...t].filter(ch => ch === '?').length, args.length);
+});
+
+test('안내·이벤트 문구도 auto_copy_to 가 있으면 발송 성공일 하루 1통 90바이트 이하 단문 요약 SMS 를 보낸다', async () => {
+  const db = fakeDb({
+    orders: [mkOrder(1, { client_name: '한성상사' }), mkOrder(2, { client_name: '대한유통' })],
+  });
+  const provider = fakeProvider();
+  const copyTo = '01077314237';
+  const first = await go(db, provider, tpl({ images: ['AAAA', 'BBBB'], auto_copy_to: copyTo }));
+  assert.equal(first.sent, 2);
+  assert.equal(first.copy, 'sent');
+  assert.equal(provider.calls.send.length, 3); // 고객 2통(사진+본문) + 관리자 확인 단문 1통
+  const adminCall = provider.calls.send[2];
+  assert.equal(adminCall.messages.length, 1);
+  const adminMsg = adminCall.messages[0];
+  assert.equal(adminMsg.to, copyTo);
+  assert.equal(adminMsg.fileId, undefined);
+  assert.equal(adminMsg.subject, undefined);
+  assert.equal(classifyText(adminMsg.text, adminMsg.subject).type, 'SMS');
+  assert.ok(byteLength(adminMsg.text) <= SMS_MAX_BYTES);
+  assert.equal(adminMsg.text, '[납기 안내] 금일 한성상사, 대한유통님에게 발송 완료되었습니다.');
+
+  // 같은 날 새 주문이 추가되어 재실행되어도 관리자 단문은 하루 1통만 발송
+  db.state.orders.push(mkOrder(3, { client_name: '서울마트' }));
+  const second = await go(db, provider, tpl({ images: ['AAAA', 'BBBB'], auto_copy_to: copyTo }));
+  assert.equal(second.sent, 1);
+  assert.equal(second.copy, undefined);
+  assert.equal(provider.calls.send.length, 5); // 고객 2통 추가, 관리자 추가 발송 없음
 });

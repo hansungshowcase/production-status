@@ -135,7 +135,9 @@ export function validateTextForm({ name, body, autoKind, days, sendFrom, repeat,
     const times = normalizeRepeat(repeat ?? '1');
     if (times === null) return { ok: false, reason: 'repeat', info };
     if (times >= 2 && normalizeInterval(interval ?? '30') === null) return { ok: false, reason: 'interval', info };
-    if (!ataTemplate && String(copyTo || '').trim() && !/^01[016789]\d{7,8}$/.test(String(copyTo).replace(/\D/g, ''))) return { ok: false, reason: 'copyTo', info };
+  }
+  if (autoKind && (ataTemplate || (audience !== AUDIENCE_STAFF && audience !== AUDIENCE_SALES)) && String(copyTo || '').trim() && !/^01[016789]\d{7,8}$/.test(String(copyTo).replace(/\D/g, ''))) {
+    return { ok: false, reason: 'copyTo', info };
   }
   if (catchupOn && autoKind === AUTO_KIND) { // 이미 출고된 주문에 한 번 보내기: 출고일 시작일 + 보낼 시각(날짜·시각, 08~20시)
     if (!normalizeSendFrom(catchupFrom)) return { ok: false, reason: 'catchup_from', info };
@@ -310,7 +312,7 @@ export function textFormStopText(reason) {
   if (reason === 'sendFrom') return '시작일은 날짜로 넣어 주세요';
   if (reason === 'repeat') return '횟수는 1부터 10 사이로 넣어 주세요';
   if (reason === 'interval') return '간격은 1부터 365 사이로 넣어 주세요';
-  if (reason === 'copyTo') return '사본 받을 번호는 휴대폰 번호로 넣어 주세요';
+  if (reason === 'copyTo') return '관리자 확인 번호는 휴대폰 번호로 넣어 주세요';
   if (reason === 'offset') return '일수는 0부터 365 사이로 넣어 주세요';
   if (reason === 'step') return '공정을 골라 주세요';
   if (reason === 'dup') return '같은 일수 단계가 있습니다';
@@ -387,8 +389,9 @@ export function buildSaveBody({ id, name, body, image, images, auto, chain }) {
     const o = autoBody(a);
     if (!o.kind) return o;
     const r = a.sendTime !== undefined ? { ...o, auto_send_time: hasSendTime(a.kind, a.days) && SEND_TIMES.includes(a.sendTime) ? a.sendTime : '' } : o;
-    // 사본 번호(2026-11-17): 값이 넘어왔을 때만 싣는다. 출고·주문·공정 후 N일 문자(알림톡 제외)만 뜻이 있고 그 밖은 빈 값
-    return a.copyTo !== undefined ? { ...r, auto_copy_to: (a.kind === AUTO_KIND || a.kind === AUTO_KIND_ORDER || isProcessPlusKind(a.kind)) && !a.ataTemplate ? String(a.copyTo || '').replace(/\D/g, '') : '' } : r;
+    // 관리자 확인 단문 번호: 값이 넘어왔을 때만 싣는다(알림톡·브랜드메시지 포함 고객 대상 자동 발송 전체 지원)
+    const customerVisible = Boolean(a.ataTemplate) || (a.audience !== AUDIENCE_STAFF && a.audience !== AUDIENCE_SALES);
+    return a.copyTo !== undefined ? { ...r, auto_copy_to: customerVisible ? String(a.copyTo || '').replace(/\D/g, '') : '' } : r;
   };
   // 추가 옵션(auto_chain): chain 인자가 넘어왔을 때만 싣는다(기존 호출·단위 테스트와 서버 skip 계약 유지)
   const chainOut = () => {
@@ -538,11 +541,14 @@ function adCatchupText(entry) {
     ? `일괄 ${entry.autoCatchupAt.replace('T', ' ')} · 출고일 ${entry.autoCatchupFrom || '처음'}~오늘${entry.autoCatchupDone ? ' (완료)' : ''}` : '';
 }
 
+const adminCopyLine = (entry) => (entry?.autoCopyTo ? `관리자 알림 ${String(entry.autoCopyTo).replace(/\D/g, '').slice(-4)}` : '');
+
 // 발송 조건 한 줄
 export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]}${entry.autoStep ? `(${entry.autoStep})` : ''}`,
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : '고객',
   viaLabel(entry),
+  adminCopyLine(entry),
 ) : isDateKind(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]} ${offsetText(entry.autoOffset, entry.autoDaily)}`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
@@ -550,12 +556,14 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   entry.autoAudience === AUDIENCE_STAFF ? `직원 ${Number(entry.autoStaffCount) || 0}명` : (entry.autoAudience === AUDIENCE_SALES ? '영업담당' : '고객'),
   entry.autoUnlessStep ? `${entry.autoUnlessStep} ${entry.autoUnlessMode === 'started' ? '미착수만' : '미완료만'}` : '',
   viaLabel(entry),
-) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객', viaLabel(entry)
+  adminCopyLine(entry),
+) : entry?.autoKind === AUTO_KIND_MEMBER_JOINED ? joinDot(AUTO_LABEL[entry.autoKind], '고객', viaLabel(entry), adminCopyLine(entry)
 ) : entry?.autoKind === AUTO_KIND_LEAD_PLUS ? joinDot(
   Number(entry.autoDays) > 0 ? `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || '']} 후 ${Number(entry.autoDays)}일 뒤` : `${LEAD_SOURCE_FLOW_LABEL[entry.autoLeadSource || '']} 당일`,
   Number(entry.autoDays) > 0 ? (sendTimeLabel(entry.autoSendTime) || '오전 9시 30분') : '',
   '고객',
   viaLabel(entry),
+  adminCopyLine(entry),
 ) : AUTO_KINDS.includes(entry?.autoKind) ? joinDot(
   `${AUTO_LABEL[entry.autoKind]}${isProcessPlusKind(entry.autoKind) && entry.autoStep ? `(${entry.autoStep})` : ''} ${entry.autoDays}일 뒤`,
   sendTimeLabel(entry.autoSendTime) || '오전 10시',
@@ -563,7 +571,7 @@ export const autoConditionLine = (entry) => (isImmediateKind(entry?.autoKind) ? 
   viaLabel(entry),
   entry.autoSendFrom ? `${shortDate(entry.autoSendFrom)}부터` : '',
   Number(entry.autoRepeat) > 1 ? `${Number(entry.autoRepeat)}번(${Number(entry.autoInterval) || AUTO_DEFAULT_INTERVAL}일 간격)` : '',
-  entry.autoCopyTo ? `사본 ${String(entry.autoCopyTo).replace(/\D/g, '').slice(-4)}` : '',
+  adminCopyLine(entry),
   adCatchupText(entry),
 ) : '');
 

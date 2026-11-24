@@ -578,7 +578,7 @@ function buildMineConditionSummary(entry) {
   if (entry.autoSendFrom) tags.push(`${entry.autoSendFrom} 이후부터 적용`);
 
   const copyTail = phoneTailDigits(entry.autoCopyTo);
-  if (copyTail) tags.push(`사본 동시 발송: ${copyTail}`);
+  if (copyTail) tags.push(`관리자 확인 단문: ${copyTail}`);
   if (entry.autoFrom) tags.push(`별도 발신번호: ${formatKoreanPhone(entry.autoFrom)}`);
 
   let howMain = '';

@@ -322,6 +322,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const bmsChars = [...String(body).replace(/#\{고객명\}/g, '가'.repeat(20))].length;
   const costBumpedByVar = !ataTemplate && !images.length && bodyVarNames(outBody).length > 0 && previewCostEst.type !== costEst.type;
 
+  const showAdvCopy = Boolean(autoKind && (ataTemplate || (audience !== AUDIENCE_STAFF && audience !== AUDIENCE_SALES)));
+
   const summaryEntry = autoKind ? {
     autoKind,
     autoDays: Number(days) || 0,
@@ -339,7 +341,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     autoSendFrom: dayKind && !ataTemplate ? sendFrom : '',
     autoRepeat: dayKind && !ataTemplate ? (normalizeRepeat(repeat) ?? AUTO_DEFAULT_REPEAT) : AUTO_DEFAULT_REPEAT,
     autoInterval: dayKind && !ataTemplate ? (normalizeInterval(interval) ?? AUTO_DEFAULT_INTERVAL) : AUTO_DEFAULT_INTERVAL,
-    autoCopyTo: (autoKind === AUTO_KIND || autoKind === AUTO_KIND_ORDER) && !ataTemplate ? copyTo : '',
+    autoCopyTo: showAdvCopy ? copyTo : '',
     autoCatchupAt: catchupShown ? catchupAt : '',
     autoCatchupFrom: catchupShown ? catchupFrom : '',
     autoCatchupDaily: catchupShown ? catchupDaily : '',
@@ -355,7 +357,6 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const showAdvRepeat = Boolean((dayKind && !ataTemplate) || dateKind);
   const showAdvSales = Boolean(dateKind && audience !== AUDIENCE_SALES);
   const showAdvDaysOff = Boolean(dateKind);
-  const showAdvCopy = Boolean(dayKind && !ataTemplate);
   const showAdvPlain = Boolean(autoKind && (!ataTemplate || chainPlain));
   const showAdvCatchup = autoKind === AUTO_KIND;
   const showAdvSection = showAdvSubject || showAdvFrom || showAdvRepeat || showAdvSales || showAdvDaysOff || showAdvCopy || showAdvPlain || (showAdvCatchup && catchupOn) || Boolean(chainAfter);
@@ -899,7 +900,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               <button type="button" className="stf-adv-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(prev => !prev)}>
                 <span className="stf-adv-left">
                   <span className="stf-step-num">4</span>
-                  <span className="stf-adv-title">추가 설정 (제목 · 발신번호 · 반복 · 사본 · 휴무일)</span>
+                  <span className="stf-adv-title">추가 설정 (제목 · 발신번호 · 반복 · 관리자 확인 · 휴무일)</span>
                   {activeAdvItems > 0 ? <span className="stf-adv-badge">{activeAdvItems}개 사용 중</span> : null}
                 </span>
                 <span className="stf-adv-chevron">{advancedOpen ? '접기 ▴' : '열기 ▾'}</span>
@@ -980,9 +981,9 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
 
                   {showAdvCopy ? (
                     <div className="stf-field">
-                      <span>내 번호로 확인 사본 받기 (선택)</span>
-                      <input type="text" inputMode="tel" placeholder="비우면 사본을 보내지 않습니다 (예: 01012345678)" value={copyTo} maxLength={13} aria-label="사본 받을 번호" onChange={event => setCopyTo(event.target.value.replace(/[^\d-]/g, ''))} />
-                      <p className="stf-copy-note">번호를 넣으면 고객에게 발송되는 날마다 하루 1통씩 이 번호로 같은 문자가 함께 발송됩니다.</p>
+                      <span>관리자 발송 완료 알림 (선택 · 단문 18원)</span>
+                      <input type="text" inputMode="tel" placeholder="비우면 발송하지 않습니다 (예: 01077314237)" value={copyTo} maxLength={13} aria-label="관리자 발송 확인 번호" onChange={event => setCopyTo(event.target.value.replace(/[^\d-]/g, ''))} />
+                      <p className="stf-copy-note">고객에게 발송된 날 하루 1통, 누가 발송받았는지 짧은 단문(18원, 사진 제외)으로 알려드립니다. 예: [템플릿명] 금일 홍길동님에게 발송 완료되었습니다.</p>
                     </div>
                   ) : null}
 

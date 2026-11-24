@@ -5,9 +5,9 @@ import { handleSmsConsole } from '../api/sms-console.js';
 import { _resetTextTemplateSchemaForTest, getTextTemplate, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
 import { _resetManualSendSchemaForTest } from '../api/_lib/smsManualSend.js';
 import {
-  _resetAutoSchemaForTest, adCheck, autoStatus, autoToggle, autoTest, buildParts, findTargets, kstDate, optoutAdd, phoneHash, runAutoSend, runAutoSendAll,
+  _resetAutoSchemaForTest, adCheck, autoStatus, autoToggle, autoTest, buildAdminCopySms, buildParts, findTargets, kstDate, optoutAdd, phoneHash, runAutoSend, runAutoSendAll,
 } from '../api/_lib/smsAutoSend.js';
-import { getSendProvider } from '../api/_lib/sendProvider.js';
+import { byteLength, classifyText, getSendProvider, SMS_MAX_BYTES } from '../api/_lib/sendProvider.js';
 import { eventPhoneHash, runGuarded } from '../api/_lib/smsEventSend.js';
 
 const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 1, 2, 3]).toString('base64');
@@ -518,28 +518,62 @@ test('문구 저장: 출고·주문 후 광고형은 고객명 밖의 변수를 
   assert.equal((await saveTextTemplate(db, { name: '고객명만', body: BODY, auto })).status, 201);
 });
 
-// 사본 번호(2026-11-17): 고객 발송이 1명 이상 나간 날 같은 문자를 사본 번호로 하루 1통
+// 관리자 발송 완료 확인 단문(18원): 사진·제목 없이 90바이트 이하 SMS 1통으로 오늘 발송 대상자를 요약한다.
 const COPY = '01077314237';
-const runCopy = (db, provider, copyTo) => runAutoSend({ id: 7, name: db.state.tpl.name, body: BODY, images: [JPG, JPG], auto_kind: 'ship_plus_days', auto_days: 20, auto_enabled: true, auto_start_date: '2026-10-01', auto_repeat: 1, auto_interval: 30, auto_copy_to: copyTo }, { db, provider, env: ENV, nowMs: NOW });
-test('사본: 고객 발송이 나간 날 사본 번호로 같은 통 구성 1번 더, 같은 날 두 번째 실행은 사본 0, 번호가 비면 기존과 같다', async () => {
-  const none = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+const runCopy = (db, provider, copyTo, extraTpl = {}) => runAutoSend({ id: 7, name: db.state.tpl.name, body: BODY, images: [JPG, JPG], auto_kind: 'ship_plus_days', auto_days: 20, auto_enabled: true, auto_start_date: '2026-10-01', auto_repeat: 1, auto_interval: 30, auto_copy_to: copyTo, auto_chain: { subject: '소개 혜택 안내 제목' }, ...extraTpl }, { db, provider, env: ENV, nowMs: NOW });
+
+test('관리자 확인 문자 요약(buildAdminCopySms): 1명·다수·외 N명·초과 길이 모두 90바이트 이하 SMS 단문 보장', () => {
+  const one = buildAdminCopySms('소개 혜택 안내', ['류플로라']);
+  assert.equal(one, '[소개 혜택 안내] 금일 류플로라님에게 발송 완료되었습니다.');
+  assert.equal(classifyText(one).type, 'SMS');
+  assert.ok(byteLength(one) <= SMS_MAX_BYTES);
+
+  const two = buildAdminCopySms('소개 혜택 안내', ['류플로라', '예성떡집']);
+  assert.equal(two, '[소개 혜택 안내] 금일 류플로라, 예성떡집님에게 발송 완료되었습니다.');
+  assert.equal(classifyText(two).type, 'SMS');
+  assert.ok(byteLength(two) <= SMS_MAX_BYTES);
+
+  const many = buildAdminCopySms('소개 혜택 안내', ['류플로라', '예성떡집', '김철수', '이영희', '박민수', '최지우']);
+  assert.match(many, /\[소개 혜택 안내\] 금일 류플로라.*외 \d+명에게 발송 완료되었습니다\.$/);
+  assert.equal(classifyText(many).type, 'SMS');
+  assert.ok(byteLength(many) <= SMS_MAX_BYTES);
+
+  const longAll = buildAdminCopySms('가'.repeat(40), Array.from({ length: 12 }, (_, i) => `${'홍'.repeat(18)}${i}`));
+  assert.match(longAll, /발송 완료되었습니다\.$/);
+  assert.equal(classifyText(longAll).type, 'SMS');
+  assert.ok(byteLength(longAll) <= SMS_MAX_BYTES);
+
+  const empty = buildAdminCopySms('안내', []);
+  assert.equal(classifyText(empty).type, 'SMS');
+  assert.ok(byteLength(empty) <= SMS_MAX_BYTES);
+});
+
+test('사본: 고객 발송(이미지 2장 포함)이 나간 날 사본 번호로 사진·제목 없는 단문 SMS 1통만 발송, 같은 날 두 번째 실행은 0', async () => {
+  const none = setup({ orders: [order(1, '010-3333-4444', '2026-10-31', '류플로라')] });
   const noneProvider = fakeProvider();
   const base = await runCopy(none, noneProvider, '');
   assert.equal(base.copy, undefined);
-  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
+  const db = setup({ orders: [order(1, '010-3333-4444', '2026-10-31', '류플로라')] });
   const provider = fakeProvider();
   const out = await runCopy(db, provider, COPY);
   assert.equal(out.sent, 1);
   assert.equal(out.copy, 'sent');
-  assert.equal(provider.calls.send.length, noneProvider.calls.send.length + 3); // 고객 3통(사진 2·본문) + 사본 3통
-  assert.deepEqual(provider.calls.send.slice(3).map(c => c.messages.map(m => m.to)), [[COPY], [COPY], [COPY]]);
-  assert.equal(provider.calls.send[5].messages[0].text.includes('고객 대표님'), true);
-  assert.equal(db.state.sends.length, 1); // 사본은 sms_auto_sends 에 넣지 않는다
-  db.state.orders.push(order(2, '010-5555-6666', '2026-10-30'));
+  assert.equal(provider.calls.send.length, noneProvider.calls.send.length + 1); // 고객 3통(사진 2·본문) + 관리자 확인 단문 1통
+  const adminCall = provider.calls.send[3];
+  assert.equal(adminCall.messages.length, 1);
+  const adminMsg = adminCall.messages[0];
+  assert.equal(adminMsg.to, COPY);
+  assert.equal(adminMsg.fileId, undefined);
+  assert.equal(adminMsg.subject, undefined);
+  assert.equal(classifyText(adminMsg.text, adminMsg.subject).type, 'SMS');
+  assert.ok(byteLength(adminMsg.text) <= SMS_MAX_BYTES);
+  assert.equal(adminMsg.text, '[소개 혜택 안내] 금일 류플로라님에게 발송 완료되었습니다.');
+  assert.equal(db.state.sends.length, 1); // 관리자 확인 문자는 sms_auto_sends 에 넣지 않는다
+  db.state.orders.push(order(2, '010-5555-6666', '2026-10-30', '예성떡집'));
   const again = await runCopy(db, provider, COPY);
   assert.equal(again.sent, 1);
   assert.equal(again.copy, undefined);
-  assert.equal(provider.calls.send.length, noneProvider.calls.send.length + 3 + 3);
+  assert.equal(provider.calls.send.length, noneProvider.calls.send.length + 1 + 3);
 });
 test('사본 발송이 예외를 던져도 고객 발송 결과·기록은 사본이 없을 때와 같다', async () => {
   const plain = setup({ orders: [order(1, '010-3333-4444', '2026-10-31')] });
