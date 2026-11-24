@@ -18,7 +18,7 @@ import {
 } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import {
-  ACTION_LABELS, availableActions, deleteConfirmed, deleteDecision,
+  ACTION_LABELS, availableActions, buttonLinksOf, deleteConfirmed, deleteDecision,
   failBadge, formatDate, isValidRename, readOnlyAudienceSections,
   readOnlyKakaoItems, statusInfo, statusPills, templateAudienceKind, templateExtras,
   usageBadge, usageCount, usageFail, usageLastAt, usageSuccess,
@@ -1116,18 +1116,22 @@ export default function KakaoTemplateManager({
                     content: previewFilled ? previewFill(rawBody) : rawBody,
                     emphasizeType: photos.length ? 'IMAGE' : 'NONE',
                     imageUrl: photos[0] || '',
-                    buttons: buttons.map((b) => ({ type: 'WL', name: b.name })),
+                    buttons: buttons.map((b) => ({ type: 'WL', name: b.name, link: b.link, linkMo: b.link, linkPc: b.linkPc || '' })),
                     targetName: '한성쇼케이스그룹',
                   }}
                 />
-                {buttons.length > 0 ? (
+                {buttonLinksOf(buttons).length > 0 ? (
                   <div className="ktm-link-strip">
-                    <span className="ktm-link-strip-label">버튼 연결 주소</span>
+                    <span className="ktm-link-strip-label">버튼 연결 주소 (미리보기 버튼 또는 아래 주소를 누르면 해당 글로 이동)</span>
                     <ul className="ktm-bms-links">
-                      {buttons.map((b, i) => (
+                      {buttonLinksOf(buttons).map((b, i) => (
                         <li key={`${b.name}-${i}`}>
                           <strong>{b.name}</strong>
-                          <span>{b.link}</span>
+                          {b.href ? (
+                            <a className="ktm-bms-link" href={b.href} target="_blank" rel="noopener noreferrer">{b.rawLink || b.href}</a>
+                          ) : (
+                            <span>{b.rawLink}</span>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -1570,12 +1574,35 @@ export default function KakaoTemplateManager({
                 name: selected.name,
                 content: previewFilled ? previewFill(selected.content || '') : (selected.content || ''),
                 emphasizeType: selected.emphasizeType,
+                imageUrl: selected.imageUrl || '',
                 emphasizeTitle: selected.emphasizeTitle,
                 emphasizeSubtitle: selected.emphasizeSubtitle,
                 extra: selected.extra,
-                buttons: (selected.buttons || []).map((b) => ({ type: b.type, name: b.name })),
+                buttons: (selected.buttons || []).map((b) => ({
+                  type: b.type,
+                  name: b.name,
+                  linkMo: b.linkMo || '',
+                  linkPc: b.linkPc || '',
+                })),
                 targetName: selected.target?.name || '',
               }} />
+              {buttonLinksOf(selected.buttons).length > 0 ? (
+                <div className="ktm-link-strip">
+                  <span className="ktm-link-strip-label">버튼 연결 주소 (미리보기 버튼 또는 아래 주소를 누르면 해당 글로 이동)</span>
+                  <ul className="ktm-bms-links">
+                    {buttonLinksOf(selected.buttons).map((b, i) => (
+                      <li key={`${b.name}-${i}`}>
+                        <strong>{b.name}</strong>
+                        {b.href ? (
+                          <a className="ktm-bms-link" href={b.href} target="_blank" rel="noopener noreferrer">{b.rawLink || b.href}</a>
+                        ) : (
+                          <span>{b.rawLink}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <details className="ktm-tech-details">
                 <summary>상세 정보 · 템플릿 ID 보기</summary>

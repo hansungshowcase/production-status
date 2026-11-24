@@ -303,6 +303,13 @@
 .ktm-bms-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .ktm-bms-links li { display: flex; flex-direction: column; font-size: 12.5px; }
 .ktm-bms-links span { color: var(--smsc-muted, #6b7684); word-break: break-all; }
+.ktm-bms-link {
+  color: var(--smsc-accent, #1b64da);
+  word-break: break-all;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ktm-bms-link:hover { color: #1549a3; }
 .stl-detail-banner-sub { font-weight: 500; color: #7f1d1d; }
 
 @media (max-width: 900px) {

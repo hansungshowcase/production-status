@@ -171,6 +171,55 @@ export function splitVariables(content) {
   return parts;
 }
 
+const PREVIEW_BUTTON_VARS = Object.freeze({
+  고객명: '홍길동',
+  업체명: '홍길동',
+  주문번호: 'HS-2026-0001',
+  규격: '슬라이딩 1200×600×1800mm',
+  수량: '1대',
+  예상출고일: '2026-11-23',
+  조회링크: 'https://production-status.vercel.app/track/EXAMPLE',
+  제품: '쇼케이스',
+  토큰: 'EXAMPLE',
+  쿼리: 'open_lookup=1',
+});
+
+// 브랜드메시지({name, link, linkPc})·알림톡({type, name, linkMo, linkPc}) 버튼에서 미리보기 클릭 시 열릴 실제 http(s) 주소를 구한다.
+export function resolvePreviewButtonUrl(button, vars = {}) {
+  if (!button || typeof button !== 'object') return '';
+  if (button.type && button.type !== 'WL' && !button.link && !button.linkMo && !button.linkPc) return '';
+  const raw = String(button.linkPc || button.link || button.linkMo || '').trim();
+  if (!raw) return '';
+  const custom = vars && typeof vars === 'object' ? vars : {};
+  const filled = raw.replace(/#\{([^{}\s]{1,40})\}/g, (all, name) => {
+    const customVal = custom[name];
+    if (customVal !== undefined && customVal !== null && String(customVal).trim() !== '') return String(customVal).trim();
+    if (Object.prototype.hasOwnProperty.call(PREVIEW_BUTTON_VARS, name)) return PREVIEW_BUTTON_VARS[name];
+    return 'EXAMPLE';
+  });
+  return /^https?:\/\/\S+$/i.test(filled) ? filled : '';
+}
+
+// 상세 화면 하단 '버튼 연결 주소' 표시용 목록([{ name, rawLink, href, linkMo, linkPc }])
+export function buttonLinksOf(buttons, vars = {}) {
+  return (Array.isArray(buttons) ? buttons : [])
+    .filter((b) => b && String(b.name || '').trim())
+    .map((b) => {
+      const linkMo = String(b.link || b.linkMo || '').trim();
+      const linkPc = String(b.linkPc || '').trim();
+      const rawLink = linkPc || linkMo;
+      const href = resolvePreviewButtonUrl(b, vars);
+      return {
+        name: String(b.name).trim(),
+        rawLink,
+        href,
+        linkMo,
+        linkPc,
+      };
+    })
+    .filter((item) => Boolean(item.rawLink || item.href));
+}
+
 // ---------- 종류·보내는 곳 표시(읽기 전용) ----------
 // sent = GET ?resource=sent 의 groups[] 또는 null
 

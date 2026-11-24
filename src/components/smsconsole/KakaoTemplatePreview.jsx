@@ -1,5 +1,5 @@
 import React from 'react';
-import { splitVariables } from './templateListModel.js';
+import { resolvePreviewButtonUrl, splitVariables } from './templateListModel.js';
 import './KakaoTemplatePreview.css';
 
 // 알림톡·브랜드메시지 미리보기 말풍선. 카카오 로고·상표는 쓰지 않고 글자만 쓴다.
@@ -37,9 +37,28 @@ export default function KakaoTemplatePreview({ template, banner = '알림톡 도
         </div>
         {buttons.length > 0 ? (
           <div className="ktp-buttons">
-            {buttons.map((button, index) => (
-              <div key={`${button.name}-${index}`} className="ktp-button">{button.name}</div>
-            ))}
+            {buttons.map((button, index) => {
+              const href = resolvePreviewButtonUrl(button);
+              const rawLink = String(button?.linkPc || button?.link || button?.linkMo || '').trim();
+              if (href) {
+                return (
+                  <a
+                    key={`${button.name}-${index}`}
+                    className="ktp-button ktp-button--link"
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={rawLink ? `${button.name} → ${rawLink}` : button.name}
+                  >
+                    <span className="ktp-button__label">{button.name}</span>
+                    <span className="ktp-button__arrow" aria-hidden="true">↗</span>
+                  </a>
+                );
+              }
+              return (
+                <div key={`${button.name}-${index}`} className="ktp-button">{button.name}</div>
+              );
+            })}
           </div>
         ) : null}
       </div>

@@ -104,8 +104,42 @@ test('주소에 tpl 이 있고 발송 중이 아니면 전체로 시작', () => 
 });
 
 // ---------- 대상(고객 전용 / 직원 전용) 묶기 ----------
-import { templateAudienceKind, templateAudienceSections, readOnlyAudienceSections } from '../src/components/smsconsole/templateListModel.js';
+import { buttonLinksOf, resolvePreviewButtonUrl, templateAudienceKind, templateAudienceSections, readOnlyAudienceSections } from '../src/components/smsconsole/templateListModel.js';
 import { KAKAO_TEMPLATE_AUDIENCE } from '../shared/smsTemplateKinds.js';
+
+test('미리보기 CTA 버튼 URL 해석: 브랜드메시지(link/linkPc)·알림톡(linkMo/linkPc)·변수 치환·비링크 버튼', () => {
+  assert.equal(
+    resolvePreviewButtonUrl({ name: '리뷰 남기고 7만원 받기', link: 'https://m.cafe.naver.com/01027857623/1848', linkPc: 'https://cafe.naver.com/01027857623/1848' }),
+    'https://cafe.naver.com/01027857623/1848',
+  );
+  assert.equal(
+    resolvePreviewButtonUrl({ name: '구글 리뷰 쓰기', link: 'https://search.google.com/local/writereview?placeid=TEST' }),
+    'https://search.google.com/local/writereview?placeid=TEST',
+  );
+  assert.equal(
+    resolvePreviewButtonUrl({ type: 'WL', name: '자세히 보기', linkMo: 'https://blog.hansungshowcase.kr/85099', linkPc: '' }),
+    'https://blog.hansungshowcase.kr/85099',
+  );
+  assert.equal(
+    resolvePreviewButtonUrl({ type: 'WL', name: '주문 진행상황 보기', linkMo: 'https://production-status.vercel.app/track/#{토큰}' }),
+    'https://production-status.vercel.app/track/EXAMPLE',
+  );
+  assert.equal(
+    resolvePreviewButtonUrl({ type: 'WL', name: '주문 진행상황 보기', linkMo: 'https://production-status.vercel.app/track/#{토큰}' }, { 토큰: 'ABC123' }),
+    'https://production-status.vercel.app/track/ABC123',
+  );
+  assert.equal(resolvePreviewButtonUrl({ type: 'AC', name: '채널 추가' }), '');
+  assert.equal(resolvePreviewButtonUrl({ type: 'DS', name: '배송조회' }), '');
+  assert.equal(resolvePreviewButtonUrl({ type: 'WL', name: '잘못된 링크', linkMo: 'javascript:alert(1)' }), '');
+
+  const links = buttonLinksOf([
+    { type: 'AC', name: '채널 추가' },
+    { type: 'WL', name: '쇼핑몰 바로가기', linkMo: 'https://hansungshowcase.kr/' },
+  ]);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].name, '쇼핑몰 바로가기');
+  assert.equal(links[0].href, 'https://hansungshowcase.kr/');
+});
 
 test('알림톡 대상 묶기: 합계 = 입력 수, 모르는 템플릿은 분류 안 됨, 빈 묶음 없음', () => {
   const tpls = [

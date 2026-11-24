@@ -193,7 +193,11 @@ async function handleGet(req, res, ctx) {
     try {
       if ((deps.hasCredentials || hasSolapiCredentials)()) {
         const listed = await kakao.listTemplates(opts);
-        ataTemplates = (listed.items || []).filter(item => item.status === 'APPROVED' && item.id).map(item => ({ id: item.id, name: item.name }));
+        ataTemplates = (listed.items || []).filter(item => item.status === 'APPROVED' && item.id).map(item => ({
+          id: item.id,
+          name: item.name,
+          ...(Array.isArray(item.buttons) && item.buttons.length ? { buttons: item.buttons } : {}),
+        }));
       }
     } catch { ataTemplates = []; }
     return res.status(200).json({ steps: [...STEPS], staff: (deps.staff || staffDirectory()).map(item => ({ id: item.id, name: item.name })), cafe24_connected: connected, lead_connected: leadConnected, ata_templates: ataTemplates });

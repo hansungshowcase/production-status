@@ -128,7 +128,14 @@ export default function KakaoTemplateForm({
   const preview = useMemo(() => {
     const view = previewTemplate(form, targets);
     if (isEdit && !view.targetName) view.targetName = editTarget?.name || '';
-    return view;
+    return {
+      ...view,
+      buttons: (form.buttons || []).map((b, i) => ({
+        ...(view.buttons?.[i] || { type: b.type, name: b.name || '' }),
+        linkMo: b.type === 'WL' ? (b.linkMo || '') : '',
+        linkPc: b.type === 'WL' ? (b.linkPc || '') : '',
+      })),
+    };
   }, [form, targets, isEdit, editTarget]);
 
   const errProps = key => (errors[key]

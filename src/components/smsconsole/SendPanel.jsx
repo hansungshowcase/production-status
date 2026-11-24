@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchSmsConsole, postSmsConsole } from '../../api/smsConsole.js';
 import { allVariablesFilled, buildRecipients, fillTemplateContent, groupTexts, sendButtonLabel, lockedLine, makeIdempotencyKey, payloadSignature, scheduleInfo, shortKst, shrinkImage, templateVariableNames, textInfo } from './sendPanelModel.js';
 import { buildSaveBody, imageFromItem } from './smsTextTemplateFormModel.js';
+import { resolvePreviewButtonUrl } from './templateListModel.js';
 import { AutoOffNotice } from './SmsTextTemplateForm.jsx';
 import './SendPanel.css';
 
@@ -342,6 +343,29 @@ export default function SendPanel({ active = true, template = '', text: textPara
         {template && tplItem ? (
           <div className="smsc-send__bubble">
             <span className="smsc-send__ptext">{fillTemplateContent(tplItem.content, values)}</span>
+            {Array.isArray(tplItem.buttons) && tplItem.buttons.some(b => b && b.name) ? (
+              <div className="ktp-buttons">
+                {tplItem.buttons.filter(b => b && b.name).map((button, index) => {
+                  const href = resolvePreviewButtonUrl(button, values);
+                  const rawLink = String(button?.linkPc || button?.link || button?.linkMo || '').trim();
+                  return href ? (
+                    <a
+                      key={`${button.name}-${index}`}
+                      className="ktp-button ktp-button--link"
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={rawLink ? `${button.name} → ${rawLink}` : button.name}
+                    >
+                      <span className="ktp-button__label">{button.name}</span>
+                      <span className="ktp-button__arrow" aria-hidden="true">↗</span>
+                    </a>
+                  ) : (
+                    <div key={`${button.name}-${index}`} className="ktp-button">{button.name}</div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         ) : photo || text.trim() ? (
           <div className="smsc-send__bubble">

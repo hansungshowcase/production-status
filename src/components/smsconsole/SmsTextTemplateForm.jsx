@@ -15,6 +15,7 @@ import {
   autoConfirmLine, toggleRejectText, suggestCloneName,
 } from './smsTextTemplateFormModel.js';
 import { buildConditionSummary } from './smsTemplateListModel.js';
+import { resolvePreviewButtonUrl } from './templateListModel.js';
 import { ModalFoot } from './SmsModal.jsx';
 import './SmsTextTemplateForm.css';
 
@@ -548,8 +549,10 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     );
   }
 
-  const visibleButtons = bmsOn ? bmsButtons.filter(b => b && String(b.name || '').trim()) : [];
   const selectedAta = ataTemplate && !bmsOn ? meta.ata.find(item => item.id === ataTemplate) : null;
+  const visibleButtons = bmsOn
+    ? bmsButtons.filter(b => b && String(b.name || '').trim())
+    : (Array.isArray(selectedAta?.buttons) ? selectedAta.buttons.filter(b => b && String(b.name || '').trim()) : []);
 
   return (
     <div className="stf-split">
@@ -1088,7 +1091,25 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
               {outBody ? <span className="stf-ptext">{previewBodyText}</span> : null}
               {visibleButtons.length ? (
                 <div className="stf-pbtns">
-                  {visibleButtons.map((btn, index) => <span key={index} className="stf-pbtn">{btn.name}</span>)}
+                  {visibleButtons.map((btn, index) => {
+                    const href = resolvePreviewButtonUrl(btn);
+                    const rawLink = String(btn?.linkPc || btn?.link || btn?.linkMo || '').trim();
+                    return href ? (
+                      <a
+                        key={index}
+                        className="stf-pbtn stf-pbtn--link"
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={rawLink ? `${btn.name} → ${rawLink}` : btn.name}
+                      >
+                        <span>{btn.name}</span>
+                        <span className="stf-pbtn__arrow" aria-hidden="true">↗</span>
+                      </a>
+                    ) : (
+                      <span key={index} className="stf-pbtn">{btn.name}</span>
+                    );
+                  })}
                 </div>
               ) : null}
             </div>
