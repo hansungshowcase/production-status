@@ -8,6 +8,7 @@ import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
 import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
+import { ensureOrderIdempotencySchema, normalizeClientRequestId } from '../_lib/orderIdempotencySchema.js';
 import { generateTrackToken } from '../_lib/trackToken.js';
 import {
   normalizeOrderCreateInput,
@@ -22,6 +23,30 @@ async function ensureCreatedOrderTrackToken(db, order) {
 async function notifyCreatedOrder(db, order) {
   const { maybeNotify } = await import('../_lib/notify.js');
   return maybeNotify(db, order, 'ordered');
+}
+
+async function findOrderByRequestKey(db, requestKey) {
+  const { rows } = await db.execute({
+    sql: `SELECT to_jsonb(o) AS order_row,
+                 COALESCE((
+                   SELECT jsonb_agg(to_jsonb(p) ORDER BY ${stepOrderCase('p')}, p.id)
+                     FROM processes p
+                    WHERE p.order_id = o.id
+                 ), '[]'::jsonb) AS process_rows,
+                 (SELECT to_jsonb(pp) FROM pre_production pp WHERE pp.order_id = o.id LIMIT 1) AS pre_production_row
+            FROM order_create_idempotency idem
+            JOIN orders o ON o.id = idem.order_id
+           WHERE idem.request_key = ?
+           LIMIT 1`,
+    args: [requestKey],
+  });
+  const row = rows?.[0];
+  if (!row?.order_row) return null;
+  return {
+    ...row.order_row,
+    processes: row.process_rows || [],
+    pre_production: row.pre_production_row || null,
+  };
 }
 
 // LIKE 와일드카드(%, _, \\) 이스케이프 — 사용자 입력에 포함되면 전체매칭/단일자매칭으로 풀스캔 유발
@@ -368,15 +393,40 @@ export async function handlePost(req, res, db, {
     sale_amount, lead_source, balance,
     ship_scheduled_date, sms_sent, safe_delivery, work_order_image_url,
   } = body;
+  const clientRequestId = normalizeClientRequestId(
+    req.headers?.['idempotency-key'] ?? sanitizedBody.client_request_id,
+  );
 
   db ??= getDb();
   await ensureOrderImageColumn(db);
   await ensureNotifySchema(db);
   await ensureSheetSyncSchema(db);
+  if (clientRequestId) {
+    await ensureOrderIdempotencySchema(db);
+    const existing = await findOrderByRequestKey(db, clientRequestId);
+    if (existing) {
+      return res.status(200).json({
+        ...existing,
+        sheet_sync: { status: 'pending' },
+        deduplicated: true,
+      });
+    }
+  }
 
   try {
     const orderedIntent = JSON.stringify({ ordered: { status: 'queued', at: new Date().toISOString() } });
     const stepValues = STEPS.map((_, index) => `(?, ${index})`).join(', ');
+    const idempotencyCte = clientRequestId
+      ? `,
+      inserted_idempotency AS (
+        INSERT INTO order_create_idempotency (request_key, order_id)
+        SELECT ?, id FROM inserted_order
+        RETURNING order_id
+      )`
+      : '';
+    const idempotencyCheck = clientRequestId
+      ? '\n         AND EXISTS (SELECT 1 FROM inserted_idempotency)'
+      : '';
     const orderResult = await db.execute({
       sql: `WITH inserted_order AS (
         INSERT INTO orders (
@@ -414,7 +464,7 @@ export async function handlePost(req, res, db, {
         SELECT id, '주문등록', ?, ?
           FROM inserted_order
         RETURNING id
-      )
+      )${idempotencyCte}
       SELECT to_jsonb(io) AS order_row,
              COALESCE((
                SELECT jsonb_agg(to_jsonb(ip) ORDER BY ${stepOrderCase('ip')}, ip.id)
@@ -425,7 +475,7 @@ export async function handlePost(req, res, db, {
         JOIN inserted_sheet_sync_job sj ON sj.order_id = io.id
        WHERE (SELECT COUNT(*) FROM inserted_processes) = ?
          AND EXISTS (SELECT 1 FROM inserted_pre_production)
-         AND EXISTS (SELECT 1 FROM inserted_activity)`,
+         AND EXISTS (SELECT 1 FROM inserted_activity)${idempotencyCheck}`,
       args: [
         order_date || null, due_date || null, sales_person || null, client_name,
         product_type || null, door_type || null, design || null,
@@ -439,6 +489,7 @@ export async function handlePost(req, res, db, {
         ...STEPS,
         `${client_name} 주문이 등록되었습니다.`,
         auth.actor,
+        ...(clientRequestId ? [clientRequestId] : []),
         STEPS.length,
       ],
     });
@@ -472,6 +523,16 @@ export async function handlePost(req, res, db, {
     return res.status(201).json(created);
   } catch (err) {
     if (err.message && (err.message.includes('UNIQUE constraint') || err.message.includes('duplicate key'))) {
+      if (clientRequestId) {
+        const existing = await findOrderByRequestKey(db, clientRequestId);
+        if (existing) {
+          return res.status(200).json({
+            ...existing,
+            sheet_sync: { status: 'pending' },
+            deduplicated: true,
+          });
+        }
+      }
       return res.status(409).json({ error: { message: '이미 존재하는 주문입니다.', status: 409 } });
     }
     throw err;

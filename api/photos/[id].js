@@ -33,7 +33,7 @@ export async function handleGet(req, res, dependencies = {}) {
       return res.status(404).json({ error: { message: '다운로드할 사진 파일이 없습니다.', status: 404 } });
     }
 
-    const upstream = await fetch(photo.file_path);
+    const upstream = await fetch(photo.file_path, { signal: AbortSignal.timeout(10000) });
     if (!upstream.ok) {
       return res.status(502).json({ error: { message: '사진 파일을 불러오지 못했습니다.', status: 502 } });
     }
@@ -142,7 +142,10 @@ export async function handleDelete(req, res, dependencies = {}) {
 
   if (photo.file_path) {
     try {
-      await processCleanup(db, blobCleanupTargetKey(photo.file_path), dependencies);
+      await processCleanup(db, blobCleanupTargetKey(photo.file_path), {
+        ...dependencies,
+        timeoutMs: Math.min(Number(dependencies.timeoutMs) || 3000, 5000),
+      });
     } catch (err) {
       console.warn('[photos DELETE] external cleanup deferred:', err?.message || err);
     }

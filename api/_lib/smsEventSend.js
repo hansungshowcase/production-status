@@ -950,6 +950,8 @@ function partitionUniquePhones(list) {
   return waves.map(wave => wave.entries);
 }
 
+export const INLINE_PROCESS_AUTO_SEND_BUDGET_MS = 8000;
+
 // 공정 시작/완료 직후(start · complete API): 방금 시작·완료된 공정의 켜진 문구를 크론 대기 없이 즉시 발송한다.
 // sms_event_sends 의 UNIQUE(template_id, dedupe_key) 멱등 선점이 5분 크론(runInstantSendAll)과 겹쳐도 중복 발송을 막는다.
 async function triggerProcessStepAutoSends(db, autoKind, stepNames = [], deps = {}) {
@@ -971,7 +973,7 @@ async function triggerProcessStepAutoSends(db, autoKind, stepNames = [], deps = 
   if (!(list.rows || []).length) return total;
   await ensureTextTemplateSchema(db);
   await ensureEventSchema(db);
-  const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + 15000;
+  const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + INLINE_PROCESS_AUTO_SEND_BUDGET_MS;
   for (const row of list.rows) {
     const template = await loadEventTemplate(db, Number(row.id));
     if (!template) continue;

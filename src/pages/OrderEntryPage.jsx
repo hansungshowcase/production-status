@@ -27,6 +27,13 @@ function todayStr() {
   return getKstToday();
 }
 
+function generateClientRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return `ord-${globalThis.crypto.randomUUID()}`;
+  }
+  return `ord-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 const DUE_DATE_BUFFER_CONFIRM_MESSAGE = [
   '납기일을 다시 확인해 주세요.',
   '',
@@ -205,6 +212,7 @@ export default function OrderEntryPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const submitInFlightRef = useRef(false);
+  const submitIdempotencyKeyRef = useRef(null);
   const ocrGenerationRef = useRef(0);
   const ocrResultRef = useRef(null);
   const ocrObjectUrlsRef = useRef(new Set());
@@ -263,13 +271,18 @@ export default function OrderEntryPage() {
     setSubmitting(true);
     try {
       const payload = buildOrderPayload(form, workOrderImageUrl, todayStr());
+      if (!submitIdempotencyKeyRef.current) {
+        submitIdempotencyKeyRef.current = generateClientRequestId();
+      }
+      payload.client_request_id = submitIdempotencyKeyRef.current;
 
       const created = await createOrder(payload);
+      submitIdempotencyKeyRef.current = null;
 
       // 도면설계는 김보수 팀장 담당으로 시작한다. 발주 담당자는 작업자로 기록하지 않는다.
       const processes = created.processes || [];
       const firstProcess = processes.find(p => p.step_name === '도면설계');
-      if (firstProcess) {
+      if (firstProcess && firstProcess.status === 'waiting') {
         try {
           await startProcess(firstProcess.id, {
             assigned_worker: '김보수 팀장',
@@ -286,7 +299,11 @@ export default function OrderEntryPage() {
 
       navigate('/worker/station/' + encodeURIComponent('도면설계'));
     } catch (err) {
-      setToast({ visible: true, message: err.message || '작업 등록에 실패했습니다' });
+      const baseMessage = err?.message || '작업 등록에 실패했습니다';
+      setToast({
+        visible: true,
+        message: err?.status === 0 ? `${baseMessage} 다시 눌러도 중복 등록되지 않습니다.` : baseMessage,
+      });
     } finally {
       submitInFlightRef.current = false;
       setSubmitting(false);
@@ -294,6 +311,7 @@ export default function OrderEntryPage() {
   };
 
   const handleContinue = () => {
+    submitIdempotencyKeyRef.current = null;
     ocrGenerationRef.current += 1;
     replaceOcrResult(null);
     setOcrLoading(false);
@@ -342,6 +360,7 @@ export default function OrderEntryPage() {
   // ── OCR 사진 인식 ──
   const processOcrFile = async (file) => {
     if (!file) return;
+    submitIdempotencyKeyRef.current = null;
     const generation = ++ocrGenerationRef.current;
     const imageUrl = URL.createObjectURL(file);
     ocrObjectUrlsRef.current.add(imageUrl);
@@ -519,6 +538,7 @@ export default function OrderEntryPage() {
       return;
     }
     const d = ocrResult.data;
+    submitIdempotencyKeyRef.current = null;
     ocrGenerationRef.current += 1;
     setForm((prev) => ({
       ...prev,
@@ -555,6 +575,7 @@ export default function OrderEntryPage() {
   };
 
   const handleOcrCancel = () => {
+    submitIdempotencyKeyRef.current = null;
     ocrGenerationRef.current += 1;
     if (ocrResult?.workOrderImageUrl && workOrderImageUrl === ocrResult.workOrderImageUrl) {
       setWorkOrderImageUrl(null);
@@ -564,6 +585,7 @@ export default function OrderEntryPage() {
   };
 
   const handleFormChange = (newForm) => {
+    submitIdempotencyKeyRef.current = null;
     setForm(newForm);
     if (errors.client_name && newForm.client_name) {
       setErrors((prev) => ({ ...prev, client_name: undefined }));

@@ -327,6 +327,9 @@ export async function handleUpdate(id, req, res, dependencies = {}) {
   return res.json(updated);
 }
 
+const INLINE_CLEANUP_BUDGET_MS = 6000;
+const INLINE_CLEANUP_STEP_TIMEOUT_MS = 3000;
+
 export async function handleDelete(id, req, res, dependencies = {}) {
   const checkAuth = dependencies.requireAuth || requireAuth;
   const auth = await checkAuth(req, res, { roles: ['sales'] });
@@ -437,9 +440,19 @@ export async function handleDelete(id, req, res, dependencies = {}) {
     sheetCleanupTargetKey(orderId),
     ...new Set(photosResult.rows.filter(row => row.file_path).map(row => blobCleanupTargetKey(row.file_path))),
   ];
+  const nowFn = dependencies.now || Date.now;
+  const budgetMs = Number.isFinite(dependencies.inlineCleanupBudgetMs)
+    ? Math.max(0, dependencies.inlineCleanupBudgetMs)
+    : INLINE_CLEANUP_BUDGET_MS;
+  const cleanupDeadline = nowFn() + budgetMs;
   for (const targetKey of cleanupTargets) {
+    const remainingMs = cleanupDeadline - nowFn();
+    if (remainingMs < 1000) break;
     try {
-      await processCleanup(db, targetKey, dependencies);
+      await processCleanup(db, targetKey, {
+        ...dependencies,
+        timeoutMs: Math.min(Number(dependencies.timeoutMs) || INLINE_CLEANUP_STEP_TIMEOUT_MS, remainingMs),
+      });
     } catch (cleanupError) {
       console.warn('[orders DELETE] external cleanup deferred:', cleanupError?.message || cleanupError);
     }

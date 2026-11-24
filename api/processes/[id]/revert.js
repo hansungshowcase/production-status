@@ -3,7 +3,7 @@ import { cors } from '../../_lib/cors.js';
 import { rateLimitCheck } from '../../_lib/rateLimit.js';
 import { STEPS } from '../../_lib/steps.js';
 import { requireWorkerAction } from '../../_lib/auth.js';
-import { clearShippedOnSheet } from '../../_lib/googleSheets.js';
+import { clearShippedOnSheet, SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS } from '../../_lib/googleSheets.js';
 import { isProcessUndoManager } from '../../../shared/processUndoPermission.js';
 import { parsePositiveInt4Id } from '../../_lib/positiveInt4Id.js';
 
@@ -280,7 +280,9 @@ export async function handleRevertProcess(req, res, dependencies = {}) {
 
   if (committed.reverted_ship_date && committed.order_row) {
     try {
-      await clearShippedSheet(committed.order_row, committed.reverted_ship_date);
+      await clearShippedSheet(committed.order_row, committed.reverted_ship_date, {
+        timeoutMs: SHIPPING_WEBHOOK_IMMEDIATE_TIMEOUT_MS,
+      });
     } catch (e) {
       console.warn('[revert] 시트 출고완료 표시 제거 실패(무시):', e?.message || e);
     }

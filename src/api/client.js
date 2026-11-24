@@ -4,6 +4,8 @@ import { parseResponseBody, shouldRetryRequest } from './clientCore.js';
 const BASE_URL = '/api';
 
 const REQUEST_TIMEOUT = 15000;
+const MUTATION_TIMEOUT = 25000;
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 class ApiError extends Error {
   constructor(message, status, data) {
@@ -15,8 +17,10 @@ class ApiError extends Error {
 }
 
 async function request(endpoint, options = {}, _retryCount = 0) {
-  const { body, method = 'GET', headers: customHeaders = {}, cache, timeoutMs = REQUEST_TIMEOUT } = options;
-  const effectiveTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : REQUEST_TIMEOUT;
+  const { body, method = 'GET', headers: customHeaders = {}, cache, timeoutMs } = options;
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  const defaultTimeout = MUTATING_METHODS.has(normalizedMethod) ? MUTATION_TIMEOUT : REQUEST_TIMEOUT;
+  const effectiveTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : defaultTimeout;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);

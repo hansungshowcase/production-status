@@ -113,3 +113,21 @@
   margin-bottom: 3px;
   word-break: break-all;
 }
+
+.diag-section__divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 20px 0;
+}
+
+.diag-section__sync-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.diag-section__sync-counts {
+  font-size: 13px;
+  color: #334155;
+  font-weight: 600;
+}

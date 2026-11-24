@@ -73,7 +73,7 @@ export function cors(handler) {
       res.setHeader('Vary', 'Origin');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Worker-Name');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Worker-Name, Idempotency-Key');
 
     // GET 응답에 경로별 캐시 헤더를 적용한다.
     if (req.method === 'GET') {
@@ -99,6 +99,7 @@ export function cors(handler) {
       req.body = {};
     }
 
+    const startedAt = Date.now();
     try {
       return await handler(req, res);
     } catch (err) {
@@ -111,6 +112,12 @@ export function cors(handler) {
         res.setHeader('CDN-Cache-Control', 'no-store');
         res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
         return res.status(status).json({ error: { message, status } });
+      }
+    } finally {
+      const elapsedMs = Date.now() - startedAt;
+      const safeRoute = routeForErrorLog(req.url);
+      if (elapsedMs >= 8000 && !safeRoute.startsWith('/api/cron/') && !safeRoute.startsWith('/api/ocr/')) {
+        console.warn(`[Slow API] ${req.method} ${safeRoute} took ${elapsedMs}ms`);
       }
     }
   };
