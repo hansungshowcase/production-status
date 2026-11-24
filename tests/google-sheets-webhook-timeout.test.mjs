@@ -503,6 +503,19 @@ test('출고 요청 경로는 시트를 아예 만지지 않고 잡만 적재한
   assert.match(outbox, /const WEBHOOK_ATTEMPT_BUDGET_MS = 10_000;/);
 });
 
+test('주문 등록 요청 경로는 시트를 아예 만지지 않고 잡만 적재한다 — 시트 기입은 크론 전담', async () => {
+  const src = await readFile(new URL('../api/orders/index.js', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(src, /syncOrderToSheet/, '주문 등록 경로는 시트 동기화를 직접 호출하지 않는다');
+  assert.doesNotMatch(src, /appendOrderToSheet/, '주문 등록 경로는 시트 웹훅을 직접 부르지 않는다');
+  assert.match(
+    src,
+    /WITH inserted_order AS[\s\S]*?INSERT INTO orders[\s\S]*?INSERT INTO sheet_sync_jobs \(order_id, status\)[\s\S]*?SELECT id, 'pending' FROM inserted_order/,
+    '주문 등록 경로는 주문 INSERT 와 같은 CTE 안에서 시트 잡을 적재해야 한다',
+  );
+  assert.match(src, /created\.sheet_sync = \{ status: 'pending' \};/);
+});
+
 test('the shipping webhook outwaits the Apps Script lock so contention never fails early', async () => {
   const backendSource = await readFile(sourcePath, 'utf8');
   const scriptSource = await readFile(

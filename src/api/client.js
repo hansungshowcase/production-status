@@ -15,10 +15,11 @@ class ApiError extends Error {
 }
 
 async function request(endpoint, options = {}, _retryCount = 0) {
-  const { body, method = 'GET', headers: customHeaders = {}, cache } = options;
+  const { body, method = 'GET', headers: customHeaders = {}, cache, timeoutMs = REQUEST_TIMEOUT } = options;
+  const effectiveTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : REQUEST_TIMEOUT;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   const isFormData = body instanceof FormData;
   const config = {

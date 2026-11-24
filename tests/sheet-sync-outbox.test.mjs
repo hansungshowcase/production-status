@@ -524,30 +524,41 @@ test('order creation executes the order insert and pending job insert in one dat
   assert.match(statement, /inserted_activity AS \( INSERT INTO activity_feed/i);
 });
 
-test('failed immediate append returns 201 with pending sync and keeps the committed order/job', async () => {
+test('order creation returns 201 with a queued pending sheet job and never calls the sheet webhook inline', async () => {
   const db = new FakeOrderDb();
   const res = mockResponse();
+  let appendCalls = 0;
+  let fetchCalls = 0;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => { throw new Error('network must not be used by injected append'); };
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('network must not be used during inline order creation');
+  };
   try {
     await handlePost(
       { body: { client_name: 'atomic order', quantity: 1 } },
       res,
       db,
-      orderDeps({ append: async () => { throw new Error('sheet unavailable'); } }),
+      orderDeps({
+        append: async () => {
+          appendCalls += 1;
+          throw new Error('sheet unavailable');
+        },
+      }),
     );
   } finally {
     globalThis.fetch = originalFetch;
   }
 
+  assert.equal(appendCalls, 0);
+  assert.equal(fetchCalls, 0);
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.id, 801);
-  assert.equal(res.body.sheet_sync.status, 'pending');
-  assert.match(res.body.sheet_sync.error, /sheet unavailable/);
-  assert.equal(res.statusCode, 201);
+  assert.deepEqual(res.body.sheet_sync, { status: 'pending' });
   assert.equal(res.body.processes.length, 10);
   assert.equal(db.orders.has(801), true);
   assert.equal(db.jobs.get(801).status, 'pending');
+  assert.equal(db.jobs.get(801).attempts, 0);
   assert.equal(db.cleanupDeletes, 0);
 });
 

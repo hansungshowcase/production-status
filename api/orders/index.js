@@ -6,9 +6,7 @@ import { daysUntilDue } from '../_lib/daysUntilDue.js';
 import { requireAuth } from '../_lib/auth.js';
 import { rateLimitCheck } from '../_lib/rateLimit.js';
 import { ensureOrderImageColumn } from '../_lib/ensureSchema.js';
-import { appendOrderToSheet } from '../_lib/googleSheets.js';
 import { ensureSheetSyncSchema } from '../_lib/sheetSyncSchema.js';
-import { syncOrderToSheet } from '../_lib/sheetSync.js';
 import { ensureNotifySchema } from '../_lib/notifySchema.js';
 import { generateTrackToken } from '../_lib/trackToken.js';
 import {
@@ -336,7 +334,6 @@ export async function handleGet(req, res, db = getDb()) {
 }
 
 export async function handlePost(req, res, db, {
-  append = appendOrderToSheet,
   ensureTrackToken = ensureCreatedOrderTrackToken,
   notify = notifyCreatedOrder,
   requireAuth: checkAuth = requireAuth,
@@ -454,7 +451,11 @@ export async function handlePost(req, res, db, {
       processes: committed.process_rows,
       pre_production: committed.pre_production_row || null,
     };
-    created.sheet_sync = await syncOrderToSheet(db, created, { append });
+    // 시트 기입을 이 요청 안에서 기다리지 않는다. 시트 행이 늘면서 Apps Script append 왕복이
+    // 15초를 넘어 브라우저(REQUEST_TIMEOUT=15s)가 먼저 끊어지고, 주문은 DB에 이미 저장된 뒤라
+    // 사용자가 실패로 오해해 중복 등록하거나 도면설계 자동 시작이 누락됐다(2026-11-17~24 실측).
+    // 잡은 위 CTE 에서 이미 sheet_sync_jobs(pending)에 적재됐으므로 1분마다 도는 sheet-sync 크론이 처리한다.
+    created.sheet_sync = { status: 'pending' };
 
     // 알림 훅: 주문 생성 → track_token 발급 + 접수 알림 (실패해도 본 응답에 영향 없음)
     try {

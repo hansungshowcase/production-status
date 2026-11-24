@@ -13,7 +13,7 @@ export function getOrder(id) {
 
 export function createOrder(data) {
   if (!data || !data.client_name) throw new Error('거래처명(client_name)은 필수입니다');
-  return request('/orders', { method: 'POST', body: data });
+  return request('/orders', { method: 'POST', body: data, timeoutMs: 25000 });
 }
 
 export function updateOrder(id, data) {

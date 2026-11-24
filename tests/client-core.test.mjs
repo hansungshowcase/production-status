@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
 import { parseResponseBody, shouldRetryRequest } from '../src/api/clientCore.js';
@@ -44,4 +45,15 @@ test('json response bodies are parsed normally', async () => {
   };
 
   assert.deepEqual(await parseResponseBody(response), { ok: true });
+});
+
+test('api client keeps 15s default timeout while honoring per-request timeoutMs and createOrder uses 25s', async () => {
+  const clientSrc = await readFile(new URL('../src/api/client.js', import.meta.url), 'utf8');
+  const ordersSrc = await readFile(new URL('../src/api/orders.js', import.meta.url), 'utf8');
+
+  assert.match(clientSrc, /const REQUEST_TIMEOUT = 15000;/);
+  assert.match(clientSrc, /timeoutMs = REQUEST_TIMEOUT/);
+  assert.match(clientSrc, /Number\.isFinite\(timeoutMs\) && timeoutMs > 0 \? timeoutMs : REQUEST_TIMEOUT/);
+  assert.match(clientSrc, /setTimeout\(\(\) => controller\.abort\(\), effectiveTimeout\)/);
+  assert.match(ordersSrc, /request\('\/orders', \{ method: 'POST', body: data, timeoutMs: 25000 \}\)/);
 });
