@@ -261,6 +261,22 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   }, [mine, isKakao]);
   const mineById = useMemo(() => new Map(mine.map((item) => [item.id, item])), [mine]);
   const effOf = (entry) => autoEffective(autoStatus[entry.id] ?? (entry.autoEnabled ? null : { enabled: false }));
+  const displayLightOf = (entry) => {
+    const st = autoStatus[entry.id] || null;
+    if (!st && entry.autoEnabled) return { tone: 'on', label: '켜짐', note: '켜짐', capNote: '' };
+    const eff = effOf(entry);
+    if (eff.tone === 'part' && !eff.blocked && !st?.catchup_paused) {
+      const skip = String(st?.auto_skip_reason || '').trim();
+      const blockedCode = String(st?.enable_blocked_reason || '').trim();
+      if (/^하루 상한/.test(skip)) {
+        return { tone: 'on', label: '켜짐', note: skip, capNote: '오늘 상한 완료' };
+      }
+      if (!skip && blockedCode === 'no_optout_080') {
+        return { tone: 'on', label: '켜짐', note: '', capNote: '' };
+      }
+    }
+    return { tone: autoLightClass(eff), label: compactLightLabel(eff), note: eff.text, capNote: '' };
+  };
 
   // channel='kakao' 용 컴팩트 1줄 단계 행(개발자 수식 제거 · 배지 중복 없음 · 버튼 영역 완전 분리)
   const renderKakaoStep = (entry) => {
@@ -448,7 +464,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   );
   const runningAutos = useMemo(() => sortedMine.filter(isMineActive), [sortedMine, autoStatus]);
   const autoAll = useMemo(() => allMine.filter((entry) => entry.autoKind).length, [allMine]);
-  const attentionAutosAll = useMemo(() => allMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [allMine, autoStatus]);
+  const attentionAutosAll = useMemo(() => allMine.filter((entry) => entry.autoKind && isAttentionTone(displayLightOf(entry).tone)), [allMine, autoStatus]);
   const attentionItemsAll = useMemo(() => items.filter((item) => isAttentionTone(itemLight(item).tone)), [items]);
   const attentionTotal = attentionAutosAll.length + attentionItemsAll.length;
   const activeCatalogAll = useMemo(() => items.filter(isCatalogActive).length, [items]);
@@ -466,7 +482,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const isEntryOnBlocked = (entry) => Boolean(entry.autoKind && entry.autoEnabled && effOf(entry).tone === 'blocked');
   const isItemOnBlocked = (item) => {
     const tone = itemLight(item).tone;
-    return Boolean(item.active && (tone === 'blocked' || tone === 'part'));
+    return Boolean(item.active && (tone === 'blocked' || item?.config?.status === 'test'));
   };
   const isEntryOnZeroSend = (entry) => {
     const st = autoStatus[entry.id];
@@ -477,12 +493,9 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
   const smsIssues = useMemo(() => {
     const onBlockedCount = allMine.filter(isEntryOnBlocked).length + items.filter(isItemOnBlocked).length;
     const pausedCount = allMine.filter(isEntryCatchupPaused).length;
-    const onZeroMine = allMine.filter(isEntryOnZeroSend).length;
-    const onZeroItems = items.filter(isItemOnZeroSend).length;
     return [
       ...(onBlockedCount > 0 ? [{ key: 'on-blocked', tone: 'danger', label: '켜짐 · 발송 막힘', count: onBlockedCount, active: issueFilter === 'on-blocked', onClick: () => toggleIssueFilter('on-blocked') }] : []),
       ...(pausedCount > 0 ? [{ key: 'catchup-paused', tone: 'warn', label: '일괄 발송 멈춤', count: pausedCount, active: issueFilter === 'catchup-paused', onClick: () => toggleIssueFilter('catchup-paused') }] : []),
-      { key: 'on-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: onZeroMine + onZeroItems, active: issueFilter === 'on-zero-send', onClick: () => toggleIssueFilter('on-zero-send') },
     ];
   }, [allMine, autoStatus, items, issueFilter]);
   const pills = useMemo(() => [
@@ -501,7 +514,7 @@ export default function SmsTemplateList({ active, onSendText, onOpenLog, openNew
     () => (query.trim() ? sortedMine.filter((entry) => !entry.autoKind) : []),
     [query, sortedMine],
   );
-  const attentionAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && isAttentionTone(effOf(entry).tone)), [sortedMine, autoStatus]);
+  const attentionAutos = useMemo(() => sortedMine.filter((entry) => entry.autoKind && isAttentionTone(displayLightOf(entry).tone)), [sortedMine, autoStatus]);
   const shownAutos = isMineTab ? [] : (
     issueFilter === 'catchup-paused' ? sortedMine.filter(isEntryCatchupPaused)
       : issueFilter === 'on-blocked' ? sortedMine.filter(isEntryOnBlocked)
@@ -747,7 +760,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
   const renderMineListCard = (entry, prefix = '') => {
     const key = `m-${entry.id}`;
     const isSelected = selectedKey === key;
-    const eff = effOf(entry);
+    const light = displayLightOf(entry);
     const ch = channelCostOf(entry);
     const cp = entry.autoKind ? autoConditionParts(entry) : null;
     const summary = entry.autoKind ? buildConditionSummary(entry, { isMine: true }) : null;
@@ -769,7 +782,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
         <button type="button" className="stl-item-btn" aria-current={isSelected ? 'true' : undefined} onClick={() => setSelectedKey(key)}>
           <div className="stl-item-top">
             <span className="stl-item-name">{entry.name}</span>
-            {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`} title={eff.text}>{compactLightLabel(eff)}</span> : <span className="stl-sender-chip">수동 문구</span>}
+            {entry.autoKind ? <span className={`stl-light stl-light--${light.tone}`} title={light.note || light.label}>{light.label}</span> : <span className="stl-sender-chip">수동 문구</span>}
           </div>
           {summary ? (
             <div className="stl-item-cond">
@@ -879,6 +892,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
       const rawBody = String(mineById.get(entry.id)?.body || '');
       const st = autoStatus[entry.id];
       const eff = effOf(entry);
+      const light = displayLightOf(entry);
       const cp = entry.autoKind ? autoConditionParts(entry) : null;
       const summary = buildConditionSummary(entry, { isMine: true });
       const paused = catchupPausedText(st);
@@ -978,7 +992,7 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
               <SmsIcon name="back" /> 목록으로
             </button>
             <div className="stl-detail-meta">
-              {entry.autoKind ? <span className={`stl-light stl-light--${autoLightClass(eff)}`}>{eff.text}</span> : <span className="stl-detail-kind">수동 발송</span>}
+              {entry.autoKind ? <span className={`stl-light stl-light--${light.tone}`}>{light.note || light.label}</span> : <span className="stl-detail-kind">수동 발송</span>}
               {(() => {
                 const ch = channelCostOf(entry);
                 return (
@@ -1038,8 +1052,8 @@ function renderConditionBoard(summary, st, isMineAuto, catalogStats = null, onCl
                 <span className="stl-detail-banner-sub"> (일반 자동 발송은 계속 켜져 있습니다. 일괄 발송이 끝났다면 [수정]에서 일괄 발송 예약을 비워 주세요.)</span>
               </p>
             ) : null}
-            {!paused && entry.autoKind && (eff.tone === 'blocked' || eff.tone === 'part') ? (
-              <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{eff.text}</p>
+            {!paused && entry.autoKind && (eff.tone === 'blocked' || light.tone === 'part') ? (
+              <p className={eff.tone === 'blocked' ? 'ktm-alert stl-detail-banner' : 'ktm-warn stl-detail-banner'} role="status">{light.note}</p>
             ) : null}
             {mineError ? <p className="ktm-alert stl-detail-banner" role="alert">{mineError}</p> : null}
           </div>

@@ -290,8 +290,9 @@ export default function KakaoTemplateManager({
   // 브랜드메시지(BMS)는 문자용 080 줄을 쓰지 않는 운영 원칙(2026-11-18)이고 하루 상한 도달은 정상 발송 완료 상태이므로
   // 화면 신호등에서는 거짓 주의/경고 대신 초록 '켜짐'(상한 시 '오늘 상한 완료' 칩)으로 표시한다.
   const displayLightOf = useCallback((entry) => {
-    const eff = effOf(entry);
     const st = autoStatusMap[entry.id] || null;
+    if (!st && entry.autoEnabled) return { tone: 'on', label: '켜짐', note: '켜짐', capNote: '' };
+    const eff = effOf(entry);
     if (eff.tone === 'part' && !eff.blocked && !st?.catchup_paused) {
       const skip = String(st?.auto_skip_reason || '').trim();
       const blockedCode = String(st?.enable_blocked_reason || '').trim();
@@ -327,11 +328,12 @@ export default function KakaoTemplateManager({
   );
 
   // 현황판·알약·목록 1:1 일치 기준
+  const isEntryActive = useCallback((entry) => (autoStatusMap[entry.id] ? ['on', 'part'].includes(effOf(entry).tone) : Boolean(entry.autoEnabled)), [autoStatusMap, effOf]);
   const hasLinkedOn = useCallback((ataId) => {
     const linkedList = linkedTextEntries(textItems, ataId);
-    return linkedList.some((entry) => ['on', 'part'].includes(effOf(entry).tone));
-  }, [textItems, effOf]);
-  const isManagedActive = useCallback((entry) => ['on', 'part'].includes(effOf(entry).tone), [effOf]);
+    return linkedList.some(isEntryActive);
+  }, [textItems, isEntryActive]);
+  const isManagedActive = useCallback((entry) => isEntryActive(entry), [isEntryActive]);
   const isRoActive = useCallback((entry) => itemLight(entry).tone === 'on', []);
   const isAtaActive = useCallback((item) => {
     if (item.status !== 'APPROVED') return false;
@@ -413,7 +415,7 @@ export default function KakaoTemplateManager({
   }, [textItems, effOf, autoStatusMap, usage, sent, hasLinkedOn]);
   const isRoOnBlocked = useCallback((entry) => {
     const tone = itemLight(entry).tone;
-    return Boolean((entry.make_on === true || entry.active) && (tone === 'blocked' || tone === 'part'));
+    return Boolean((entry.make_on === true || entry.active) && (tone === 'blocked' || entry?.config?.status === 'test'));
   }, []);
   const isAtaZeroSend = useCallback((item) => {
     if (item.status !== 'APPROVED') return false;
@@ -482,7 +484,6 @@ export default function KakaoTemplateManager({
     };
     return [
       ...(onBlockedCount > 0 ? [{ key: 'kakao-on-blocked', tone: 'danger', label: '켜짐 · 발송 막힘', count: onBlockedCount, active: issueFilter === 'kakao-on-blocked', onClick: () => toggleIssue('kakao-on-blocked') }] : []),
-      { key: 'kakao-zero-send', tone: 'info', label: '켜짐 · 최근 발송 없음', count: zeroSendCount, active: issueFilter === 'kakao-zero-send', onClick: () => toggleIssue('kakao-zero-send') },
       { key: 'ata-inspecting', tone: 'info', label: '검수 중', count: inspectingCount, active: inspectFilter === 'INSPECTING', onClick: () => toggleInspect('INSPECTING') },
       { key: 'ata-pending', tone: 'warn', label: '검수 전', count: pendingCount, active: inspectFilter === 'PENDING', onClick: () => toggleInspect('PENDING') },
       { key: 'ata-rejected', tone: 'warn', label: '검수 반려', count: rejectedCount, active: inspectFilter === 'REJECTED', onClick: () => toggleInspect('REJECTED') },
@@ -1315,10 +1316,10 @@ export default function KakaoTemplateManager({
     const isApproved = selected.status === 'APPROVED';
     const detailActions = availableActions(selected);
     const ataLightTone = linkedEntries.length > 0
-      ? (linkedEntries.some((e) => ['on', 'part'].includes(effOf(e).tone)) ? 'on' : 'off')
+      ? (linkedEntries.some(isEntryActive) ? 'on' : 'off')
       : (selected.status === 'APPROVED' && (selected.program_use || selectedExt || (usageSuccess(usage, selected.id, sent) ?? 0) > 0) ? 'on' : 'off');
     const ataLightLabel = linkedEntries.length > 1
-      ? `켜짐 ${linkedEntries.filter((e) => ['on', 'part'].includes(effOf(e).tone)).length}/${linkedEntries.length}`
+      ? `켜짐 ${linkedEntries.filter(isEntryActive).length}/${linkedEntries.length}`
       : (ataLightTone === 'on' ? '켜짐' : '꺼짐');
     const linkedDates = linkedEntries.map((entry) => autoStatusMap[entry.id]?.last_sent_date).filter(Boolean).sort();
     const ataLastAt = linkedDates.length ? linkedDates[linkedDates.length - 1] : (usageLastAt(usage, selected.id) || selectedExt?.lastSentAt || '');
@@ -1432,7 +1433,7 @@ export default function KakaoTemplateManager({
                     <div className="ktm-linked-headrow">
                       <span className="ktm-linked-head">발송 조건 · {linkedEntries.length}단계</span>
                       <span className="ktm-kind-count">
-                        켜짐 {linkedEntries.filter((e) => ['on', 'part'].includes(effOf(e).tone)).length}/{linkedEntries.length}
+                        켜짐 {linkedEntries.filter(isEntryActive).length}/{linkedEntries.length}
                       </span>
                     </div>
                     <ul className="ktm-linked-list">
@@ -1705,7 +1706,7 @@ export default function KakaoTemplateManager({
     const actions = [...(item.status === 'APPROVED' && onSend ? ['send'] : []), ...availableActions(item)];
     const isOpen = menuId === item.id;
     const linkedEntries = linkedTextEntries(textItems, item.id);
-    const linkedOn = linkedEntries.filter((entry) => ['on', 'part'].includes(effOf(entry).tone)).length;
+    const linkedOn = linkedEntries.filter(isEntryActive).length;
     const cardExtras = nonMakeExtras(item.id, sent);
     const used = usageSuccess(usage, item.id, sent);
     const linked = Boolean(item.program_use || cardExtras || linkedOn > 0);

@@ -506,6 +506,16 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
         });
         const out = await postSmsConsole('text_template_save', payload);
         last = out.item;
+        const shouldAutoEnable = Boolean(f.autoKind && out.item?.id && (!item.id || out.item?.auto_disabled === true));
+        if (shouldAutoEnable) {
+          try {
+            const toggled = await postSmsConsole('auto_toggle', { id: out.item.id, enabled: true });
+            if (toggled?.enabled === true) {
+              out.item = { ...out.item, auto_enabled: true, auto_disabled: false };
+              last = out.item;
+            }
+          } catch { /* 켜기 요건 미충족 시 아래 AutoOffNotice 배너로 안내 */ }
+        }
         if (out.item?.auto_disabled === true) setOffItems(prev => [...prev.filter(x => x.id !== out.item.id), { id: out.item.id, photos: Array.isArray(imgs) ? imgs.length : 0 }]);
         setStages(prev => prev.map(x => (x.key === item.key ? { ...x, id: out.item.id, base: stageDirtySig(f) } : x)));
       } catch (err) {
@@ -525,7 +535,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
 
   if (saved) {
     const savedPhotos = Number(saved._photos ?? saved.image_count ?? (saved.has_image ? 1 : 0)) || 0;
-    const isFreshAutoSaved = Boolean(saved.id && autoKind && !initial?.id && offItems.length === 0);
+    const isFreshAutoSaved = Boolean(saved.id && autoKind && !initial?.id && !saved.auto_enabled && offItems.length === 0);
     return (
       <div className="stf-form">
         <p className="stf-done" role="status">{cloneFromName ? '새 조건으로 추가했습니다. 왼쪽 목록에도 바로 반영되었습니다.' : '등록했습니다'}</p>
