@@ -49,6 +49,14 @@ export const PROGRAM_TEMPLATE_IDS = Object.freeze({
   KA01TP260709074214799PHhwnXRp2sM: 'customer_shipped',
 });
 
+const PROGRAM_TEMPLATE_META = Object.freeze({
+  customer_ordered: { trigger: '주문 생성 또는 작업지시서 등록 시 중복 없이 1번 발송', who: '제작 주문 고객' },
+  customer_started: { trigger: '주문의 첫 공정인 도면설계가 실제 시작될 때', who: '제작 주문 고객' },
+  customer_packed: { trigger: '포장 공정 완료 시', who: '제작 주문 고객' },
+  customer_rescheduled: { trigger: '미출고 주문의 출고 예정일이 변경될 때', who: '제작 주문 고객' },
+  customer_shipped: { trigger: '출고 완료 처리 시 진입하지만 발송 전에 중단', who: '제작 주문 고객' },
+});
+
 // 제작현황 문자·알림톡을 제목·본문 틀로 알아본다(DB 조회 없이). [정규식, 카탈로그 id]
 const PROGRAM_CUSTOMER = [
   [/주문이 정상 접수|\[한성쇼케이스\] 주문 접수 안내/, 'customer_ordered'],
@@ -510,7 +518,14 @@ export function templateMeta(templateId) {
   if (!id) return null;
   const programKey = PROGRAM_TEMPLATE_IDS[id];
   // 출고 완료(customer_shipped)는 api/_lib/notify.js maybeNotify 가 shipped_notification_disabled 로 건너뛰므로 켜짐이 아니다(정책 중단).
-  if (programKey) return { key: programKey, kind: kindOfCatalogId(programKey), sender: SENDERS.program, ad: false, active: programKey !== 'customer_shipped', audience: '고객' };
+  if (programKey) {
+    const info = PROGRAM_TEMPLATE_META[programKey] || {};
+    return {
+      key: programKey, kind: kindOfCatalogId(programKey), sender: SENDERS.program,
+      ad: false, active: programKey !== 'customer_shipped', audience: '고객',
+      trigger: info.trigger || '', who: info.who || '제작 주문 고객',
+    };
+  }
   const entry = EXTERNAL_TEMPLATES.find(item => item.match.templateId === id);
   return entry ? { key: entry.key, kind: entry.kind, sender: entry.sender, ad: entry.ad, active: entry.active, audience: entry.audience || '고객', trigger: entry.trigger || '', who: entry.who || '', scenario: entry.scenario || '' } : null;
 }

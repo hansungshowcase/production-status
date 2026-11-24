@@ -299,7 +299,10 @@ async function handlePost(req, res, ctx) {
   // 보내기는 템플릿 작업과 요청 수 제한 통을 나눈다.
   const isSend = body?.action === 'send' || body?.action === 'send_cancel';
   const sendBucket = isSend || body?.action === 'auto_test'; // 시험 발송은 보내기와 같은 요청 수 제한 통
-  if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: sendBucket ? 10 : 5, keySuffix: sendBucket ? 'SEND' : 'POST' })) return;
+  const toggleBucket = body?.action === 'auto_toggle';
+  const limitMax = toggleBucket ? 30 : (sendBucket ? 10 : 5);
+  const limitSuffix = toggleBucket ? 'TOGGLE' : (sendBucket ? 'SEND' : 'POST');
+  if (!(deps.rateLimitCheck || rateLimitCheck)(req, res, { windowMs: 60000, max: limitMax, keySuffix: limitSuffix })) return;
   if (!body || !ACTIONS.has(body.action)) return fail(res, 400, '올바른 요청이 아닙니다.');
   const action = body.action;
   if (action === 'send_cancel') return doSendCancel(body, res, ctx);

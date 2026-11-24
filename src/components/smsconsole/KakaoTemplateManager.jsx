@@ -417,13 +417,14 @@ export default function KakaoTemplateManager({
   }, []);
   const isAtaZeroSend = useCallback((item) => {
     if (item.status !== 'APPROVED') return false;
+    if ((usageCount(usage, item.id) ?? 0) > 0 || Boolean(usageLastAt(usage, item.id))) return false;
     const linkedOn = linkedTextEntries(textItems, item.id).filter((entry) => entry.autoEnabled && ['on', 'part'].includes(effOf(entry).tone));
     if (!linkedOn.length) return false;
     return linkedOn.every((entry) => {
       const st = autoStatusMap[entry.id];
       return Boolean(st && !(Number(st.sent_7d) > 0) && !st.last_sent_date);
     });
-  }, [textItems, effOf, autoStatusMap]);
+  }, [textItems, effOf, autoStatusMap, usage]);
 
   // 브랜드메시지(DB) 필터링
   const visibleManaged = useMemo(() => {
@@ -1322,7 +1323,10 @@ export default function KakaoTemplateManager({
     const linkedDates = linkedEntries.map((entry) => autoStatusMap[entry.id]?.last_sent_date).filter(Boolean).sort();
     const ataLastAt = linkedDates.length ? linkedDates[linkedDates.length - 1] : (usageLastAt(usage, selected.id) || selectedExt?.lastSentAt || '');
     const ataLastLabel = formatLastSentLabel(ataLastAt);
-    const ataRecentCount = usageCount(usage, selected.id);
+    const rawAtaCount = usageCount(usage, selected.id);
+    const ataRecentCount = (rawAtaCount === null || rawAtaCount === 0) && (selectedExt?.count7 ?? 0) > 0
+      ? selectedExt.count7
+      : rawAtaCount;
 
     return (
       <article className="stl-detail ktm-detail-sheet">
@@ -1715,6 +1719,8 @@ export default function KakaoTemplateManager({
     const linkedDates = linkedEntries.map((entry) => autoStatusMap[entry.id]?.last_sent_date).filter(Boolean).sort();
     const ataLastAt = linkedDates.length ? linkedDates[linkedDates.length - 1] : (usageLastAt(usage, item.id) || cardExtras?.lastSentAt || '');
     const ataLastLabel = formatLastSentLabel(ataLastAt);
+    const linkedSent7d = linkedEntries.reduce((sum, entry) => sum + (Number(autoStatusMap[entry.id]?.sent_7d) || 0), 0);
+    const cardSent7d = linkedSent7d > 0 ? linkedSent7d : ((Number(usageCount(usage, item.id)) || 0) || (Number(cardExtras?.count7) || 0));
 
     let condShort = '';
     if (linkedEntries.length === 1) {
@@ -1759,7 +1765,7 @@ export default function KakaoTemplateManager({
           {targetEntry ? <span className="ktm-card-target">대상: {autoTargetText(targetEntry)}</span> : null}
           <div className="stl-item-badges">
             <span className={`stl-last-sent ${ataLastLabel ? 'stl-last-sent--recent' : 'stl-last-sent--none'}`}>
-              {ataLastLabel ? `최근 발송 ${ataLastLabel}` : '최근 발송 없음'}
+              {ataLastLabel ? `최근 발송 ${ataLastLabel}${cardSent7d > 0 ? ` · 7일 ${cardSent7d}건` : ''}` : '최근 발송 없음'}
             </span>
             {item.program_use ? <span className="ktm-badge ktm-badge--info">프로그램 알림</span> : null}
             {cardExtras && cardExtras.replaced7 > 0 ? <span className="ktm-badge ktm-badge--warn">문자 대체 {cardExtras.replaced7}건</span> : null}

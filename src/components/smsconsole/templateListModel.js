@@ -223,12 +223,22 @@ export function buttonLinksOf(buttons, vars = {}) {
 // ---------- 종류·보내는 곳 표시(읽기 전용) ----------
 // sent = GET ?resource=sent 의 groups[] 또는 null
 
-// 기존 템플릿 카드에 더할 것: { sender, kind, replaced7, off, lastSentAt } — 표에 없으면 null(아무것도 더하지 않는다)
+// 기존 템플릿 카드에 더할 것: { sender, kind, replaced7, off, lastSentAt, count7 } — 표에 없으면 null(아무것도 더하지 않는다)
 export function templateExtras(templateId, sent = null) {
   const meta = templateMeta(templateId);
   if (!meta) return null;
   const group = (Array.isArray(sent) ? sent : []).find((row) => row.key === meta.key);
-  return { sender: meta.sender, kind: meta.kind, replaced7: group?.replaced7 || 0, off: meta.active === false, trigger: meta.trigger || '', who: meta.who || '', scenario: meta.scenario || '', lastSentAt: group?.last_sent || '' };
+  return {
+    sender: meta.sender,
+    kind: meta.kind,
+    replaced7: group?.replaced7 || 0,
+    off: meta.active === false,
+    trigger: meta.trigger || '',
+    who: meta.who || '',
+    scenario: meta.scenario || '',
+    lastSentAt: group?.last_sent || '',
+    count7: group ? (Number(group.count7) || 0) : null,
+  };
 }
 
 // 알림톡 템플릿의 대상·종류: ① 보낸 묶음·외부 문구 표·제작현황 표(템플릿 ID) ② KAKAO_TEMPLATE_AUDIENCE ③ 모르면 { audience: '', kind: '' } (분류 안 됨)
