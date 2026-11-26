@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { hasSolapiCredentials } from './solapiMessageLog.js';
 import { classifyText, getSendProvider } from './sendProvider.js';
 import { ensureManualSendSchema, multiPartTimeShort, sendSettings, waitBeforePart } from './smsManualSend.js';
-import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, AUTO_LIMITS, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, isProcessPlusKind, ensureTextTemplateSchema, parseAutoChain, parseStaffIds, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND, AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, AUTO_LIMITS, adCheck, isAtaTemplate, isAutoKind, isDayAta, isEventKind, isInfoTemplate, isProcessPlusKind, ensureTextTemplateSchema, isLeadKind, OPTOUT_LINE_RE, parseAutoChain, parseStaffIds, storedImages } from './smsTextTemplates.js';
 import { STEPS } from './steps.js';
 import { BMS_TEMPLATE_ID, bmsReady, bmsTestInWindow, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { dueMarkEntries, ataReady, ataSendVars, nameVars, balanceShortFor, buildEventParts, catchupActive, catchupDailyCap, catchupMaxPerDay, cronLastRun, ensureEventSchema, eventExampleText, eventPhoneHash, fillVars, eventStatus, eventToggleOn, inTimedWindow, kstMinutes, loadEventTemplate, noteSkip, runEventSend, runGuarded, withEffective } from './smsEventSend.js';
@@ -17,7 +17,6 @@ const DAY_MS = 86400000;
 const HASH_SALT = 'hansung-sms-auto-v1';
 const TARGET_RE = /^010\d{7,8}$/;
 const MOBILE_RE = /^01[016789]\d{7,8}$/;
-const OPTOUT_LINE_RE = /무료\s*수신\s*거부[^\n]*080[-\d]{7,}/;
 const KEY_RE = /^[\w-]{8,80}$/;
 const CATCH_UP_DAYS = 3;
 const DEFAULT_MAX_PER_DAY = 30;
@@ -92,13 +91,8 @@ export function autoSettings(env = process.env) {
   return { on: env.SMS_AUTO !== 'off', maxPerDay: intEnv(env.SMS_AUTO_MAX_PER_DAY, DEFAULT_MAX_PER_DAY) };
 }
 
-// 광고 형식: '' | 'no_ad_prefix' | 'no_optout_080'
-export function adCheck(body) {
-  const text = String(body ?? '').replace(/\r\n?/g, '\n').trim();
-  if (!text.startsWith('(광고)')) return 'no_ad_prefix';
-  if (!OPTOUT_LINE_RE.test(text)) return 'no_optout_080';
-  return '';
-}
+// 광고 형식: '' | 'no_ad_prefix' | 'no_optout_080' (본체는 smsTextTemplates.adCheck 로 옮김 — 가입·문의 광고 저장과 공용, 2026-11-26)
+export { adCheck };
 // 연쇄 발송 문구(auto_chain.plain)는 Make 와 같게 광고 형식((광고)·080)을 요구하지 않는다(2026-11-18). 없으면 종전 adCheck 그대로.
 const adCheckOf = template => (template.auto_chain?.plain ? '' : adCheck(template.body));
 const subjectOf = template => (template.auto_chain?.subject ? { subject: template.auto_chain.subject } : {}); // 연쇄 문구의 문자 제목(없으면 종전처럼 싣지 않는다)
@@ -320,7 +314,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   const shared = typeof deadline === 'number';
   const endAt = shared ? deadline : startedAt + TIME_BUDGET_MS;
   const timeShort = () => shared && endAt - tick() < SEND_RESERVE_MS;
-  if (template.auto_msg_type === 'info' || isDayAta(template)) return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep, kakao, kakaoOpts }); // 안내 문구는 새 모듈
+  if (template.auto_msg_type === 'info' || isDayAta(template) || isLeadKind(template.auto_kind)) return runEventSend(template, { db, provider, env, nowMs, fetchImpl, tick, deadline, sleep, kakao, kakaoOpts }); // 안내 문구는 새 모듈
   const out = { template_id: template.id, ran: false, reason: '', targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0 };
   const settings = autoSettings(env);
   if (!template.auto_enabled || !settings.on) return { ...out, reason: 'off' }; // ①

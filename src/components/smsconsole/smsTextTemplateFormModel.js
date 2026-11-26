@@ -193,7 +193,8 @@ export const AUDIENCE_STAFF = 'staff';
 export const AUDIENCE_SALES = 'sales';
 // 광고 문구로 저장되는 종류(서버 auto_msg_type 'ad' = 출고 완료 후·주문 등록 후)
 // 출고 완료 후·주문 등록 후 + 알림톡을 고르면 광고가 아니라 정보성 알림톡이다(ataTemplate 를 넘기면 광고 표기 대상에서 뺀다)
-export const isAdKind = (kind, ataTemplate = '') => (kind === AUTO_KIND || kind === AUTO_KIND_ORDER || isProcessPlusKind(kind)) && !ataTemplate;
+// 가입·문의 후는 대상이 카페24(회원가입)일 때만 광고 문자다(2026-11-26 사장님 결정, 서버 isLeadAd 와 같다).
+export const isAdKind = (kind, ataTemplate = '', leadSource = '') => (kind === AUTO_KIND || kind === AUTO_KIND_ORDER || isProcessPlusKind(kind) || (kind === AUTO_KIND_LEAD_PLUS && leadSource === 'cafe24')) && !ataTemplate;
 const AD_OPTOUT_LINE = '무료수신거부 080-500-4233';
 const AD_OPTOUT_RE = /무료\s*수신\s*거부[^\n]*080[-\d]{7,}/;
 // 광고 표기: 맨 앞 "(광고)"와 080 무료수신거부 줄이 없으면 붙인 본문을 돌려준다(있으면 그대로). 서버 adCheck 를 통과하는 모양.

@@ -54,6 +54,23 @@ const STAFF_CAP = 30;
 // 고객 대상 안내 문구 검사: 주문 변수가 하나 이상 있어야 하고 광고 낱말이 없어야 한다. '' 이면 통과.
 const ORDER_VAR_RE = /#\{(주문번호|규격|수량|예상출고일|조회링크)\}/;
 const AD_WORD_RE = /할인|이벤트|혜택|쿠폰|특가|소개|세일|무료|증정|사은품|\(광고\)/;
+// 광고 형식(smsAutoSend 에서 옮겨 옴, 같은 논리): '' | 'no_ad_prefix' | 'no_optout_080'. 본문이 (광고) 로 시작하고 080 무료수신거부 줄이 있어야 ''.
+export const OPTOUT_LINE_RE = /무료\s*수신\s*거부[^\n]*080[-\d]{7,}/;
+export function adCheck(body) {
+  const text = String(body ?? '').replace(/\r\n?/g, '\n').trim();
+  if (!text.startsWith('(광고)')) return 'no_ad_prefix';
+  if (!OPTOUT_LINE_RE.test(text)) return 'no_optout_080';
+  return '';
+}
+// 2026-11-26 사장님: "회원가입이면 다 수신동의야" — 카페24 가입 고객 광고 문자 허용, 동의 필터 없음, (광고)·080·수신거부 제외는 필수
+// 가입·문의 후(lead_plus_days) 광고 문자 판정: 템플릿 행 { auto_kind, auto_msg_type, auto_ata_template }. 카페24 한정은 저장(readLeadAuto)과 실행(runEventSend)이 따로 강제한다.
+export const isLeadAd = t => isLeadKind(t?.auto_kind) && t?.auto_msg_type === 'ad' && !t?.auto_ata_template;
+// 광고 lead 본문 검사: 변수는 #{고객명} 만 허용('info_unknown_var'), 그 뒤 광고 형식(adCheck). 광고 낱말 검사는 하지 않는다. '' 이면 통과.
+export function leadAdBlocked(body) {
+  const text = String(body ?? '');
+  if ([...text.matchAll(/#\{([^}]*)\}/g)].some(match => match[1] !== '고객명')) return 'info_unknown_var';
+  return adCheck(text);
+}
 // 쓸 수 있는 변수(고객 / 직원). 이 밖의 #{…} 는 치환되지 않고 글자 그대로 나가므로 저장·켜기·실행에서 막는다.
 const INFO_VARS = Object.freeze({ customer: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크'], staff: ['고객명', '주문번호', '규격', '수량', '예상출고일', '조회링크', '제품'] });
 const hasUnknownVar = (text, audience) => [...text.matchAll(/#\{([^}]*)\}/g)].some(match => !INFO_VARS[audience].includes(match[1]));
@@ -246,7 +263,7 @@ function readAutoBase(input, staff) {
   if (input?.auto === undefined) return { skip: true };
   if (input.auto === null || !input.auto?.kind) return { kind: '', days: null, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA };
   if (isEventKind(input.auto.kind)) return readEventAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '', input.auto_chain);
-  if (isLeadKind(input.auto.kind)) return readLeadAuto(input.auto, typeof input.body === 'string' ? input.body : '');
+  if (isLeadKind(input.auto.kind)) return readLeadAuto(input.auto, typeof input.body === 'string' ? input.body : '', input.auto_chain);
   if (isInstantKind(input.auto.kind)) return readInstantAuto(input.auto, staff, typeof input.body === 'string' ? input.body : '', input.auto_chain);
   if (!isAutoKind(input.auto.kind)) return { error: '자동 발송 종류가 올바르지 않습니다.' };
   const days = Number(input.auto.days);
@@ -353,16 +370,18 @@ function readEventAuto(auto, staff, body, chain = null) {
 }
 
 // 가입·문의 후 N일: 항상 안내 문구·받는 사람 고객 고정. days 0~365(0 = 접수 당일). 알림톡 템플릿 id 가 있으면 알림톡으로 나간다.
-function readLeadAuto(auto, body) {
+function readLeadAuto(auto, body, chain = null) {
   const days = auto.days === undefined || auto.days === null || auto.days === '' ? 0 : Number(auto.days);
   if (!(Number.isInteger(days) && days >= 0 && days <= TEXT_TEMPLATE_LIMITS.autoDaysMax)) return { error: `가입·문의 후 일수는 0~${TEXT_TEMPLATE_LIMITS.autoDaysMax}일로 입력해 주세요.` };
   const leadSource = auto.lead_source === undefined || auto.lead_source === null ? '' : auto.lead_source; // 대상: ''(가입·문의 모두) · 'cafe24'(회원가입) · 'airtable'(견적 문의)
   if (!LEAD_SOURCES.includes(leadSource)) return { error: '가입·문의 대상이 올바르지 않습니다.' };
   const picked = readAta(auto, body, auto.kind);
   if (picked.error) return picked;
-  const blocked = picked.ata ? '' : infoCheck(body, 'customer', auto.kind, false);
+  // 광고 문자 판정: 카페24 대상 + 문자 + plain 아님 + 본문에 (광고)·080 이 이미 있을 때만 광고로 저장한다. 아니면 종전처럼 info(광고 낱말 거절).
+  const ad = !picked.ata && leadSource === 'cafe24' && parseAutoChain(chain)?.plain !== true && adCheck(body) === '';
+  const blocked = picked.ata ? '' : ad ? leadAdBlocked(body) : infoCheck(body, 'customer', auto.kind, false);
   if (blocked) return { error: INFO_CHECK_MESSAGE[blocked], reason: blocked };
-  return { kind: auto.kind, days, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, msg_type: 'info', ata: picked.ata, lead_source: leadSource };
+  return { kind: auto.kind, days, send_from: null, repeat: AUTO_LIMITS.defaultRepeat, interval: AUTO_LIMITS.defaultInterval, ...AD_EXTRA, msg_type: ad ? 'ad' : 'info', ata: picked.ata, lead_source: leadSource };
 }
 
 // 즉시형(주문 등록 시·공정 시작/완료 시): 항상 안내 문구. process_* 는 공정 필수. 일수·오프셋·미완료 조건·시작일·반복은 쓰지 않는다. 받는 사람·본문 검사는 기준일형과 같다.

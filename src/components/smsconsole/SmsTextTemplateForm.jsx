@@ -159,7 +159,8 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const [hadChain, setHadChain] = useState(Boolean(v0.hadChain));
   const [meta, setMeta] = useState({ steps: [], staff: [], ata: [] });
   const [imageError, setImageError] = useState('');
-  const [adMark, setAdMark] = useState(() => !Boolean(v0.chainPlain));
+  const adMarkOf = v => !v.chainPlain && !(v.autoKind === 'lead_plus_days' && v.body && !String(v.body).trim().startsWith('(광고)')); // 기존 가입·문의 문구는 저장된 본문에 (광고) 가 있을 때만 광고 표기를 켠다(새 폼 기본값은 그대로)
+  const [adMark, setAdMark] = useState(() => adMarkOf(v0));
   const [merge, setMerge] = useState(true); // 사진 2장 이상은 기본 한 장 합치기
   const [merged, setMerged] = useState(null);
   const [mergeFailed, setMergeFailed] = useState(false);
@@ -185,7 +186,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const supportsSameDay = autoKind === AUTO_KIND_ORDER || leadKind;
   const bmsOn = isBmsAta(ataTemplate);
   const channelMode = bmsOn ? 'bms' : ((ataTemplate || ataSelected) ? 'ata' : 'sms');
-  const adOn = isAdKind(autoKind, ataTemplate) && adMark && !chainPlain;
+  const adOn = isAdKind(autoKind, ataTemplate, leadSource) && adMark && !chainPlain;
   const outBody = adOn ? withAdFormat(body) : body;
 
   const check = validateTextForm({
@@ -286,7 +287,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
   const toggleChainPlain = on => {
     setChainPlain(on);
     if (on) setAdMark(false);
-    else if (isAdKind(autoKind, ataTemplate)) setAdMark(true);
+    else if (isAdKind(autoKind, ataTemplate, leadSource)) setAdMark(true);
   };
 
   const setBmsButton = (index, patchValue) => setBmsButtons(prev => prev.map((item, i) => (i === index ? { ...item, ...patchValue } : item)));
@@ -390,7 +391,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
     setCatchupOn(v.catchupOn); setCatchupFrom(v.catchupFrom); setCatchupAt(v.catchupAt); setCatchupDaily(v.catchupDaily || ''); setCatchupReveal(false); setLeadSource(v.leadSource || '');
     setChainSubject(v.chainSubject || ''); setChainFrom(v.chainFrom || ''); setChainSales(v.chainSales || '');
     setChainDaysOff(v.chainDaysOff || []); setChainPlain(Boolean(v.chainPlain)); setChainAfter(v.chainAfter || null); setHadChain(Boolean(v.hadChain));
-    setAdMark(!Boolean(v.chainPlain));
+    setAdMark(adMarkOf(v));
     if (hasAdvancedValues(v)) setAdvancedOpen(true);
     setImageError('');
   };
@@ -453,7 +454,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
       failAt(stages.findIndex(item => item.key === activeKey), '사용할 카카오 알림톡 템플릿을 골라 주세요');
       return;
     }
-    const outOf = f => (isAdKind(f.autoKind, f.ataTemplate) && adMark && !f.chainPlain ? withAdFormat(f.body) : f.body);
+    const outOf = f => (isAdKind(f.autoKind, f.ataTemplate, f.leadSource) && adMark && !f.chainPlain ? withAdFormat(f.body) : f.body);
     for (const { f, i } of pick) {
       const fDate = isDateKind(f.autoKind);
       const chk = validateTextForm({
@@ -846,7 +847,7 @@ export default function SmsTextTemplateForm({ onSend, onCancel, onSaved, initial
             </span>
           </div>
 
-          {isAdKind(autoKind, ataTemplate) && !chainPlain ? (
+          {isAdKind(autoKind, ataTemplate, leadSource) && !chainPlain ? (
             <label className="stf-inline">
               <input type="checkbox" className="stf-check" checked={adMark} onChange={event => setAdMark(event.target.checked)} />
               <span>(광고) 문구와 080 무료수신거부 자동으로 붙이기 (광고성 문자 법적 필수)</span>

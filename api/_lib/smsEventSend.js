@@ -7,13 +7,13 @@ import { getSendProvider } from './sendProvider.js';
 import { staffDirectory, multiPartTimeShort, templateVariableNames, waitBeforePart } from './smsManualSend.js';
 import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
-import { AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadKind, isProcessPlusKind, LEAD_KINDS, parseAutoChain, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
+import { AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadAd, isLeadKind, isProcessPlusKind, LEAD_KINDS, leadAdBlocked, parseAutoChain, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
 import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
 import { sendAdminCopySms } from './adminCopySms.js';
-import { bmsInWindow, bmsOptoutCheck, bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
+import { BMS_TEMPLATE_ID, bmsInWindow, bmsOptoutCheck, bmsReady, isBmsTemplate, parseBmsConfig } from './smsBms.js';
 import { STEPS } from './steps.js';
 import { autoEffective } from '../../shared/smsAutoEffective.js';
 import { customerExpectedShipDate } from '../../src/utils/customerShippingDate.js';
@@ -131,6 +131,7 @@ export const EXAMPLE_ORDER = Object.freeze({ id: 1, order_date: '2026-11-13', cl
 
 // 통 구성: 사진 N장이면 N통. 1통째 = 본문 + 사진1, 2통째부터 = 사진 + 짧은 글.
 export function buildEventParts(template, imageCount) {
+  if (isLeadAd(template)) return buildAdParts(template, imageCount); // 광고 lead: 모든 통에 (광고)·080 표기(2026-11-26)
   const n = Math.max(1, imageCount);
   const parts = [{ index: 0, image: imageCount > 0 ? 0 : -1, short: false }];
   for (let i = 1; i < n; i += 1) parts.push({ index: i, image: i, short: true });
@@ -155,7 +156,7 @@ export async function loadEventTemplate(db, id) {
     auto_skip_reason: row.auto_skip_reason || '', auto_chain: parseAutoChain(row.auto_chain), auto_bms: row.auto_bms || '', id: Number(row.id), name: row.name, body: row.body, images: storedImages(row), auto_kind: row.auto_kind || '', auto_enabled: row.auto_enabled === true,
     auto_offset: Number(row.auto_offset) || 0, auto_unless_step: row.auto_unless_step || '', auto_audience: ['staff', 'sales'].includes(row.auto_audience) ? row.auto_audience : 'customer',
     auto_daily: row.auto_daily || '', auto_weekdays: row.auto_weekdays === true, auto_unless_mode: row.auto_unless_mode === 'started' ? 'started' : 'completed',
-    auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: 'info',
+    auto_staff: parseStaffIds(row.auto_staff), auto_msg_type: isLeadKind(row.auto_kind) && row.auto_msg_type === 'ad' ? 'ad' : 'info', // 광고는 가입·문의 후만(2026-11-26), 값이 없으면 info
     auto_step: row.auto_step || '', auto_enabled_at: row.auto_enabled_at ? new Date(row.auto_enabled_at).toISOString() : '',
     auto_days: Number(row.auto_days) || 0, auto_ata_template: row.auto_ata_template || '', auto_send_time: row.auto_send_time || '', auto_lead_source: row.auto_lead_source || '',
     auto_catchup_from: row.auto_catchup_from || '', auto_catchup_at: row.auto_catchup_at || '', auto_catchup_daily: Number(row.auto_catchup_daily) > 0 ? Number(row.auto_catchup_daily) : 0, auto_catchup_done: Boolean(row.auto_catchup_done_at),
@@ -446,7 +447,7 @@ async function failedRetryRows(db, template, keys) {
 async function pending(db, template, deps) {
   let items = await candidates(db, template, deps);
   if (!items.length) return [];
-  if (isBmsTemplate(template) && !isDayAta(template)) { // 브랜드메시지는 광고라 수신거부 번호를 뺀다(출고·주문 후는 dayCandidatesFor 가 이미 뺐다)
+  if ((isBmsTemplate(template) && !isDayAta(template)) || isLeadAd(template)) { // 브랜드메시지·광고 lead 는 광고라 수신거부 번호를 뺀다(출고·주문 후는 dayCandidatesFor 가 이미 뺐다). 해시는 autoPhoneHash(sms_leads.phone_hash 는 소금이 달라 못 쓴다)
     const optouts = await optoutHashes(db);
     items = items.filter(item => !optouts.has(autoPhoneHash(item.phone)));
     if (!items.length) return [];
@@ -461,6 +462,21 @@ async function pending(db, template, deps) {
       for (const row of (await db.execute({ sql: `SELECT DISTINCT phone_hash FROM sms_event_sends WHERE template_id = ? AND status <> 'failed' AND phone_hash IN (${placeholders(chunk)})`, args: [template.id, ...chunk] })).rows || []) sentPhones.add(row.phone_hash);
     }
     items = items.filter(item => !sentPhones.has(item.hash));
+    if (!items.length) return [];
+  }
+  if (isLeadAd(template)) { // 광고 하루 1통: 오늘 광고 문자(sms_auto_sends)나 브랜드메시지가 이미 나간 번호는 뺀다(광고 경로 쪽은 건드리지 않는다)
+    await ensureAutoSchema(db);
+    const today = kstDate(deps.nowMs ?? Date.now());
+    const taken = new Set();
+    const hashes = [...new Set(items.map(item => autoPhoneHash(item.phone)))]; // sms_auto_sends 는 광고 소금
+    const eventHashes = [...new Set(items.map(item => hashOf(item.phone)))]; // sms_event_sends(브랜드메시지)는 이벤트 소금(hashOf)으로 저장된다
+    for (let i = 0; i < hashes.length; i += KEY_CHUNK) {
+      const chunk = hashes.slice(i, i + KEY_CHUNK);
+      const eventChunk = eventHashes.slice(i, i + KEY_CHUNK);
+      for (const row of (await db.execute({ sql: `SELECT DISTINCT phone_hash FROM sms_auto_sends WHERE kst_date = ? AND status <> 'failed' AND phone_hash IN (${placeholders(chunk)})`, args: [today, ...chunk] })).rows || []) taken.add(row.phone_hash);
+      for (const row of (await db.execute({ sql: `SELECT DISTINCT e.phone_hash FROM sms_event_sends e JOIN sms_text_templates t ON t.id = e.template_id WHERE e.kst_date = ? AND e.status <> 'failed' AND t.auto_ata_template = ? AND e.phone_hash IN (${placeholders(eventChunk)})`, args: [today, BMS_TEMPLATE_ID, ...eventChunk] })).rows || []) taken.add(row.phone_hash);
+    }
+    items = items.filter(item => !taken.has(autoPhoneHash(item.phone)) && !taken.has(hashOf(item.phone)));
     if (!items.length) return [];
   }
   let done;
@@ -511,6 +527,7 @@ export const ataSendVars = (item, names) => { const vars = { ...ataVars(item) };
 
 // plain(auto_chain.plain === true) 안내 문구는 주문 변수 필수 검사(info_needs_order_var)만 면제한다(S3). 다른 검사는 그대로.
 function infoBlocked(template, ata) {
+  if (isLeadAd(template)) return leadAdBlocked(template.body) || (template.auto_lead_source === 'cafe24' ? '' : 'lead_ad_not_cafe24'); // 광고 lead: 광고 낱말 검사 대신 (광고)·080 확인, 카페24 대상이 아니면 멈춘다(2026-11-26)
   const blocked = infoCheck(template.body, template.auto_audience, template.auto_kind, ata);
   return blocked === 'info_needs_order_var' && template.auto_chain?.plain === true ? '' : blocked;
 }
@@ -1052,6 +1069,7 @@ const previewMode = template => (isInstantKind(template.auto_kind) || isLeadKind
 export const eventWarnReason = template => (isBmsTemplate(template) && bmsOptoutCheck(template.body) ? 'no_optout_080' : '');
 export function eventBlockedReason(template) {
   if (!isInfoTemplate(template)) return 'no_auto';
+  if (isLeadAd(template)) return leadAdBlocked(template.body); // 광고 lead: 광고 낱말 검사 대신 adCheck(+변수 고객명만), 2026-11-26
   if (needsStep(template.auto_kind) && !STEPS.includes(template.auto_step)) return 'no_step';
   if (template.auto_audience === 'staff' && !template.auto_staff.length) return 'no_staff';
   if (isAtaTemplate(template) && template.auto_audience !== 'customer') return 'ata_customer_only';
@@ -1079,7 +1097,7 @@ function costOf(vendor, parts, people, env) {
 export async function eventToggleOn(body, template, { db, provider, env = process.env, nowMs = Date.now(), staff, kakao, kakaoOpts } = {}) {
   const blocked = eventBlockedReason(template);
   if (blocked) {
-    const message = blocked === 'no_staff' ? '받는 직원을 1명 이상 골라야 켤 수 있습니다.' : blocked === 'no_auto' ? '자동 발송이 설정된 문구가 아닙니다.'
+    const message = blocked === 'no_ad_prefix' ? '본문이 (광고) 로 시작해야 켤 수 있습니다.' : blocked === 'no_optout_080' ? '본문에 080 무료수신거부 번호가 있어야 켤 수 있습니다.' : blocked === 'no_staff' ? '받는 직원을 1명 이상 골라야 켤 수 있습니다.' : blocked === 'no_auto' ? '자동 발송이 설정된 문구가 아닙니다.'
       : blocked === 'no_step' ? '공정을 골라 주세요.' : blocked === 'ata_customer_only' ? '알림톡은 고객에게만 보낼 수 있습니다.' : blocked === 'info_unknown_var' && template.auto_kind === 'member_joined' ? INFO_CHECK_MESSAGE.info_unknown_var : blocked === 'info_has_ad_words' ? '안내 문구에는 할인·이벤트 같은 광고 낱말을 쓸 수 없습니다.' : '안내 문구에는 주문 변수가 하나 이상 있어야 합니다.';
     return errorReply(400, message, { reason: blocked });
   }
