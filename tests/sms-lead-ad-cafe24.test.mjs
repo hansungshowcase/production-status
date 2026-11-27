@@ -7,7 +7,7 @@ import { _resetCafe24SchemaForTest } from '../api/_lib/cafe24.js';
 import { _resetLeadSchemaForTest, insertLead } from '../api/_lib/smsLeads.js';
 import * as T from '../api/_lib/smsTextTemplates.js';
 import { _resetEventSchemaForTest, eventPhoneHash, eventToggleOn, loadEventTemplate, runEventSend } from '../api/_lib/smsEventSend.js';
-import { _resetAutoSchemaForTest, phoneHash } from '../api/_lib/smsAutoSend.js';
+import { _resetAutoSchemaForTest, autoStatus, phoneHash } from '../api/_lib/smsAutoSend.js';
 import * as M from '../src/components/smsconsole/smsTextTemplateFormModel.js';
 
 process.env.POSTGRES_URL = 'postgres://user:fake-test-password@host.example/db'; // 암호화 키 파생용 가짜 값
@@ -56,6 +56,9 @@ function fakeDb({ optouts = [], autoSends = [], bms = [], templates = [] } = {})
       if (t.startsWith('UPDATE cafe24_signups SET phone_enc = NULL WHERE id IN')) { for (const r of state.signups) if (args.includes(r.id)) r.phone_enc = null; return { rows: [] }; }
       if (t.startsWith('UPDATE cafe24_signups SET phone_enc = NULL WHERE phone_enc IS NOT NULL')) { for (const r of state.signups) if (r.phone_enc && r.joined_at < args[0]) r.phone_enc = null; return { rows: [] }; }
       if (t.startsWith('SELECT dedupe_key FROM sms_event_sends')) return { rows: state.sends.filter(r => r.template_id === args[0] && args.slice(1).includes(r.dedupe_key)).map(r => ({ dedupe_key: r.dedupe_key })) };
+      if (t.startsWith("SELECT status, COUNT(*) AS n, MAX(kst_date) AS last FROM sms_event_sends")) return { rows: [] };
+      if (t.startsWith("SELECT status, COUNT(*) AS n FROM sms_event_sends")) return { rows: [] };
+      if (t.startsWith('SELECT MAX(last_run) AS last_run FROM sms_cron_runs')) return { rows: [] };
       if (t.startsWith('SELECT COUNT(*) AS n FROM sms_event_sends WHERE kst_date = ?')) return { rows: [{ n: state.sends.filter(r => r.kst_date === args[0]).length }] };
       if (t.startsWith('INSERT INTO sms_event_sends')) {
         const rows = [];
@@ -410,4 +413,17 @@ test('10. DB 행이 msg_type ad 인 lead 문구는 loadEventTemplate 로 ad 로 
   const out = await go(db, provider, loaded);
   assert.equal(out.claimed, 1);
   assert.equal(provider.calls.each[0].messages[0].text, AD_BODY.replace('#{고객명}', '가나다'));
+});
+
+test('11. autoStatus: loadTemplate 이 auto_lead_source 를 읽어 카페24 전용 문구는 에어테이블 대상을 today_targets 에 섞지 않는다', async () => {
+  reset();
+  const row = { id: 27, name: '카페24 가입 이벤트', body: BODY, image: null, images: null, auto_kind: 'lead_plus_days', auto_enabled: true, auto_days: 0, auto_audience: 'customer', auto_msg_type: 'info', auto_ata_template: 'BMS_FREE', auto_lead_source: 'cafe24', auto_enabled_at: new Date(NOW - 3 * HOUR).toISOString() };
+  const db = fakeDb();
+  db.state.templateRows = [row];
+  await lead(db, 'c1', '010-1111-2222', NOW - HOUR, '카페고객', 'cafe24');
+  await lead(db, 'a1', '010-3333-4444', NOW - HOUR, '에어고객1', 'airtable');
+  await lead(db, 'a2', '010-5555-6666', NOW - HOUR, '에어고객2', 'airtable');
+  const st = await autoStatus(db, { id: 27, nowMs: NOW, env: { ...ENV, ...AT_ENV } });
+  assert.equal(st.status, 200);
+  assert.equal(st.body.today_targets, 1);
 });
