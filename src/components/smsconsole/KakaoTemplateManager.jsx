@@ -18,7 +18,7 @@ import {
 } from './smsTextTemplateFormModel.js';
 import { autoEffective, autoLightClass } from '../../../shared/smsAutoEffective.js';
 import {
-  ACTION_LABELS, availableActions, buttonLinksOf, deleteConfirmed, deleteDecision,
+  ACTION_LABELS, ataLightState, availableActions, buttonLinksOf, deleteConfirmed, deleteDecision,
   failBadge, formatDate, isValidRename, readOnlyAudienceSections,
   readOnlyKakaoItems, statusInfo, statusPills, templateAudienceKind, templateExtras,
   usageBadge, usageCount, usageFail, usageLastAt, usageSuccess,
@@ -329,20 +329,20 @@ export default function KakaoTemplateManager({
 
   // 현황판·알약·목록 1:1 일치 기준
   const isEntryActive = useCallback((entry) => (autoStatusMap[entry.id] ? ['on', 'part'].includes(effOf(entry).tone) : Boolean(entry.autoEnabled)), [autoStatusMap, effOf]);
-  const hasLinkedOn = useCallback((ataId) => {
-    const linkedList = linkedTextEntries(textItems, ataId);
-    return linkedList.some(isEntryActive);
-  }, [textItems, isEntryActive]);
+  const ataLightOf = useCallback((item) => {
+    const linkedList = linkedTextEntries(textItems, item?.id);
+    const activeLinkedCount = linkedList.filter(isEntryActive).length;
+    const cardExtras = nonMakeExtras(item?.id, sent);
+    return ataLightState(item, { linkedCount: linkedList.length, activeLinkedCount, cardExtras, usage, sent });
+  }, [textItems, isEntryActive, sent, usage]);
   const isManagedActive = useCallback((entry) => isEntryActive(entry), [isEntryActive]);
   const isRoActive = useCallback((entry) => itemLight(entry).tone === 'on', []);
-  const isAtaActive = useCallback((item) => {
-    if (item.status !== 'APPROVED') return false;
-    const ex = nonMakeExtras(item.id, sent);
-    if (ex && ex.off) return false;
-    return Boolean(item.program_use || ex || hasLinkedOn(item.id) || (usageSuccess(usage, item.id, sent) ?? 0) > 0);
-  }, [sent, hasLinkedOn, usage]);
+  const isAtaActive = useCallback((item) => ataLightOf(item).active, [ataLightOf]);
   const isDbAttention = useCallback((entry) => isAttentionTone(displayLightOf(entry).tone) || Boolean(autoStatusMap[entry.id]?.catchup_paused), [displayLightOf, autoStatusMap]);
-  const isAtaAttention = useCallback((item) => item.status === 'REJECTED' || Boolean(nonMakeExtras(item.id, sent)?.off), [sent]);
+  const isAtaAttention = useCallback((item) => {
+    const light = ataLightOf(item);
+    return item.status === 'REJECTED' || Boolean(nonMakeExtras(item.id, sent)?.off) || isAttentionTone(light.tone);
+  }, [ataLightOf, sent]);
   const isRoAttention = useCallback((entry) => isAttentionTone(itemLight(entry).tone), []);
 
   const kakaoAutoStats = useMemo(() => {
@@ -1315,12 +1315,9 @@ export default function KakaoTemplateManager({
     const hasAtaVars = /#\{[^{}\n]{1,40}\}/.test(String(selected.content || ''));
     const isApproved = selected.status === 'APPROVED';
     const detailActions = availableActions(selected);
-    const ataLightTone = linkedEntries.length > 0
-      ? (linkedEntries.some(isEntryActive) ? 'on' : 'off')
-      : (selected.status === 'APPROVED' && (selected.program_use || selectedExt || (usageSuccess(usage, selected.id, sent) ?? 0) > 0) ? 'on' : 'off');
-    const ataLightLabel = linkedEntries.length > 1
-      ? `켜짐 ${linkedEntries.filter(isEntryActive).length}/${linkedEntries.length}`
-      : (ataLightTone === 'on' ? '켜짐' : '꺼짐');
+    const detailLight = ataLightOf(selected);
+    const ataLightTone = detailLight.tone || 'off';
+    const ataLightLabel = detailLight.detailLabel;
     const linkedDates = linkedEntries.map((entry) => autoStatusMap[entry.id]?.last_sent_date).filter(Boolean).sort();
     const ataLastAt = linkedDates.length ? linkedDates[linkedDates.length - 1] : (usageLastAt(usage, selected.id) || selectedExt?.lastSentAt || '');
     const ataLastLabel = formatLastSentLabel(ataLastAt);
@@ -1708,11 +1705,8 @@ export default function KakaoTemplateManager({
     const linkedEntries = linkedTextEntries(textItems, item.id);
     const linkedOn = linkedEntries.filter(isEntryActive).length;
     const cardExtras = nonMakeExtras(item.id, sent);
-    const used = usageSuccess(usage, item.id, sent);
-    const linked = Boolean(item.program_use || cardExtras || linkedOn > 0);
-    const lightOff = Boolean(cardExtras && cardExtras.off) || item.status !== 'APPROVED' || (!linked && used === 0);
-    const allFailed = usageCount(usage, item.id) > 0 && used === 0 && linkedOn === 0;
-    const light = lightOff ? 'off' : (allFailed ? 'part' : (linked || (used ?? 0) > 0 ? 'on' : ''));
+    const cardLight = ataLightState(item, { linkedCount: linkedEntries.length, activeLinkedCount: linkedOn, cardExtras, usage, sent });
+    const light = cardLight.tone;
     const targetEntry = linkedEntries.find((entry) => entry.autoKind) || null;
     const picked = item.id === selectedId;
     const ataUnit = Number.isFinite(Number(data?.ata_unit)) && data.ata_unit !== null ? Number(data.ata_unit) : 13;
@@ -1748,7 +1742,7 @@ export default function KakaoTemplateManager({
         >
           <div className="stl-item-top">
             <span className="ktm-card-name">{item.name}</span>{' '}
-            {light ? <span className={`stl-light stl-light--${light}`}>{light === 'on' ? '켜짐' : (light === 'part' ? '최근 실패뿐' : '꺼짐')}</span> : null}
+            {light ? <span className={`stl-light stl-light--${light}`}>{cardLight.label}</span> : null}
           </div>
           <div className="stl-item-cond">
             <span className="stl-ch stl-ch--ata">알림톡 · {ataUnit.toLocaleString('ko-KR')}원</span>

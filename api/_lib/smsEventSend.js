@@ -9,7 +9,7 @@ import { ALERT_ROUTES, canonicalAlertRecipientName } from './alertRoutes.js';
 import { clearPhones, cafe24Connected, pollSignups, purgeStalePhones, signupCandidates } from './cafe24.js';
 import { AUTO_KIND_PROCESS, AUTO_KIND_PROCESS_COMPLETED, ensureTextTemplateSchema, infoCheck, INFO_CHECK_MESSAGE, INSTANT_KINDS, isAtaTemplate, isDayAta, isEventKind, isInfoKind, isInfoTemplate, isInstantKind, isLeadAd, isLeadKind, isProcessPlusKind, LEAD_KINDS, leadAdBlocked, parseAutoChain, parseStaffIds, sendTimeMinutes, storedImages } from './smsTextTemplates.js';
 import { leadCandidates, leadSourcesConnected } from './smsLeads.js';
-import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
+import { AD_CATCHUP_PER_RUN, buildParts as buildAdParts, costOf as adCostOf, ensureAutoSchema, findTargets, phoneHash as autoPhoneHash, recordAutoOptouts } from './smsAutoSend.js'; // 출고 대상 조회 재사용(순환 import: 호출 시점에만 쓴다)
 import { pollAirtableLeads } from './airtableLeads.js';
 import * as kakaoTemplates from './kakaoTemplates.js';
 import { sendAdminCopySms } from './adminCopySms.js';
@@ -679,17 +679,19 @@ export async function runEventSend(template, deps = {}) {
 
   const recipientNameOf = item => item?.order?.client_name || item?.vars?.고객명 || '고객';
   const sendWave = async (wave) => {
+    let waveGood = [...wave];
+    const badEntries = [];
+    const optoutPhones = new Set();
     const partStatus = [];
     const groupIds = [];
     let reason = '';
     let stop = false;
     let wholeFail = false;
-    let failedToList = null;
     for (const [partIndex, part] of parts.entries()) {
       if (stop) { partStatus.push('skipped'); continue; }
       await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
       if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
-      const messages = bms ? wave.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? wave.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataSendVars(entry.item, ataNames) })) : wave.map(entry => {
+      const messages = bms ? waveGood.map(entry => ({ to: entry.item.phone, text: entry.item.text, ...(bmsCfg.imageId ? { imageId: bmsCfg.imageId } : {}), buttons: bmsCfg.buttons })) : ata ? waveGood.map(entry => ({ to: entry.item.phone, templateId: template.auto_ata_template, variables: ataSendVars(entry.item, ataNames) })) : waveGood.map(entry => {
         const message = { to: entry.item.phone, text: part.short ? part.text : entry.item.text };
         if (part.image >= 0) message.fileId = fileIds[part.image];
         return message;
@@ -697,32 +699,74 @@ export async function runEventSend(template, deps = {}) {
       let result;
       try { result = bms ? await vendor.sendBmsEach({ from, pfId, messages }, { fetchImpl }) : ata ? await vendor.sendKakaoEach({ from, pfId, messages, disableSms: env.SMS_AUTO_ATA_FALLBACK !== '1' }, { fetchImpl }) : await vendor.sendEach({ from, messages }, { fetchImpl }); } catch { result = ata ? { accepted: 0, failed: messages.length, uncertain: false, error: bms ? '브랜드메시지 발송 호출이 실패했습니다.' : '알림톡 발송 호출이 실패했습니다.' } : { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; } // 알림톡의 예외는 접수 전 실패라 다시 시도할 수 있게 통째 실패로 본다(문자 갈래는 그대로)
       if (result.groupId) groupIds.push(result.groupId);
+      const partOptouts = new Set((Array.isArray(result.optoutTo) ? result.optoutTo : []).map(digits).filter(Boolean));
+      for (const p of partOptouts) optoutPhones.add(p);
       if (result.uncertain) { partStatus.push('uncertain'); stop = true; reason = String(result.error || '불확실').slice(0, 200); }
       else if (ata && !(result.accepted > 0)) { partStatus.push('failed'); stop = true; wholeFail = true; reason = String(result.error || '거절').slice(0, 200); } // 알림톡 통째 실패(4xx·접수 0건·예외)
       else if (result.failed === 0) partStatus.push('sent');
       else if (result.accepted === 0) { partStatus.push('failed'); stop = true; reason = String(result.error || '거절').slice(0, 200); }
-      else if (ata && Array.isArray(result.failedTo) && result.failedTo.length === result.failed) { partStatus.push('sent'); failedToList = result.failedTo.map(digits); reason = '일부 번호 실패'; } // 실패 번호를 알면 그 번호만 failed
-      else { partStatus.push('uncertain'); stop = true; reason = '일부만 실패'; }
+      else if (Array.isArray(result.failedTo) && result.failedTo.length === result.failed) {
+        const failedCounts = new Map();
+        for (const rawPhone of result.failedTo) {
+          const p = digits(rawPhone);
+          if (p) failedCounts.set(p, (failedCounts.get(p) || 0) + 1);
+        }
+        const stillGood = [];
+        const newlyBad = [];
+        for (const entry of waveGood) {
+          const n = failedCounts.get(entry.item.phone) || 0;
+          if (n > 0) {
+            failedCounts.set(entry.item.phone, n - 1);
+            newlyBad.push({ entry, failedAt: partIndex, optout: partOptouts.has(entry.item.phone) });
+          } else {
+            stillGood.push(entry);
+          }
+        }
+        if (newlyBad.length === result.failed && stillGood.length > 0) {
+          badEntries.push(...newlyBad);
+          waveGood = stillGood;
+          partStatus.push('sent');
+          reason = '일부 번호 실패';
+        } else {
+          partStatus.push('uncertain'); stop = true; reason = '일부만 실패';
+        }
+      } else { partStatus.push('uncertain'); stop = true; reason = '일부만 실패'; }
+    }
+    if (optoutPhones.size > 0) await recordAutoOptouts(db, [...optoutPhones]);
+    const allOptout = (wholeFail || (partStatus[0] === 'failed' && badEntries.length === 0)) && optoutPhones.size > 0 && wave.every(entry => optoutPhones.has(entry.item.phone));
+    if (allOptout) { // 수신 대상 전원이 080 수신거부인 경우: 문구 전체 장애·1시간 대기를 걸지 않는다
+      try {
+        await db.execute({
+          sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ?, retry_count = 1 WHERE id IN (${placeholders(wave)})`,
+          args: ['failed', JSON.stringify(partStatus), '080 수신거부', JSON.stringify(groupIds), ...wave.map(entry => entry.id)],
+        });
+      } catch { /* 기록 실패는 무시 */ }
+      return { sent: 0, failed: wave.length, uncertain: 0, reason: '', wholeFail: false, sentNames: [] };
     }
     if (wholeFail) {
       const wf = await ataWholeFail(db, template, wave, { reason, warn, out: { ...out, sent: 0, failed: 0, uncertain: 0 } });
       return { sent: 0, failed: wf.failed, uncertain: 0, reason: wf.reason, wholeFail: true, sentNames: [] };
     }
     const status = partStatus.every(s => s === 'sent') ? 'sent' : partStatus[0] === 'failed' ? 'failed' : 'uncertain';
-    if (failedToList?.length) { // 알림톡 일부 실패: 실패 번호 횟수만큼만 failed, 나머지는 sent
-      const failedCounts = new Map();
-      for (const phone of failedToList) failedCounts.set(phone, (failedCounts.get(phone) || 0) + 1);
-      const bad = [];
-      const good = [];
-      for (const entry of wave) {
-        const n = failedCounts.get(entry.item.phone) || 0;
-        if (n > 0) { failedCounts.set(entry.item.phone, n - 1); bad.push(entry); }
-        else good.push(entry);
-      }
+    if (badEntries.length) { // 일부 번호만 실패: 실패 번호는 failed(080 수신거부는 재시도 제외), 나머지는 정상 반영
+      const zeroOptout = badEntries.filter(b => b.failedAt === 0 && b.optout).map(b => b.entry);
+      const zeroOther = badEntries.filter(b => b.failedAt === 0 && !b.optout).map(b => b.entry);
+      const laterBad = badEntries.filter(b => b.failedAt > 0).map(b => b.entry);
       const mark = async (list, st, why) => { if (!list.length) return; try { await db.execute({ sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(list)})`, args: [st, JSON.stringify(partStatus), why, JSON.stringify(groupIds), ...list.map(entry => entry.id)] }); } catch { /* 기록 실패가 이미 끝난 발송을 막지 않는다 */ } };
-      await mark(bad, 'failed', reason);
-      await mark(good, 'sent', null);
-      return { sent: good.length, failed: bad.length, uncertain: 0, reason: '', wholeFail: false, sentNames: good.map(entry => recipientNameOf(entry.item)) };
+      if (zeroOptout.length) {
+        try { await db.execute({ sql: `UPDATE sms_event_sends SET status = ?, part_status = ?, reason = ?, group_ids = ?, retry_count = 1 WHERE id IN (${placeholders(zeroOptout)})`, args: ['failed', JSON.stringify(partStatus), '080 수신거부', JSON.stringify(groupIds), ...zeroOptout.map(entry => entry.id)] }); } catch { /* 기록 실패는 무시 */ }
+      }
+      await mark(zeroOther, 'failed', '일부 번호 실패');
+      await mark(laterBad, 'uncertain', '일부 통만 발송');
+      await mark(waveGood, status, status === 'sent' ? null : (reason || null));
+      return {
+        sent: status === 'sent' ? waveGood.length : 0,
+        failed: zeroOptout.length + zeroOther.length + (status === 'failed' ? waveGood.length : 0),
+        uncertain: laterBad.length + (status === 'uncertain' ? waveGood.length : 0),
+        reason: '',
+        wholeFail: false,
+        sentNames: status === 'sent' ? waveGood.map(entry => recipientNameOf(entry.item)) : [],
+      };
     }
     try {
       await db.execute({

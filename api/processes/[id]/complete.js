@@ -335,7 +335,7 @@ export async function handleCompleteProcess(req, res, dependencies = {}) {
       console.error('[complete] V-커팅 자재 알림 발송 실패(무시):', e?.message || e);
     }
   }
-  if (order && process.step_name === '포장') {
+  if (order && (process.step_name === '포장' || completedIntermediateStepNames.includes('포장'))) {
     try {
       await notify(db, order, 'packed');
     } catch (e) {

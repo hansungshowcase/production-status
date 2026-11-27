@@ -218,6 +218,26 @@ async function chainReceivedHashes(db, afterId, today) {
   return out;
 }
 
+const isRecipientRejectedRow = row => row.status === 'failed' && (row.reason === '080 수신거부' || row.reason === '수신번호 거절');
+
+// 쏠라피 080 무료수신거부(1061 등)로 거절된 번호를 sms_optouts 에 자동 등록해 이후 광고·브랜드메시지 발송에서 영구 제외한다.
+export async function recordAutoOptouts(db, phones = []) {
+  const unique = [...new Set((Array.isArray(phones) ? phones : []).map(digits).filter(p => MOBILE_RE.test(p)))];
+  if (!unique.length) return 0;
+  let saved = 0;
+  try {
+    await ensureAutoSchema(db);
+    for (const phone of unique) {
+      const inserted = await db.execute({
+        sql: 'INSERT INTO sms_optouts (phone_hash, phone_last4) VALUES (?, ?) ON CONFLICT (phone_hash) DO NOTHING RETURNING id',
+        args: [phoneHash(phone), phone.slice(-4)],
+      });
+      if (inserted.rows?.length) saved += 1;
+    }
+  } catch { /* 수신거부 자동 반영 실패는 발송 결과를 막지 않는다 */ }
+  return saved;
+}
+
 // 수신거부·이미 보낸(선점한) 번호·주문(회차별)·오늘 이미 나간 번호를 뺀 오늘 대상. 모든 회차를 한 목록으로 합친다.
 // 회차 r(1..repeat)의 예정일 = 기준일 + days + (r−1)×interval. r≥2 는 같은 문구·같은 번호의 r−1 이 'sent' 일 때만.
 // 번호당 1건(낮은 회차 우선), 결과는 예정일이 오래된 순. auto_send_from 전이면 대상 없음.
@@ -227,7 +247,7 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
   const kind = template.auto_kind || AUTO_KIND;
   const repeat = Math.max(1, Math.min(AUTO_LIMITS.repeatMax, Number(template.auto_repeat) || 1));
   const interval = Number(template.auto_interval) || AUTO_LIMITS.defaultInterval;
-  const claimed = ((await db.execute({ sql: 'SELECT phone_hash, order_id, round, status, kst_date FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || []).filter(row => row.status !== 'failed'); // 접수 0건 통째 실패('failed')는 선점으로 치지 않는다 → 다시 대상이 된다(2026-11-18 사장님 결정)
+  const claimed = ((await db.execute({ sql: 'SELECT phone_hash, order_id, round, status, kst_date, reason FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || []).filter(row => row.status !== 'failed' || isRecipientRejectedRow(row)); // 접수 0건 통째 실패('failed')는 다시 대상이 되되, 개별 수신거부·수신번호 거절 행은 무한 재시도를 막는다
   const roundOf = row => Number(row.round) || 1;
   const claimedHash = new Set(claimed.map(row => `${row.phone_hash}|${roundOf(row)}`));
   const claimedOrder = new Set(claimed.map(row => `${Number(row.order_id)}|${roundOf(row)}`));
@@ -235,7 +255,7 @@ async function eligibleTargets(db, template, { nowMs, startDate }) {
   const sentRounds = new Set(claimed.filter(row => row.status === 'sent').map(roundOf));
   const repeatTracked = kind === AUTO_KIND || isProcessPlusKind(kind); // 출고·공정 후 반복 문구: 번호별 이 문구의 가장 최근 기록일(failed 제외)
   const lastByHash = new Map();
-  if (repeatTracked) for (const row of claimed) { const d = String(row.kst_date || '').slice(0, 10); if (d && (!lastByHash.has(row.phone_hash) || d > lastByHash.get(row.phone_hash))) lastByHash.set(row.phone_hash, d); }
+  if (repeatTracked) for (const row of claimed) { if (row.status === 'failed') continue; const d = String(row.kst_date || '').slice(0, 10); if (d && (!lastByHash.has(row.phone_hash) || d > lastByHash.get(row.phone_hash))) lastByHash.set(row.phone_hash, d); }
   const recentLimit = addDays(today, -Math.floor(interval / 2));
   const raw = [];
   for (let round = 1; round <= repeat; round += 1) {
@@ -284,7 +304,7 @@ async function adCatchupTargets(db, template, { nowMs, skipHashes }) {
       ORDER BY ship_date DESC, id DESC LIMIT ${AD_CATCHUP_LIMIT}`,
     args: [template.auto_catchup_from, upper],
   });
-  const claimed = (await db.execute({ sql: "SELECT phone_hash, order_id FROM sms_auto_sends WHERE template_id = ? AND status <> 'failed'", args: [template.id] })).rows || []; // 통째 실패 행은 선점으로 치지 않는다
+  const claimed = ((await db.execute({ sql: 'SELECT phone_hash, order_id, status, reason FROM sms_auto_sends WHERE template_id = ?', args: [template.id] })).rows || []).filter(row => row.status !== 'failed' || isRecipientRejectedRow(row)); // 통째 실패 행은 선점으로 치지 않고, 개별 거절 행은 제외한다
   const claimedHash = new Set(claimed.map(row => row.phone_hash));
   const claimedOrder = new Set(claimed.map(row => Number(row.order_id)));
   const optouts = new Set(((await db.execute({ sql: 'SELECT phone_hash FROM sms_optouts', args: [] })).rows || []).map(row => row.phone_hash));
@@ -415,7 +435,10 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
   out.ran = true;
   if (!active.length) return out;
 
-  // ⑧ 통별 발송. 어느 통이든 깨끗한 성공이 아니면 그 뒤 통은 보내지 않는다(모두 같은 결과를 갖는다).
+  // ⑧ 통별 발송. 개별 수신번호 거절(failedTo: 080 수신거부 등)이 확인되면 그 번호만 제외하고 나머지 수신자는 끝까지 보낸다.
+  let goodActive = [...active];
+  const badEntries = [];
+  const optoutPhones = new Set();
   const partStatus = [];
   const groupIds = [];
   let reason = '';
@@ -424,7 +447,7 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
     if (stop) { partStatus.push('skipped'); continue; }
     await waitBeforePart(partIndex, { env, sleep }); // 앞 통이 먼저 도착하게 통 사이에 기다린다(마감 검사는 그 뒤)
     if (tick() >= endAt) { partStatus.push('skipped'); stop = true; reason = '시간 초과'; continue; }
-    const messages = active.map(item => {
+    const messages = goodActive.map(item => {
       const message = { to: item.target.phone, text: partText(part, template, item.target.name), ...subjectOf(template) };
       if (part.image >= 0) message.fileId = fileIds[part.image];
       return message;
@@ -432,30 +455,103 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
     let result;
     try { result = await vendor.sendEach({ from, messages }, { fetchImpl }); } catch { result = { accepted: 0, failed: 0, uncertain: true, error: '보냈는지 확인하지 못했습니다.' }; }
     if (result.groupId) groupIds.push(result.groupId);
+    const partOptouts = new Set((Array.isArray(result.optoutTo) ? result.optoutTo : []).map(digits).filter(Boolean));
+    for (const p of partOptouts) optoutPhones.add(p);
     if (result.uncertain) { partStatus.push('uncertain'); stop = true; reason = String(result.error || '불확실').slice(0, 200); }
     else if (result.failed === 0) partStatus.push('sent');
     else if (result.accepted === 0) { partStatus.push('failed'); stop = true; reason = String(result.error || '거절').slice(0, 200); }
-    else { partStatus.push('uncertain'); stop = true; reason = '일부만 실패'; }
+    else if (Array.isArray(result.failedTo) && result.failedTo.length === result.failed) {
+      const failedCounts = new Map();
+      for (const rawPhone of result.failedTo) {
+        const p = digits(rawPhone);
+        if (p) failedCounts.set(p, (failedCounts.get(p) || 0) + 1);
+      }
+      const stillGood = [];
+      const newlyBad = [];
+      for (const entry of goodActive) {
+        const n = failedCounts.get(entry.target.phone) || 0;
+        if (n > 0) {
+          failedCounts.set(entry.target.phone, n - 1);
+          newlyBad.push({ item: entry, failedAt: partIndex, optout: partOptouts.has(entry.target.phone) });
+        } else {
+          stillGood.push(entry);
+        }
+      }
+      if (newlyBad.length === result.failed && stillGood.length > 0) {
+        badEntries.push(...newlyBad);
+        goodActive = stillGood;
+        partStatus.push('sent');
+      } else {
+        partStatus.push('uncertain'); stop = true; reason = '일부만 실패';
+      }
+    } else { partStatus.push('uncertain'); stop = true; reason = '일부만 실패'; }
   }
+  if (optoutPhones.size > 0) await recordAutoOptouts(db, [...optoutPhones]);
   const status = partStatus.every(s => s === 'sent') ? 'sent' : partStatus[0] === 'failed' ? 'failed' : 'uncertain';
-  const wholeFail = status === 'failed'; // 첫 통이 접수 0건(통째 실패): 이 회차의 선점 행을 지워 다음 실행이 다시 보내게 한다. 사유는 건너뜀 사유에 남긴다(2026-11-18 사장님 결정)
+  const wholeFail = status === 'failed' && badEntries.length === 0; // 첫 통이 접수 0건(통째 실패)
+  const allOptout = wholeFail && optoutPhones.size > 0 && active.every(entry => optoutPhones.has(entry.target.phone));
+  if (allOptout) { // 대상 전원이 080 수신거부인 경우: 문구 전체 장애가 아니므로 막힘·1시간 대기를 걸지 않는다
+    const rejectedParts = JSON.stringify(parts.map((_, idx) => (idx === 0 ? 'failed' : 'skipped')));
+    try {
+      await db.execute({
+        sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(active)})`,
+        args: ['failed', rejectedParts, '080 수신거부', JSON.stringify(groupIds), ...active.map(item => item.id)],
+      });
+    } catch { /* 기록 실패는 무시 */ }
+    out.failed = active.length;
+    return out;
+  }
   try {
     if (wholeFail) await db.execute({ sql: `DELETE FROM sms_auto_sends WHERE status = 'claimed' AND id IN (${placeholders(active)})`, args: active.map(item => item.id) });
-    else await db.execute({
-      sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(active)})`,
-      args: [status, JSON.stringify(partStatus), reason || null, JSON.stringify(groupIds), ...active.map(item => item.id)],
-    });
+    else {
+      if (badEntries.length) {
+        const zeroOptout = badEntries.filter(b => b.failedAt === 0 && b.optout).map(b => b.item);
+        const zeroOther = badEntries.filter(b => b.failedAt === 0 && !b.optout).map(b => b.item);
+        const laterBad = badEntries.filter(b => b.failedAt > 0).map(b => b.item);
+        const zeroParts = JSON.stringify(parts.map((_, idx) => (idx === 0 ? 'failed' : 'skipped')));
+        if (zeroOptout.length) {
+          await db.execute({
+            sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(zeroOptout)})`,
+            args: ['failed', zeroParts, '080 수신거부', JSON.stringify(groupIds), ...zeroOptout.map(item => item.id)],
+          });
+        }
+        if (zeroOther.length) {
+          await db.execute({
+            sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(zeroOther)})`,
+            args: ['failed', zeroParts, '수신번호 거절', JSON.stringify(groupIds), ...zeroOther.map(item => item.id)],
+          });
+        }
+        if (laterBad.length) {
+          await db.execute({
+            sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(laterBad)})`,
+            args: ['uncertain', JSON.stringify(partStatus), '일부 통만 발송', JSON.stringify(groupIds), ...laterBad.map(item => item.id)],
+          });
+        }
+      }
+      if (goodActive.length) {
+        await db.execute({
+          sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(goodActive)})`,
+          args: [status, JSON.stringify(partStatus), status === 'sent' ? null : (reason || null), JSON.stringify(groupIds), ...goodActive.map(item => item.id)],
+        });
+      }
+    }
   } catch { /* 기록 실패가 이미 끝난 발송 결과를 막지 않는다. 행은 claimed 로 남아 다음 실행이 uncertain 으로 바꾼다. */ }
   if (wholeFail) {
     await noteSkip(db, template, `발송 실패: ${String(reason || '거절').slice(0, 150)}`);
     try { await db.execute({ sql: "UPDATE sms_text_templates SET auto_ata_fail_at = CASE WHEN auto_ata_fail_at IS NULL THEN NOW() ELSE NOW() + INTERVAL '1 hour' END WHERE id = ? RETURNING id", args: [template.id] }); } catch { console.error('[sms-auto] 실패 표시 실패'); }
-  } else if (status === 'sent' && template.auto_ata_fail_at) {
+  } else if (status === 'sent' && goodActive.length > 0 && template.auto_ata_fail_at) {
     try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_ata_fail_at = NULL WHERE id = ? RETURNING id', args: [template.id] }); } catch { /* 다음 성공 때 다시 지운다 */ }
   }
-  out[status] = active.length;
+  if (wholeFail) {
+    out.failed = active.length;
+  } else {
+    out[status] += goodActive.length;
+    out.failed += badEntries.filter(b => b.failedAt === 0).length;
+    out.uncertain += badEntries.filter(b => b.failedAt > 0).length;
+  }
   const catchupActiveItems = active.filter(item => item.target.catchup);
-  if (catchupActiveItems.length) { // 일괄 항목이 섞인 실행: 깨끗한 성공이 아니면 이 문구의 일괄 발송을 멈춘다(화면에서 다시 저장해야 이어진다). 평소 발송은 계속된다.
-    out.catchup = status === 'sent' ? catchupActiveItems.length : 0;
+  if (catchupActiveItems.length) { // 일괄 항목이 섞인 실행: 시스템·전체 실패일 때만 멈추고 개별 수신거부·거절은 계속 진행한다.
+    out.catchup = status === 'sent' ? goodActive.filter(item => item.target.catchup).length : 0;
     if (status !== 'sent') {
       try { await db.execute({ sql: 'UPDATE sms_text_templates SET auto_catchup_paused_at = NOW(), auto_catchup_error = ? WHERE id = ? RETURNING id', args: [String(reason || (status === 'failed' ? '거절' : '불확실')).slice(0, 200), template.id] }); } catch { console.error('[sms-auto] 일괄 발송 멈춤 표시 실패'); }
     }
@@ -468,12 +564,108 @@ export async function runAutoSend(template, { db, provider, env = process.env, n
       to: template.auto_copy_to,
       templateId: template.id,
       templateName: template.name,
-      recipientNames: active.map(item => item.target.name),
+      recipientNames: goodActive.map(item => item.target.name),
       today,
       fetchImpl,
     });
     if (copyStatus) out.copy = copyStatus;
   }
+  return out;
+}
+
+// 과거 '일부만 실패'로 묶여 uncertain 으로 남은 그룹을 쏠라피 메시지 결과와 대조해 성공(4000) 행은 sent, 거절 행은 failed(+080 수신거부 등록)로 복구한다.
+const RECONCILE_GROUPS_PER_RUN = 5;
+export async function reconcilePartialAutoSends(db, { provider, fetchImpl } = {}) {
+  const vendor = provider || getSendProvider();
+  const out = { checked: 0, sent: 0, failed: 0, optouts: 0 };
+  if (typeof vendor?.groupMessages !== 'function' || (!provider && !hasSolapiCredentials())) return out;
+  try {
+    await ensureAutoSchema(db);
+    const rows = (await db.execute({
+      sql: "SELECT id, phone_hash, group_ids, part_status FROM sms_auto_sends WHERE status = 'uncertain' AND reason = '일부만 실패' ORDER BY id DESC LIMIT 200",
+      args: [],
+    })).rows || [];
+    if (!rows.length) return out;
+    const byGroupKey = new Map();
+    for (const row of rows) {
+      const key = String(row.group_ids || '').trim();
+      let gids = [];
+      try { const parsed = JSON.parse(key || '[]'); gids = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : []; } catch { gids = []; }
+      if (!gids.length) {
+        await db.execute({ sql: 'UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (?)', args: ['uncertain', row.part_status || null, '일부만 실패(그룹없음)', row.group_ids || '[]', Number(row.id)] });
+        continue;
+      }
+      if (!byGroupKey.has(key)) byGroupKey.set(key, { gids, rows: [] });
+      byGroupKey.get(key).rows.push(row);
+    }
+    for (const [groupKey, bundle] of [...byGroupKey.entries()].slice(0, RECONCILE_GROUPS_PER_RUN)) {
+      const groupPayloads = [];
+      let ready = true;
+      for (const gid of bundle.gids) {
+        const res = await vendor.groupMessages(gid, { fetchImpl });
+        if (!res || res.hasMore || !res.messages.length) { ready = false; break; }
+        if (res.messages.some(m => !m.statusCode || m.statusCode.startsWith('2') || m.statusCode.startsWith('3'))) { ready = false; break; }
+        groupPayloads.push(res.messages);
+      }
+      if (!ready) continue;
+      out.checked += 1;
+      const optoutPhones = [];
+      const optoutHashes = new Set();
+      const deliveredCountByHash = new Map();
+      const seenHashes = new Set();
+      for (const msgs of groupPayloads) {
+        const deliveredInGroup = new Set();
+        for (const msg of msgs) {
+          const h = phoneHash(msg.to);
+          seenHashes.add(h);
+          if (msg.optout) {
+            optoutPhones.push(msg.to);
+            optoutHashes.add(h);
+          }
+          if (msg.statusCode === '4000') deliveredInGroup.add(h);
+        }
+        for (const h of deliveredInGroup) deliveredCountByHash.set(h, (deliveredCountByHash.get(h) || 0) + 1);
+      }
+      if (optoutPhones.length) out.optouts += await recordAutoOptouts(db, optoutPhones);
+      const sentIds = [];
+      const failOptoutIds = [];
+      const failOtherIds = [];
+      const partialPartIds = [];
+      const unknownIds = [];
+      for (const row of bundle.rows) {
+        let parsedParts = [];
+        try { const p = JSON.parse(row.part_status || '[]'); parsedParts = Array.isArray(p) ? p : []; } catch { parsedParts = []; }
+        const hadSkippedPart = parsedParts.includes('skipped');
+        const deliveredParts = deliveredCountByHash.get(row.phone_hash) || 0;
+        if (!seenHashes.has(row.phone_hash)) unknownIds.push(Number(row.id));
+        else if (deliveredParts === 0) {
+          if (optoutHashes.has(row.phone_hash)) failOptoutIds.push(Number(row.id));
+          else failOtherIds.push(Number(row.id));
+        } else if (!hadSkippedPart && deliveredParts === bundle.gids.length) sentIds.push(Number(row.id));
+        else partialPartIds.push(Number(row.id));
+      }
+      const sentPartsJson = JSON.stringify(bundle.gids.map(() => 'sent'));
+      const failPartsJson = JSON.stringify(bundle.gids.map((_, idx) => (idx === 0 ? 'failed' : 'skipped')));
+      if (sentIds.length) {
+        await db.execute({ sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(sentIds)})`, args: ['sent', sentPartsJson, null, groupKey, ...sentIds] });
+        out.sent += sentIds.length;
+      }
+      if (failOptoutIds.length) {
+        await db.execute({ sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(failOptoutIds)})`, args: ['failed', failPartsJson, '080 수신거부', groupKey, ...failOptoutIds] });
+        out.failed += failOptoutIds.length;
+      }
+      if (failOtherIds.length) {
+        await db.execute({ sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(failOtherIds)})`, args: ['failed', failPartsJson, '수신번호 거절', groupKey, ...failOtherIds] });
+        out.failed += failOtherIds.length;
+      }
+      if (partialPartIds.length) {
+        await db.execute({ sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(partialPartIds)})`, args: ['uncertain', JSON.stringify(['sent', 'skipped']), '일부 통만 발송', groupKey, ...partialPartIds] });
+      }
+      if (unknownIds.length) {
+        await db.execute({ sql: `UPDATE sms_auto_sends SET status = ?, part_status = ?, reason = ?, group_ids = ? WHERE id IN (${placeholders(unknownIds)})`, args: ['uncertain', sentPartsJson, '일부만 실패(만료)', groupKey, ...unknownIds] });
+      }
+    }
+  } catch { /* 자동 복구 실패가 정규 발송 흐름을 막지 않는다 */ }
   return out;
 }
 
@@ -488,6 +680,7 @@ export async function runAutoSendAll(deps = {}) {
   const { db, nowMs = Date.now() } = deps;
   await ensureTextTemplateSchema(db);
   await sweepStaleClaims(db, nowMs);
+  await reconcilePartialAutoSends(db, { provider: deps.provider, fetchImpl: deps.fetchImpl });
   const list = await db.execute({ sql: "SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'process_completed_plus_days') AND COALESCE(auto_send_time, '') = '' ORDER BY id ASC", args: [] });
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS; // 전체 마감 시각 하나를 문구마다 넘긴다
@@ -510,6 +703,7 @@ export async function runTimedSendAll(deps = {}) {
   const total = { templates: 0, targets: 0, claimed: 0, sent: 0, failed: 0, uncertain: 0, skipped: 0 };
   if (kstMinutes(nowMs) < 9 * 60) return total; // 가장 이른 시각(09:00) 전에는 조회도 하지 않는다
   await ensureTextTemplateSchema(db);
+  await reconcilePartialAutoSends(db, { provider: deps.provider, fetchImpl: deps.fetchImpl });
   const list = await db.execute({ sql: "SELECT id, auto_kind, auto_send_time FROM sms_text_templates WHERE auto_enabled = true AND auto_kind IN ('ship_plus_days', 'order_plus_days', 'process_started_plus_days', 'process_completed_plus_days', 'due_date', 'ship_scheduled', 'ship_or_due') AND COALESCE(auto_send_time, '') <> '' ORDER BY id ASC", args: [] });
   const deadline = typeof deps.deadline === 'number' ? deps.deadline : (deps.tick || Date.now)() + TIME_BUDGET_MS;
   for (const row of list.rows || []) {

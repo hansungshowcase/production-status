@@ -32,6 +32,27 @@ function unitPrice(type, env = process.env) {
 }
 
 const toInt = value => (Number.isFinite(Number(value)) ? Math.max(0, Math.trunc(Number(value))) : 0);
+const digitsOf = value => String(value ?? '').replace(/\D/g, '');
+
+export function isOptoutFailure(item) {
+  const code = String(item?.statusCode ?? '');
+  if (code === '1061' || code === '2061' || code === '3061') return true;
+  const msg = String(item?.statusMessage ?? item?.reason ?? '');
+  return /080\s*무료\s*수신\s*거부|무료수신거부|수신\s*거부/.test(msg);
+}
+
+function extractFailedPhones(payload) {
+  if (!Array.isArray(payload?.failedMessageList)) return { failedTo: [], optoutTo: [] };
+  const failedTo = [];
+  const optoutTo = [];
+  for (const item of payload.failedMessageList) {
+    const to = digitsOf(item?.to);
+    if (!to) continue;
+    failedTo.push(to);
+    if (isOptoutFailure(item)) optoutTo.push(to);
+  }
+  return { failedTo, optoutTo };
+}
 
 const solapi = {
   name: 'solapi',
@@ -153,7 +174,16 @@ solapi.sendEach = async function sendEach({ from, messages }, { fetchImpl } = {}
   const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
   const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
   const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
-  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '' };
+  const { failedTo, optoutTo } = extractFailedPhones(payload);
+  return {
+    accepted: total - failed,
+    failed,
+    groupId: groupId ? String(groupId).slice(0, 64) : null,
+    uncertain: false,
+    error: '',
+    ...(failedTo.length ? { failedTo } : {}),
+    ...(optoutTo.length ? { optoutTo } : {}),
+  };
 };
 
 // ---- 받는 사람마다 변수가 다른 알림톡(자동 발송용, 2026-11-13 설계 19-3) ----
@@ -176,8 +206,16 @@ solapi.sendKakaoEach = async function sendKakaoEach({ from, pfId, messages, disa
   const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
   const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
   const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
-  const failedTo = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.map(item => String(item?.to ?? '').replace(/\D/g, '')).filter(Boolean) : []; // 실패 번호(있을 때만 자동 발송이 그 번호 행만 failed 로 기록)
-  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '', ...(failedTo.length ? { failedTo } : {}) };
+  const { failedTo, optoutTo } = extractFailedPhones(payload); // 실패 번호(있을 때만 자동 발송이 그 번호 행만 failed 로 기록)
+  return {
+    accepted: total - failed,
+    failed,
+    groupId: groupId ? String(groupId).slice(0, 64) : null,
+    uncertain: false,
+    error: '',
+    ...(failedTo.length ? { failedTo } : {}),
+    ...(optoutTo.length ? { optoutTo } : {}),
+  };
 };
 
 // ---- 브랜드메시지 자유형(BMS_FREE, 2026-11-17 설계_브랜드메시지_자유형) ----
@@ -214,8 +252,35 @@ solapi.sendBmsEach = async function sendBmsEach({ from, pfId, messages }, { fetc
   const failedList = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.length : 0;
   const failed = Math.min(total, Math.max(failedList, toInt(payload?.groupInfo?.count?.registeredFailed)));
   const groupId = payload?.groupInfo?.groupId || payload?.groupInfo?._id || null;
-  const failedTo = Array.isArray(payload?.failedMessageList) ? payload.failedMessageList.map(item => String(item?.to ?? '').replace(/\D/g, '')).filter(Boolean) : [];
-  return { accepted: total - failed, failed, groupId: groupId ? String(groupId).slice(0, 64) : null, uncertain: false, error: '', ...(failedTo.length ? { failedTo } : {}) };
+  const { failedTo, optoutTo } = extractFailedPhones(payload);
+  return {
+    accepted: total - failed,
+    failed,
+    groupId: groupId ? String(groupId).slice(0, 64) : null,
+    uncertain: false,
+    error: '',
+    ...(failedTo.length ? { failedTo } : {}),
+    ...(optoutTo.length ? { optoutTo } : {}),
+  };
+};
+
+// 그룹 안 개별 메시지 결과 조회(GET messages/v4/list?groupId=..., 부분 실패 자동 복구용). 4xx·5xx·예외는 null.
+solapi.groupMessages = async function groupMessages(groupId, { fetchImpl } = {}) {
+  const id = String(groupId ?? '').trim();
+  if (!id) return null;
+  try {
+    const payload = await call(`messages/v4/list?groupId=${encodeURIComponent(id)}&limit=200`, {}, { fetchImpl });
+    if (!payload || typeof payload !== 'object' || !payload.messageList || typeof payload.messageList !== 'object') return null;
+    const messages = Object.values(payload.messageList)
+      .filter(item => item && typeof item === 'object')
+      .map(item => ({
+        to: digitsOf(item.to),
+        statusCode: String(item.statusCode ?? ''),
+        optout: isOptoutFailure(item),
+      }))
+      .filter(item => Boolean(item.to));
+    return { messages, hasMore: Boolean(payload.nextKey) };
+  } catch { return null; }
 };
 
 // 접수된 그룹의 최종 결과 조회(GET messages/v4/groups/{groupId}, 조회 전용). 4xx·5xx·예외는 null(던지지 않는다).

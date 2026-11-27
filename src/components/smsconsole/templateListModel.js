@@ -223,6 +223,50 @@ export function buttonLinksOf(buttons, vars = {}) {
 // ---------- 종류·보내는 곳 표시(읽기 전용) ----------
 // sent = GET ?resource=sent 의 groups[] 또는 null
 
+// 알림톡(ATA) 목록 카드·상세 헤더·발송 중 집계 공용 신호등 판정:
+// '켜짐'은 실제 발송 배선(제작현황 프로그램 알림, 켜진 DB 자동발송) 또는 최근 7일 성공 발송이 확인된 승인 템플릿에만 부여한다.
+export function ataLightState(item, { linkedCount = 0, activeLinkedCount = 0, cardExtras = null, usage = null, sent = null } = {}) {
+  if (!item || item.status !== 'APPROVED' || Boolean(cardExtras && cardExtras.off)) {
+    return { tone: 'off', label: '꺼짐', detailLabel: '꺼짐', active: false };
+  }
+  if (linkedCount > 0 && !item.program_use && !cardExtras) {
+    if (activeLinkedCount > 0) {
+      return {
+        tone: 'on',
+        label: '켜짐',
+        detailLabel: linkedCount > 1 ? `켜짐 ${activeLinkedCount}/${linkedCount}` : '켜짐',
+        active: true,
+      };
+    }
+    return { tone: 'off', label: '꺼짐', detailLabel: '꺼짐', active: false };
+  }
+  if (item.program_use) {
+    return { tone: 'on', label: '켜짐', detailLabel: '켜짐', active: true };
+  }
+  const used = usageSuccess(usage, item.id, sent);
+  const rawCount = usageCount(usage, item.id);
+  const fail7 = usageFail(item.id, sent);
+  const extSuccess = cardExtras && cardExtras.count7 !== null
+    ? Math.max(0, (Number(cardExtras.count7) || 0) - fail7)
+    : null;
+  const recentSuccess = used !== null ? Math.max(used, extSuccess ?? 0) : extSuccess;
+  if (recentSuccess !== null && recentSuccess > 0) {
+    return { tone: 'on', label: '켜짐', detailLabel: '켜짐', active: true };
+  }
+  if (((rawCount ?? 0) > 0 || (cardExtras && (Number(cardExtras.count7) || 0) > 0)) && (recentSuccess ?? 0) === 0) {
+    return { tone: 'part', label: '최근 실패뿐', detailLabel: '최근 실패뿐', active: false };
+  }
+  if (cardExtras) {
+    return recentSuccess === null
+      ? { tone: 'unknown', label: '확인 중', detailLabel: '확인 중', active: false }
+      : { tone: 'unknown', label: '확인 안 됨', detailLabel: '확인 안 됨', active: false };
+  }
+  if (used === null) {
+    return { tone: '', label: '', detailLabel: '확인 중', active: false };
+  }
+  return { tone: 'off', label: '꺼짐', detailLabel: '꺼짐', active: false };
+}
+
 // 기존 템플릿 카드에 더할 것: { sender, kind, replaced7, off, lastSentAt, count7 } — 표에 없으면 null(아무것도 더하지 않는다)
 export function templateExtras(templateId, sent = null) {
   const meta = templateMeta(templateId);
