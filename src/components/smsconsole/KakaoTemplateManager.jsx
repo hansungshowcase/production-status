@@ -329,6 +329,10 @@ export default function KakaoTemplateManager({
 
   // 현황판·알약·목록 1:1 일치 기준
   const isEntryActive = useCallback((entry) => (autoStatusMap[entry.id] ? ['on', 'part'].includes(effOf(entry).tone) : Boolean(entry.autoEnabled)), [autoStatusMap, effOf]);
+  const hasLinkedOn = useCallback((ataId) => {
+    const linkedList = linkedTextEntries(textItems, ataId);
+    return linkedList.some(isEntryActive);
+  }, [textItems, isEntryActive]);
   const ataLightOf = useCallback((item) => {
     const linkedList = linkedTextEntries(textItems, item?.id);
     const activeLinkedCount = linkedList.filter(isEntryActive).length;
