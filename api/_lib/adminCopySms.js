@@ -42,19 +42,28 @@ const prefixOf = tpl => `[${tpl}] 금일 `;
  */
 export function buildAdminCopySms(templateName, recipientNames = []) {
   const tplFull = cleanText(templateName) || '자동문자';
-  const list = (Array.isArray(recipientNames) ? recipientNames : [])
-    .map(name => cleanText(name) || '고객');
+  const rawList = Array.isArray(recipientNames) ? recipientNames : [];
+  const total = rawList.length;
+  const named = rawList.map(cleanText).filter(n => n && n !== '고객');
+  const unnamed = total - named.length;
 
   const tryWithTpl = tpl => {
     if (!tpl) return null;
-    if (!list.length) {
+    if (total === 0) {
       const candidate = `${prefixOf(tpl)}${SUF_EMPTY}`;
       return byteLength(candidate) <= SMS_MAX_BYTES ? candidate : null;
     }
-    const all = `${prefixOf(tpl)}${list.join(', ')}${SUF_ALL}`;
-    if (byteLength(all) <= SMS_MAX_BYTES) return all;
-    for (let k = list.length - 1; k >= 1; k -= 1) {
-      const part = `${prefixOf(tpl)}${list.slice(0, k).join(', ')}${sufMore(list.length - k)}`;
+    if (named.length === 0) {
+      const candidate = `${prefixOf(tpl)}${sufCount(total)}`;
+      return byteLength(candidate) <= SMS_MAX_BYTES ? candidate : null;
+    }
+    if (unnamed === 0) {
+      const all = `${prefixOf(tpl)}${named.join(', ')}${SUF_ALL}`;
+      if (byteLength(all) <= SMS_MAX_BYTES) return all;
+    }
+    const maxK = unnamed === 0 ? named.length - 1 : named.length;
+    for (let k = maxK; k >= 1; k -= 1) {
+      const part = `${prefixOf(tpl)}${named.slice(0, k).join(', ')}${sufMore(total - k)}`;
       if (byteLength(part) <= SMS_MAX_BYTES) return part;
     }
     return null;
@@ -64,7 +73,7 @@ export function buildAdminCopySms(templateName, recipientNames = []) {
   const exact = tryWithTpl(tplFull);
   if (exact) return exact;
 
-  // B: 템플릿 이름을 단계적으로 줄여 1명 이상 성함이 들어가게 시도
+  // B: 템플릿 이름을 단계적으로 줄여 시도
   for (const cap of [36, 28, 20, 14]) {
     const shortTpl = trimToBytes(tplFull, cap);
     const hit = tryWithTpl(shortTpl);
@@ -72,17 +81,19 @@ export function buildAdminCopySms(templateName, recipientNames = []) {
   }
 
   // C: 첫 고객 성함 자체가 매우 긴 경우에도 첫 성함 일부 + 외 N명 유지
-  const tpl = trimToBytes(tplFull, 24) || '문자';
-  const suf = list.length <= 1 ? SUF_ALL : sufMore(list.length - 1);
-  const nameBudget = SMS_MAX_BYTES - byteLength(prefixOf(tpl)) - byteLength(suf);
-  if (list.length >= 1 && nameBudget >= 6) {
-    const shortName = trimToBytes(list[0], nameBudget);
-    const candidate = `${prefixOf(tpl)}${shortName}${suf}`;
-    if (shortName && byteLength(candidate) <= SMS_MAX_BYTES) return candidate;
+  if (named.length >= 1) {
+    const tpl = trimToBytes(tplFull, 24) || '문자';
+    const suf = total <= 1 ? SUF_ALL : sufMore(total - 1);
+    const nameBudget = SMS_MAX_BYTES - byteLength(prefixOf(tpl)) - byteLength(suf);
+    if (nameBudget >= 6) {
+      const shortName = trimToBytes(named[0], nameBudget);
+      const candidate = `${prefixOf(tpl)}${shortName}${suf}`;
+      if (shortName && byteLength(candidate) <= SMS_MAX_BYTES) return candidate;
+    }
   }
 
   // D: 최후 안전장치(항상 90바이트 이하 보장)
-  const tail = list.length ? sufCount(list.length) : SUF_EMPTY;
+  const tail = total ? sufCount(total) : SUF_EMPTY;
   const tplBudget = Math.max(0, SMS_MAX_BYTES - byteLength('[] 금일 ') - byteLength(tail));
   if (tplBudget >= 4) return `[${trimToBytes(tplFull, tplBudget)}] 금일 ${tail}`;
   return trimToBytes(`금일 ${tail}`, SMS_MAX_BYTES);

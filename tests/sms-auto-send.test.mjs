@@ -544,8 +544,45 @@ test('관리자 확인 문자 요약(buildAdminCopySms): 1명·다수·외 N명�
   assert.ok(byteLength(longAll) <= SMS_MAX_BYTES);
 
   const empty = buildAdminCopySms('안내', []);
+  assert.equal(empty, '[안내] 금일 발송 완료되었습니다.');
   assert.equal(classifyText(empty).type, 'SMS');
   assert.ok(byteLength(empty) <= SMS_MAX_BYTES);
+
+  const allUnnamed3 = buildAdminCopySms('소개 혜택 안내(카페24 가입+7일)', ['고객', '고객', '고객']);
+  assert.equal(allUnnamed3, '[소개 혜택 안내(카페24 가입+7일)] 금일 3명에게 발송 완료되었습니다.');
+  assert.equal(allUnnamed3.includes('고객'), false);
+  assert.equal(classifyText(allUnnamed3).type, 'SMS');
+  assert.ok(byteLength(allUnnamed3) <= SMS_MAX_BYTES);
+
+  const allUnnamed1 = buildAdminCopySms('소개 혜택 안내(카페24 가입+7일)', ['']);
+  assert.equal(allUnnamed1, '[소개 혜택 안내(카페24 가입+7일)] 금일 1명에게 발송 완료되었습니다.');
+  assert.equal(allUnnamed1.includes('고객'), false);
+  assert.equal(classifyText(allUnnamed1).type, 'SMS');
+  assert.ok(byteLength(allUnnamed1) <= SMS_MAX_BYTES);
+
+  const longTplUnnamed = buildAdminCopySms('가'.repeat(40), ['고객', ' ', '#{고객}']);
+  assert.match(longTplUnnamed, /금일 3명에게 발송 완료되었습니다\.$/);
+  assert.equal(longTplUnnamed.includes('고객'), false);
+  assert.equal(classifyText(longTplUnnamed).type, 'SMS');
+  assert.ok(byteLength(longTplUnnamed) <= SMS_MAX_BYTES);
+
+  const mixed1 = buildAdminCopySms('소개 혜택 안내(카페24 가입+7일)', ['류플로라', '고객', '']);
+  assert.equal(mixed1, '[소개 혜택 안내(카페24 가입+7일)] 금일 류플로라 외 2명에게 발송 완료되었습니다.');
+  assert.equal(mixed1.includes('고객'), false);
+  assert.equal(classifyText(mixed1).type, 'SMS');
+  assert.ok(byteLength(mixed1) <= SMS_MAX_BYTES);
+
+  const mixed2 = buildAdminCopySms('소개 혜택 안내', ['고객', '류플로라', '예성떡집']);
+  assert.equal(mixed2, '[소개 혜택 안내] 금일 류플로라, 예성떡집 외 1명에게 발송 완료되었습니다.');
+  assert.equal(mixed2.includes('고객'), false);
+  assert.equal(classifyText(mixed2).type, 'SMS');
+  assert.ok(byteLength(mixed2) <= SMS_MAX_BYTES);
+
+  const mixedLongName = buildAdminCopySms('가'.repeat(30), ['홍'.repeat(25), '고객']);
+  assert.match(mixedLongName, /외 1명에게 발송 완료되었습니다\.$/);
+  assert.equal(mixedLongName.includes('고객'), false);
+  assert.equal(classifyText(mixedLongName).type, 'SMS');
+  assert.ok(byteLength(mixedLongName) <= SMS_MAX_BYTES);
 });
 
 test('사본: 고객 발송(이미지 2장 포함)이 나간 날 사본 번호로 사진·제목 없는 단문 SMS 1통만 발송, 같은 날 두 번째 실행은 0', async () => {

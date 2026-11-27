@@ -43,11 +43,19 @@ export async function insertLead(db, { source, key, phone, name, joinedAtMs }) {
   try { phoneEnc = sealValue(PHONE_KEY, number); } catch { return false; }
   const text = String(name ?? '').trim().slice(0, NAME_MAX);
   if (text) { try { nameEnc = sealValue(NAME_KEY, text); } catch { nameEnc = null; } }
+  const kh = keyHash(source, id);
   const out = await db.execute({
     sql: 'INSERT INTO sms_leads (source, key_hash, joined_at, phone_hash, phone_last4, phone_enc, name_enc) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source, key_hash) DO NOTHING RETURNING id',
-    args: [source, keyHash(source, id), iso(joinedAtMs), phoneHash(number), number.slice(-4), phoneEnc, nameEnc],
+    args: [source, kh, iso(joinedAtMs), phoneHash(number), number.slice(-4), phoneEnc, nameEnc],
   });
-  return Boolean(out.rows?.[0]);
+  const added = Boolean(out.rows?.[0]);
+  if (!added && nameEnc) {
+    await db.execute({
+      sql: 'UPDATE sms_leads SET name_enc = ? WHERE source = ? AND key_hash = ? AND name_enc IS NULL',
+      args: [nameEnc, source, kh],
+    });
+  }
+  return added;
 }
 
 // 발송 후보: 창 안의 접수 중 번호가 남아 있는 것(읽기만). 번호를 못 푸는 행은 건너뛰고, 이름을 못 풀면 빈 값.

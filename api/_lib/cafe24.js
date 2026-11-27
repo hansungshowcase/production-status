@@ -220,7 +220,7 @@ export async function insertSignup(db, { memberId, phone, name, joinedAtMs, sour
     args: [memberHash(id), iso(joinedAtMs), phoneHash(number), number.slice(-4), enc, source],
   });
   const added = Boolean(out.rows?.[0]);
-  if (added) { try { await insertLead(db, { source: 'cafe24', key: id, phone: number, name, joinedAtMs }); } catch { /* 접수 표 저장 실패는 조용히 */ } }
+  if (added || Boolean(String(name ?? '').trim())) { try { await insertLead(db, { source: 'cafe24', key: id, phone: number, name, joinedAtMs }); } catch { /* 접수 표 저장 실패는 조용히 */ } }
   return added;
 }
 

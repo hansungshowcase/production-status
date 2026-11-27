@@ -25,13 +25,23 @@ function fakeDb() {
         return { rows: [{ id: row.id }] };
       }
       if (t.startsWith('SELECT id, phone_hash, phone_last4, phone_enc, name_enc, joined_at FROM sms_leads')) return { rows: state.leads.filter(r => r.phone_enc && r.joined_at >= args[0] && r.joined_at <= args[1]) };
+      if (t.startsWith('UPDATE sms_leads SET name_enc = ? WHERE source = ? AND key_hash = ? AND name_enc IS NULL')) {
+        const [name_enc, source, key_hash] = args;
+        for (const r of state.leads) if (r.source === source && r.key_hash === key_hash && r.name_enc === null) r.name_enc = name_enc;
+        return { rows: [] };
+      }
       if (t.startsWith('UPDATE sms_leads SET phone_enc = NULL, name_enc = NULL')) { for (const r of state.leads) if (r.joined_at < args[0]) { r.phone_enc = null; r.name_enc = null; } return { rows: [] }; }
       if (t.startsWith('INSERT INTO sms_lead_poll')) {
         if (state.poll && state.poll >= args[1]) return { rows: [] };
         state.poll = args[0];
         return { rows: [{ source: 'airtable' }] };
       }
-      if (t.startsWith('INSERT INTO cafe24_signups')) return { rows: [{ id: 1 }] };
+      if (t.startsWith('INSERT INTO cafe24_signups')) {
+        const [member_hash] = args;
+        if (state.signups.some(r => r.member_hash === member_hash)) return { rows: [] };
+        state.signups.push({ id: state.signups.length + 1, member_hash });
+        return { rows: [{ id: state.signups.length }] };
+      }
       throw new Error(`예상 못 한 SQL ${t}`);
     },
   };
@@ -85,11 +95,21 @@ test('접수 표: 45일 넘은 행은 번호·이름을 지우고 해시는 남�
   assert.ok(db.state.leads[1].phone_enc);
 });
 
-test('카페24 가입이 새로 들어가면 접수 표에도 1건, 같은 회원은 다시 넣지 않음', async () => {
+test('카페24 가입이 새로 들어가면 접수 표에도 1건, 같은 회원은 다시 넣지 않되 비어 있던 이름은 보충 채움', async () => {
   const db = fresh();
   assert.equal(await insertSignup(db, { memberId: 'user01', phone: '01055556666', name: '김', joinedAtMs: NOW, source: 'webhook', keepPhone: false }), true);
   assert.equal(db.state.leads.length, 1);
   assert.equal(db.state.leads[0].source, 'cafe24');
+
+  // 이름 없이 먼저 들어온 회원(예: 이름 빠진 웹훅) 뒤에 보충 조회가 실명을 들고 오면 name_enc 보완
+  assert.equal(await insertSignup(db, { memberId: 'user02', phone: '01077778888', name: '', joinedAtMs: NOW, source: 'webhook', keepPhone: false }), true);
+  assert.equal(db.state.leads[1].name_enc, null);
+  assert.equal(await insertSignup(db, { memberId: 'user02', phone: '01077778888', name: '박사장', joinedAtMs: NOW, source: 'poll', keepPhone: true }), false);
+  assert.ok(db.state.leads[1].name_enc);
+  // 이미 이름이 채워진 행은 다른 이름으로 덮어쓰지 않음
+  assert.equal(await insertSignup(db, { memberId: 'user02', phone: '01077778888', name: '다른이름', joinedAtMs: NOW, source: 'poll', keepPhone: true }), false);
+  const rows = await leadCandidates(db, { fromIso: new Date(NOW - DAY).toISOString(), toIso: new Date(NOW + DAY).toISOString(), source: 'cafe24' });
+  assert.deepEqual(rows.map(r => r.name), ['김', '박사장']);
 });
 
 test('에어테이블: 환경값이 없으면 닫혀 0, 연결 판정도 거짓', async () => {

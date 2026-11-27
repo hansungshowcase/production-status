@@ -4,6 +4,7 @@ import test from 'node:test';
 import { handleCafe24Webhook } from '../api/cafe24/webhook.js';
 import { handleCafe24Callback } from '../api/cafe24/callback.js';
 import { _resetCafe24SchemaForTest, cafe24Connected, checkState, getAccessToken, makeState, pollSignups, purgeStalePhones, sealValue } from '../api/_lib/cafe24.js';
+import { _resetLeadSchemaForTest, leadCandidates } from '../api/_lib/smsLeads.js';
 import { _resetTextTemplateSchemaForTest, saveTextTemplate } from '../api/_lib/smsTextTemplates.js';
 import { _resetEventSchemaForTest, eventToggleOn, runEventSend } from '../api/_lib/smsEventSend.js';
 
@@ -17,13 +18,28 @@ const SEND_ENV = { SMS_SENDER: '0212345678' };
 const BODY = '한성쇼케이스 가입을 환영합니다. 문의는 언제든 남겨 주세요.';
 
 function fakeDb({ templates = [], tokens = null } = {}) {
-  const state = { signups: [], sends: [], templates, tokens, nextId: 1, sql: [] };
+  const state = { signups: [], leads: [], sends: [], templates, tokens, nextId: 1, sql: [] };
   return {
     state,
     async execute({ sql, args }) {
       const t = sql.replace(/\s+/g, ' ').trim();
       state.sql.push(t);
       if (/^(CREATE TABLE|ALTER TABLE)/.test(t)) return { rows: [] };
+      if (t.startsWith('INSERT INTO sms_leads')) {
+        const [source, key_hash, joined_at, phone_hash, phone_last4, phone_enc, name_enc] = args;
+        if (state.leads.some(r => r.source === source && r.key_hash === key_hash)) return { rows: [] };
+        const row = { id: state.nextId++, source, key_hash, joined_at, phone_hash, phone_last4, phone_enc, name_enc };
+        state.leads.push(row);
+        return { rows: [{ id: row.id }] };
+      }
+      if (t.startsWith('UPDATE sms_leads SET name_enc = ? WHERE source = ? AND key_hash = ? AND name_enc IS NULL')) {
+        const [name_enc, source, key_hash] = args;
+        for (const r of state.leads) if (r.source === source && r.key_hash === key_hash && r.name_enc === null) r.name_enc = name_enc;
+        return { rows: [] };
+      }
+      if (t.startsWith('SELECT id, phone_hash, phone_last4, phone_enc, name_enc, joined_at FROM sms_leads')) {
+        return { rows: state.leads.filter(r => r.phone_enc && r.joined_at >= args[0] && r.joined_at <= args[1] && (!t.includes('AND source = ?') || r.source === args[2])) };
+      }
       if (t.startsWith("SELECT id FROM sms_text_templates WHERE auto_enabled = true AND auto_kind = 'member_joined'")) return { rows: state.templates.filter(r => r.auto_enabled && r.auto_kind === 'member_joined').map(r => ({ id: r.id })) };
       if (t.startsWith('INSERT INTO cafe24_signups')) {
         const [member_hash, joined_at, phone_hash, phone_last4, phone_enc, source] = args;
@@ -71,6 +87,7 @@ const mkRes = () => ({ code: 0, body: null, headers: {}, status(c) { this.code =
 const JOIN_BODY = { event_no: 90032, resource: { mall_id: 'mymall', member_id: 'user01', cellphone: '010-5555-6666', created_date: '2026-11-20T09:30:00+09:00' } };
 async function hook(db, over = {}) {
   _resetCafe24SchemaForTest();
+  _resetLeadSchemaForTest();
   _resetTextTemplateSchemaForTest();
   const res = mkRes();
   const logs = [];
@@ -247,4 +264,32 @@ test('가입 ⑧ 갱신이 401 로 실패하면 refresh_expires_at 이 NULL 이 
   await handleCafe24Callback({ method: 'GET', query: {} }, after, { env: ENV, nowMs: NOW, db });
   assert.equal(after.code, 302);
   assert.ok(after.headers.Location.includes('/oauth/authorize?'));
+});
+
+test('가입 ⑨ 웹훅 실명 전달(name·user_name 등) 및 이름 없는 웹훅 행에 대한 pollSignups 실명 보충', async () => {
+  const db = fakeDb({ templates: [memberTpl()] });
+  db.state.tokens = { access_enc: sealValue('cafe24.access', 'valid-access'), refresh_enc: sealValue('cafe24.refresh', 'valid-refresh'), access_expires_at: '2026-11-20T03:00:00.000Z', last_poll_at: null };
+  // 1) 웹훅에서 name / user_name 이 오면 sms_leads 에 실명 저장
+  await hook(db, { body: { event_no: 90032, resource: { mall_id: 'mymall', member_id: 'm1', cellphone: '010-1111-2222', name: '류플로라', created_date: '2026-11-20T09:10:00+09:00' } } });
+  await hook(db, { body: { event_no: 90032, resource: { mall_id: 'mymall', member_id: 'm2', cellphone: '010-2222-3333', user_name: '예성떡집', created_date: '2026-11-20T09:15:00+09:00' } } });
+  // 2) 웹훅에서 성함 없이 들어온 회원 m3
+  await hook(db, { body: { event_no: 90032, resource: { mall_id: 'mymall', member_id: 'm3', cellphone: '010-3333-4444', created_date: '2026-11-20T09:20:00+09:00' } } });
+  const beforePoll = await leadCandidates(db, { fromIso: '2026-11-19T00:00:00.000Z', toIso: '2026-11-21T00:00:00.000Z', source: 'cafe24' });
+  assert.deepEqual(beforePoll.map(r => r.name), ['류플로라', '예성떡집', '']);
+
+  // 3) 이후 pollSignups 가 돌면 m3 는 신규 가입 행이 아니어도(added=0) sms_leads 의 빈 성함이 보충됨
+  const fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({
+      customersprivacy: [
+        { member_id: 'm2', cellphone: '010-2222-3333', name: '덮어쓰면안됨', created_date: '2026-11-20T09:15:00+09:00' },
+        { member_id: 'm3', cellphone: '010-3333-4444', name: '한성식당', created_date: '2026-11-20T09:20:00+09:00' },
+      ],
+    }),
+  });
+  _resetCafe24SchemaForTest();
+  const added = await pollSignups(db, { env: ENV, fetchImpl, nowMs: NOW, warn() {} });
+  assert.equal(added, 0);
+  const afterPoll = await leadCandidates(db, { fromIso: '2026-11-19T00:00:00.000Z', toIso: '2026-11-21T00:00:00.000Z', source: 'cafe24' });
+  assert.deepEqual(afterPoll.map(r => r.name), ['류플로라', '예성떡집', '한성식당']);
 });

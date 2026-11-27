@@ -26,12 +26,13 @@ export async function handleCafe24Webhook(req, res, dependencies = {}) {
     const memberId = pick(resource, ['member_id']);
     const phone = pick(resource, ['cellphone']);
     if (memberId === undefined || phone === undefined) { warn('[cafe24-webhook] 가입 칸을 찾지 못한 건수', 1); return res.status(200).json({ ok: true }); }
+    const name = pick(resource, ['name', 'user_name', 'member_name', 'customer_name']);
     const db = dependencies.db || getDb();
     const nowMs = dependencies.nowMs ?? Date.now();
     await ensureCafe24Schema(db);
     await ensureTextTemplateSchema(db);
     const keepPhone = await hasEnabledJoinTemplate(db); // 켜진 가입 문구가 없으면 번호를 저장하지 않는다
-    await insertSignup(db, { memberId, phone, joinedAtMs: readJoinedAt(pick(resource, ['created_date']), nowMs), source: 'webhook', keepPhone });
+    await insertSignup(db, { memberId, phone, name, joinedAtMs: readJoinedAt(pick(resource, ['created_date']), nowMs), source: 'webhook', keepPhone });
     return res.status(200).json({ ok: true });
   } catch {
     warn('[cafe24-webhook] 처리 실패');
